@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"nexus-gateway/internal/model"
 	"nexus-gateway/internal/service"
@@ -31,6 +32,120 @@ type ErrorInfo struct {
 	Message string `json:"message"`
 }
 
+type DataSourceResponse struct {
+	ID        string                   `json:"id"`
+	Name      string                   `json:"name"`
+	Type      model.DatabaseType       `json:"type"`
+	Config    DataSourceConfigResponse `json:"config"`
+	Status    model.DataSourceStatus   `json:"status"`
+	CreatedAt time.Time                `json:"created_at"`
+	UpdatedAt time.Time                `json:"updated_at"`
+}
+
+type DataSourceConfigResponse struct {
+	Host            string                 `json:"host"`
+	Port            int                    `json:"port"`
+	Database        string                 `json:"database"`
+	Schema          string                 `json:"schema,omitempty"`
+	Username        string                 `json:"username"`
+	SSL             bool                   `json:"ssl"`
+	Timeout         int                    `json:"timeout"`
+	MaxPoolSize     int                    `json:"maxPoolSize"`
+	IdleTimeout     int                    `json:"idleTimeout"`
+	MaxLifetime     int                    `json:"maxLifetime"`
+	Timezone        string                 `json:"timezone"`
+	AdditionalProps map[string]interface{} `json:"additionalProps,omitempty"`
+}
+
+type DataSourceListResponse struct {
+	DataSources []*DataSourceResponse `json:"dataSources"`
+	Total       int64                 `json:"total"`
+	Limit       int                   `json:"limit"`
+	Offset      int                   `json:"offset"`
+}
+
+func toDataSourceResponse(dataSource *model.DataSource) *DataSourceResponse {
+	if dataSource == nil {
+		return nil
+	}
+	config := dataSource.Config
+	return &DataSourceResponse{
+		ID:        dataSource.ID,
+		Name:      dataSource.Name,
+		Type:      dataSource.Type,
+		Status:    dataSource.Status,
+		CreatedAt: dataSource.CreatedAt,
+		UpdatedAt: dataSource.UpdatedAt,
+		Config: DataSourceConfigResponse{
+			Host:            config.Host,
+			Port:            config.Port,
+			Database:        config.Database,
+			Schema:          config.Schema,
+			Username:        config.Username,
+			SSL:             config.SSL,
+			Timeout:         config.Timeout,
+			MaxPoolSize:     config.MaxPoolSize,
+			IdleTimeout:     config.IdleTimeout,
+			MaxLifetime:     config.MaxLifetime,
+			Timezone:        config.Timezone,
+			AdditionalProps: redactDataSourceProperties(config.AdditionalProps),
+		},
+	}
+}
+
+func toDataSourceListResponse(result *service.ListDataSourcesResponse) DataSourceListResponse {
+	if result == nil {
+		return DataSourceListResponse{}
+	}
+	dataSources := make([]*DataSourceResponse, 0, len(result.DataSources))
+	for _, dataSource := range result.DataSources {
+		dataSources = append(dataSources, toDataSourceResponse(dataSource))
+	}
+	return DataSourceListResponse{
+		DataSources: dataSources,
+		Total:       result.Total,
+		Limit:       result.Limit,
+		Offset:      result.Offset,
+	}
+}
+
+func redactDataSourceProperties(properties map[string]interface{}) map[string]interface{} {
+	if properties == nil {
+		return nil
+	}
+	safe := make(map[string]interface{}, len(properties))
+	for key, value := range properties {
+		if model.IsSensitiveDataSourceProperty(key) {
+			continue
+		}
+		safe[key] = redactNestedProperties(value)
+	}
+	return safe
+}
+
+func redactNestedProperties(value interface{}) interface{} {
+	switch value := value.(type) {
+	case map[string]interface{}:
+		return redactDataSourceProperties(value)
+	case map[string]string:
+		safe := make(map[string]interface{}, len(value))
+		for key, item := range value {
+			if !model.IsSensitiveDataSourceProperty(key) {
+				safe[key] = item
+			}
+		}
+		return safe
+	case []interface{}:
+		safe := make([]interface{}, len(value))
+		for i, item := range value {
+			safe[i] = redactNestedProperties(item)
+		}
+		return safe
+	default:
+		return value
+	}
+}
+
 func NewDataSourceController(service service.DataSourceService) *DataSourceController {
 	return &DataSourceController{
 		service:   service,
@@ -45,7 +160,7 @@ func NewDataSourceController(service service.DataSourceService) *DataSourceContr
 // @Accept json
 // @Produce json
 // @Param request body service.CreateDataSourceRequest true "Create data source request"
-// @Success 201 {object} Response{data=model.DataSource}
+// @Success 201 {object} Response{data=DataSourceResponse}
 // @Failure 400 {object} Response
 // @Failure 409 {object} Response
 // @Router /api/v1/datasources [post]
@@ -77,7 +192,7 @@ func (dc *DataSourceController) CreateDataSource(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, Response{
 		Success:       true,
-		Data:          dataSource,
+		Data:          toDataSourceResponse(dataSource),
 		CorrelationID: dc.getCorrelationID(c),
 	})
 }
@@ -88,7 +203,7 @@ func (dc *DataSourceController) CreateDataSource(c *gin.Context) {
 // @Tags datasources
 // @Produce json
 // @Param id path string true "Data source UUID"
-// @Success 200 {object} Response{data=model.DataSource}
+// @Success 200 {object} Response{data=DataSourceResponse}
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
 // @Router /api/v1/datasources/{id} [get]
@@ -115,7 +230,7 @@ func (dc *DataSourceController) GetDataSource(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Success:       true,
-		Data:          dataSource,
+		Data:          toDataSourceResponse(dataSource),
 		CorrelationID: dc.getCorrelationID(c),
 	})
 }
@@ -128,7 +243,7 @@ func (dc *DataSourceController) GetDataSource(c *gin.Context) {
 // @Param status query string false "Filter by status (active, inactive, error)"
 // @Param limit query int false "Maximum number of items to return (default: 20, max: 100)"
 // @Param offset query int false "Number of items to skip (default: 0)"
-// @Success 200 {object} Response{data=service.ListDataSourcesResponse}
+// @Success 200 {object} Response{data=DataSourceListResponse}
 // @Router /api/v1/datasources [get]
 func (dc *DataSourceController) ListDataSources(c *gin.Context) {
 	req := &service.ListDataSourcesRequest{}
@@ -163,7 +278,7 @@ func (dc *DataSourceController) ListDataSources(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Success:       true,
-		Data:          response,
+		Data:          toDataSourceListResponse(response),
 		CorrelationID: dc.getCorrelationID(c),
 	})
 }
@@ -176,7 +291,7 @@ func (dc *DataSourceController) ListDataSources(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Data source UUID"
 // @Param request body service.UpdateDataSourceRequest true "Update data source request"
-// @Success 200 {object} Response{data=model.DataSource}
+// @Success 200 {object} Response{data=DataSourceResponse}
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
 // @Router /api/v1/datasources/{id} [put]
@@ -214,7 +329,7 @@ func (dc *DataSourceController) UpdateDataSource(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Success:       true,
-		Data:          dataSource,
+		Data:          toDataSourceResponse(dataSource),
 		CorrelationID: dc.getCorrelationID(c),
 	})
 }

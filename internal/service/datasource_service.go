@@ -132,6 +132,49 @@ func (s *dataSourceService) ListDataSources(ctx context.Context, req *ListDataSo
 	}, nil
 }
 
+func preserveDataSourceSecrets(existing, incoming model.DataSourceConfig) model.DataSourceConfig {
+	if incoming.Password == "" {
+		incoming.Password = existing.Password
+	}
+	incoming.AdditionalProps = mergeAdditionalProperties(existing.AdditionalProps, incoming.AdditionalProps)
+	return incoming
+}
+
+func mergeAdditionalProperties(existing, incoming map[string]interface{}) map[string]interface{} {
+	if incoming == nil {
+		return cloneAdditionalProperties(existing)
+	}
+
+	merged := cloneAdditionalProperties(incoming)
+	for key, oldValue := range existing {
+		newValue, exists := merged[key]
+		if model.IsSensitiveDataSourceProperty(key) {
+			if !exists {
+				merged[key] = oldValue
+			}
+			continue
+		}
+
+		oldNested, oldIsMap := oldValue.(map[string]interface{})
+		newNested, newIsMap := newValue.(map[string]interface{})
+		if oldIsMap && newIsMap {
+			merged[key] = mergeAdditionalProperties(oldNested, newNested)
+		}
+	}
+	return merged
+}
+
+func cloneAdditionalProperties(source map[string]interface{}) map[string]interface{} {
+	if source == nil {
+		return nil
+	}
+	clone := make(map[string]interface{}, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
+}
+
 func (s *dataSourceService) UpdateDataSource(ctx context.Context, id string, req *UpdateDataSourceRequest) (*model.DataSource, error) {
 	// Validate UUID format
 	if _, err := uuid.Parse(id); err != nil {
@@ -149,7 +192,7 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, id string, req
 		dataSource.Name = *req.Name
 	}
 	if req.Config != nil {
-		dataSource.Config = *req.Config
+		dataSource.Config = preserveDataSourceSecrets(dataSource.Config, *req.Config)
 	}
 	if req.Status != nil {
 		dataSource.Status = *req.Status
