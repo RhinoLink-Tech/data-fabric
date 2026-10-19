@@ -174,9 +174,17 @@ func (hc *HealthChecker) CheckDataSourceHealth(ctx context.Context, dataSource *
 	return result, nil
 }
 
+// GetConnectionPoolStats returns live statistics for currently initialized pools.
+func (hc *HealthChecker) GetConnectionPoolStats() map[string]ConnectionStats {
+	if hc == nil || hc.connPool == nil {
+		return make(map[string]ConnectionStats)
+	}
+	return hc.connPool.GetStats()
+}
+
 // CheckAllConnectionsHealth checks health of all active connections in the pool
 func (hc *HealthChecker) CheckAllConnectionsHealth(ctx context.Context) (*DatabaseHealthSummary, error) {
-	stats := hc.connPool.GetStats()
+	stats := hc.GetConnectionPoolStats()
 
 	summary := &DatabaseHealthSummary{
 		TotalConnections:     len(stats),
