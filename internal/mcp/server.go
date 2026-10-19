@@ -178,7 +178,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		Timeout:       timeout,
 	}
 
-	// Execute the query using the unified query service
+	// Execute the query using the unified query service. MCP stdio carries no
+	// JWT identity; attribute the history record to the shared "mcp" bucket
+	// instead of an unrelated user's (#103).
+	ctx = queryservice.WithQueryUser(ctx, "mcp")
 	result, err := m.unifiedQueryService.FetchQuery(ctx, req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
@@ -346,6 +349,9 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		Timeout:      30,
 	}
 
+	// Same attribution as the fetch tool: table discovery runs under the
+	// shared "mcp" bucket (#103).
+	ctx = queryservice.WithQueryUser(ctx, "mcp")
 	result, err := m.unifiedQueryService.FetchQuery(ctx, req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil

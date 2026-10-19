@@ -93,6 +93,10 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 		defer cancel()
 	}
 
+	// Carry the authenticated identity so the query history records who ran
+	// the query and never mixes tenants (#103)
+	ctx = queryservice.WithQueryUser(ctx, requestingUser(c))
+
 	// Execute fetch query using unified service
 	result, err := qc.queryService.FetchQuery(ctx, &req)
 	if err != nil {
@@ -257,11 +261,12 @@ func (qc *QueryController) GetQueryStats(c *gin.Context) {
 
 // GetQueryHistory godoc
 // @Summary Get recent query history
-// @Description Returns a list of recent queries (placeholder for now)
+// @Description Returns the caller's recent queries with bounded pagination. Records are scoped to the authenticated user; an optional dataSourceId filters further.
 // @Tags queries
 // @Produce json
 // @Param limit query int false "Maximum number of items to return (default: 100, max: 1000)"
 // @Param offset query int false "Number of items to skip (default: 0)"
+// @Param dataSourceId query string false "Only return queries executed against this data source"
 // @Success 200 {object} response.StandardResponse
 // @Router /api/v1/query/history [get]
 func (qc *QueryController) GetQueryHistory(c *gin.Context) {
@@ -286,19 +291,49 @@ func (qc *QueryController) GetQueryHistory(c *gin.Context) {
 		}
 	}
 
-	// For now, return empty history
-	// In a real implementation, you would store query history in a database
+	// The history is scoped to the authenticated caller; records from other
+	// users are never visible (#103).
+	filter := queryservice.QueryHistoryFilter{
+		User:         requestingUser(c),
+		DataSourceID: c.Query("dataSourceId"),
+		Limit:        limit,
+		Offset:       offset,
+	}
+	page, err := qc.queryService.GetQueryHistory(c.Request.Context(), filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
+			"HISTORY_ERROR",
+			"Failed to get query history: "+err.Error(),
+			"",
+			correlationID,
+		))
+		return
+	}
+
 	history := map[string]interface{}{
-		"queries": []interface{}{},
-		"total":   0,
-		"limit":   limit,
-		"offset":  offset,
+		"queries": page.Records,
+		"total":   page.Total,
+		"limit":   page.Limit,
+		"offset":  page.Offset,
 	}
 
 	c.JSON(http.StatusOK, response.SuccessResponse(history, correlationID))
 }
 
 // Helper methods
+
+// requestingUser identifies the caller for per-user scoping such as query
+// history (#103). Falls back from the JWT user ID to the username; callers
+// that carry neither (MCP stdio) get the shared "anonymous" bucket.
+func requestingUser(c *gin.Context) string {
+	if user, ok := security.GetUserID(c); ok && user != "" {
+		return user
+	}
+	if user, ok := security.GetUsername(c); ok && user != "" {
+		return user
+	}
+	return "anonymous"
+}
 
 func (qc *QueryController) getCorrelationID(c *gin.Context) string {
 	if correlationID, exists := c.Get("correlation_id"); exists {

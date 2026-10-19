@@ -2,6 +2,8 @@ package unifiedservice
 
 import (
 	"context"
+	"time"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	service "github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -12,12 +14,14 @@ type UnifiedQueryService interface {
 	GetQueryStats(ctx context.Context) (*model.QueryStats, error)
 	FetchQuery(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
 	FetchNextBatch(ctx context.Context, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error)
+	GetQueryHistory(ctx context.Context, filter service.QueryHistoryFilter) (*service.QueryHistoryPage, error)
 }
 
 type unifiedQueryService struct {
 	paginationService service.QueryService // The original QueryService implementation
 	streamingService  service.StreamingService
 	config            *config.Config
+	history           *service.QueryHistory
 }
 
 // NewUnifiedQueryService creates a new unified query service that chooses between
@@ -31,6 +35,7 @@ func NewUnifiedQueryService(
 		paginationService: paginationService,
 		streamingService:  streamingService,
 		config:            config,
+		history:           service.NewQueryHistory(1000),
 	}
 }
 
@@ -44,8 +49,33 @@ func (uqs *unifiedQueryService) GetQueryStats(ctx context.Context) (*model.Query
 	return uqs.paginationService.GetQueryStats(ctx)
 }
 
-// FetchQuery executes a fetch query using the pagination service
+// FetchQuery executes a fetch query and records it in the query history
+// (#103). Recording happens for both engines at this chokepoint, so HTTP and
+// MCP traffic are covered alike; continuation fetches extend an already
+// recorded query and are not separate records.
 func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+	started := time.Now()
+	result, err := uqs.executeFetchQuery(ctx, req)
+
+	record := service.QueryRecord{
+		DataSourceID: req.DataSourceID,
+		SQL:          req.SQL,
+		Status:       "success",
+		DurationMs:   time.Since(started).Milliseconds(),
+		User:         service.QueryUserFromContext(ctx),
+	}
+	if err != nil {
+		record.Status = "error"
+	} else if result != nil {
+		record.QueryID = result.QueryID
+	}
+	uqs.history.Add(record)
+
+	return result, err
+}
+
+// executeFetchQuery dispatches to the configured engine.
+func (uqs *unifiedQueryService) executeFetchQuery(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	// Determine execution mode based on configuration
 	executionMode := uqs.getExecutionMode()
 
@@ -80,6 +110,12 @@ func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, queryID, slu
 		// Default to pagination
 		return uqs.paginationService.FetchNextBatch(ctx, queryID, slug, token, batchSize)
 	}
+}
+
+// GetQueryHistory returns the caller's slice of the recorded query history
+// (#103). The caller identity comes from the filter the controller fills in.
+func (uqs *unifiedQueryService) GetQueryHistory(ctx context.Context, filter service.QueryHistoryFilter) (*service.QueryHistoryPage, error) {
+	return uqs.history.List(filter), nil
 }
 
 // getExecutionMode determines the execution mode based on configuration

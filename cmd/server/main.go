@@ -119,11 +119,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
 	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
-	queryService := (service.QueryService)(unifiedQueryService)
 
 	// Initialize controllers
 	datasourceController := controller.NewDataSourceController(datasourceService)
-	queryController := controller.NewQueryController(queryService)
+	queryController := controller.NewQueryController(unifiedQueryService)
 	databaseController := controller.NewDatabaseController(datasourceRepo, healthChecker)
 	healthController := controller.NewHealthController(db)
 	sqlTranslationController := controller.NewSQLTranslationController() // Added SQL translation controller
