@@ -3,54 +3,79 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 )
+
+var (
+	ErrMetadataRepositoryRequired     = errors.New("data source repository is required")
+	ErrMetadataConnectionPoolRequired = errors.New("metadata connection pool is required")
+	ErrMetadataDriverRegistryRequired = errors.New("metadata driver registry is required")
+	ErrSchemaDiscoveryUnsupported     = errors.New("schema discovery is not supported")
+)
+
+type dataSourceLookup interface {
+	GetByID(ctx context.Context, id string) (*model.DataSource, error)
+}
+
+type metadataConnectionProvider interface {
+	GetConnection(ctx context.Context, dataSource *model.DataSource) (*sql.DB, error)
+}
 
 // MetadataExtractor extracts schema metadata from data sources
 type MetadataExtractor struct {
-	connPool *database.ConnectionPool
+	connPool metadataConnectionProvider
+	sources  dataSourceLookup
 	registry *database.DriverRegistry
 }
 
-// NewMetadataExtractor creates a new metadata extractor
-func NewMetadataExtractor(connPool *database.ConnectionPool) *MetadataExtractor {
+// NewMetadataExtractor creates a metadata extractor backed by the source repository.
+func NewMetadataExtractor(connPool *database.ConnectionPool, sources repository.DataSourceRepository) *MetadataExtractor {
 	return &MetadataExtractor{
 		connPool: connPool,
+		sources:  sources,
 		registry: database.GetDriverRegistry(),
 	}
 }
 
-// ExtractSchema extracts the complete schema for a data source
+// ExtractSchema extracts the complete schema for a data source.
 func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID string) (*DataSourceSchema, string, error) {
-	// Get data source from database
-	// TODO: Implement data source retrieval from database
-	// For now, we'll work with a placeholder
-	dataSource := &model.DataSource{
-		ID:   dataSourceID,
-		Type: model.DatabaseTypeMySQL, // Placeholder
+	if e.sources == nil {
+		return nil, "", ErrMetadataRepositoryRequired
 	}
-
-	// Get connection
-	db, err := e.connPool.GetConnection(ctx, dataSource)
+	dataSource, err := e.sources.GetByID(ctx, dataSourceID)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to get connection: %w", err)
+		return nil, "", fmt.Errorf("failed to load data source %q: %w", dataSourceID, err)
+	}
+	if dataSource == nil {
+		return nil, "", fmt.Errorf("failed to load data source %q: %w", dataSourceID, repository.ErrDataSourceNotFound)
+	}
+	if e.registry == nil {
+		return nil, "", ErrMetadataDriverRegistryRequired
 	}
 
-	// Get driver for data source type
+	// Check source support before opening a connection, so unsupported sources
+	// fail clearly without attempting a connection using placeholder settings.
 	driver, err := e.registry.GetDriver(dataSource.Type)
 	if err != nil {
-		return nil, "", fmt.Errorf("driver not available: %w", err)
+		return nil, "", fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
+	}
+	if !driver.GetCapabilities().SupportsSchemaDiscovery {
+		return nil, "", fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
+	}
+	if e.connPool == nil {
+		return nil, "", ErrMetadataConnectionPoolRequired
 	}
 
-	// Extract schema based on driver capabilities
-	caps := driver.GetCapabilities()
-	if !caps.SupportsSchemaDiscovery {
-		return nil, "", fmt.Errorf("schema discovery not supported for %s", dataSource.Type)
+	db, err := e.connPool.GetConnection(ctx, dataSource)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get connection for data source %q: %w", dataSourceID, err)
 	}
 
 	// Extract tables
