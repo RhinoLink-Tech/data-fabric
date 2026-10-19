@@ -26,10 +26,15 @@ type databaseHealthDataSourceLister interface {
 	GetAll(ctx context.Context, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error)
 }
 
+type connectionPoolStatsProvider interface {
+	GetConnectionPoolStats() map[string]database.ConnectionStats
+}
+
 type DatabaseController struct {
-	datasourceRepo databaseHealthDataSourceLister
-	healthChecker  *database.HealthChecker
-	healthProbe    func(context.Context, *model.DataSource) (*database.HealthCheckResult, error)
+	datasourceRepo    databaseHealthDataSourceLister
+	healthChecker     *database.HealthChecker
+	healthProbe       func(context.Context, *model.DataSource) (*database.HealthCheckResult, error)
+	poolStatsProvider connectionPoolStatsProvider
 }
 
 func NewDatabaseController(datasourceRepo repository.DataSourceRepository, healthChecker *database.HealthChecker) *DatabaseController {
@@ -39,6 +44,7 @@ func NewDatabaseController(datasourceRepo repository.DataSourceRepository, healt
 	}
 	if healthChecker != nil {
 		controller.healthProbe = healthChecker.CheckDataSourceHealth
+		controller.poolStatsProvider = healthChecker
 	}
 	return controller
 }
@@ -188,22 +194,42 @@ func (dc *DatabaseController) ValidateDataSourceConfig(c *gin.Context) {
 
 // GetConnectionStats godoc
 // @Summary Get connection pool statistics
-// @Description Returns statistics for all connection pools
+// @Description Returns live statistics for initialized connection pools. Configured data sources without an initialized pool are omitted; when no pools exist, the pools map and aggregate counters are empty or zero.
 // @Tags database
 // @Produce json
-// @Success 200 {object} response.StandardResponse
+// @Success 200 {object} response.StandardResponse{data=ConnectionPoolStatsResponse}
+// @Failure 503 {object} response.StandardResponse
 // @Router /api/v1/database/connections/stats [get]
 func (dc *DatabaseController) GetConnectionStats(c *gin.Context) {
 	correlationID := dc.getCorrelationID(c)
+	if dc.poolStatsProvider == nil {
+		c.JSON(http.StatusServiceUnavailable, response.ErrorResponse(
+			"CONNECTION_STATS_UNAVAILABLE",
+			"Connection pool statistics are unavailable",
+			"Connection pool statistics dependency is not configured",
+			correlationID,
+		))
+		return
+	}
 
-	// This would need access to the connection pool
-	// For now, return a placeholder response
-	c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
-		"message":           "Connection pool statistics not yet implemented",
-		"totalConnections":  0,
-		"activeConnections": 0,
-		"idleConnections":   0,
-	}, correlationID))
+	pools := dc.poolStatsProvider.GetConnectionPoolStats()
+	if pools == nil {
+		pools = make(map[string]database.ConnectionStats)
+	}
+	stats := ConnectionPoolStatsResponse{
+		Message:   "Statistics for initialized connection pools",
+		Pools:     pools,
+		CheckedAt: time.Now(),
+	}
+	for _, pool := range pools {
+		stats.TotalPools++
+		stats.TotalConnections += pool.OpenConnections
+		stats.ActiveConnections += pool.InUse
+		stats.IdleConnections += pool.Idle
+		stats.WaitCount += pool.WaitCount
+		stats.WaitDuration += pool.WaitDuration
+	}
+	c.JSON(http.StatusOK, response.SuccessResponse(stats, correlationID))
 }
 
 // GetDatabaseHealth godoc
@@ -428,6 +454,20 @@ func (dc *DatabaseController) GetDatabaseCompatibility(c *gin.Context) {
 type ValidateConfigRequest struct {
 	Type   string                 `json:"type" validate:"required"`
 	Config model.DataSourceConfig `json:"config" validate:"required"`
+}
+
+// ConnectionPoolStatsResponse is a snapshot of initialized database/sql pools.
+// Data sources that have not created a pool are omitted from Pools.
+type ConnectionPoolStatsResponse struct {
+	Message           string                              `json:"message"`
+	TotalPools        int                                 `json:"totalPools"`
+	TotalConnections  int                                 `json:"totalConnections"`
+	ActiveConnections int                                 `json:"activeConnections"`
+	IdleConnections   int                                 `json:"idleConnections"`
+	WaitCount         int64                               `json:"waitCount"`
+	WaitDuration      time.Duration                       `json:"waitDuration"`
+	Pools             map[string]database.ConnectionStats `json:"pools"`
+	CheckedAt         time.Time                           `json:"checkedAt"`
 }
 
 type DatabaseCompatibility struct {
