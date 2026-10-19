@@ -1,9 +1,12 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/readonly"
@@ -13,16 +16,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	databaseHealthTimeout      = 5 * time.Second
+	databaseHealthPageSize     = 100
+	databaseHealthProbeWorkers = 8
+)
+
+type databaseHealthDataSourceLister interface {
+	GetAll(ctx context.Context, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error)
+}
+
 type DatabaseController struct {
-	datasourceRepo repository.DataSourceRepository
+	datasourceRepo databaseHealthDataSourceLister
 	healthChecker  *database.HealthChecker
+	healthProbe    func(context.Context, *model.DataSource) (*database.HealthCheckResult, error)
 }
 
 func NewDatabaseController(datasourceRepo repository.DataSourceRepository, healthChecker *database.HealthChecker) *DatabaseController {
-	return &DatabaseController{
+	controller := &DatabaseController{
 		datasourceRepo: datasourceRepo,
 		healthChecker:  healthChecker,
 	}
+	if healthChecker != nil {
+		controller.healthProbe = healthChecker.CheckDataSourceHealth
+	}
+	return controller
 }
 
 // GetDatabaseTypes godoc
@@ -197,16 +215,149 @@ func (dc *DatabaseController) GetConnectionStats(c *gin.Context) {
 // @Router /api/v1/database/health [get]
 func (dc *DatabaseController) GetDatabaseHealth(c *gin.Context) {
 	correlationID := dc.getCorrelationID(c)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), databaseHealthTimeout)
+	defer cancel()
 
-	// This would need access to the health checker with connection pool
-	// For now, return a placeholder response
-	c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
-		"message":              "Database health check not yet implemented",
-		"healthyConnections":   0,
-		"unhealthyConnections": 0,
-		"totalConnections":     0,
-		"checkedAt":            "2025-12-22T10:00:00Z",
-	}, correlationID))
+	if dc.datasourceRepo == nil || dc.healthProbe == nil {
+		c.JSON(http.StatusServiceUnavailable, response.ErrorResponse(
+			"DATABASE_HEALTH_UNAVAILABLE",
+			"Database health check is unavailable",
+			"Required health-check dependencies are not configured",
+			correlationID,
+		))
+		return
+	}
+
+	sources, err := dc.loadActiveDataSources(ctx)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, response.ErrorResponse(
+			"DATABASE_HEALTH_UNAVAILABLE",
+			"Database health check is unavailable",
+			"Configured data sources could not be loaded",
+			correlationID,
+		))
+		return
+	}
+
+	results := dc.probeDataSources(ctx, sources)
+	summary := &database.DatabaseHealthSummary{
+		TotalConnections: len(sources),
+		Results:          results,
+		SummaryByType:    make(map[string]database.TypeHealthSummary),
+		CheckedAt:        time.Now(),
+	}
+	for i, result := range results {
+		typeName := result.DatabaseType
+		if typeName == "" && i < len(sources) && sources[i] != nil {
+			typeName = string(sources[i].Type)
+		}
+		typeSummary := summary.SummaryByType[typeName]
+		typeSummary.Total++
+		if result.Status == "healthy" {
+			summary.HealthyConnections++
+			typeSummary.Healthy++
+		} else {
+			summary.UnhealthyConnections++
+			typeSummary.Unhealthy++
+		}
+		summary.SummaryByType[typeName] = typeSummary
+	}
+	summary.Status = databaseHealthStatus(summary.TotalConnections, summary.HealthyConnections, summary.UnhealthyConnections)
+
+	if summary.Status == "unhealthy" || summary.Status == "degraded" {
+		resp := response.SuccessResponse(summary, correlationID)
+		resp.Success = false
+		resp.Error = &response.ErrorInfo{
+			Code:    "DATABASE_UNHEALTHY",
+			Message: "One or more configured data sources are unhealthy",
+		}
+		c.JSON(http.StatusServiceUnavailable, resp)
+		return
+	}
+	c.JSON(http.StatusOK, response.SuccessResponse(summary, correlationID))
+}
+
+func (dc *DatabaseController) loadActiveDataSources(ctx context.Context) ([]*model.DataSource, error) {
+	var sources []*model.DataSource
+	for offset := 0; ; {
+		page, total, err := dc.datasourceRepo.GetAll(ctx, model.DataSourceStatusActive, databaseHealthPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, page...)
+		if len(sources) >= int(total) || len(page) == 0 {
+			return sources, nil
+		}
+		offset += len(page)
+	}
+}
+
+func (dc *DatabaseController) probeDataSources(ctx context.Context, sources []*model.DataSource) []database.HealthCheckResult {
+	results := make([]database.HealthCheckResult, len(sources))
+	if len(sources) == 0 {
+		return results
+	}
+
+	workerCount := databaseHealthProbeWorkers
+	if len(sources) < workerCount {
+		workerCount = len(sources)
+	}
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for worker := 0; worker < workerCount; worker++ {
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				source := sources[index]
+				checkedAt := time.Now()
+				if source == nil {
+					results[index] = database.HealthCheckResult{Status: "unhealthy", Message: "Health check failed", CheckedAt: checkedAt}
+					continue
+				}
+				if err := ctx.Err(); err != nil {
+					results[index] = database.HealthCheckResult{DataSourceID: source.ID, DatabaseType: string(source.Type), Status: "unhealthy", Message: "Health check timed out", CheckedAt: checkedAt}
+					continue
+				}
+				result, err := dc.healthProbe(ctx, source)
+				if err != nil || result == nil {
+					results[index] = database.HealthCheckResult{DataSourceID: source.ID, DatabaseType: string(source.Type), Status: "unhealthy", Message: "Health check failed", CheckedAt: checkedAt}
+					continue
+				}
+				results[index] = *result
+				results[index].DataSourceID = source.ID
+				results[index].DatabaseType = string(source.Type)
+				if results[index].Status == "healthy" {
+					results[index].Message = "Connection successful"
+				} else {
+					results[index].Status = "unhealthy"
+					results[index].Message = "Health check failed"
+				}
+				if results[index].CheckedAt.IsZero() {
+					results[index].CheckedAt = checkedAt
+				}
+			}
+		}()
+	}
+	for index := range sources {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+	return results
+}
+
+func databaseHealthStatus(total, healthy, unhealthy int) string {
+	if total == 0 {
+		return "unknown"
+	}
+	if unhealthy == 0 {
+		return "healthy"
+	}
+	if healthy == 0 {
+		return "unhealthy"
+	}
+	return "degraded"
 }
 
 // GetDatabaseCompatibility godoc

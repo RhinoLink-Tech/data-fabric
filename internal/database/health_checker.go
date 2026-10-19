@@ -115,6 +115,7 @@ type HealthCheckResult struct {
 
 // DatabaseHealthSummary represents a summary of database health
 type DatabaseHealthSummary struct {
+	Status               string                       `json:"status,omitempty"`
 	TotalConnections     int                          `json:"totalConnections"`
 	HealthyConnections   int                          `json:"healthyConnections"`
 	UnhealthyConnections int                          `json:"unhealthyConnections"`
@@ -141,7 +142,7 @@ func (hc *HealthChecker) CheckDataSourceHealth(ctx context.Context, dataSource *
 	}
 
 	// Get driver for the database type
-	driver, err := hc.registry.GetDriver(dataSource.Type)
+	_, err := hc.registry.GetDriver(dataSource.Type)
 	if err != nil {
 		result.Status = "error"
 		result.Message = fmt.Sprintf("Driver not available: %s", redactConnectionError(err, &dataSource.Config))
@@ -158,8 +159,8 @@ func (hc *HealthChecker) CheckDataSourceHealth(ctx context.Context, dataSource *
 		return result, nil
 	}
 
-	// Test connection
-	err = driver.TestConnection(db)
+	// Ping with the caller's deadline so health checks cannot block on a slow source.
+	err = db.PingContext(ctx)
 	result.Latency = time.Since(startTime)
 
 	if err != nil {
@@ -208,7 +209,21 @@ func (hc *HealthChecker) CheckAllConnectionsHealth(ctx context.Context) (*Databa
 		summary.Results = append(summary.Results, result)
 	}
 
+	summary.Status = healthSummaryStatus(summary.TotalConnections, summary.HealthyConnections, summary.UnhealthyConnections)
 	return summary, nil
+}
+
+func healthSummaryStatus(total, healthy, unhealthy int) string {
+	if total == 0 {
+		return "unknown"
+	}
+	if unhealthy == 0 {
+		return "healthy"
+	}
+	if healthy == 0 {
+		return "unhealthy"
+	}
+	return "degraded"
 }
 
 // CheckDataSourceConnectivity tests connectivity to a data source without using pool
