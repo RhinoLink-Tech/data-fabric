@@ -14,6 +14,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/controller"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
@@ -225,7 +226,8 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	streamingService := service.NewStreamingService(datasourceRepo, connPool)
 	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
-	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo)
+	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
+	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
 		jwtManager := security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration)

@@ -23,7 +23,7 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	jwtManager := security.NewJWTManager(secret, time.Hour)
 	source := &model.DataSource{ID: "source-1", OwnerID: "alice", TenantID: "team-a"}
 	queryService := &mcpHTTPQueryService{source: source}
-	server := NewMCPServer(queryService, mcpHTTPRepository{})
+	server := NewMCPServer(queryService, mcpHTTPRepository{}, nil)
 	httpServer := httptest.NewServer(server.StreamableHTTPHandler(jwtManager))
 	defer httpServer.Close()
 
