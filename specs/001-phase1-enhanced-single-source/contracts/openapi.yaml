@@ -338,7 +338,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Request fields failed validation
+          description: Request fields failed validation, or the statement cannot be counted exactly (COUNT_UNSUPPORTED)
           content:
             application/json:
               schema:
@@ -872,6 +872,18 @@ components:
         sql:
           type: string
           description: One read-only SELECT statement in the target dialect
+        parameters:
+          type: array
+          maxItems: 64
+          description: >-
+            Ordered values the SQL driver binds to ? or $1..$N placeholders;
+            never interpolated into the SQL text
+          items:
+            nullable: true
+            oneOf:
+              - type: boolean
+              - type: number
+              - type: string
         sourceDialect:
           type: string
           description: Optional input dialect for supported SQL translation

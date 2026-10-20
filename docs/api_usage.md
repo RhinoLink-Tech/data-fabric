@@ -45,9 +45,9 @@ Errors use `success: false` and an `error` object containing `code`, `message`, 
 
 - `sql` must be one read-only `SELECT` statement accepted by the selected data source. Data Fabric validates queries before execution.
 - SQL uses the target data source dialect by default. Optional `sourceDialect` names the input dialect to translate into the target data source dialect for the supported syntax subset. This is not a promise of full SQL:2023 or identical support for every engine-specific function.
-- The fetch request currently has no bind-parameter field. Do not concatenate untrusted values into SQL. Bound parameter support is tracked in [issue #21](https://github.com/RhinoLink-Tech/data-fabric/issues/21).
-- Each row in `entries` is an array whose positions match the `columns` array. Values are returned in the JSON types produced by the query adapter.
-- `totalCount` reports the row count for the query result. The gateway may issue an additional count query on the data source to provide it, so the count can add backend work and may reflect concurrent source changes between the count and row fetch.
+- `parameters` optionally carries ordered bind values — null, boolean, number, or string — that the SQL driver binds to `?` (MySQL-family) or `$1..$N` (PostgreSQL-family) placeholders. Values are never interpolated into the SQL text, and the same bound values are reused for every continuation batch and for the row count. At most 64 values are accepted; composite values such as objects or arrays are rejected with a message naming the parameter index and type but never the value. Never concatenate untrusted values into `sql` — pass them in `parameters`.
+- Each row in `entries` is an array whose positions match the `columns` array. One wire representation covers pagination and streaming: SQL NULL is JSON `null` (the text string `"NULL"` stays a string), binary-typed columns are base64 strings, text-typed columns — including DECIMAL results, which keep their exact digits — are strings, and booleans, integers, and times pass through as JSON booleans, numbers, and strings.
+- `totalCount` reports the row count for the query result. The gateway may issue an additional count query on the data source to provide it, so the count can add backend work and may reflect concurrent source changes between the count and row fetch. A statement the gateway cannot count exactly fails with HTTP 422 `COUNT_UNSUPPORTED` instead of returning a wrong count; simplify the statement or fetch without relying on the total.
 
 ## Execute a query
 
@@ -60,7 +60,8 @@ curl -X POST http://localhost:8080/api/v1/fetch \
   -d '{
     "dataSourceId": "UUID-OF-REGISTERED-DATA-SOURCE",
     "sourceDialect": "mysql",
-    "sql": "SELECT order_id, created_at FROM orders WHERE status_id = 1 ORDER BY order_id",
+    "sql": "SELECT order_id, created_at FROM orders WHERE status_id = ? ORDER BY order_id",
+    "parameters": [1],
     "type": 2,
     "batch_size": 1000,
     "timeout": 120
@@ -73,6 +74,7 @@ Request fields:
 |---|---|---:|---|
 | `dataSourceId` | string | Yes | UUID of a registered, active data source the caller can read |
 | `sql` | string | Yes | One read-only `SELECT` statement |
+| `parameters` | array | No | Ordered bind values (null, boolean, number, string), at most 64; bound to `?`/`$N` placeholders, never interpolated into the SQL text |
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
 | `type` | integer | No | `1` selects pagination; `2` requests streaming. If omitted, `query.execution_mode` decides using its configured mode and auto policy |
 | `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 |
@@ -177,3 +179,5 @@ History is process-local, retains at most the most recent 1,000 records, and is 
 ## Compatibility note
 
 This guide corrects the published examples and [OpenAPI contract](../specs/001-phase1-enhanced-single-source/contracts/openapi.yaml) to match the routes and response models in the current server. It does not change runtime API behavior. Clients should use `POST /api/v1/fetch` for SQL execution; `POST /api/v1/query/validate` only validates a query.
+
+The MCP `execute_sql_query` tool accepts the same `parameters` array. The MCP SDK decodes JSON-RPC arguments with standard JSON parsing, so integers beyond ±2^53 degrade to floating point before the gateway receives them; the HTTP API has no such limit and preserves full 64-bit integers exactly.
