@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -357,47 +358,24 @@ func (qs *queryService) standardizeRow(row []interface{}, columns []model.Column
 	return standardizedRow, nil
 }
 
-// createErrorResponse creates an error response
-func (qs *queryService) createErrorResponse(err error, sql string) *model.QueryResponse {
-	var errorInfo *model.QueryError
-
+// createErrorResponse maps legacy query errors to safe public messages. The
+// submitted SQL and raw driver error are intentionally excluded from responses.
+func (qs *queryService) createErrorResponse(err error, _ string) *model.QueryResponse {
+	code := "QUERY_EXECUTION_ERROR"
 	switch {
-	case err == security.ErrNotSelectQuery:
-		errorInfo = &model.QueryError{
-			Code:    "SECURITY_VIOLATION",
-			Message: "Only SELECT queries are allowed",
-			SQL:     qs.maskSensitiveSQL(sql),
-		}
-	case err == security.ErrSQLInjection:
-		errorInfo = &model.QueryError{
-			Code:    "SECURITY_VIOLATION",
-			Message: "Potential SQL injection detected",
-			SQL:     qs.maskSensitiveSQL(sql),
-		}
-	case err == repository.ErrDataSourceNotFound:
-		errorInfo = &model.QueryError{
-			Code:    "DATASOURCE_NOT_FOUND",
-			Message: "Data source not found",
-		}
-	default:
-		errorInfo = &model.QueryError{
-			Code:    "QUERY_EXECUTION_ERROR",
-			Message: err.Error(),
-			SQL:     qs.maskSensitiveSQL(sql),
-		}
+	case errors.Is(err, security.ErrNotSelectQuery), errors.Is(err, security.ErrSQLInjection),
+		errors.Is(err, security.ErrDangerousKeyword), errors.Is(err, security.ErrSQLSyntaxError):
+		code = "SECURITY_VIOLATION"
+	case errors.Is(err, repository.ErrDataSourceNotFound):
+		code = "DATASOURCE_NOT_FOUND"
 	}
-
 	return &model.QueryResponse{
 		Success: false,
-		Error:   errorInfo,
+		Error: &model.QueryError{
+			Code:    code,
+			Message: SafeQueryErrorMessage(err),
+		},
 	}
-}
-
-// maskSensitiveSQL masks potentially sensitive information in SQL for logging
-func (qs *queryService) maskSensitiveSQL(sql string) string {
-	// For now, just return the SQL as-is
-	// In production, you might want to mask sensitive data
-	return sql
 }
 
 // recordQueryStats records query execution statistics

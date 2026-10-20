@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+- Query API errors now use stable public messages and keep submitted SQL, query-history SQL, and backend error details out of responses; detailed failures are recorded in structured server logs (#29).
+
 ### Added
 - Root-level contribution, conduct, security, and support guides, plus structured issue and pull request templates.
 - A maintainer release checklist and CI status badges across the README editions.
