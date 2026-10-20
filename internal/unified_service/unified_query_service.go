@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	service "github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -56,7 +57,18 @@ func (uqs *unifiedQueryService) GetQueryStats(ctx context.Context) (*model.Query
 // recorded query and are not separate records.
 func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	started := time.Now()
+	executionMode := uqs.getExecutionMode()
 	result, err := uqs.executeFetchQuery(ctx, caller, req)
+
+	status := "success"
+	var rowsRead int64
+	if err != nil {
+		status = "error"
+		middleware.RecordQueryError(executionMode, "execution_error")
+	} else if result != nil {
+		rowsRead = int64(len(result.Entries))
+	}
+	middleware.RecordQueryMetrics(executionMode, status, time.Since(started), rowsRead)
 
 	record := service.QueryRecord{
 		DataSourceID: req.DataSourceID,

@@ -73,6 +73,7 @@ flowchart LR
 - **统一查询 API：** 提交 SQL 并分批获取结果；支持流式读取的驱动可降低大结果集的一次性内存占用。
 - **SQL 方言适配：** 将兼容范围内的查询语法转换为目标方言，详见[统一 SQL v1 兼容矩阵](SQL_TRANSLATION_FEATURES.md)。
 - **网关控制：** 提供 JWT 认证、请求限流、配置校验和健康检查能力。
+- **Prometheus 监控：** 从 `/metrics` 抓取 HTTP 和查询指标；该端点始终需要管理员 Bearer JWT。详见[可观测性指南](docs/observability.md)。
 
 ## 数据源范围
 
