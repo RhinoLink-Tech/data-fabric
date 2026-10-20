@@ -130,14 +130,21 @@ func setDefaults() {
 	viper.SetDefault("query.prefer_streaming", true)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
 
-	// MCP currently supports stdio transport.
+	// MCP defaults to local stdio. Remote Streamable HTTP listens on loopback
+	// unless direct TLS is configured.
 	viper.SetDefault("mcp.enabled", false)
 	viper.SetDefault("mcp.transport", "stdio")
+	viper.SetDefault("mcp.address", "127.0.0.1:8081")
+	viper.SetDefault("mcp.tls_cert_file", "")
+	viper.SetDefault("mcp.tls_key_file", "")
 }
 
 type MCPConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Transport string `mapstructure:"transport"`
+	Enabled     bool   `mapstructure:"enabled"`
+	Transport   string `mapstructure:"transport"`
+	Address     string `mapstructure:"address"`
+	TLSCertFile string `mapstructure:"tls_cert_file"`
+	TLSKeyFile  string `mapstructure:"tls_key_file"`
 }
 
 // QueryConfig holds settings related to query execution

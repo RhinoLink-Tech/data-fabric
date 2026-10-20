@@ -39,10 +39,10 @@ func main() {
 
 	// Check if MCP server mode is enabled
 	if cfg.MCP.Enabled {
-		if cfg.MCP.Transport != "" && cfg.MCP.Transport != "stdio" {
-			log.Fatalf("unsupported MCP transport %q: only stdio is currently implemented", cfg.MCP.Transport)
+		if err := cfg.MCP.Validate(); err != nil {
+			log.Fatal("Invalid MCP configuration: ", err)
 		}
-		log.Println("Starting Data Fabric as MCP Server...")
+		log.Printf("Starting Data Fabric MCP server with %s transport...", cfg.MCP.Transport)
 		if err := startMCPServer(cfg, vault); err != nil {
 			log.Fatal("Failed to start MCP server:", err)
 		}
@@ -195,6 +195,15 @@ func startStreamingMaintenance(parent context.Context, streamingService service.
 }
 
 func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
+	if err := cfg.MCP.Validate(); err != nil {
+		return fmt.Errorf("invalid MCP configuration: %w", err)
+	}
+	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+		if err := cfg.ValidateSecurity(); err != nil {
+			return fmt.Errorf("invalid security configuration for remote MCP: %w", err)
+		}
+	}
+
 	db, err := config.InitDatabase(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
@@ -217,13 +226,66 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 
 	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
 	streamingService := service.NewStreamingService(datasourceRepo, connPool)
-	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
-	defer stopStreaming()
-
 	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo)
 
-	log.Printf("Starting MCP server with transport: %s", cfg.MCP.Transport)
+	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+		jwtManager := security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration)
+		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(jwtManager), streamingService)
+	}
+
+	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
+	defer stopStreaming()
+	log.Println("Starting MCP server with transport: stdio")
 	return mcpServer.StartStdio()
+}
+
+func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService) error {
+	server := &http.Server{
+		Addr:              cfg.MCP.Address,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopServer()
+	stopStreaming := startStreamingMaintenance(serverCtx, streamingService)
+	defer stopStreaming()
+
+	listenResult := make(chan error, 1)
+	go func() {
+		if cfg.MCP.TLSCertFile != "" {
+			listenResult <- server.ListenAndServeTLS(cfg.MCP.TLSCertFile, cfg.MCP.TLSKeyFile)
+			return
+		}
+		listenResult <- server.ListenAndServe()
+	}()
+
+	if cfg.MCP.TLSCertFile != "" {
+		log.Printf("MCP Streamable HTTP listening with TLS on %s/mcp", cfg.MCP.Address)
+	} else {
+		log.Printf("MCP Streamable HTTP listening on %s/mcp; terminate TLS at an HTTPS reverse proxy", cfg.MCP.Address)
+	}
+
+	select {
+	case err := <-listenResult:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("failed to start MCP HTTP server: %w", err)
+		}
+		return nil
+	case <-serverCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		cancel()
+		listenErr := <-listenResult
+		if shutdownErr != nil {
+			_ = server.Close()
+			return fmt.Errorf("failed to shut down MCP HTTP server: %w", shutdownErr)
+		}
+		if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+			return fmt.Errorf("failed to stop MCP HTTP server: %w", listenErr)
+		}
+		return nil
+	}
 }

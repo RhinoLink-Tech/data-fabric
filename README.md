@@ -19,7 +19,7 @@ Data Fabric gives AI applications a lightweight, self-hosted data-access layer f
 
 ## AI Application Scenarios
 
-- **AI agents:** Optional MCP tools let trusted local clients discover sources, validate read-only SQL, execute queries, and fetch result batches. See the [MCP guide](MCP_SERVER.md).
+- **AI agents:** Optional MCP tools support local stdio and authenticated Streamable HTTP clients to discover sources, validate read-only SQL, execute queries, and fetch result batches. See the [MCP guide](MCP_SERVER.md).
 - **RAG retrieval:** Retrieve structured and semi-structured records from databases, warehouses, object storage, and supported file sources. The RAG application remains responsible for chunking, embeddings, vector storage, and ranking.
 - **Text-to-SQL:** Route model-generated read-only queries through a common API and translate supported SQL syntax for the selected source.
 - **AI analytics:** Give assistants a unified way to access registered sources; connect a federation engine when a use case needs cross-source SQL.

@@ -1,6 +1,6 @@
 # Data Fabric MCP 使用说明
 
-Data Fabric 可通过 MCP stdio 传输向本机 MCP 客户端提供查询工具。它复用 Data Fabric 中的数据源配置和查询服务。此实现只支持 stdio；配置成 HTTP 或 SSE 会在启动时明确报错。
+Data Fabric 支持 MCP stdio 和远程 Streamable HTTP 两种传输。两种传输共用数据源配置和统一查询服务；远程请求必须携带标准 Authorization: Bearer JWT，并按令牌中的用户和租户权限访问数据源。
 
 ## 前置条件
 
@@ -27,6 +27,32 @@ go run ./cmd/server
 
 mcp.enabled 默认为 false，因此普通 HTTP 服务仍是默认启动模式。MCP stdio 模式会占用进程标准输入和输出，应由 MCP 客户端启动并管理该进程，不要把输出重定向到协议客户端的标准输出。
 
+## 远程 Streamable HTTP
+
+远程模式使用 MCP Streamable HTTP，默认监听 `127.0.0.1:8081`，端点为 `/mcp`。每个初始化、工具调用、GET 监听和会话请求都必须通过 `Authorization: Bearer <JWT>` 认证；未认证、无效、过期或缺少 exp 的令牌会在工具执行前被拒绝。令牌使用 Data Fabric 的 HS256 JWT 验证器（`SECURITY_JWT_SECRET`），必须包含有效的 `exp`，身份以标准 JWT `sub` 为准，并兼容已有 `userId` 声明；可带 `tenantId` 和 `roles` 声明用于租户和管理员授权。令牌由部署方的可信身份服务或运维人员签发；本传输提供令牌验证，不提供 OAuth 授权服务器。
+
+推荐让 TLS 反向代理对外提供 HTTPS，并将 Data Fabric 绑定在 loopback：
+
+~~~yaml
+mcp:
+  enabled: true
+  transport: "streamable-http"
+  address: "127.0.0.1:8081"
+~~~
+
+若由 Data Fabric 直接提供 TLS，配置证书和私钥，并绑定到部署环境需要的地址：
+
+~~~yaml
+mcp:
+  enabled: true
+  transport: "streamable-http"
+  address: "0.0.0.0:8081"
+  tls_cert_file: "/etc/data-fabric/tls.crt"
+  tls_key_file: "/etc/data-fabric/tls.key"
+~~~
+
+没有直接 TLS 证书时，程序拒绝绑定非 loopback 地址。通过反向代理部署时，客户端仍应使用 HTTPS 地址；不要把未加密的内部监听端口暴露到不可信网络。远程连接需要配置有效的 JWT 密钥；密钥不得提交到仓库。
+
 ## 可用工具
 
 - list_data_sources：列出数据源 ID、名称、类型、状态和连接位置摘要。
@@ -42,6 +68,6 @@ mcp.enabled 默认为 false，因此普通 HTTP 服务仍是默认启动模式�
 
 ## 安全边界
 
-MCP stdio 进程具有启动它的 MCP 客户端进程权限。已连接的 MCP 客户端可以调用这里列出的工具，并通过 Data Fabric 查询服务访问其可用数据源。只应将它配置给可信客户端，并使用数据库侧的最小权限账号。该实现尚无独立的 MCP 用户认证和逐用户授权，也不提供远程 HTTP/SSE 入口。
+MCP stdio 进程具有启动它的 MCP 客户端进程权限，适合本地可信客户端。远程 Streamable HTTP 始终要求有效 Bearer JWT，并在每次请求上重新验证令牌；工具执行使用 JWT 身份与现有数据源所有者、租户和管理员授权规则。远程部署必须通过 HTTPS 保护客户端到服务端的链路，可由 Data Fabric 直接终止 TLS，也可由绑定在 loopback 的服务置于 TLS 反向代理后。
 
-数据源信息工具不返回用户名和密码。查询授权仍由现有服务端查询校验及数据库账号权限共同决定。
+数据源信息工具不返回用户名和密码。查询仍受只读校验和数据库账号权限约束。Streamable HTTP 使用自托管 JWT 验证，不包含 OAuth 授权服务器或动态客户端注册功能。

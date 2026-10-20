@@ -1,6 +1,6 @@
 # Data Fabric MCP Server
 
-Data Fabric exposes an optional MCP server over stdio. It reuses the configured data sources and query service. HTTP and SSE transports are not implemented.
+Data Fabric exposes an optional MCP server over stdio or authenticated Streamable HTTP. Both transports reuse the configured data sources and unified query service. Remote calls require a standard Authorization: Bearer JWT and are authorized using the token identity.
 
 ## Requirements
 
@@ -25,7 +25,9 @@ Then run:
 go run ./cmd/server
 ~~~
 
-MCP is disabled by default. When enabled, the process uses stdio and should be launched and managed by a trusted MCP client. Do not redirect application output to the protocol client's stdout.
+MCP is disabled by default. Stdio mode should be launched and managed by a trusted local MCP client. Do not redirect application output to the protocol client's stdout.
+
+For a remote endpoint, set `transport: "streamable-http"`. It listens on `127.0.0.1:8081` by default at `/mcp`; put it behind an HTTPS reverse proxy, or configure both `tls_cert_file` and `tls_key_file` for direct TLS. Without direct TLS, startup rejects non-loopback bind addresses. Every HTTP request requires an unexpired Bearer JWT signed with the configured `SECURITY_JWT_SECRET`. Tokens must include `exp` and a `sub` identity claim (legacy `userId` is accepted); the token identity is used for owner and tenant authorization. The deployment's trusted identity service or operator issues these tokens. See [MCP 使用说明](MCP_DOCUMENTATION.md) for configuration examples.
 
 ## Tools
 
@@ -42,4 +44,4 @@ SQL translation supports MySQL, PostgreSQL, Trino, Spark, Oracle, SQL Server, Sn
 
 ## Security
 
-The MCP process runs with the permissions of its parent client. Any connected client can invoke the listed tools against the configured data sources. Configure it only for trusted clients and use least-privilege database accounts. This implementation has no separate MCP user authentication or per-user authorization, and it does not expose an HTTP/SSE endpoint.
+The stdio process runs with the permissions of its parent client and should be limited to trusted local clients. Streamable HTTP requires a valid Bearer JWT on every request and applies the existing owner, tenant, and administrator data-source rules. Protect remote traffic with HTTPS and use least-privilege database accounts. The self-hosted verifier does not provide an OAuth authorization server or dynamic client registration.

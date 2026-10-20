@@ -104,6 +104,9 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 		"QUERY_EXECUTION_MODE":           "pagination",
 		"MCP_ENABLED":                    "true",
 		"MCP_TRANSPORT":                  "stdio",
+		"MCP_ADDRESS":                    "127.0.0.1:9090",
+		"MCP_TLS_CERT_FILE":              "/tmp/mcp.crt",
+		"MCP_TLS_KEY_FILE":               "/tmp/mcp.key",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -152,7 +155,8 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" {
 		t.Errorf("query settings = %+v, want environment overrides", cfg.Query)
 	}
-	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" {
+	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" || cfg.MCP.Address != "127.0.0.1:9090" ||
+		cfg.MCP.TLSCertFile != "/tmp/mcp.crt" || cfg.MCP.TLSKeyFile != "/tmp/mcp.key" {
 		t.Errorf("MCP settings = %+v, want environment overrides", cfg.MCP)
 	}
 }

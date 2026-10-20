@@ -27,7 +27,7 @@ const jwtSecretHelp = "set the JWT_SECRET environment variable or jwt_secret in 
 // be real whenever the HTTP server runs — even with authentication disabled —
 // because the fetch API always authenticates. It runs before the metadata
 // database is touched so misconfiguration is reported without side effects.
-// Only the HTTP server calls it; MCP stdio mode does not serve HTTP routes.
+// The HTTP API and remote MCP Streamable HTTP call it; MCP stdio does not serve HTTP routes.
 func (c *Config) ValidateSecurity() error {
 	if c.Server.Mode == "release" && !c.Security.EnableAuth {
 		return fmt.Errorf("security.enable_auth cannot be disabled in release mode: enable authentication or run an explicit non-release mode")
