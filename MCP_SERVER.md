@@ -37,6 +37,7 @@ For a remote endpoint, set `transport: "streamable-http"`. It listens on `127.0.
 - fetch_next_batch (uses the query_id, slug and token returned by execute_sql_query)
 - validate_sql_query
 - list_tables
+- describe_table (column names, types, nullability, primary key, and indexes of one table; unsupported drivers fail clearly instead of guessing)
 - translate_sql
 - list_supported_dialects
 

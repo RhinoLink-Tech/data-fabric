@@ -53,6 +53,8 @@ mcp:
 
 没有直接 TLS 证书时，程序拒绝绑定非 loopback 地址。通过反向代理部署时，客户端仍应使用 HTTPS 地址；不要把未加密的内部监听端口暴露到不可信网络。远程连接需要配置有效的 JWT 密钥；密钥不得提交到仓库。
 
+自托管远程部署（元数据库 + 示例数据源 + TLS + 客户端接入示例）的完整快速上手见 [自托管远程 MCP 部署指南](docs/mcp-deployment.md)。
+
 ## 可用工具
 
 - list_data_sources：列出数据源 ID、名称、类型、状态和连接位置摘要。
@@ -61,6 +63,7 @@ mcp:
 - fetch_next_batch：使用 execute_sql_query 返回的 query_id、slug 和 token 获取下一批结果。
 - validate_sql_query：对查询请求进行校验；可选 source_dialect。
 - list_tables：按数据源类型查询表名。
+- describe_table：返回指定表的列名、数据库类型、可空性、主键和索引（#184）。先用 list_tables 枚举表，再用 describe_table 检查单表结构后再编写 SQL；驱动不支持元数据发现时明确报错，不会猜测表结构。
 - translate_sql：在支持的 SQL 方言之间转换 SQL。
 - list_supported_dialects：列出转换器声明支持的方言。
 
