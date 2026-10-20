@@ -16,6 +16,8 @@ func TestMCPConfigValidate(t *testing.T) {
 		{name: "partial TLS configuration", config: MCPConfig{Transport: "streamable-http", Address: "127.0.0.1:8081", TLSCertFile: "server.crt"}, wantErr: true},
 		{name: "missing address", config: MCPConfig{Transport: "streamable-http"}, wantErr: true},
 		{name: "invalid address", config: MCPConfig{Transport: "streamable-http", Address: "not-an-address"}, wantErr: true},
+		{name: "non-numeric port", config: MCPConfig{Transport: "streamable-http", Address: "127.0.0.1:http"}, wantErr: true},
+		{name: "out-of-range port", config: MCPConfig{Transport: "streamable-http", Address: "127.0.0.1:65536"}, wantErr: true},
 		{name: "unknown transport", config: MCPConfig{Transport: "sse", Address: "127.0.0.1:8081"}, wantErr: true},
 	}
 	for _, tt := range tests {

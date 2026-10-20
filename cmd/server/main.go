@@ -31,6 +31,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to load configuration:", err)
 	}
+	if err := cfg.ValidateStartup(); err != nil {
+		log.Fatal("Invalid startup configuration: ", err)
+	}
 
 	vault, err := security.LoadCredentialVaultFromEnv()
 	if err != nil {
@@ -56,10 +59,9 @@ func main() {
 }
 
 func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error {
-	// Fail closed on insecure authentication settings before the metadata
-	// database is touched.
-	if err := cfg.ValidateSecurity(); err != nil {
-		return fmt.Errorf("invalid security configuration: %w", err)
+	// Validate settings before connecting to the metadata database.
+	if err := cfg.ValidateStartup(); err != nil {
+		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
 
 	// Set Gin mode
@@ -195,13 +197,8 @@ func startStreamingMaintenance(parent context.Context, streamingService service.
 }
 
 func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
-	if err := cfg.MCP.Validate(); err != nil {
-		return fmt.Errorf("invalid MCP configuration: %w", err)
-	}
-	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
-		if err := cfg.ValidateSecurity(); err != nil {
-			return fmt.Errorf("invalid security configuration for remote MCP: %w", err)
-		}
+	if err := cfg.ValidateStartup(); err != nil {
+		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
 
 	db, err := config.InitDatabase(cfg)
