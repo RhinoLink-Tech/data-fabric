@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 )
 
 // SQLTranslationManager manages SQL dialect translation and the shared enable policy.
@@ -92,12 +94,35 @@ func (stm *SQLTranslationManager) ValidateSQLContext(ctx context.Context, sql, d
 	return stm.translator.Validate(sql, dialect)
 }
 
+// SupportsASTAnalysis reports whether the configured runtime can parse SQL.
+// This capability remains available when user-facing translation is disabled.
+func (stm *SQLTranslationManager) SupportsASTAnalysis() bool {
+	if stm == nil || stm.translator == nil {
+		return false
+	}
+	_, ok := stm.translator.(contextSQLAnalyzer)
+	return ok
+}
+
+// AnalyzeSQLContext parses SQL with the requested dialect. Read-only validation
+// uses this regardless of the user-facing translation setting.
+func (stm *SQLTranslationManager) AnalyzeSQLContext(ctx context.Context, sql, dialect string) (sqlanalysis.Analysis, error) {
+	if stm == nil || stm.translator == nil {
+		return sqlanalysis.Analysis{}, fmt.Errorf("SQL AST analyzer is not configured")
+	}
+	analyzer, ok := stm.translator.(contextSQLAnalyzer)
+	if !ok {
+		return sqlanalysis.Analysis{}, fmt.Errorf("SQL AST analysis requires the SQLGlot runtime")
+	}
+	if strings.TrimSpace(dialect) == "" {
+		return sqlanalysis.Analysis{}, fmt.Errorf("empty SQL dialect")
+	}
+	return analyzer.AnalyzeContext(ctx, sql, strings.ToLower(strings.TrimSpace(dialect)))
+}
+
 // ValidateRuntime checks the configured interpreter, script, and SQLGlot import
 // before the server opens its metadata database.
 func (stm *SQLTranslationManager) ValidateRuntime() error {
-	if !stm.Enabled() {
-		return nil
-	}
 	translator, ok := stm.translator.(*ExternalSQLTranslator)
 	if !ok {
 		return nil

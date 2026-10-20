@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -8,22 +9,31 @@ import (
 	"unicode"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
 var (
-	ErrNotSelectQuery   = errors.New("only SELECT queries are allowed")
-	ErrSQLSyntaxError   = errors.New("SQL syntax error")
-	ErrDangerousKeyword = errors.New("dangerous SQL keyword detected")
-	ErrSQLInjection     = errors.New("potential SQL injection detected")
-	ErrEmptyQuery       = errors.New("query cannot be empty")
-	ErrQueryTooLong     = errors.New("query exceeds maximum length")
+	ErrNotSelectQuery        = errors.New("only SELECT queries are allowed")
+	ErrSQLSyntaxError        = errors.New("SQL syntax error")
+	ErrDangerousKeyword      = errors.New("dangerous SQL keyword detected")
+	ErrSQLInjection          = errors.New("potential SQL injection detected")
+	ErrEmptyQuery            = errors.New("query cannot be empty")
+	ErrQueryTooLong          = errors.New("query exceeds maximum length")
+	ErrUnsupportedSQLDialect = errors.New("SQL dialect is not supported for read-only validation")
 )
+
+// SQLASTAnalyzer parses a statement using a concrete SQL dialect and returns
+// security-relevant AST facts.
+type SQLASTAnalyzer interface {
+	AnalyzeSQLContext(context.Context, string, string) (sqlanalysis.Analysis, error)
+}
 
 // SQLValidator validates SQL queries for security
 type SQLValidator struct {
 	maxQueryLength int
+	astAnalyzer    SQLASTAnalyzer
 }
 
 // NewSQLValidator creates a new SQLValidator instance
@@ -44,7 +54,126 @@ func (sv *SQLValidator) ValidateStatement(sql string) error {
 // ValidateStatementForDataSource validates a read-only statement using the
 // identifier forms supported by the target data source.
 func (sv *SQLValidator) ValidateStatementForDataSource(sql string, dbType model.DatabaseType) error {
+	return sv.ValidateStatementForDataSourceContext(context.Background(), sql, dbType)
+}
+
+// SetASTAnalyzer configures the dialect-aware parser used for data-source
+// validation. A nil analyzer keeps the legacy parser for isolated callers.
+func (sv *SQLValidator) SetASTAnalyzer(analyzer SQLASTAnalyzer) {
+	sv.astAnalyzer = analyzer
+}
+
+// ValidateStatementForDataSourceContext validates one read-only query using the
+// target source dialect and respects request cancellation and parser timeouts.
+func (sv *SQLValidator) ValidateStatementForDataSourceContext(ctx context.Context, sql string, dbType model.DatabaseType) error {
+	if sv.astAnalyzer != nil {
+		return sv.validateStatementWithAST(ctx, sql, dbType)
+	}
 	return sv.validateStatement(sql, supportsThreePartCatalogNames(dbType))
+}
+
+func (sv *SQLValidator) validateStatementWithAST(ctx context.Context, sql string, dbType model.DatabaseType) error {
+	if err := sv.basicValidation(sql); err != nil {
+		return err
+	}
+	dialect, ok := SQLDialectForDataSource(dbType)
+	if !ok {
+		return ErrUnsupportedSQLDialect
+	}
+
+	analysis, err := sv.astAnalyzer.AnalyzeSQLContext(ctx, sv.normalizeSQL(sql), dialect)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrSQLSyntaxError
+	}
+	if analysis.StatementCount != 1 {
+		return ErrSQLSyntaxError
+	}
+	if !analysis.IsQuery || analysis.HasMutation {
+		return ErrNotSelectQuery
+	}
+	if analysis.HasSelectInto || analysis.HasLocking {
+		return ErrDangerousKeyword
+	}
+
+	dangerousFunctions := map[string]struct{}{
+		"LOAD_FILE": {}, "PG_READ_FILE": {}, "PG_READ_BINARY_FILE": {}, "PG_LS_DIR": {},
+		"LO_IMPORT": {}, "LO_EXPORT": {}, "DBLINK": {}, "DBLINK_CONNECT": {}, "PG_SLEEP": {},
+		"PG_ADVISORY_LOCK": {}, "PG_ADVISORY_XACT_LOCK": {}, "PG_ADVISORY_UNLOCK": {},
+		"PG_ADVISORY_UNLOCK_ALL": {}, "PG_NOTIFY": {}, "PG_TERMINATE_BACKEND": {},
+		"PG_CANCEL_BACKEND": {}, "PG_CREATE_RESTORE_POINT": {}, "NEXTVAL": {}, "SETVAL": {},
+		"SLEEP": {}, "BENCHMARK": {}, "GET_LOCK": {}, "RELEASE_LOCK": {}, "RELEASE_ALL_LOCKS": {},
+		"SYS_EXEC": {}, "XP_CMDSHELL": {}, "XP_READERRORLOG": {}, "SP_OACREATE": {},
+		"OPENROWSET": {}, "OPENQUERY": {}, "UTL_FILE": {}, "UTL_HTTP": {}, "UTL_INADDR": {},
+		"DBMS_SCHEDULER": {}, "DBMS_LOCK.SLEEP": {},
+	}
+	for _, function := range analysis.Functions {
+		if _, denied := dangerousFunctions[strings.ToUpper(function)]; denied {
+			return ErrDangerousKeyword
+		}
+	}
+	return nil
+}
+
+// SQLDialectForDataSource maps connector types to the SQLGlot grammar used for
+// parsing. Compatibility engines share their closest supported SQL grammar.
+func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
+	switch dbType {
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB,
+		model.DatabaseTypeOceanBaseMySQL, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL,
+		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+		return "mysql", true
+	case model.DatabaseTypePostgreSQL, model.DatabaseTypeGaussDBPostgres, model.DatabaseTypeKingbaseES,
+		model.DatabaseTypeOpenGauss, model.DatabaseTypeHologres:
+		return "postgres", true
+	case model.DatabaseTypeOracle, model.DatabaseTypeOceanBaseOracle, model.DatabaseTypeDaMeng,
+		model.DatabaseTypeOscar:
+		return "oracle", true
+	case model.DatabaseTypeTrino:
+		return "trino", true
+	case model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng:
+		return "presto", true
+	case model.DatabaseTypeSQLServer:
+		return "sqlserver", true
+	case model.DatabaseTypeSnowflake:
+		return "snowflake", true
+	case model.DatabaseTypeDatabricks:
+		return "databricks", true
+	case model.DatabaseTypeRedshift:
+		return "redshift", true
+	case model.DatabaseTypeBigQuery:
+		return "bigquery", true
+	case model.DatabaseTypeApacheHive:
+		return "hive", true
+	case model.DatabaseTypeMaxCompute:
+		return "maxcompute", true
+	case model.DatabaseTypeClickHouse:
+		return "clickhouse", true
+	case model.DatabaseTypeApacheDoris:
+		return "doris", true
+	case model.DatabaseTypeStarRocks:
+		return "starrocks", true
+	case model.DatabaseTypeApacheDruid:
+		return "druid", true
+	case model.DatabaseTypeApacheIceberg, model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
+		model.DatabaseTypeMinIODelta:
+		return "spark", true
+	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
+		model.DatabaseTypeMinIOCSV, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSCSV,
+		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro,
+		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
+		return "mysql", true
+	case model.DatabaseTypeMongoDB:
+		return "", false
+	default:
+		return "", false
+	}
 }
 
 func (sv *SQLValidator) validateStatement(sql string, supportsThreePartCatalogNames bool) error {
@@ -750,11 +879,23 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 
 // ValidateDataSourceSyntax validates SQL syntax for a specific data source type
 func (sv *SQLValidator) ValidateDataSourceSyntax(sql string, dbType model.DatabaseType) error {
+	return sv.ValidateDataSourceSyntaxContext(context.Background(), sql, dbType)
+}
+
+// ValidateDataSourceSyntaxContext validates SQL with request cancellation and
+// then applies connector feature checks.
+func (sv *SQLValidator) ValidateDataSourceSyntaxContext(ctx context.Context, sql string, dbType model.DatabaseType) error {
 	config := GetDataSourceSQLConfig(dbType)
 
 	// Basic validation first
-	if err := sv.ValidateStatementForDataSource(sql, dbType); err != nil {
+	if err := sv.ValidateStatementForDataSourceContext(ctx, sql, dbType); err != nil {
 		return err
+	}
+	if sv.astAnalyzer != nil {
+		// The configured dialect parser already checked the target grammar.
+		// Keep substring-based feature heuristics out of this production path;
+		// they can misread comments, literals, and quoted identifiers.
+		return nil
 	}
 
 	// Validate data source-specific syntax

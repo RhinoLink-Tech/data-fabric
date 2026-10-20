@@ -34,6 +34,35 @@ func TestTranslateContextHonorsSQLInputLimit(t *testing.T) {
 	}
 }
 
+func TestAnalyzeContextHonorsSQLInputLimit(t *testing.T) {
+	translator := newShellTranslator(t, "printf '{}'", time.Second, 1, 3, 128)
+	if _, err := translator.AnalyzeContext(context.Background(), "SELECT 1", "postgres"); err == nil || !strings.Contains(err.Error(), "input exceeds") {
+		t.Fatalf("AnalyzeContext error = %v, want input size error", err)
+	}
+}
+
+func TestValidateContextUsesASTAnalysis(t *testing.T) {
+	response := `{"statement_count":1,"is_query":true,"has_mutation":false,"has_select_into":false,"has_locking":false,"functions":[]}`
+	translator := newShellTranslator(t, "printf '%s' '"+response+"'", time.Second, 1, 1024, 512)
+	valid, err := translator.ValidateContext(context.Background(), "SELECT 1", "postgres")
+	if err != nil || !valid {
+		t.Fatalf("ValidateContext() = %v, %v; want true, nil", valid, err)
+	}
+}
+
+func TestDisabledTranslationManagerKeepsASTAnalysisAvailable(t *testing.T) {
+	response := `{"statement_count":1,"is_query":true,"functions":[]}`
+	translator := newShellTranslator(t, "printf '%s' '"+response+"'", time.Second, 1, 1024, 512)
+	manager := &SQLTranslationManager{translator: translator, enabled: false}
+	if !manager.SupportsASTAnalysis() {
+		t.Fatal("SupportsASTAnalysis() = false, want true when the SQLGlot runtime is configured")
+	}
+	analysis, err := manager.AnalyzeSQLContext(context.Background(), "SELECT 1", "postgres")
+	if err != nil || analysis.StatementCount != 1 || !analysis.IsQuery {
+		t.Fatalf("AnalyzeSQLContext() = %+v, %v; want one query statement", analysis, err)
+	}
+}
+
 func TestTranslateContextKillsProcessOnTimeout(t *testing.T) {
 	translator := newShellTranslator(t, "exec sleep 10", 50*time.Millisecond, 1, 1024, 128)
 	started := time.Now()

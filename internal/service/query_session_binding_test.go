@@ -34,7 +34,7 @@ func fetchRequest(dataSourceID, sql string) *model.FetchQueryRequest {
 func TestFetchQueryRejectsCallerWithoutAccess(t *testing.T) {
 	source := ownedActiveSource()
 	source.Status = model.DataSourceStatusInactive
-	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false)
+	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager())
 
 	foreign := &security.Caller{UserID: "eve", TenantID: "contoso"}
 	_, err := qs.FetchQuery(context.Background(), foreign, fetchRequest("ds-1", "DELETE FROM orders"))
@@ -56,7 +56,7 @@ func TestFetchQueryRejectsCallerWithoutAccess(t *testing.T) {
 func TestExecuteStreamQueryRejectsCallerWithoutAccess(t *testing.T) {
 	source := ownedActiveSource()
 	source.Status = model.DataSourceStatusInactive
-	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 
 	foreign := &security.Caller{UserID: "eve", TenantID: "contoso"}
 	_, _, err := ss.ExecuteStreamQuery(context.Background(), foreign, &model.QueryRequest{
@@ -87,7 +87,7 @@ func TestFetchNextBatchRejectsForeignCreator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			source := ownedActiveSource()
-			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false).(*queryService)
+			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager()).(*queryService)
 			qs.sessionManager.Store(&QuerySession{
 				QueryID: "q-1", Slug: "slug-1", Token: "token-1", CreatorID: tt.sessionOwner,
 				DataSourceID: "ds-1", SQL: "SELECT * FROM orders", Type: 2,
@@ -122,7 +122,7 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 	}
 
 	t.Run("foreign creator gets the unknown-session response", func(t *testing.T) {
-		ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+		ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 		ss.streamingSessionManager.Store(newSession())
 
 		_, err := ss.FetchNextBatchWithStreaming(context.Background(), &security.Caller{UserID: "eve", TenantID: "contoso"}, "q-1", "slug-1", "token-1", 10)
@@ -132,7 +132,7 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 	})
 
 	t.Run("creator passes the binding gate", func(t *testing.T) {
-		ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+		ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 		ss.streamingSessionManager.Store(newSession())
 
 		_, err := ss.FetchNextBatchWithStreaming(context.Background(), &security.Caller{UserID: "alice"}, "q-1", "slug-1", "token-1", 10)
@@ -146,7 +146,7 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 			ID: "ds-1", Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive,
 			OwnerID: "bob", TenantID: "acme",
 		}
-		ss := NewStreamingService(federationSourceRepository{source: tenantSource}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+		ss := NewStreamingService(federationSourceRepository{source: tenantSource}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 		session := newSession()
 		session.DataSourceID = "ds-1"
 		ss.streamingSessionManager.Store(session)
@@ -167,7 +167,7 @@ func TestFetchNextBatchRechecksCurrentTenantAccess(t *testing.T) {
 		ID: "ds-1", Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive,
 		OwnerID: "bob", TenantID: "acme",
 	}
-	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false).(*queryService)
+	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager()).(*queryService)
 	qs.sessionManager.Store(&QuerySession{
 		QueryID: "q-tenant", Slug: "slug", Token: "token", CreatorID: "alice",
 		DataSourceID: "ds-1", SQL: "SELECT * FROM orders", Type: 2,

@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""
-SQL Dialect Translator using sqlglot
-This script receives JSON input with SQL and dialects and returns translated SQL.
-"""
+"""Dialect-aware SQL parsing and translation using SQLGlot."""
 
 import sys
 import json
 import sqlglot
-from sqlglot import parse_one, transpile
+from sqlglot import exp, transpile
 
 def translate_sql(sql, source_dialect, target_dialect):
     """
@@ -34,6 +31,53 @@ def translate_sql(sql, source_dialect, target_dialect):
         # Return error as part of JSON response
         return f"ERROR: {str(e)}"
 
+
+def analyze_sql(sql, dialect):
+    """Return security facts from the parsed AST without returning SQL text."""
+    try:
+        statements = sqlglot.parse(sql, read=map_dialect(dialect))
+        roots = [statement for statement in statements if statement is not None]
+        root = roots[0] if len(roots) == 1 else None
+        result = {
+            "statement_count": len(statements),
+            "is_query": isinstance(root, exp.Query),
+            "has_mutation": False,
+            "has_select_into": False,
+            "has_locking": False,
+            "functions": [],
+        }
+        if root is None:
+            return result
+
+        mutation_nodes = {
+            "alter", "attach", "command", "commit", "copy", "create", "delete",
+            "detach", "drop", "execute", "export", "grant", "import", "insert",
+            "loaddata", "merge", "replace", "revoke", "rollback", "set",
+            "transaction", "truncatetable", "update", "use",
+        }
+        functions = set()
+        for node in root.walk():
+            node_name = type(node).__name__.lower()
+            if node_name in mutation_nodes:
+                result["has_mutation"] = True
+            if node_name == "into":
+                result["has_select_into"] = True
+            if node_name in {"lock", "locking"}:
+                result["has_locking"] = True
+            if node.args.get("locks"):
+                result["has_locking"] = True
+            if isinstance(node, exp.Func):
+                # Anonymous nodes retain the submitted function name; built-in
+                # function node classes expose their canonical SQL name.
+                name = node.name if isinstance(node, exp.Anonymous) else node.sql_name()
+                if name:
+                    functions.add(str(name).upper())
+
+        result["functions"] = sorted(functions)
+        return result
+    except Exception as e:
+        return {"error": f"ERROR: {str(e)}"}
+
 def map_dialect(dialect):
     """
     Map our dialect names to sqlglot dialect names
@@ -42,21 +86,34 @@ def map_dialect(dialect):
         'mysql': 'mysql',
         'mariadb': 'mysql',
         'tidb': 'mysql',
+        'tdsql': 'mysql',
         'oceanbase_mysql': 'mysql',
         'gaussdb_mysql': 'mysql',
+        'gbase_8t': 'mysql',
         'postgres': 'postgres',
         'postgresql': 'postgres',
         'opengauss': 'postgres',
         'kingbasees': 'postgres',
         'gaussdb_postgres': 'postgres',
+        'hologres': 'postgres',
         'trino': 'trino',
         'presto': 'presto',
         'openlookeng': 'presto',
         'spark': 'spark',
         'oracle': 'oracle',
         'oceanbase_oracle': 'oracle',
+        'dameng': 'oracle',
         'sqlserver': 'tsql',  # sqlglot uses tsql for SQL Server
         'snowflake': 'snowflake',
+        'databricks': 'databricks',
+        'bigquery': 'bigquery',
+        'hive': 'hive',
+        # MaxCompute has no dedicated SQLGlot dialect; Hive parsing provides
+        # the closest supported grammar for AST safety checks.
+        'maxcompute': 'hive',
+        'clickhouse': 'clickhouse',
+        'doris': 'doris',
+        'starrocks': 'starrocks',
         'sqlite': 'sqlite',
         'duckdb': 'duckdb',
         'redshift': 'redshift'
@@ -70,23 +127,31 @@ def main():
 
     try:
         request = json.loads(input_data)
+        action = request.get('action', 'translate')
         sql = request.get('sql', '')
-        source_dialect = request.get('source_dialect', '')
-        target_dialect = request.get('target_dialect', '')
 
         if not sql:
             response = {'error': 'Missing SQL in request'}
-        elif not source_dialect:
-            response = {'error': 'Missing source dialect in request'}
-        elif not target_dialect:
-            response = {'error': 'Missing target dialect in request'}
-        else:
-            translated_sql = translate_sql(sql, source_dialect, target_dialect)
-
-            if translated_sql.startswith('ERROR:'):
-                response = {'error': translated_sql}
+        elif action == 'analyze':
+            dialect = request.get('dialect', '')
+            if not dialect:
+                response = {'error': 'Missing dialect in request'}
             else:
-                response = {'translated_sql': translated_sql}
+                response = analyze_sql(sql, dialect)
+        else:
+            source_dialect = request.get('source_dialect', '')
+            target_dialect = request.get('target_dialect', '')
+            if not source_dialect:
+                response = {'error': 'Missing source dialect in request'}
+            elif not target_dialect:
+                response = {'error': 'Missing target dialect in request'}
+            else:
+                translated_sql = translate_sql(sql, source_dialect, target_dialect)
+
+                if translated_sql.startswith('ERROR:'):
+                    response = {'error': translated_sql}
+                else:
+                    response = {'translated_sql': translated_sql}
 
         # Output JSON response
         print(json.dumps(response))

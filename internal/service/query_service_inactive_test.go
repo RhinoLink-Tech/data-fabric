@@ -33,7 +33,7 @@ func TestFetchQueryRejectsInactiveDataSource(t *testing.T) {
 				Type:   model.DatabaseTypeMySQL,
 				Status: tt.status,
 			}
-			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false)
+			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager())
 
 			_, err := qs.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 				DataSourceID: "ds-1",
@@ -55,7 +55,7 @@ func TestFetchQueryAllowsActiveDataSource(t *testing.T) {
 		Type:   model.DatabaseTypeMySQL,
 		Status: model.DataSourceStatusActive,
 	}
-	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false)
+	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager())
 
 	_, err := qs.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 		DataSourceID: "ds-1",
@@ -76,7 +76,7 @@ func TestFetchNextBatchRechecksDataSourceStatus(t *testing.T) {
 		Type:   model.DatabaseTypeMySQL,
 		Status: model.DataSourceStatusActive,
 	}
-	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false).(*queryService)
+	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false, newTestSQLTranslationManager()).(*queryService)
 
 	session := &QuerySession{
 		QueryID:      "q-1",

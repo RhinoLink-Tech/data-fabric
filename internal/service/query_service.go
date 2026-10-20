@@ -83,10 +83,14 @@ func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *d
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
 	}
+	validator := security.NewSQLValidator(10000)
+	if translator.SupportsASTAnalysis() {
+		validator.SetASTAnalyzer(translator)
+	}
 	return &queryService{
 		datasourceRepo:  datasourceRepo,
 		connPool:        connPool,
-		sqlValidator:    security.NewSQLValidator(10000),
+		sqlValidator:    validator,
 		typeMapper:      utils.NewDataTypeMapper(),
 		stats:           newQueryStats(),
 		sessionManager:  NewSessionManager(),
@@ -147,7 +151,7 @@ func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Call
 	}
 
 	// Validate SQL with data source-specific syntax checking
-	if err := qs.sqlValidator.ValidateDataSourceSyntax(sqlToValidate, dataSource.Type); err != nil {
+	if err := qs.sqlValidator.ValidateDataSourceSyntaxContext(ctx, sqlToValidate, dataSource.Type); err != nil {
 		return err
 	}
 
@@ -434,7 +438,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 
 	// Validate after dialect conversion so valid source-dialect SQL is not rejected
 	// by the validator before it is converted to the target dialect.
-	if err := qs.sqlValidator.ValidateStatementForDataSource(sqlToExecute, datasource.Type); err != nil {
+	if err := qs.sqlValidator.ValidateStatementForDataSourceContext(ctx, sqlToExecute, datasource.Type); err != nil {
 		return nil, fmt.Errorf("SQL validation failed: %w", err)
 	}
 

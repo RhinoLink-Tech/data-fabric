@@ -9,7 +9,7 @@ SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from sql_translate import map_dialect, translate_sql
+from sql_translate import analyze_sql, map_dialect, translate_sql
 
 
 def normalize(sql):
@@ -109,6 +109,105 @@ class SQLTranslationRegressionTests(unittest.TestCase):
         self.assertEqual("SELECT id FROM orders LIMIT 10", normalize(presto))
         self.assertEqual(normalize(presto), normalize(openlookeng))
 
+    def test_read_only_ast_analysis_across_dialects(self):
+        cases = [
+            ("mysql", "SELECT `id` FROM `orders` WHERE id = 1"),
+            ("postgresql", "SELECT id::text FROM orders"),
+            ("oracle", "SELECT name FROM users WHERE ROWNUM <= 5"),
+            ("sqlserver", "SELECT TOP 5 [name] FROM dbo.users"),
+            ("trino", "SELECT id FROM lake.sales.orders"),
+            ("doris", "SELECT id FROM orders LIMIT 5"),
+            ("bigquery", "SELECT id FROM `project.dataset.orders` LIMIT 5"),
+        ]
+        for dialect, sql in cases:
+            with self.subTest(dialect=dialect):
+                result = analyze_sql(sql, dialect)
+                self.assertNotIn("error", result)
+                self.assertEqual(1, result["statement_count"])
+                self.assertTrue(result["is_query"])
+                self.assertFalse(result["has_mutation"])
+
+    def test_read_only_ast_analysis_reports_security_constructs(self):
+        cases = [
+            (
+                "multiple statements",
+                "SELECT 1; DELETE FROM users",
+                "postgres",
+                "statement_count",
+                2,
+            ),
+            (
+                "nested modifying CTE",
+                "WITH removed AS (DELETE FROM users RETURNING *) SELECT * FROM removed",
+                "postgres",
+                "has_mutation",
+                True,
+            ),
+            (
+                "select into",
+                "SELECT * INTO leaked FROM users",
+                "postgres",
+                "has_select_into",
+                True,
+            ),
+            (
+                "row lock",
+                "SELECT * FROM users FOR UPDATE",
+                "postgres",
+                "has_locking",
+                True,
+            ),
+        ]
+        for name, sql, dialect, key, expected in cases:
+            with self.subTest(case=name):
+                result = analyze_sql(sql, dialect)
+                self.assertNotIn("error", result, result)
+                self.assertEqual(expected, result[key])
+
+        writes = [
+            ("UPDATE users SET active = false", "postgres"),
+            ("CREATE TABLE archive (id INT)", "postgres"),
+            ("TRUNCATE TABLE users", "postgres"),
+            ("REPLACE INTO users (id) VALUES (1)", "mysql"),
+        ]
+        for sql, dialect in writes:
+            with self.subTest(write=sql):
+                result = analyze_sql(sql, dialect)
+                self.assertNotIn("error", result, result)
+                self.assertTrue(result["has_mutation"], result)
+                self.assertFalse(result["is_query"], result)
+
+        dangerous_functions = [
+            ("SELECT pg_read_file('/etc/passwd')", "postgres", "PG_READ_FILE"),
+            ("SELECT LOAD_FILE('/etc/passwd')", "mysql", "LOAD_FILE"),
+            ("SELECT SLEEP(1)", "mysql", "SLEEP"),
+            ("SELECT NEXTVAL('orders_id_seq')", "postgres", "NEXTVAL"),
+            ("SELECT xp_cmdshell('dir')", "sqlserver", "XP_CMDSHELL"),
+        ]
+        for sql, dialect, expected_function in dangerous_functions:
+            with self.subTest(function=expected_function):
+                result = analyze_sql(sql, dialect)
+                self.assertNotIn("error", result, result)
+                self.assertIn(expected_function, result["functions"])
+
+    def test_analyzer_reports_invalid_sql_and_maps_compatibility_dialects(self):
+        self.assertIn("error", analyze_sql("SELECT FROM", "postgres"))
+        self.assertEqual("mysql", map_dialect("tdsql"))
+        self.assertEqual("postgres", map_dialect("hologres"))
+        self.assertEqual("hive", map_dialect("maxcompute"))
+
+    def test_registered_parser_dialects_accept_basic_select(self):
+        dialects = [
+            "mysql", "postgres", "oracle", "sqlserver", "trino", "presto",
+            "snowflake", "databricks", "redshift", "bigquery", "hive",
+            "maxcompute", "clickhouse", "doris", "starrocks", "druid", "spark",
+        ]
+        for dialect in dialects:
+            with self.subTest(dialect=dialect):
+                result = analyze_sql("SELECT 1", dialect)
+                self.assertNotIn("error", result, result)
+                self.assertTrue(result["is_query"], result)
+
     def test_parse_and_dialect_errors_are_explicit(self):
         cases = [
             ("malformed SQL", "SELECT FROM", "mysql", "trino"),
@@ -153,6 +252,27 @@ class SQLTranslationRegressionTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertIn("error", response)
         self.assertNotIn("translated_sql", response)
+
+    def test_cli_returns_ast_facts_without_returning_sql(self):
+        request = {
+            "action": "analyze",
+            "sql": "SELECT pg_read_file('/etc/passwd')",
+            "dialect": "postgres",
+        }
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "sql_translate.py")],
+            cwd=REPO_ROOT,
+            input=json.dumps(request),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        response = json.loads(result.stdout)
+        self.assertEqual(1, response["statement_count"])
+        self.assertTrue(response["is_query"])
+        self.assertIn("PG_READ_FILE", response["functions"])
+        self.assertNotIn("sql", response)
 
 
 if __name__ == "__main__":

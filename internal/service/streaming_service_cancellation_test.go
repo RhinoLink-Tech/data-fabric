@@ -35,7 +35,7 @@ func newStreamingTestService(t *testing.T, server *httptest.Server) (*streamingS
 	}
 	database.GetDriverRegistry()
 	pool := database.NewConnectionPool(nil, nil, false)
-	svc := NewStreamingService(federationSourceRepository{source: source}, pool).(*streamingService)
+	svc := NewStreamingService(federationSourceRepository{source: source}, pool, newTestSQLTranslationManager()).(*streamingService)
 	return svc, pool
 }
 

@@ -47,7 +47,7 @@ func TestSupportsStreamingUsesDriverCapabilityAndAccessGates(t *testing.T) {
 			repo := streamingCapabilityRepository{source: &model.DataSource{
 				ID: "source-1", Type: tt.dbType, Status: tt.status, OwnerID: "alice", TenantID: "acme",
 			}}
-			streaming := NewStreamingService(repo, nil).(streamingCapabilityChecker)
+			streaming := NewStreamingService(repo, nil, newTestSQLTranslationManager()).(streamingCapabilityChecker)
 			got, err := streaming.SupportsStreaming(context.Background(), tt.caller, "source-1")
 			if tt.wantError != nil {
 				if !errors.Is(err, tt.wantError) {
@@ -66,7 +66,7 @@ func TestSupportsStreamingUsesDriverCapabilityAndAccessGates(t *testing.T) {
 }
 
 func TestSupportsStreamingPropagatesMissingSource(t *testing.T) {
-	streaming := NewStreamingService(streamingCapabilityRepository{err: repository.ErrDataSourceNotFound}, nil).(streamingCapabilityChecker)
+	streaming := NewStreamingService(streamingCapabilityRepository{err: repository.ErrDataSourceNotFound}, nil, newTestSQLTranslationManager()).(streamingCapabilityChecker)
 	if _, err := streaming.SupportsStreaming(context.Background(), security.SystemCaller(), "missing"); !errors.Is(err, repository.ErrDataSourceNotFound) {
 		t.Fatalf("SupportsStreaming() error = %v, want data source not found", err)
 	}

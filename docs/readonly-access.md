@@ -6,10 +6,12 @@ it, and how to provision least-privilege accounts (#20).
 
 ## Threat model
 
-The SQL validator (`internal/security`) parses each statement and rejects
-anything that is not a plain `SELECT`, including known dangerous keywords and
-functions. That check runs in the application layer, which means it cannot
-protect against:
+The SQL validator (`internal/security`) parses each query with the grammar
+selected for the target data source. It requires one query statement and
+rejects mutations found anywhere in the AST, `SELECT INTO`, row locks, and a
+denylist of side-effect functions. Unknown data-source dialects and parser
+errors fail closed. That check runs in the application layer, which means it
+cannot protect against:
 
 - credentials that hold write privileges on the data source,
 - dialect functions with side effects that parse as valid `SELECT`s,
@@ -23,7 +25,7 @@ of what the application sends.
 
 | Layer | Scope | Mechanism |
 |---|---|---|
-| SQL validation | All SQL data sources | Statement must parse as `SELECT`; dangerous keywords and functions rejected (`internal/security/sql_validator.go`) |
+| SQL validation | SQL data sources with a configured parser mapping | One query statement; AST mutation, output, locking, and side-effect function checks (`internal/security/sql_validator.go`) |
 | Read-only session | MySQL/PostgreSQL-lineage relational engines (see matrix below) | Session opened read-only at connection time; engine rejects writes |
 | Least-privilege account | All data sources | Operator provisions an account limited to `SELECT` (cookbook below) |
 | Engine-side controls | Federated query engines | Catalog permissions and connectors are owned by the deployed engine |
@@ -45,6 +47,30 @@ The single source of truth for this matrix is `internal/database/readonly`
 (`ModeFor`). Engines are added to the enforced set only after live
 verification, because a rejected init statement makes the data source
 unusable (fail-closed by design).
+
+## SQL parser mapping
+
+Production query validation uses the bundled SQLGlot runtime and selects a
+parser by data-source type. MySQL-family connectors use MySQL grammar;
+PostgreSQL-family connectors use PostgreSQL grammar; Trino, Presto, and
+OpenLooKeng use their corresponding parser families; Oracle, SQL Server,
+Snowflake, Databricks, Redshift, BigQuery, Hive, ClickHouse, Doris, StarRocks,
+and Druid use their matching grammars. Compatibility connectors use the
+closest available SQLGlot grammar (for example, MaxCompute uses Hive grammar;
+file and object storage SQL uses the supported MySQL subset). MongoDB has no
+SQL parser mapping and is rejected by this SQL query path.
+
+The parser enforces one statement, requires a query root, scans nested AST
+nodes for write operations, and rejects `SELECT INTO`, locking clauses, and
+known side-effect functions such as file access, outbound connections, sleep,
+and administrative functions. The production path does not rely on SQL
+keyword or comment regexes to decide whether a statement is read-only. This
+application check complements database-side read-only sessions and least
+privilege; it does not replace them.
+
+SQLGlot is required at startup for read-only parsing even when
+`sql_translation.enabled` is false. That setting disables translation tools
+and cross-dialect conversion only; it does not disable SQL safety validation.
 
 ## Configuration
 

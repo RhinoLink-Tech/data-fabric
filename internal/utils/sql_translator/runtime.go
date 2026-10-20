@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 )
 
 var (
@@ -33,6 +35,10 @@ type RuntimeOptions struct {
 type contextSQLTranslator interface {
 	TranslateContext(context.Context, string, string, string) (string, error)
 	ValidateContext(context.Context, string, string) (bool, error)
+}
+
+type contextSQLAnalyzer interface {
+	AnalyzeContext(context.Context, string, string) (sqlanalysis.Analysis, error)
 }
 
 func DefaultRuntimeOptions() RuntimeOptions {
@@ -78,58 +84,21 @@ func (e *ExternalSQLTranslator) TranslateContext(ctx context.Context, sql, sourc
 	if !e.useExternalLib {
 		return NewMockSQLTranslator().Translate(sql, sourceDialect, targetDialect)
 	}
-	if int64(len(sql)) > e.runtimeOptions.MaxSQLBytes {
-		return "", fmt.Errorf("SQL input exceeds the configured limit of %d bytes", e.runtimeOptions.MaxSQLBytes)
-	}
-
-	requestBytes, err := json.Marshal(map[string]string{
+	responseBytes, err := e.runSQLGlot(ctx, sql, map[string]string{
+		"action":         "translate",
 		"sql":            sql,
 		"source_dialect": strings.ToLower(sourceDialect),
 		"target_dialect": strings.ToLower(targetDialect),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to encode SQL translation request")
-	}
-
-	runCtx, cancel := context.WithTimeout(ctx, e.runtimeOptions.Timeout)
-	defer cancel()
-
-	select {
-	case e.concurrent <- struct{}{}:
-		defer func() { <-e.concurrent }()
-	case <-runCtx.Done():
-		return "", runCtx.Err()
-	}
-
-	cmd := exec.CommandContext(runCtx, e.pythonPath, e.scriptPath)
-	cmd.WaitDelay = 250 * time.Millisecond
-	cmd.Env = e.pythonEnvironment()
-	cmd.Stdin = bytes.NewReader(requestBytes)
-
-	stdout := &boundedBuffer{limit: int(e.runtimeOptions.MaxOutputBytes), cancel: cancel}
-	stderr := &boundedBuffer{limit: maxTranslatorStderrBytes, cancel: cancel}
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-
-	err = cmd.Run()
-	if stdout.exceeded || stderr.exceeded {
-		return "", ErrSQLTranslationOutputLimit
-	}
-	if err != nil {
-		if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-			return "", fmt.Errorf("SQL translation timed out: %w", context.DeadlineExceeded)
-		}
-		if errors.Is(runCtx.Err(), context.Canceled) {
-			return "", runCtx.Err()
-		}
-		return "", fmt.Errorf("SQL translation process failed")
+		return "", err
 	}
 
 	var response struct {
 		TranslatedSQL string `json:"translated_sql"`
 		Error         string `json:"error"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+	if err := json.Unmarshal(responseBytes, &response); err != nil {
 		return "", fmt.Errorf("SQL translation process returned invalid JSON")
 	}
 	if response.Error != "" {
@@ -145,8 +114,81 @@ func (e *ExternalSQLTranslator) TranslateContext(ctx context.Context, sql, sourc
 	return response.TranslatedSQL, nil
 }
 
+// AnalyzeContext parses SQL in the target dialect and returns security-relevant
+// AST facts. The same subprocess limits used for translation also apply here.
+func (e *ExternalSQLTranslator) AnalyzeContext(ctx context.Context, sql, dialect string) (sqlanalysis.Analysis, error) {
+	if !e.useExternalLib {
+		return sqlanalysis.Analysis{}, fmt.Errorf("SQL AST analysis requires the SQLGlot runtime")
+	}
+	responseBytes, err := e.runSQLGlot(ctx, sql, map[string]string{
+		"action":  "analyze",
+		"sql":     sql,
+		"dialect": strings.ToLower(strings.TrimSpace(dialect)),
+	})
+	if err != nil {
+		return sqlanalysis.Analysis{}, err
+	}
+
+	var response struct {
+		sqlanalysis.Analysis
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(responseBytes, &response); err != nil {
+		return sqlanalysis.Analysis{}, fmt.Errorf("SQL analysis process returned invalid JSON")
+	}
+	if response.Error != "" {
+		return sqlanalysis.Analysis{}, fmt.Errorf("SQL analysis failed")
+	}
+	return response.Analysis, nil
+}
+
+func (e *ExternalSQLTranslator) runSQLGlot(ctx context.Context, sql string, request any) ([]byte, error) {
+	if int64(len(sql)) > e.runtimeOptions.MaxSQLBytes {
+		return nil, fmt.Errorf("SQL input exceeds the configured limit of %d bytes", e.runtimeOptions.MaxSQLBytes)
+	}
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode SQL runtime request")
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, e.runtimeOptions.Timeout)
+	defer cancel()
+
+	select {
+	case e.concurrent <- struct{}{}:
+		defer func() { <-e.concurrent }()
+	case <-runCtx.Done():
+		return nil, runCtx.Err()
+	}
+
+	cmd := exec.CommandContext(runCtx, e.pythonPath, e.scriptPath)
+	cmd.WaitDelay = 250 * time.Millisecond
+	cmd.Env = e.pythonEnvironment()
+	cmd.Stdin = bytes.NewReader(requestBytes)
+
+	stdout := &boundedBuffer{limit: int(e.runtimeOptions.MaxOutputBytes), cancel: cancel}
+	stderr := &boundedBuffer{limit: maxTranslatorStderrBytes, cancel: cancel}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+
+	err = cmd.Run()
+	if stdout.exceeded || stderr.exceeded {
+		return nil, ErrSQLTranslationOutputLimit
+	}
+	if err != nil {
+		if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("SQL parser process timed out: %w", context.DeadlineExceeded)
+		}
+		if errors.Is(runCtx.Err(), context.Canceled) {
+			return nil, runCtx.Err()
+		}
+		return nil, fmt.Errorf("SQL parser process failed")
+	}
+	return stdout.Bytes(), nil
+}
+
 func (e *ExternalSQLTranslator) ValidateContext(ctx context.Context, sql, dialect string) (bool, error) {
-	if _, err := e.TranslateContext(ctx, sql, dialect, dialect); err != nil {
+	if _, err := e.AnalyzeContext(ctx, sql, dialect); err != nil {
 		return false, err
 	}
 	return true, nil

@@ -303,6 +303,10 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
 	}
+	validator := security.NewSQLValidator(10000)
+	if translator.SupportsASTAnalysis() {
+		validator.SetASTAnalyzer(translator)
+	}
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
 		connPool:                connPool,
@@ -310,7 +314,7 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 		maxStreams:              100, // Max concurrent streams
 		streamTimeout:           5 * time.Minute,
 		streamingSessionManager: NewStreamingSessionManager(),
-		sqlValidator:            security.NewSQLValidator(10000),
+		sqlValidator:            validator,
 		sqlTranslator:           translator,
 	}
 	return ss
@@ -344,7 +348,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		return "", 0, fmt.Errorf("failed to translate SQL: %w", err)
 	}
 	if ss.sqlValidator != nil {
-		if err := ss.sqlValidator.ValidateStatementForDataSource(querySQL, dataSource.Type); err != nil {
+		if err := ss.sqlValidator.ValidateStatementForDataSourceContext(requestCtx, querySQL, dataSource.Type); err != nil {
 			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
 		}
 	}

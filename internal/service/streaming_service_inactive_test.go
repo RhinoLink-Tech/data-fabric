@@ -21,7 +21,7 @@ func TestExecuteStreamQueryRejectsInactiveDataSource(t *testing.T) {
 		Type:   model.DatabaseTypeMySQL,
 		Status: model.DataSourceStatusInactive,
 	}
-	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 
 	_, _, err := ss.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: "ds-1",
@@ -40,7 +40,7 @@ func TestFetchNextBatchWithStreamingRechecksDataSourceStatus(t *testing.T) {
 		Type:   model.DatabaseTypeMySQL,
 		Status: model.DataSourceStatusActive,
 	}
-	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 
 	session := &StreamingSession{
 		QueryID:      "q-1",
@@ -78,7 +78,7 @@ func TestFetchNextBatchWithStreamingReportsDeletedDataSource(t *testing.T) {
 		Type:   model.DatabaseTypeMySQL,
 		Status: model.DataSourceStatusActive,
 	}
-	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 
 	session := &StreamingSession{
 		QueryID: "q-1",

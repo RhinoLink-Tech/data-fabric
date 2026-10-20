@@ -166,12 +166,14 @@ above.
 
 SQL translation is enabled by default. Before the metadata database is opened,
 startup checks that the configured interpreter, translation script, and SQLGlot
-dependency are available. The release container includes Python 3 and the
-pinned dependency; for local development, install it with
+dependency are available. SQLGlot is also required for dialect-aware read-only
+SQL validation, even when translation is disabled. The release container
+includes Python 3 and the pinned dependency; for local development, install it with
 python3 -m pip install --requirement requirements-sql-translation.txt. Set
 sql_translation.enabled: false to disable translation. In that mode, the
 HTTP translation endpoints return 503, MCP does not advertise translation
-tools, and cross-dialect query requests fail closed.
+tools, and cross-dialect query requests fail closed; same-dialect query
+requests continue to use SQLGlot for read-only parsing and security checks.
 
 | Field | Type | Default | Limit |
 |-------|------|---------|-------|
