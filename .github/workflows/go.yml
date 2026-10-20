@@ -59,5 +59,23 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Run race-enabled core tests
+        run: go test -race ./internal/database ./internal/service
+
       - name: Build all packages
         run: go build ./...
+
+      - name: Build container image
+        run: docker build --tag data-fabric:ci .
+
+      - name: Smoke test container user and entrypoint
+        shell: bash
+        run: |
+          docker image inspect --format '{{.Config.User}}' data-fabric:ci > /tmp/data-fabric-container-user.txt
+          grep -qx '10001:10001' /tmp/data-fabric-container-user.txt
+          docker run --rm --entrypoint /bin/sh data-fabric:ci -c 'id -u | grep -qx 10001 && test -x /app/main && test -r /app/configs/config.yaml.example'
+          if docker run --rm -e SERVER_PORT=0 data-fabric:ci >/tmp/data-fabric-container-smoke.log 2>&1; then
+            echo "container entrypoint unexpectedly accepted an invalid port"
+            exit 1
+          fi
+          grep -q 'Invalid startup configuration: server.port' /tmp/data-fabric-container-smoke.log

@@ -1,46 +1,22 @@
-# Build stage
-FROM golang:1.26.1-alpine AS builder
+# Build stage: keep this Go version aligned with the go directive in go.mod.
+FROM golang:1.26.1 AS builder
 
-# Install git and other build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
-
-# Set working directory
 WORKDIR /app
-
-# Copy go mod and sum files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
-
-# Copy source code
 COPY . .
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /app/main ./cmd/server
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.22
+RUN apk --no-cache add ca-certificates tzdata \
+    && addgroup -S -g 10001 app \
+    && adduser -S -D -H -u 10001 -G app appuser
 
-# Install ca-certificates for HTTPS
-RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /app
+COPY --from=builder --chown=10001:10001 /app/main /app/main
+COPY --from=builder --chown=10001:10001 /app/configs/config.yaml.example /app/configs/config.yaml.example
 
-# Set working directory
-WORKDIR /root/
-
-# Copy the binary from builder stage
-COPY --from=builder /app/main .
-COPY --from=builder /app/configs ./configs
-
-# Create non-root user
-RUN adduser -D -s /bin/sh appuser
-
-# Change ownership to appuser
-RUN chown -R appuser:appuser /root/
-USER appuser
-
-# Expose port
+USER 10001:10001
 EXPOSE 8080
-
-# Run the binary
-CMD ["./main"]
+ENTRYPOINT ["/app/main"]
