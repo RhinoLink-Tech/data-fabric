@@ -73,6 +73,7 @@ Applications can use a gateway driver for an individual source or send SQL throu
 - **Unified query API:** Submit SQL and retrieve results in batches; streaming-capable drivers can reduce peak memory use for large results.
 - **SQL dialect adaptation:** Translate supported query syntax for a target dialect. See the [SQL v1 compatibility matrix](SQL_TRANSLATION_FEATURES.md).
 - **Gateway controls:** JWT authentication, rate limiting, configuration validation, and health checks.
+- **Prometheus monitoring:** Scrape HTTP and query metrics at `/metrics`; an admin Bearer JWT is always required. See the [observability guide](docs/observability.md).
 
 ## Data Sources
 

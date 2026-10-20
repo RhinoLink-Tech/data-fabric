@@ -26,6 +26,7 @@ type routerDeps struct {
 // newRouter assembles the HTTP API. Setting the gin mode is the caller's job
 // so tests can pick TestMode independently of the configured server mode.
 func newRouter(deps routerDeps) *gin.Engine {
+	middleware.InitMetrics()
 	router := gin.New()
 
 	// Add middleware
@@ -33,6 +34,7 @@ func newRouter(deps routerDeps) *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(middleware.Cors())
 	router.Use(middleware.CorrelationID())
+	router.Use(middleware.PrometheusMiddleware())
 
 	// Authenticate optional JWTs before rate limiting so verified users share
 	// a per-user bucket. Invalid or absent credentials fall back to the peer IP.
@@ -49,6 +51,12 @@ func newRouter(deps routerDeps) *gin.Engine {
 
 	// Health check endpoint (always available)
 	router.GET("/health", deps.healthController.HealthCheck)
+
+	// Metrics expose operational details, so scraping always requires a
+	// standard Bearer JWT with the admin role, independent of the management
+	// API authentication switch.
+	metricsHandler := gin.WrapH(middleware.PrometheusHandler())
+	router.GET("/metrics", deps.authMiddleware.RequireAnyRole(security.AdminRole), metricsHandler)
 
 	// API v1 group
 	api := router.Group("/api/v1")

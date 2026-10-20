@@ -316,3 +316,85 @@ func TestDatabaseFleetEndpointsOpenWhenAuthDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsEndpointRequiresAdminWhenAuthenticationIsEnabled(t *testing.T) {
+	router, tokens := newTestRouterWithTokens(t, true)
+	requests := []struct {
+		name       string
+		token      string
+		wantStatus int
+	}{
+		{name: "missing token", wantStatus: http.StatusUnauthorized},
+		{name: "regular user", token: tokens.user, wantStatus: http.StatusForbidden},
+		{name: "administrator", token: tokens.admin, wantStatus: http.StatusOK},
+	}
+
+	for _, tt := range requests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			if tt.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tt.token)
+			}
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			if recorder.Code != tt.wantStatus {
+				t.Fatalf("GET /metrics status = %d, want %d; body: %s", recorder.Code, tt.wantStatus, recorder.Body.String())
+			}
+			if tt.wantStatus == http.StatusOK && !strings.Contains(recorder.Body.String(), "data_fabric_http_requests_total") {
+				t.Fatal("metrics response does not contain the registered HTTP request metric")
+			}
+		})
+	}
+}
+
+func TestMetricsEndpointRemainsAdminProtectedWhenAuthenticationIsDisabled(t *testing.T) {
+	router, token := newTestRouter(t, false)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated GET /metrics status = %d, want %d; body: %s", recorder.Code, http.StatusUnauthorized, recorder.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("admin GET /metrics status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestHTTPMetricsUseRouteTemplatesAndDoNotExposeRawPathsOrSourceIDs(t *testing.T) {
+	router, tokens := newTestRouterWithTokens(t, true)
+
+	queryRequest := httptest.NewRequest(http.MethodGet, "/api/v1/query/stats", nil)
+	queryRequest.Header.Set("Authorization", "Bearer "+tokens.admin)
+	queryRecorder := httptest.NewRecorder()
+	router.ServeHTTP(queryRecorder, queryRequest)
+	if queryRecorder.Code != http.StatusOK {
+		t.Fatalf("query stats status = %d, want %d", queryRecorder.Code, http.StatusOK)
+	}
+
+	unknownRequest := httptest.NewRequest(http.MethodGet, "/private/secret-source-123", nil)
+	unknownRecorder := httptest.NewRecorder()
+	router.ServeHTTP(unknownRecorder, unknownRequest)
+
+	metricsRequest := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRequest.Header.Set("Authorization", "Bearer "+tokens.admin)
+	metricsRecorder := httptest.NewRecorder()
+	router.ServeHTTP(metricsRecorder, metricsRequest)
+	body := metricsRecorder.Body.String()
+	if !strings.Contains(body, `endpoint="/api/v1/query/stats"`) {
+		t.Fatal("metrics do not contain the Gin route template")
+	}
+	if !strings.Contains(body, `endpoint="unmatched"`) {
+		t.Fatal("unmatched routes do not use the bounded endpoint label")
+	}
+	if strings.Contains(body, "secret-source-123") {
+		t.Fatal("metrics exposed an unmatched raw URL path")
+	}
+	if strings.Contains(body, "datasource_id=") {
+		t.Fatal("metrics contain a high-cardinality data-source ID label")
+	}
+}
