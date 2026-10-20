@@ -13,6 +13,9 @@ import (
 var (
 	ErrQuerySessionUnavailable = errors.New("query session is unavailable or expired")
 	ErrInvalidQuerySession     = errors.New("query session credentials are invalid")
+	// ErrMaxConcurrentStreams means the stream limit was reached before a
+	// query was started, so auto mode may safely retry through pagination.
+	ErrMaxConcurrentStreams = errors.New("maximum concurrent streams reached")
 	// ErrDataSourceInactive rejects query execution against a data source whose
 	// status is not active (#118). Anything but active — inactive, error, or an
 	// unexpected empty status — fails closed.

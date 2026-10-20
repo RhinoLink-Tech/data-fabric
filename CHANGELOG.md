@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Root-level contribution, conduct, security, and support guides, plus structured issue and pull request templates.
 - A maintainer release checklist and CI status badges across the README editions.
 - Expose HTTP and query metrics at an admin-protected Prometheus `/metrics` endpoint with bounded labels (#106).
+- Select pagination or streaming in auto mode from request shape, result limits, batch size, and driver capabilities; include the actual mode in fetch responses (#26).
 
 ### Changed
 - Map all service configuration paths to uppercase underscore-separated environment variables, retaining `DATABASE_NAME` and `JWT_SECRET` compatibility aliases.

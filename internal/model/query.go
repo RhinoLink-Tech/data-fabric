@@ -30,13 +30,14 @@ type FetchQueryRequest struct {
 // called to retrieve the next batch of rows. If `NextURI` is empty, the
 // result set is exhausted.
 type FetchQueryResponse struct {
-	QueryID    string           `json:"queryId"`
-	Slug       string           `json:"slug"`
-	Token      string           `json:"token"`
-	NextURI    string           `json:"nextUri,omitempty"`
-	Columns    []ColumnInfo     `json:"columns"`
-	Entries    []*[]interface{} `json:"entries"`
-	TotalCount int              `json:"totalCount"`
+	QueryID       string           `json:"queryId"`
+	Slug          string           `json:"slug"`
+	Token         string           `json:"token"`
+	NextURI       string           `json:"nextUri,omitempty"`
+	ExecutionMode string           `json:"executionMode,omitempty"`
+	Columns       []ColumnInfo     `json:"columns"`
+	Entries       []*[]interface{} `json:"entries"`
+	TotalCount    int              `json:"totalCount"`
 }
 
 // QueryResponse represents the response for a query execution

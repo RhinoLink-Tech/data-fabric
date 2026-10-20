@@ -276,7 +276,28 @@ type StreamMetadata struct {
 	ExecutionTime time.Time `json:"executionTime"`
 }
 
-// NewStreamingService creates a new streaming service
+// SupportsStreaming resolves a source's registered driver capability without
+// opening a connection. It applies the same access and active-source gates as
+// query execution before returning the capability.
+func (ss *streamingService) SupportsStreaming(ctx context.Context, caller *security.Caller, dataSourceID string) (bool, error) {
+	dataSource, err := ss.datasourceRepo.GetByID(ctx, dataSourceID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get data source: %w", err)
+	}
+	if !caller.CanRead(dataSource) {
+		return false, security.ErrDataSourceAccessDenied
+	}
+	if err := requireActiveDataSource(dataSource); err != nil {
+		return false, err
+	}
+	driver, err := database.GetDriverRegistry().GetDriver(dataSource.Type)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve data source driver: %w", err)
+	}
+	return driver.GetCapabilities().SupportsStreaming, nil
+}
+
+// NewStreamingService creates a new streaming service.
 func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool) StreamingService {
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
@@ -298,7 +319,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 
 	// Check stream limit
 	if ss.getActiveStreamCount() >= ss.maxStreams {
-		return "", 0, fmt.Errorf("maximum concurrent streams reached")
+		return "", 0, ErrMaxConcurrentStreams
 	}
 
 	dataSource, err := ss.datasourceRepo.GetByID(requestCtx, req.DataSourceID)
