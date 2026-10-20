@@ -226,9 +226,15 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 `DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID` and `DATA_FABRIC_CREDENTIAL_KEYS` configure the separate data-source credential keyring documented above; they are not fields in the Viper service configuration.
 
-## Configuration Validation
+## Configuration Validation and Schema Migration
 
-The HTTP server validates security settings before connecting to the metadata database. Startup fails if the JWT secret is missing, a known placeholder, or shorter than 32 bytes. Release mode also requires authentication and read-only session enforcement to remain enabled. Invalid duration or scalar values that cannot be decoded into the typed configuration are reported during configuration loading.
+Before opening the metadata database, startup validates the selected server mode, listener and database ports, required database host/name/user, positive HTTP timeouts and request size, query execution mode, and the security requirements for HTTP transports. Database credentials are then used to open and ping the metadata database; a failed connection prevents the service from accepting requests. HTTP and remote MCP also require a non-placeholder JWT secret of at least 32 bytes. Release mode requires authentication and read-only session enforcement. Invalid duration or scalar values that cannot be decoded into the typed configuration are reported during configuration loading.
+
+For HTTP and MCP startup, Data Fabric applies the metadata schema migration before serving requests. The migration uses GORM AutoMigrate for the data-source schema and removes the legacy global name index; it is idempotent. A migration error is returned from startup and the process exits instead of serving against a partial schema.
+
+### Production rollout
+
+Treat metadata schema changes as part of the application release: back up the metadata database, test the release against a database copy, and ensure the startup database account has the DDL privileges needed for the migration. For a schema-changing upgrade, start one service replica first, verify migration and the health endpoint, then scale out the new version. Keep the previous application version available only when its code remains compatible with the migrated schema; schema changes are not automatically rolled back with an application rollback.
 
 ## Security Considerations
 

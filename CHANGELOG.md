@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Validate required startup settings, ports, query execution mode, and HTTP server limits before database initialization; reject malformed MCP listener ports and document fail-closed schema migration behavior (#31).
+
 ### Security
 - Query API errors now use stable public messages and keep submitted SQL, query-history SQL, and backend error details out of responses; detailed failures are recorded in structured server logs (#29).
 

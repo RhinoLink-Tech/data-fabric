@@ -36,9 +36,12 @@ func (c MCPConfig) Validate() error {
 	if address == "" {
 		return fmt.Errorf("mcp.address is required for the Streamable HTTP transport")
 	}
-	host, _, err := net.SplitHostPort(address)
+	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return fmt.Errorf("invalid mcp.address %q: %w", address, err)
+	}
+	if err := validatePort("mcp.address port", port); err != nil {
+		return err
 	}
 	if !certConfigured && !isLoopbackHost(host) {
 		return fmt.Errorf("MCP Streamable HTTP without direct TLS must bind to loopback; expose it through an HTTPS reverse proxy or configure both TLS files")
