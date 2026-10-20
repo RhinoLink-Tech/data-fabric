@@ -32,10 +32,22 @@ type SQLTranslationResponse struct {
 }
 
 // NewSQLTranslationController creates a new SQL translation controller
-func NewSQLTranslationController() *SQLTranslationController {
-	return &SQLTranslationController{
-		translator: sql_translator.NewSQLTranslationManager(true),
+func NewSQLTranslationController(translators ...*sql_translator.SQLTranslationManager) *SQLTranslationController {
+	translator := sql_translator.NewSQLTranslationManager(true)
+	if len(translators) > 0 && translators[0] != nil {
+		translator = translators[0]
 	}
+	return &SQLTranslationController{translator: translator}
+}
+
+func (stc *SQLTranslationController) translationEnabled(c *gin.Context) bool {
+	if stc.translator != nil && stc.translator.Enabled() {
+		return true
+	}
+	c.JSON(http.StatusServiceUnavailable, response.ErrorResponse(
+		"SQL_TRANSLATION_DISABLED", "SQL translation is disabled by server configuration", "", getCorrelationID(c),
+	))
+	return false
 }
 
 // TranslateSQL translates SQL from one dialect to another
@@ -51,6 +63,9 @@ func NewSQLTranslationController() *SQLTranslationController {
 // @Router /api/v1/sql/translate [post]
 func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	correlationID := getCorrelationID(c)
+	if !stc.translationEnabled(c) {
+		return
+	}
 
 	var req SQLTranslationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -98,7 +113,7 @@ func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	}
 
 	// Translate the SQL
-	translatedSQL, err := stc.translator.TranslateQuery(req.SQL, req.SourceDialect, req.TargetDialect)
+	translatedSQL, err := stc.translator.TranslateQueryContext(c.Request.Context(), req.SQL, req.SourceDialect, req.TargetDialect)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"TRANSLATION_ERROR",
@@ -129,6 +144,9 @@ func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 // @Router /api/v1/sql/dialects [get]
 func (stc *SQLTranslationController) GetSupportedDialects(c *gin.Context) {
 	correlationID := getCorrelationID(c)
+	if !stc.translationEnabled(c) {
+		return
+	}
 
 	supportedDialects := stc.translator.GetSupportedDialects()
 
@@ -147,6 +165,9 @@ func (stc *SQLTranslationController) GetSupportedDialects(c *gin.Context) {
 // @Router /api/v1/sql/validate [post]
 func (stc *SQLTranslationController) ValidateSQL(c *gin.Context) {
 	correlationID := getCorrelationID(c)
+	if !stc.translationEnabled(c) {
+		return
+	}
 
 	var req struct {
 		SQL     string `json:"sql" binding:"required"`
@@ -185,7 +206,7 @@ func (stc *SQLTranslationController) ValidateSQL(c *gin.Context) {
 	}
 
 	// Validate the SQL
-	isValid, err := stc.translator.ValidateSQL(req.SQL, req.Dialect)
+	isValid, err := stc.translator.ValidateSQLContext(c.Request.Context(), req.SQL, req.Dialect)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"VALIDATION_ERROR",

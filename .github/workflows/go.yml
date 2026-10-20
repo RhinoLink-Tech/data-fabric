@@ -77,6 +77,9 @@ jobs:
       - name: Build container image
         run: docker build --tag data-fabric:ci .
 
+      - name: Smoke test SQL translation in the final image
+        run: bash scripts/release/smoke_sql_translation_image.sh data-fabric:ci
+
       - name: Smoke test container user and entrypoint
         shell: bash
         run: |

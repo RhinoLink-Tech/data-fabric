@@ -48,6 +48,16 @@ query:
 mcp:
   enabled: false
   transport: "stdio"
+
+sql_translation:
+  enabled: true
+  timeout: "5s"
+  max_concurrent: 4
+  max_sql_bytes: 1048576
+  max_output_bytes: 1048576
+  python_path: "python3"
+  script_path: "./scripts/sql_translate.py"
+  python_module_path: "/opt/data-fabric/python"
 ```
 
 Copy `configs/config.yaml.example` to `configs/config.yaml` for local use. Keep real secrets out of source control.
@@ -119,6 +129,33 @@ The response includes `executionMode` with the engine that handled the request
 `pagination` force the configured path; `auto` applies the selection rules
 above.
 
+
+## SQL dialect translation runtime
+
+SQL translation is enabled by default. Before the metadata database is opened,
+startup checks that the configured interpreter, translation script, and SQLGlot
+dependency are available. The release container includes Python 3 and the
+pinned dependency; for local development, install it with
+python3 -m pip install --requirement requirements-sql-translation.txt. Set
+sql_translation.enabled: false to disable translation. In that mode, the
+HTTP translation endpoints return 503, MCP does not advertise translation
+tools, and cross-dialect query requests fail closed.
+
+| Field | Type | Default | Limit |
+|-------|------|---------|-------|
+| <code>sql_translation.enabled</code> | Boolean | true | — |
+| <code>sql_translation.timeout</code> | Duration | 5s | 0 &lt; value &lt;= 1m |
+| <code>sql_translation.max_concurrent</code> | Integer | 4 | 1..32 per process |
+| <code>sql_translation.max_sql_bytes</code> | Integer | 1048576 | 1..16777216 |
+| <code>sql_translation.max_output_bytes</code> | Integer | 1048576 | 1..16777216; stderr separately capped at 16 KiB |
+| <code>sql_translation.python_path</code> | String | python3 | Required when enabled |
+| <code>sql_translation.script_path</code> | String | ./scripts/sql_translate.py | Required when enabled |
+| <code>sql_translation.python_module_path</code> | String | /opt/data-fabric/python | SQLGlot module search path |
+
+All SQL translation entry points in one service process share the same timeout,
+concurrency, and size limits. Request cancellation and timeout terminate the
+translation subprocess. The subprocess receives only PATH, PYTHONPATH, PYTHONUNBUFFERED, and
+PYTHONNOUSERSITE; application secrets are not copied into its environment.
 
 ## Data-source credential encryption
 
@@ -225,6 +262,14 @@ Every service-config field supports this mapping:
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
 | `mcp.enabled` | `MCP_ENABLED` |
 | `mcp.transport` | `MCP_TRANSPORT` |
+| <code>sql_translation.enabled</code> | <code>SQL_TRANSLATION_ENABLED</code> |
+| <code>sql_translation.timeout</code> | <code>SQL_TRANSLATION_TIMEOUT</code> |
+| <code>sql_translation.max_concurrent</code> | <code>SQL_TRANSLATION_MAX_CONCURRENT</code> |
+| <code>sql_translation.max_sql_bytes</code> | <code>SQL_TRANSLATION_MAX_SQL_BYTES</code> |
+| <code>sql_translation.max_output_bytes</code> | <code>SQL_TRANSLATION_MAX_OUTPUT_BYTES</code> |
+| <code>sql_translation.python_path</code> | <code>SQL_TRANSLATION_PYTHON_PATH</code> |
+| <code>sql_translation.script_path</code> | <code>SQL_TRANSLATION_SCRIPT_PATH</code> |
+| <code>sql_translation.python_module_path</code> | <code>SQL_TRANSLATION_PYTHON_MODULE_PATH</code> |
 
 When both a canonical name and its compatibility alias are set, the canonical name takes precedence. Durations use Go duration syntax, such as `30s` or `24h`; booleans use `true` or `false`.
 

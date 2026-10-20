@@ -142,3 +142,35 @@ func TestValidateStartupRemoteMCPRejectsInvalidServerMode(t *testing.T) {
 		t.Fatalf("ValidateStartup() error = %v, want remote MCP mode validation error", err)
 	}
 }
+
+func TestSQLTranslationConfigValidation(t *testing.T) {
+	valid := SQLTranslationConfig{
+		Enabled: true, Timeout: 5 * time.Second, MaxConcurrent: 4,
+		MaxSQLBytes: 1 << 20, MaxOutputBytes: 1 << 20,
+		PythonPath: "python3", ScriptPath: "./scripts/sql_translate.py",
+	}
+	tests := []struct {
+		name   string
+		mutate func(*SQLTranslationConfig)
+		want   string
+	}{
+		{"timeout", func(c *SQLTranslationConfig) { c.Timeout = 0 }, "sql_translation.timeout"},
+		{"concurrency", func(c *SQLTranslationConfig) { c.MaxConcurrent = 33 }, "sql_translation.max_concurrent"},
+		{"SQL bytes", func(c *SQLTranslationConfig) { c.MaxSQLBytes = 0 }, "sql_translation.max_sql_bytes"},
+		{"output bytes", func(c *SQLTranslationConfig) { c.MaxOutputBytes = 17 << 20 }, "sql_translation.max_output_bytes"},
+		{"python path", func(c *SQLTranslationConfig) { c.PythonPath = " " }, "sql_translation.python_path"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := valid
+			tc.mutate(&cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+	if err := (SQLTranslationConfig{}).Validate(); err != nil {
+		t.Fatalf("disabled SQL translation should not require a runtime: %v", err)
+	}
+}

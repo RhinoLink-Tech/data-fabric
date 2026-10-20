@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Security SecurityConfig `mapstructure:"security"`
-	Logging  LoggingConfig  `mapstructure:"logging"`
-	Query    QueryConfig    `mapstructure:"query"`
-	MCP      MCPConfig      `mapstructure:"mcp"`
+	Server         ServerConfig         `mapstructure:"server"`
+	Database       DatabaseConfig       `mapstructure:"database"`
+	Security       SecurityConfig       `mapstructure:"security"`
+	Logging        LoggingConfig        `mapstructure:"logging"`
+	Query          QueryConfig          `mapstructure:"query"`
+	MCP            MCPConfig            `mapstructure:"mcp"`
+	SQLTranslation SQLTranslationConfig `mapstructure:"sql_translation"`
 }
 
 type ServerConfig struct {
@@ -130,13 +131,32 @@ func setDefaults() {
 	viper.SetDefault("query.prefer_streaming", true)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
 
-	// MCP defaults to local stdio. Remote Streamable HTTP listens on loopback
-	// unless direct TLS is configured.
+	// SQL translation runtime limits and process configuration.
+	viper.SetDefault("sql_translation.enabled", true)
+	viper.SetDefault("sql_translation.timeout", 5*time.Second)
+	viper.SetDefault("sql_translation.max_concurrent", 4)
+	viper.SetDefault("sql_translation.max_sql_bytes", int64(1<<20))
+	viper.SetDefault("sql_translation.max_output_bytes", int64(1<<20))
+	viper.SetDefault("sql_translation.python_path", "python3")
+	viper.SetDefault("sql_translation.script_path", "./scripts/sql_translate.py")
+	viper.SetDefault("sql_translation.python_module_path", "/opt/data-fabric/python")
+	// MCP defaults to local stdio. Remote Streamable HTTP listens on loopback unless direct TLS is configured.
 	viper.SetDefault("mcp.enabled", false)
 	viper.SetDefault("mcp.transport", "stdio")
 	viper.SetDefault("mcp.address", "127.0.0.1:8081")
 	viper.SetDefault("mcp.tls_cert_file", "")
 	viper.SetDefault("mcp.tls_key_file", "")
+}
+
+type SQLTranslationConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	Timeout          time.Duration `mapstructure:"timeout"`
+	MaxConcurrent    int           `mapstructure:"max_concurrent"`
+	MaxSQLBytes      int64         `mapstructure:"max_sql_bytes"`
+	MaxOutputBytes   int64         `mapstructure:"max_output_bytes"`
+	PythonPath       string        `mapstructure:"python_path"`
+	ScriptPath       string        `mapstructure:"script_path"`
+	PythonModulePath string        `mapstructure:"python_module_path"`
 }
 
 type MCPConfig struct {

@@ -61,3 +61,14 @@ mcp:
   address: "127.0.0.1:8081"
   tls_cert_file: "" # configure with tls_key_file for direct HTTPS
   tls_key_file: ""
+
+# SQL dialect translation runtime. The image includes Python and the pinned SQLGlot package.
+sql_translation:
+  enabled: true
+  timeout: "5s"
+  max_concurrent: 4
+  max_sql_bytes: 1048576
+  max_output_bytes: 1048576
+  python_path: "python3"
+  script_path: "./scripts/sql_translate.py"
+  python_module_path: "/opt/data-fabric/python"

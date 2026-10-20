@@ -36,7 +36,11 @@ type MCPServer struct {
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
 // out the describe_table tool; callers without metadata extraction keep the
 // rest of the tool set.
-func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository, tableDescriber TableDescriber) *MCPServer {
+func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository, tableDescriber TableDescriber, translators ...*sql_translator.SQLTranslationManager) *MCPServer {
+	translator := sql_translator.NewSQLTranslationManager(true)
+	if len(translators) > 0 && translators[0] != nil {
+		translator = translators[0]
+	}
 	s := server.NewMCPServer(
 		"Data Fabric MCP Server",
 		"1.0.0",
@@ -46,7 +50,7 @@ func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, dataso
 		unifiedQueryService: unifiedQueryService,
 		datasourceRepo:      datasourceRepo,
 		tableDescriber:      tableDescriber,
-		sqlTranslator:       sql_translator.NewSQLTranslationManager(true), // Initialize SQL translator
+		sqlTranslator:       translator,
 		server:              s,
 	}
 
@@ -112,18 +116,20 @@ func (m *MCPServer) registerTools() {
 		m.server.AddTool(describeTableTool, m.handleDescribeTable)
 	}
 
-	// Tool to translate SQL between dialects
-	translateSQLTool := mcp.NewTool("translate_sql",
-		mcp.WithDescription("Translate SQL from one dialect to another"),
-		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL to translate")),
-		mcp.WithString("source_dialect", mcp.Required(), mcp.Description("Source SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")),
-		mcp.WithString("target_dialect", mcp.Required(), mcp.Description("Target SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")))
-	m.server.AddTool(translateSQLTool, m.handleTranslateSQL)
+	if m.sqlTranslator != nil && m.sqlTranslator.Enabled() {
+		// Tool to translate SQL between dialects
+		translateSQLTool := mcp.NewTool("translate_sql",
+			mcp.WithDescription("Translate SQL from one dialect to another"),
+			mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL to translate")),
+			mcp.WithString("source_dialect", mcp.Required(), mcp.Description("Source SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")),
+			mcp.WithString("target_dialect", mcp.Required(), mcp.Description("Target SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")))
+		m.server.AddTool(translateSQLTool, m.handleTranslateSQL)
 
-	// Tool to list supported SQL dialects
-	listDialectsTool := mcp.NewTool("list_supported_dialects",
-		mcp.WithDescription("List all supported SQL dialects"))
-	m.server.AddTool(listDialectsTool, m.handleListSupportedDialects)
+		// Tool to list supported SQL dialects
+		listDialectsTool := mcp.NewTool("list_supported_dialects",
+			mcp.WithDescription("List all supported SQL dialects"))
+		m.server.AddTool(listDialectsTool, m.handleListSupportedDialects)
+	}
 }
 
 // handleListDataSources handles the list_data_sources tool call
@@ -473,7 +479,7 @@ func (m *MCPServer) handleTranslateSQL(ctx context.Context, request mcp.CallTool
 	}
 
 	// Translate the SQL
-	translatedSQL, err := m.sqlTranslator.TranslateQuery(sql, sourceDialect, targetDialect)
+	translatedSQL, err := m.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
 	if err != nil {
 		return nil, fmt.Errorf("failed to translate SQL: %w", err)
 	}
