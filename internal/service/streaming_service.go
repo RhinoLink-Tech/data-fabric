@@ -330,6 +330,14 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		return "", 0, ErrMaxConcurrentStreams
 	}
 
+	// Bind parameters are validated before any data source is touched and
+	// flow to both the stream statement and its count (#21).
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Parameters = parameters
+
 	dataSource, err := ss.datasourceRepo.GetByID(requestCtx, req.DataSourceID)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to get data source: %w", err)
@@ -427,7 +435,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 	ss.activeStreams[streamID] = stream
 	ss.streamsMutex.Unlock()
 
-	totalCount, err := ss.getRowCount(requestCtx, db, querySQL)
+	totalCount, err := ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
 	if err != nil {
 		_ = ss.CloseStream(streamID)
 		if requestCtx.Err() != nil {
@@ -875,6 +883,13 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
+	// Bind parameters are validated up front and flow to the stream
+	// statement and its count exactly as provided (#21).
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a new streaming session
 	session := &StreamingSession{
 		QueryID:      ss.generateSessionID(),
@@ -894,6 +909,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		DataSourceID:  req.DataSourceID,
 		SQL:           req.SQL,
 		SourceDialect: req.SourceDialect,
+		Parameters:    parameters,
 		Limit:         req.BatchSize,
 		Offset:        0,
 		Timeout:       req.Timeout,
@@ -911,23 +927,8 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		return nil, fmt.Errorf("failed to fetch stream chunk: %w", err)
 	}
 
-	// Convert chunk data to the expected format
-	entries := make([]*[]interface{}, 0, len(chunk.Rows))
-	for _, row := range chunk.Rows {
-		entry := make([]interface{}, len(row))
-		for j, val := range row {
-			if val == nil {
-				entry[j] = "NULL"
-			} else if b, ok := val.([]byte); ok {
-				entry[j] = string(b)
-			} else {
-				entry[j] = val
-			}
-		}
-		entries = append(entries, &entry)
-	}
-
-	// Convert columns to the expected format
+	// Convert columns to the expected format first: the row encoder needs the
+	// column types to tell binary bytes from text bytes (#123).
 	columns := make([]model.ColumnInfo, len(chunk.Columns))
 	for i, col := range chunk.Columns {
 		columns[i] = model.ColumnInfo{
@@ -935,6 +936,15 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 			Type:     col.Type,
 			Nullable: col.Nullable,
 		}
+	}
+
+	// Convert chunk data to the expected format through the same wire
+	// encoding the pagination path uses, so both modes return identical JSON.
+	entries := make([]*[]interface{}, 0, len(chunk.Rows))
+	for _, row := range chunk.Rows {
+		encodeFetchRow(row, columns)
+		entry := row
+		entries = append(entries, &entry)
 	}
 
 	// Create a response similar to pagination service
@@ -1034,23 +1044,8 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		return nil, ctx.Err()
 	}
 
-	// Convert chunk data to the expected format
-	entries := make([]*[]interface{}, 0, len(chunk.Rows))
-	for _, row := range chunk.Rows {
-		entry := make([]interface{}, len(row))
-		for j, val := range row {
-			if val == nil {
-				entry[j] = "NULL"
-			} else if b, ok := val.([]byte); ok {
-				entry[j] = string(b)
-			} else {
-				entry[j] = val
-			}
-		}
-		entries = append(entries, &entry)
-	}
-
-	// Convert columns to the expected format (use the first chunk's columns if available)
+	// Convert columns first: the row encoder needs the column types to tell
+	// binary bytes from text bytes (#123).
 	var columns []model.ColumnInfo
 	if len(chunk.Columns) > 0 {
 		// Use columns from the current chunk
@@ -1065,6 +1060,16 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	} else {
 		// Use columns from the session
 		columns = session.Columns
+	}
+
+	// Convert chunk data to the expected format through the same wire
+	// encoding the pagination path uses, so continuation batches are
+	// identical to first batches.
+	entries := make([]*[]interface{}, 0, len(chunk.Rows))
+	for _, row := range chunk.Rows {
+		encodeFetchRow(row, columns)
+		entry := row
+		entries = append(entries, &entry)
 	}
 
 	// Update session data
@@ -1113,11 +1118,11 @@ func (ss *streamingService) generateToken() string {
 }
 
 // getRowCount gets the total row count for the query
-func (ss *streamingService) getRowCount(ctx context.Context, db *sql.DB, sql string) (int64, error) {
+func (ss *streamingService) getRowCount(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return countRowsInQuery(ctx, db, sql)
+	return countRowsInQuery(ctx, db, sql, args...)
 }
 
 // mapDatabaseTypeToStandard maps database-specific type to standardized type

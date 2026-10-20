@@ -73,6 +73,16 @@ func (m *MCPServer) registerTools() {
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to query")),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL query to execute")),
 		mcp.WithString("source_dialect", mcp.Description("Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)")),
+		mcp.WithArray("parameters", mcp.Description("Ordered values bound by the driver to ? (MySQL) or $1..$N (PostgreSQL) placeholders; never interpolated into the SQL text"),
+			mcp.MaxItems(64),
+			mcp.Items(map[string]interface{}{
+				"oneOf": []interface{}{
+					map[string]interface{}{"type": "null"},
+					map[string]interface{}{"type": "boolean"},
+					map[string]interface{}{"type": "number"},
+					map[string]interface{}{"type": "string"},
+				},
+			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
 		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")))
 	m.server.AddTool(executeSQLQueryTool, m.handleExecuteSQLQuery)
@@ -181,6 +191,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	datasourceID := mcp.ParseString(request, "datasource_id", "")
 	sql := mcp.ParseString(request, "sql", "")
 	sourceDialect := mcp.ParseString(request, "source_dialect", "") // Optional source dialect
+	parameters, err := parseExecuteParameters(request)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	batchSize := int(mcp.ParseInt(request, "batch_size", 10000))
 	timeout := int(mcp.ParseInt(request, "timeout", 60))
 	if batchSize <= 0 {
@@ -206,6 +220,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		Type:          2,
 		BatchSize:     batchSize,
 		Timeout:       timeout,
+		Parameters:    parameters,
 	}
 
 	// Attribute remote query history to the authenticated user; stdio stays in
@@ -227,6 +242,22 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 			mcp.NewTextContent(string(jsonResp)),
 		},
 	}, nil
+}
+
+// parseExecuteParameters extracts the ordered bind values for
+// execute_sql_query. The values pass through untouched; the query service
+// normalizes and validates them, so composite or invalid elements fail there
+// with messages that never echo the values themselves (#21).
+func parseExecuteParameters(request mcp.CallToolRequest) ([]interface{}, error) {
+	raw, ok := request.GetArguments()["parameters"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	parameters, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("parameters must be an array of null, boolean, number, or string values")
+	}
+	return parameters, nil
 }
 
 // handleFetchNextBatch handles the fetch_next_batch tool call.

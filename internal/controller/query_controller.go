@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -52,7 +53,10 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 	caller := security.CallerFromGin(c)
 
 	var req model.FetchQueryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// Bind with UseNumber so large integer parameters keep their exact
+	// digits instead of degrading to float64 (#21); the service normalizes
+	// json.Number into driver-bindable values.
+	if err := decodeFetchQueryRequest(c, &req); err != nil {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
 			"INVALID_REQUEST",
 			"Invalid request body.",
@@ -388,6 +392,16 @@ func (qc *QueryController) generateToken() string {
 	return uuid.New().String()
 }
 
+// decodeFetchQueryRequest binds the fetch request body with UseNumber, so
+// numeric parameters keep their exact digits as json.Number instead of
+// becoming float64 (#21). The service layer converts them into
+// driver-bindable values.
+func decodeFetchQueryRequest(c *gin.Context, req *model.FetchQueryRequest) error {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	return decoder.Decode(req)
+}
+
 func queryFailureStatusAndCode(err error) (int, string) {
 	switch {
 	case errors.Is(err, repository.ErrDataSourceNotFound):
@@ -399,6 +413,9 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusConflict, "DATASOURCE_INACTIVE"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
+	case errors.Is(err, queryservice.ErrExactCountUnavailable):
+		// The statement is valid but its shape cannot be counted exactly (#23)
+		return http.StatusUnprocessableEntity, "COUNT_UNSUPPORTED"
 	case errors.Is(err, security.ErrNotSelectQuery), errors.Is(err, security.ErrSQLInjection),
 		errors.Is(err, security.ErrSQLSyntaxError), errors.Is(err, security.ErrDangerousKeyword),
 		errors.Is(err, security.ErrEmptyQuery), errors.Is(err, security.ErrQueryTooLong):

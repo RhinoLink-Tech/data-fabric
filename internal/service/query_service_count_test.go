@@ -206,3 +206,61 @@ func TestBatchHasMoreRowsStopsOnEmptyBatch(t *testing.T) {
 		})
 	}
 }
+
+// The textual rewrites must tell SQL structure from literal content (#23): an
+// ORDER BY or FROM that only appears inside a string literal, a quoted
+// identifier, or a comment must not steer them.
+func TestCountRewritesIgnoreKeywordsInsideLiterals(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+	}{
+		{"ORDER BY inside a string literal", "SELECT 'ORDER BY demo' AS note FROM users"},
+		{"ORDER BY inside a quoted identifier", `SELECT "ORDER BY" FROM users`},
+		{"ORDER BY inside a block comment", "SELECT /* ORDER BY demo */ * FROM users"},
+		{"ORDER BY inside a line comment", "SELECT *\n-- ORDER BY demo\nFROM users"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := removeOrderByClause(tt.sql); got != tt.sql {
+				t.Errorf("removeOrderByClause(%q) = %q, want the statement untouched", tt.sql, got)
+			}
+		})
+	}
+
+	t.Run("FROM inside a string literal is not the counted FROM", func(t *testing.T) {
+		got := buildCountSQLInPlace("SELECT 'FROM x' AS label FROM users")
+		if want := "SELECT COUNT(*) FROM users"; got != want {
+			t.Errorf("buildCountSQLInPlace() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a statement with no top-level FROM cannot be counted in place", func(t *testing.T) {
+		if got := buildCountSQLInPlace("SELECT 1"); got != "" {
+			t.Errorf("buildCountSQLInPlace(\"SELECT 1\") = %q, want empty", got)
+		}
+	})
+}
+
+// A query that limits its own rows must not be counted by the in-place
+// rewrite when the derived table cannot wrap it: the rewrite would report a
+// count with different semantics than the query — a silent wrong answer.
+// The caller gets ErrExactCountUnavailable instead (#23).
+func TestCountRowsInQueryRefusesLimitedQueriesItCannotWrap(t *testing.T) {
+	fake := &countingDB{count: 1000000, rejectDerivedTable: true}
+	db := sql.OpenDB(fake.connector())
+	defer db.Close()
+
+	_, err := countRowsInQuery(context.Background(), db, "SELECT * FROM users LIMIT 5")
+	if !errors.Is(err, ErrExactCountUnavailable) {
+		t.Fatalf("countRowsInQuery() error = %v, want ErrExactCountUnavailable", err)
+	}
+
+	// The in-place form was never attempted: no issued query counts the FROM
+	// clause directly.
+	for _, issued := range fake.queries {
+		if !strings.HasPrefix(issued, "SELECT COUNT(*) FROM (") {
+			t.Errorf("issued non-derived count %q — the in-place rewrite must not run for limited queries", issued)
+		}
+	}
+}

@@ -34,9 +34,13 @@ type QuerySession struct {
 	// CreatorID binds a session to the identity that created it (#9): a
 	// continuation Bearer token from a different user is rejected the same
 	// way as an unknown session.
-	CreatorID        string
-	DataSourceID     string
-	SQL              string
+	CreatorID    string
+	DataSourceID string
+	SQL          string
+	// Parameters are the ordered bind values the statement was executed
+	// with (#21). They live in memory only and are re-bound for every
+	// continuation batch and count, exactly as the first batch bound them.
+	Parameters       []interface{}
 	Type             int
 	BatchSize        int
 	Cursor           interface{} // Cursor for pagination
@@ -410,6 +414,14 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
+	// Validate bind parameters before anything touches a data source (#21):
+	// unsupported shapes fail here with index-and-type messages that carry
+	// no values.
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get data source
 	datasource, err := qs.datasourceRepo.GetByID(ctx, req.DataSourceID)
 	if err != nil {
@@ -456,6 +468,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		CreatorID:    caller.Key(),
 		DataSourceID: req.DataSourceID,
 		SQL:          sqlToExecute,
+		Parameters:   parameters,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    time.Now(),
@@ -463,7 +476,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	}
 
 	// Execute query and get first batch
-	columns, entries, totalCount, err := qs.executeBatchQuery(ctx, datasource.Type, conn, sqlToExecute, int64(req.BatchSize), 0)
+	columns, entries, totalCount, err := qs.executeBatchQuery(ctx, datasource.Type, conn, sqlToExecute, int64(req.BatchSize), 0, session.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
 	}
@@ -558,7 +571,7 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	offset := session.FetchedRows
 
 	// Execute query for next batch
-	columns, entries, _, err := qs.executeBatchQuery(ctx, datasource.Type, conn, session.SQL, int64(batchSize), offset)
+	columns, entries, _, err := qs.executeBatchQuery(ctx, datasource.Type, conn, session.SQL, int64(batchSize), offset, session.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
 	}
@@ -658,8 +671,10 @@ func (qs *queryService) buildNextURI(queryID, slug, token string, batchSize int)
 	return fmt.Sprintf("/api/v1/fetch/%s/%s/%s?batch_size=%d", queryID, slug, token, batchSize)
 }
 
-// executeBatchQuery executes a query and returns results in batch format
-func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.DatabaseType, conn interface{}, query string, batchSize, offset int64) ([]model.ColumnInfo, []*[]interface{}, int64, error) {
+// executeBatchQuery executes a query and returns results in batch format.
+// The args are bound by the driver for both the batch statement and the row
+// count — they are never interpolated into the SQL text (#21).
+func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.DatabaseType, conn interface{}, query string, batchSize, offset int64, args []interface{}) ([]model.ColumnInfo, []*[]interface{}, int64, error) {
 	// Convert conn to *sql.DB
 	db, ok := conn.(*sql.DB)
 	if !ok {
@@ -676,7 +691,7 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 	defer cancel()
 
 	// Execute the query
-	rows, err := db.QueryContext(queryCtx, paginatedSQL)
+	rows, err := db.QueryContext(queryCtx, paginatedSQL, args...)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -700,6 +715,10 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to scan row: %w", err)
 		}
+		// Encode into the fetch wire representation with the column types:
+		// NULL stays null, binary bytes become base64, text bytes stay text
+		// (#123).
+		encodeFetchRow(rowValues, columns)
 		entries = append(entries, &rowValues)
 	}
 
@@ -717,7 +736,7 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 		if batchSize > 0 && int64(len(entries)) < batchSize {
 			totalCount = int64(len(entries))
 		} else {
-			totalCount, err = qs.getRowCount(ctx, db, query)
+			totalCount, err = qs.getRowCount(ctx, db, query, args...)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to get row count: %w", err)
 			}
@@ -743,12 +762,10 @@ func (qs *queryService) buildBatchColumnInfo(columnTypes []*sql.ColumnType, dbTy
 	return columns
 }
 
-// scanBatchRow scans a single row and returns string values
-func (qs *queryService) scanBatchRow(rows *sql.Rows, columnCount int) ([]interface{}, error) {
-	return qs.scanBatchRowWithArgs(rows, columnCount, nil)
-}
-
-// scanBatchRowWithArgs scans a row using reusable scan arguments when provided.
+// scanBatchRowWithArgs scans a row using reusable scan arguments when
+// provided. Values are returned as the driver delivered them; converting
+// them into the fetch wire representation is the caller's job (see
+// encodeFetchRow), because it needs the result set's column types.
 func (qs *queryService) scanBatchRowWithArgs(rows *sql.Rows, columnCount int, scanArgs []interface{}) ([]interface{}, error) {
 	result := make([]interface{}, columnCount)
 	if len(scanArgs) != columnCount {
@@ -762,26 +779,16 @@ func (qs *queryService) scanBatchRowWithArgs(rows *sql.Rows, columnCount int, sc
 		return nil, err
 	}
 
-	// Normalize values in place to avoid allocating an intermediate values slice.
-	for i, value := range result {
-		if value == nil {
-			result[i] = "NULL"
-		} else if b, ok := value.([]byte); ok {
-			result[i] = string(b)
-		} else {
-			result[i] = value
-		}
-	}
-
 	return result, nil
 }
 
-// getRowCount gets the total row count for the query
-func (qs *queryService) getRowCount(ctx context.Context, db *sql.DB, sql string) (int64, error) {
+// getRowCount gets the total row count for the query, binding the caller's
+// parameters so query and count see identical inputs.
+func (qs *queryService) getRowCount(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return countRowsInQuery(ctx, db, sql)
+	return countRowsInQuery(ctx, db, sql, args...)
 }
 
 // buildCountSQL wraps the query in a derived table before counting it.
@@ -813,62 +820,59 @@ func countSubquery(sql string) string {
 }
 
 // buildCountSQLInPlace counts a query by replacing its SELECT list with COUNT(*)
-// and keeping the rest of the statement.
+// and keeping the rest of the statement. It returns "" when the statement has
+// no top-level FROM clause to count over.
 //
-// This form cannot count a query that limits its own rows, because the limit then
-// applies to the single aggregate row instead of to the result set, so it is only
-// reached for queries the derived-table forms cannot express at all.
+// This form cannot count a query that limits its own rows, because the limit
+// then applies to the single aggregate row instead of to the result set, so it
+// is only reached for queries the derived-table forms cannot express at all,
+// and countRowsInQuery refuses it for statements carrying a row limit.
 func buildCountSQLInPlace(sql string) string {
 	sql = countSubquery(sql)
 
-	var parenLevel int
-	for i := 0; i < len(sql); i++ {
-		switch sql[i] {
-		case '(':
-			parenLevel++
-		case ')':
-			parenLevel--
-		default:
-			// 检查是否在最外层遇到FROM
-			if parenLevel == 0 && i+4 <= len(sql) {
-				if upper := sql[i : i+4]; strings.ToUpper(upper) == "FROM" {
-					return "SELECT COUNT(*) " + sql[i:]
-				}
-			}
-		}
+	fromIndex := topLevelKeywordIndex(sql, "FROM")
+	if fromIndex < 0 {
+		return ""
 	}
-
-	return sql
+	return "SELECT COUNT(*) " + sql[fromIndex:]
 }
 
-// countRowsInQuery counts the rows the query returns.
+// countRowsInQuery counts the rows the query returns, binding the caller's
+// parameters to every attempt so query and count see identical inputs (#21).
 //
 // The derived table is tried first because it is the only form that counts a
-// query carrying its own LIMIT/OFFSET. Not every query can be wrapped, though: a
-// result set with two columns of the same name, which is what selecting every
-// column of a join produces, is rejected by MySQL and PostgreSQL. Counting the
-// FROM clause directly works for those, so it is the last resort. The middle
-// attempt drops the derived-table alias, which Oracle rejects.
+// query carrying its own LIMIT/OFFSET. Not every query can be wrapped, though:
+// a result set with two columns of the same name, which is what selecting
+// every column of a join produces, is rejected by MySQL and PostgreSQL.
+// Counting the FROM clause directly works for those, so it is the last resort.
+// The middle attempt drops the derived-table alias, which Oracle rejects.
 //
-// All three failing means the statement cannot be counted at all, and the first
-// error is reported: it is the one taken against the query as the caller wrote
-// it, and it is the one that names the problem.
-func countRowsInQuery(ctx context.Context, db *sql.DB, sql string) (int64, error) {
+// The in-place form is refused outright for statements that limit their own
+// rows: its count would describe a different result set than the query, which
+// is a silent wrong answer, not a counting failure. When no form can count
+// the statement exactly, ErrExactCountUnavailable wraps the first error — the
+// one taken against the query as the caller wrote it — instead of inventing
+// a count (#23).
+func countRowsInQuery(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	var count int64
-	firstErr := db.QueryRowContext(ctx, buildCountSQL(sql)).Scan(&count)
+	firstErr := db.QueryRowContext(ctx, buildCountSQL(sql), args...).Scan(&count)
 	if firstErr == nil {
 		return count, nil
 	}
 
-	if err := db.QueryRowContext(ctx, buildCountSQLNoAlias(sql)).Scan(&count); err == nil {
+	if err := db.QueryRowContext(ctx, buildCountSQLNoAlias(sql), args...).Scan(&count); err == nil {
 		return count, nil
 	}
 
-	if err := db.QueryRowContext(ctx, buildCountSQLInPlace(sql)).Scan(&count); err != nil {
-		return 0, fmt.Errorf("failed to count rows: %w", firstErr)
+	if !hasRowLimit(countSubquery(sql)) {
+		if inPlace := buildCountSQLInPlace(sql); inPlace != "" {
+			if err := db.QueryRowContext(ctx, inPlace, args...).Scan(&count); err == nil {
+				return count, nil
+			}
+		}
 	}
 
-	return count, nil
+	return 0, fmt.Errorf("%w: %w", ErrExactCountUnavailable, firstErr)
 }
 
 // batchHasMoreRows reports whether a batch fetch should hand out another
@@ -885,9 +889,10 @@ func batchHasMoreRows(fetchedRows, totalRows int64, batchLen int) bool {
 	return fetchedRows < totalRows
 }
 
-// removeOrderByClause removes an ORDER BY clause that limits nothing from SQL
+// removeOrderByClause removes an ORDER BY clause that limits nothing from SQL.
 //
-// 使用括号层级判断，只在最外层匹配ORDER BY。
+// The clause is located with topLevelKeywordIndex, so an ORDER BY that only
+// appears inside a string literal or comment cannot truncate the statement.
 //
 // An ORDER BY that carries no row limit is dropped: it cannot change a count, and
 // some databases reject one inside a subquery. An ORDER BY that does carry a
@@ -895,26 +900,111 @@ func batchHasMoreRows(fetchedRows, totalRows int64, batchLen int) bool {
 // and removing it would remove them as well -- the count would then report every
 // row the table holds instead of the rows the query returns.
 func removeOrderByClause(sql string) string {
+	orderIndex := topLevelKeywordIndex(sql, "ORDER BY")
+	if orderIndex < 0 {
+		return sql
+	}
+	if hasRowLimit(sql[orderIndex:]) {
+		return sql
+	}
+	return strings.TrimSpace(sql[:orderIndex])
+}
+
+// topLevelKeywordIndex returns the byte index of the first occurrence of
+// keyword (ASCII, case-insensitive, word-delimited on both sides) at
+// parenthesis depth 0 that is not inside a string literal, a quoted
+// identifier, or a comment; -1 when there is none.
+//
+// The textual count rewrites run on arbitrary caller SQL, so structure must
+// be told from content: `SELECT 'FROM x' AS a FROM t` must find the real
+// FROM, and `SELECT 'ORDER BY demo' FROM t` must not find an ORDER BY at
+// all (#23).
+func topLevelKeywordIndex(sql string, keyword string) int {
+	keywordBytes := []byte(keyword)
 	var parenLevel int
-	for i := 0; i < len(sql); i++ {
-		switch sql[i] {
-		case '(':
+
+	for i := 0; i < len(sql); {
+		c := sql[i]
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			i = skipQuoted(sql, i)
+		case c == '-' && i+1 < len(sql) && sql[i+1] == '-':
+			i = skipLineComment(sql, i)
+		case c == '/' && i+1 < len(sql) && sql[i+1] == '*':
+			i = skipBlockComment(sql, i)
+		case c == '(':
 			parenLevel++
-		case ')':
+			i++
+		case c == ')':
 			parenLevel--
+			i++
+		case parenLevel == 0 && matchesKeywordAt(sql, i, keywordBytes):
+			return i
 		default:
-			// 检查是否在最外层遇到ORDER BY
-			if parenLevel == 0 && i+8 <= len(sql) {
-				if upper := sql[i : i+8]; strings.ToUpper(upper) == "ORDER BY" {
-					if hasRowLimit(sql[i:]) {
-						return sql
-					}
-					return strings.TrimSpace(sql[:i])
-				}
-			}
+			i++
 		}
 	}
-	return sql
+	return -1
+}
+
+// skipQuoted advances past a quoted literal or identifier starting at start,
+// honoring ” doubling and backslash escapes. It returns the index just past
+// the closing quote, or len(sql) for an unterminated quote.
+func skipQuoted(sql string, start int) int {
+	quote := sql[start]
+	for i := start + 1; i < len(sql); i++ {
+		switch {
+		case sql[i] == '\\' && i+1 < len(sql):
+			i++ // escaped character
+		case sql[i] == quote:
+			if i+1 < len(sql) && sql[i+1] == quote {
+				i++ // doubled quote stays inside the literal
+				continue
+			}
+			return i + 1
+		}
+	}
+	return len(sql)
+}
+
+func skipLineComment(sql string, start int) int {
+	if end := strings.IndexByte(sql[start:], '\n'); end >= 0 {
+		return start + end + 1
+	}
+	return len(sql)
+}
+
+func skipBlockComment(sql string, start int) int {
+	if end := strings.Index(sql[start+2:], "*/"); end >= 0 {
+		return start + 2 + end + 2
+	}
+	return len(sql)
+}
+
+// matchesKeywordAt reports whether sql[at:] starts with keyword as a whole
+// word: matched case-insensitively and delimited by non-identifier bytes
+// (or the string's edges) on both sides.
+func matchesKeywordAt(sql string, at int, keyword []byte) bool {
+	if at+len(keyword) > len(sql) {
+		return false
+	}
+	for j, b := range keyword {
+		if !equalASCIICaseInsensitive(sql[at+j], b) {
+			return false
+		}
+	}
+	beforeIdent := at > 0 && isIdentifierByte(sql[at-1])
+	after := at + len(keyword)
+	afterIdent := after < len(sql) && isIdentifierByte(sql[after])
+	return !beforeIdent && !afterIdent
+}
+
+func isIdentifierByte(b byte) bool {
+	return b == '_' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '$'
+}
+
+func equalASCIICaseInsensitive(a, b byte) bool {
+	return a == b || (a >= 'a' && a <= 'z' && a+'A'-'a' == b) || (a >= 'A' && a <= 'Z' && a+'a'-'A' == b)
 }
 
 // hasRowLimit reports whether a statement tail limits how many rows it returns.

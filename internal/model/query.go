@@ -17,12 +17,13 @@ type QueryRequest struct {
 
 // FetchQueryRequest represents a fetch query request for batch data retrieval
 type FetchQueryRequest struct {
-	DataSourceID  string `json:"dataSourceId" validate:"required,uuid4"`
-	SQL           string `json:"sql" validate:"required"`
-	SourceDialect string `json:"sourceDialect,omitempty"` // Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)
-	Type          int    `json:"type"`                    // 1-同步查询 2-流式查询
-	BatchSize     int    `json:"batch_size,omitempty"`    // 当前批次数据的预期条数，范围：1-10000，默认10000
-	Timeout       int    `json:"timeout,omitempty"`       // 获取第一批数据的预期时间，单位：秒，范围：1-1800，流式查询生效
+	DataSourceID  string        `json:"dataSourceId" validate:"required,uuid4"`
+	SQL           string        `json:"sql" validate:"required"`
+	SourceDialect string        `json:"sourceDialect,omitempty"` // Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)
+	Parameters    []interface{} `json:"parameters,omitempty"`    // Ordered values bound by the driver, never interpolated into the SQL text (#21)
+	Type          int           `json:"type"`                    // 1-同步查询 2-流式查询
+	BatchSize     int           `json:"batch_size,omitempty"`    // 当前批次数据的预期条数，范围：1-10000，默认10000
+	Timeout       int           `json:"timeout,omitempty"`       // 获取第一批数据的预期时间，单位：秒，范围：1-1800，流式查询生效
 }
 
 // FetchQueryResponse represents the response for a fetch query

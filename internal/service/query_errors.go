@@ -20,6 +20,10 @@ var (
 	// status is not active (#118). Anything but active — inactive, error, or an
 	// unexpected empty status — fails closed.
 	ErrDataSourceInactive = errors.New("data source is not active")
+	// ErrExactCountUnavailable means the engine cannot compute an exact row
+	// count for this statement shape (#23). The fetch API reports it instead
+	// of guessing a count with different semantics.
+	ErrExactCountUnavailable = errors.New("exact row count unavailable for this statement")
 )
 
 // requireActiveDataSource gates query execution on the data source being
@@ -49,6 +53,8 @@ func SafeQueryErrorMessage(err error) string {
 		return "The selected data source is not active. Ask an administrator to re-enable it, then retry the query."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):
 		return "The query session is invalid or has expired. Submit the query again."
+	case errors.Is(err, ErrExactCountUnavailable):
+		return "The database cannot compute an exact row count for this statement. Simplify the statement or fetch without a total count."
 	case errors.Is(err, security.ErrNotSelectQuery):
 		return "Only read-only SELECT queries are supported."
 	case errors.Is(err, security.ErrSQLSyntaxError), errors.Is(err, security.ErrDangerousKeyword),
