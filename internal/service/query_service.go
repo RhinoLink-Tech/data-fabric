@@ -700,6 +700,10 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to scan row: %w", err)
 		}
+		// Encode into the fetch wire representation with the column types:
+		// NULL stays null, binary bytes become base64, text bytes stay text
+		// (#123).
+		encodeFetchRow(rowValues, columns)
 		entries = append(entries, &rowValues)
 	}
 
@@ -743,12 +747,10 @@ func (qs *queryService) buildBatchColumnInfo(columnTypes []*sql.ColumnType, dbTy
 	return columns
 }
 
-// scanBatchRow scans a single row and returns string values
-func (qs *queryService) scanBatchRow(rows *sql.Rows, columnCount int) ([]interface{}, error) {
-	return qs.scanBatchRowWithArgs(rows, columnCount, nil)
-}
-
-// scanBatchRowWithArgs scans a row using reusable scan arguments when provided.
+// scanBatchRowWithArgs scans a row using reusable scan arguments when
+// provided. Values are returned as the driver delivered them; converting
+// them into the fetch wire representation is the caller's job (see
+// encodeFetchRow), because it needs the result set's column types.
 func (qs *queryService) scanBatchRowWithArgs(rows *sql.Rows, columnCount int, scanArgs []interface{}) ([]interface{}, error) {
 	result := make([]interface{}, columnCount)
 	if len(scanArgs) != columnCount {
@@ -760,17 +762,6 @@ func (qs *queryService) scanBatchRowWithArgs(rows *sql.Rows, columnCount int, sc
 
 	if err := rows.Scan(scanArgs...); err != nil {
 		return nil, err
-	}
-
-	// Normalize values in place to avoid allocating an intermediate values slice.
-	for i, value := range result {
-		if value == nil {
-			result[i] = "NULL"
-		} else if b, ok := value.([]byte); ok {
-			result[i] = string(b)
-		} else {
-			result[i] = value
-		}
 	}
 
 	return result, nil
