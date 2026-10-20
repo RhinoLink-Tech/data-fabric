@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,7 +55,7 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
 			"INVALID_REQUEST",
-			"Invalid request body: "+err.Error(),
+			"Invalid request body.",
 			"",
 			correlationID,
 		))
@@ -79,7 +80,7 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 	if err := qc.validator.Struct(&req); err != nil {
 		c.JSON(http.StatusUnprocessableEntity, response.ErrorResponse(
 			"VALIDATION_ERROR",
-			err.Error(),
+			"Query request validation failed.",
 			"",
 			correlationID,
 		))
@@ -187,7 +188,7 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
 			"INVALID_REQUEST",
-			"Invalid request body: "+err.Error(),
+			"Invalid request body.",
 			"",
 			correlationID,
 		))
@@ -201,7 +202,7 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 	if err := qc.validator.Struct(&req); err != nil {
 		c.JSON(http.StatusUnprocessableEntity, response.ErrorResponse(
 			"VALIDATION_ERROR",
-			err.Error(),
+			"Query request validation failed.",
 			"",
 			correlationID,
 		))
@@ -215,10 +216,10 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 			qc.writeQueryError(c, security.CallerFromGin(c), err)
 			return
 		}
+		slog.ErrorContext(c.Request.Context(), "query validation failed", "correlation_id", correlationID, "error", err)
 		c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
 			"valid":   false,
 			"error":   queryservice.SafeQueryErrorMessage(err),
-			"sql":     req.SQL,
 			"queryId": qc.generateQueryID(),
 		}, correlationID))
 		return
@@ -226,7 +227,6 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
 		"valid":   true,
-		"sql":     req.SQL,
 		"queryId": qc.generateQueryID(),
 	}, correlationID))
 }
@@ -243,9 +243,10 @@ func (qc *QueryController) GetQueryStats(c *gin.Context) {
 
 	stats, err := qc.queryService.GetQueryStats(c.Request.Context())
 	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "query statistics request failed", "correlation_id", correlationID, "error", err)
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"STATS_ERROR",
-			"Failed to get query statistics: "+err.Error(),
+			"Failed to get query statistics.",
 			"",
 			correlationID,
 		))
@@ -297,9 +298,10 @@ func (qc *QueryController) GetQueryHistory(c *gin.Context) {
 	}
 	page, err := qc.queryService.GetQueryHistory(c.Request.Context(), filter)
 	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "query history request failed", "correlation_id", correlationID, "error", err)
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"HISTORY_ERROR",
-			"Failed to get query history: "+err.Error(),
+			"Failed to get query history.",
 			"",
 			correlationID,
 		))
@@ -335,6 +337,7 @@ func requestingUser(c *gin.Context) string {
 // callers get the same 403 for missing and forbidden data sources (#9), so
 // existence cannot be probed through /fetch either.
 func (qc *QueryController) writeQueryError(c *gin.Context, caller *security.Caller, err error) {
+	slog.ErrorContext(c.Request.Context(), "query request failed", "correlation_id", qc.getCorrelationID(c), "error", err)
 	if (errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied)) && caller != nil && !caller.IsAdmin() {
 		c.JSON(http.StatusForbidden, response.ErrorResponse(
 			"DATASOURCE_ACCESS_DENIED",

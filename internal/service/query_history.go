@@ -6,11 +6,12 @@ import (
 	"time"
 )
 
-// QueryRecord is one executed fetch query as exposed by /query/history (#103).
+// QueryRecord is an internally retained fetch query. Its SQL remains available
+// to internal history consumers but is omitted from serialized API responses.
 type QueryRecord struct {
 	QueryID      string    `json:"queryId"`
 	DataSourceID string    `json:"dataSourceId"`
-	SQL          string    `json:"sql"`
+	SQL          string    `json:"-"`
 	Status       string    `json:"status"` // "success" or "error"
 	DurationMs   int64     `json:"durationMs"`
 	User         string    `json:"user"`
