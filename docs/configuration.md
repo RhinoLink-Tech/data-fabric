@@ -105,6 +105,21 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 
+In `auto` mode, `type: 1` explicitly keeps a request on pagination. `type: 2`
+requests streaming. Requests without a type use pagination for batches below
+1,000 rows or SQL with an explicit result limit of 1,000 rows or fewer. Larger
+unbounded batches use streaming only when `query.prefer_streaming` is true and
+the registered source driver advertises streaming support. Unsupported drivers
+fall back to pagination. If the stream concurrency limit is reached before the
+query starts, auto mode also falls back; errors after execution begins are
+returned without retrying the SQL.
+
+The response includes `executionMode` with the engine that handled the request
+(`streaming` or `pagination`). Explicit `query.execution_mode: streaming` and
+`pagination` force the configured path; `auto` applies the selection rules
+above.
+
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

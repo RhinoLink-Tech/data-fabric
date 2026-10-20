@@ -202,9 +202,16 @@ curl -X GET "http://localhost:8080/api/v1/fetch/{queryId}/{slug}/{token}?batch_s
 
 Notes:
 
-- The gateway will try to establish a streaming cursor (server-side rows). If the
-  backend does not support streaming and `query.prefer_streaming` is `false`, the
-  gateway automatically falls back to LIMIT/OFFSET continuation.
+- In `query.execution_mode: auto`, `type: 2` requests streaming. Untyped requests
+  use streaming when the batch is at least 1,000 rows, the SQL does not declare a
+  result limit of 1,000 rows or fewer, `query.prefer_streaming` is enabled, and
+  the source driver advertises streaming support. Smaller or explicitly limited
+  results use pagination.
+- If the selected driver does not support streaming, or the stream capacity is
+  full before execution begins, auto mode uses LIMIT/OFFSET pagination. Errors
+  after a stream starts are returned without re-running the SQL.
+- Every fetch response includes `executionMode` (`streaming` or `pagination`).
+  Continuation requests are routed to the session engine that owns the query.
 - Streaming sessions are maintained server-side for a configurable TTL (default 30 minutes).
 - A continuation token is single-use. Requests reusing the same token are serialized: the first accepted request advances the cursor and rotates the token; later replays with the old token are rejected. Use the token returned by each successful batch.
 - Always close or exhaust the stream; the gateway will clean up expired sessions automatically.
@@ -269,6 +276,7 @@ curl -X POST "http://localhost:8080/api/v1/fetch" \
     "queryId": "550e8400-e29b-41d4-a716-446655440000",
     "slug": "a1b2c3d4",
     "token": "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
+    "executionMode": "pagination",
     "nextUri": "/api/v1/fetch/550e8400-e29b-41d4-a716-446655440000/a1b2c3d4/e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0?batch_size=1000",
     "columns": [
       {

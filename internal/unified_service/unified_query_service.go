@@ -2,6 +2,11 @@ package unifiedservice
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
@@ -57,8 +62,7 @@ func (uqs *unifiedQueryService) GetQueryStats(ctx context.Context) (*model.Query
 // recorded query and are not separate records.
 func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	started := time.Now()
-	executionMode := uqs.getExecutionMode()
-	result, err := uqs.executeFetchQuery(ctx, caller, req)
+	result, executionMode, err := uqs.executeFetchQuery(ctx, caller, req)
 
 	status := "success"
 	var rowsRead int64
@@ -87,41 +91,159 @@ func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security
 	return result, err
 }
 
-// executeFetchQuery dispatches to the configured engine.
-func (uqs *unifiedQueryService) executeFetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
-	// Determine execution mode based on configuration
-	executionMode := uqs.getExecutionMode()
+const (
+	executionModeAuto       = "auto"
+	executionModeStreaming  = "streaming"
+	executionModePagination = "pagination"
 
-	switch executionMode {
-	case "streaming":
-		return uqs.streamingService.FetchWithStreaming(ctx, caller, req)
-	case "pagination":
-		return uqs.paginationService.FetchQuery(ctx, caller, req)
-	case "auto":
-		// Default to pagination for compatibility
-		return uqs.paginationService.FetchQuery(ctx, caller, req)
+	// Large first batches are more likely to benefit from keeping a server-side
+	// cursor open than from repeating the query with LIMIT/OFFSET.
+	autoStreamingBatchThreshold = 1000
+)
+
+var smallResultLimitPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?is)\bLIMIT\s+(?:\d+\s*,\s*)?(\d+)\b`),
+	regexp.MustCompile(`(?is)\bFETCH\s+(?:FIRST|NEXT)\s+(\d+)\s+ROWS?\s+ONLY\b`),
+	regexp.MustCompile(`(?is)\bTOP\s*\(?\s*(\d+)\s*\)?`),
+}
+
+type streamingCapabilityResolver interface {
+	SupportsStreaming(ctx context.Context, caller *security.Caller, dataSourceID string) (bool, error)
+}
+
+// executeFetchQuery selects an engine and reports the engine that actually
+// handled the request. Auto mode only falls back before query execution starts.
+func (uqs *unifiedQueryService) executeFetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, string, error) {
+	mode, err := uqs.selectExecutionMode(ctx, caller, req)
+	if err != nil {
+		return nil, mode, err
+	}
+
+	var result *model.FetchQueryResponse
+	switch mode {
+	case executionModeStreaming:
+		if uqs.streamingService == nil {
+			return nil, mode, fmt.Errorf("streaming service is not configured")
+		}
+		streamReq := req
+		if req != nil && req.Type != 2 {
+			copy := *req
+			copy.Type = 2
+			streamReq = &copy
+		}
+		result, err = uqs.streamingService.FetchWithStreaming(ctx, caller, streamReq)
+		if err != nil && strings.EqualFold(strings.TrimSpace(uqs.getExecutionMode()), executionModeAuto) &&
+			errors.Is(err, service.ErrMaxConcurrentStreams) {
+			// The streaming service returns this sentinel before opening a
+			// query, so retrying via pagination cannot duplicate execution.
+			mode = executionModePagination
+			result, err = uqs.paginationService.FetchQuery(ctx, caller, req)
+		}
+	case executionModePagination:
+		result, err = uqs.paginationService.FetchQuery(ctx, caller, req)
 	default:
-		// Default to pagination
-		return uqs.paginationService.FetchQuery(ctx, caller, req)
+		mode = executionModePagination
+		result, err = uqs.paginationService.FetchQuery(ctx, caller, req)
+	}
+
+	markExecutionMode(result, mode)
+	return result, mode, err
+}
+
+// selectExecutionMode applies the documented auto policy. Explicit config modes
+// override request hints; auto mode keeps small or explicitly limited results
+// on pagination and uses streaming for requested or large result batches only
+// when the source driver's capability advertises support.
+func (uqs *unifiedQueryService) selectExecutionMode(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (string, error) {
+	configured := strings.ToLower(strings.TrimSpace(uqs.getExecutionMode()))
+	switch configured {
+	case executionModeStreaming, executionModePagination:
+		return configured, nil
+	case executionModeAuto:
+		if req == nil || req.Type == 1 {
+			return executionModePagination, nil
+		}
+		streamRequested := req.Type == 2
+		if !streamRequested {
+			if !uqs.preferStreaming() || req.BatchSize < autoStreamingBatchThreshold || hasSmallResultLimit(req.SQL) {
+				return executionModePagination, nil
+			}
+			streamRequested = true
+		}
+		if !streamRequested || uqs.streamingService == nil {
+			return executionModePagination, nil
+		}
+		resolver, ok := uqs.streamingService.(streamingCapabilityResolver)
+		if !ok {
+			return executionModePagination, nil
+		}
+		supported, err := resolver.SupportsStreaming(ctx, caller, req.DataSourceID)
+		if err != nil {
+			return executionModePagination, err
+		}
+		if supported {
+			return executionModeStreaming, nil
+		}
+		return executionModePagination, nil
+	default:
+		return executionModePagination, nil
 	}
 }
 
-// FetchNextBatch fetches the next batch using the pagination service
-func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
-	// Determine execution mode based on configuration
-	executionMode := uqs.getExecutionMode()
+func (uqs *unifiedQueryService) preferStreaming() bool {
+	return uqs.config == nil || uqs.config.Query.PreferStreaming
+}
 
-	switch executionMode {
-	case "streaming":
-		return uqs.streamingService.FetchNextBatchWithStreaming(ctx, caller, queryID, slug, token, batchSize)
-	case "pagination":
-		return uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
-	case "auto":
-		// Default to pagination for compatibility
-		return uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
+func hasSmallResultLimit(sql string) bool {
+	for _, pattern := range smallResultLimitPatterns {
+		match := pattern.FindStringSubmatch(sql)
+		if len(match) < 2 {
+			continue
+		}
+		limit, err := strconv.Atoi(match[1])
+		if err == nil && limit <= autoStreamingBatchThreshold {
+			return true
+		}
+	}
+	return false
+}
+
+func markExecutionMode(response *model.FetchQueryResponse, mode string) {
+	if response != nil {
+		response.ExecutionMode = mode
+	}
+}
+
+// FetchNextBatch routes continuations using the forced configured mode. In auto
+// mode it probes the streaming session first, then falls back to pagination
+// only when no streaming session exists.
+func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
+	switch strings.ToLower(strings.TrimSpace(uqs.getExecutionMode())) {
+	case executionModeStreaming:
+		if uqs.streamingService == nil {
+			return nil, fmt.Errorf("streaming service is not configured")
+		}
+		result, err := uqs.streamingService.FetchNextBatchWithStreaming(ctx, caller, queryID, slug, token, batchSize)
+		markExecutionMode(result, executionModeStreaming)
+		return result, err
+	case executionModeAuto:
+		if uqs.streamingService != nil {
+			result, err := uqs.streamingService.FetchNextBatchWithStreaming(ctx, caller, queryID, slug, token, batchSize)
+			if err == nil {
+				markExecutionMode(result, executionModeStreaming)
+				return result, nil
+			}
+			if !errors.Is(err, service.ErrQuerySessionUnavailable) {
+				return nil, err
+			}
+		}
+		result, err := uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
+		markExecutionMode(result, executionModePagination)
+		return result, err
 	default:
-		// Default to pagination
-		return uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
+		result, err := uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
+		markExecutionMode(result, executionModePagination)
+		return result, err
 	}
 }
 
