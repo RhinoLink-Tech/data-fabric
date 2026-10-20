@@ -330,6 +330,14 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		return "", 0, ErrMaxConcurrentStreams
 	}
 
+	// Bind parameters are validated before any data source is touched and
+	// flow to both the stream statement and its count (#21).
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Parameters = parameters
+
 	dataSource, err := ss.datasourceRepo.GetByID(requestCtx, req.DataSourceID)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to get data source: %w", err)
@@ -427,7 +435,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 	ss.activeStreams[streamID] = stream
 	ss.streamsMutex.Unlock()
 
-	totalCount, err := ss.getRowCount(requestCtx, db, querySQL)
+	totalCount, err := ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
 	if err != nil {
 		_ = ss.CloseStream(streamID)
 		if requestCtx.Err() != nil {
@@ -875,6 +883,13 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
+	// Bind parameters are validated up front and flow to the stream
+	// statement and its count exactly as provided (#21).
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a new streaming session
 	session := &StreamingSession{
 		QueryID:      ss.generateSessionID(),
@@ -894,6 +909,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		DataSourceID:  req.DataSourceID,
 		SQL:           req.SQL,
 		SourceDialect: req.SourceDialect,
+		Parameters:    parameters,
 		Limit:         req.BatchSize,
 		Offset:        0,
 		Timeout:       req.Timeout,

@@ -34,9 +34,13 @@ type QuerySession struct {
 	// CreatorID binds a session to the identity that created it (#9): a
 	// continuation Bearer token from a different user is rejected the same
 	// way as an unknown session.
-	CreatorID        string
-	DataSourceID     string
-	SQL              string
+	CreatorID    string
+	DataSourceID string
+	SQL          string
+	// Parameters are the ordered bind values the statement was executed
+	// with (#21). They live in memory only and are re-bound for every
+	// continuation batch and count, exactly as the first batch bound them.
+	Parameters       []interface{}
 	Type             int
 	BatchSize        int
 	Cursor           interface{} // Cursor for pagination
@@ -410,6 +414,14 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
+	// Validate bind parameters before anything touches a data source (#21):
+	// unsupported shapes fail here with index-and-type messages that carry
+	// no values.
+	parameters, err := normalizeFetchParameters(req.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get data source
 	datasource, err := qs.datasourceRepo.GetByID(ctx, req.DataSourceID)
 	if err != nil {
@@ -456,6 +468,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		CreatorID:    caller.Key(),
 		DataSourceID: req.DataSourceID,
 		SQL:          sqlToExecute,
+		Parameters:   parameters,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    time.Now(),
@@ -463,7 +476,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	}
 
 	// Execute query and get first batch
-	columns, entries, totalCount, err := qs.executeBatchQuery(ctx, datasource.Type, conn, sqlToExecute, int64(req.BatchSize), 0)
+	columns, entries, totalCount, err := qs.executeBatchQuery(ctx, datasource.Type, conn, sqlToExecute, int64(req.BatchSize), 0, session.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
 	}
@@ -558,7 +571,7 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	offset := session.FetchedRows
 
 	// Execute query for next batch
-	columns, entries, _, err := qs.executeBatchQuery(ctx, datasource.Type, conn, session.SQL, int64(batchSize), offset)
+	columns, entries, _, err := qs.executeBatchQuery(ctx, datasource.Type, conn, session.SQL, int64(batchSize), offset, session.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
 	}
@@ -658,8 +671,10 @@ func (qs *queryService) buildNextURI(queryID, slug, token string, batchSize int)
 	return fmt.Sprintf("/api/v1/fetch/%s/%s/%s?batch_size=%d", queryID, slug, token, batchSize)
 }
 
-// executeBatchQuery executes a query and returns results in batch format
-func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.DatabaseType, conn interface{}, query string, batchSize, offset int64) ([]model.ColumnInfo, []*[]interface{}, int64, error) {
+// executeBatchQuery executes a query and returns results in batch format.
+// The args are bound by the driver for both the batch statement and the row
+// count — they are never interpolated into the SQL text (#21).
+func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.DatabaseType, conn interface{}, query string, batchSize, offset int64, args []interface{}) ([]model.ColumnInfo, []*[]interface{}, int64, error) {
 	// Convert conn to *sql.DB
 	db, ok := conn.(*sql.DB)
 	if !ok {
@@ -676,7 +691,7 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 	defer cancel()
 
 	// Execute the query
-	rows, err := db.QueryContext(queryCtx, paginatedSQL)
+	rows, err := db.QueryContext(queryCtx, paginatedSQL, args...)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -721,7 +736,7 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 		if batchSize > 0 && int64(len(entries)) < batchSize {
 			totalCount = int64(len(entries))
 		} else {
-			totalCount, err = qs.getRowCount(ctx, db, query)
+			totalCount, err = qs.getRowCount(ctx, db, query, args...)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to get row count: %w", err)
 			}

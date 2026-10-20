@@ -135,7 +135,7 @@ func TestExecuteBatchQueryEncodesWireRepresentation(t *testing.T) {
 
 	qs := &queryService{}
 	columns, entries, _, err := qs.executeBatchQuery(context.Background(), model.DatabaseTypeMySQL, db,
-		"SELECT note, avatar, price, count FROM mix", 2, 0)
+		"SELECT note, avatar, price, count FROM mix", 2, 0, nil)
 	if err != nil {
 		t.Fatalf("executeBatchQuery() error = %v", err)
 	}
