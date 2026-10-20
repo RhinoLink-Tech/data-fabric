@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 )
@@ -111,5 +112,58 @@ func TestUpdateDataSourceValidatesExistingTypeAndFinalConfigBeforePersistence(t 
 	}
 	if repo.updated != nil || validator.calls != 1 || validator.lastType != model.DatabaseTypeSQLServer {
 		t.Fatal("update must validate its final config using the stored source type before persistence")
+	}
+}
+
+func TestCreateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *testing.T) {
+	repo := &validatingDataSourceRepositoryStub{}
+	svc := NewDataSourceService(repo, nil, database.NewHealthChecker(nil))
+	ozoneTypes := []model.DatabaseType{
+		model.DatabaseTypeOzoneParquet,
+		model.DatabaseTypeOzoneText,
+		model.DatabaseTypeOzoneAvro,
+	}
+	for _, dbType := range ozoneTypes {
+		t.Run(string(dbType), func(t *testing.T) {
+			_, err := svc.CreateDataSource(context.Background(), nil, &CreateDataSourceRequest{
+				Name: "unsupported-ozone", Type: dbType,
+				Config: model.DataSourceConfig{Host: "ozone.example.test"},
+			})
+			if !errors.Is(err, ErrUnsupportedDataSourceType) {
+				t.Fatalf("CreateDataSource() error = %v, want unsupported-type error", err)
+			}
+			if repo.created != nil {
+				t.Fatalf("unsupported Ozone source was persisted: %+v", repo.created)
+			}
+		})
+	}
+}
+
+func TestUpdateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *testing.T) {
+	ozoneTypes := []model.DatabaseType{
+		model.DatabaseTypeOzoneParquet,
+		model.DatabaseTypeOzoneText,
+		model.DatabaseTypeOzoneAvro,
+	}
+	for _, dbType := range ozoneTypes {
+		t.Run(string(dbType), func(t *testing.T) {
+			const id = "e8c3cfb8-21dd-4f29-a197-7a616e0165ba"
+			repo := &validatingDataSourceRepositoryStub{
+				existing: &model.DataSource{
+					ID: id, Type: dbType,
+					Config: model.DataSourceConfig{Host: "ozone.example.test"},
+				},
+			}
+			svc := NewDataSourceService(repo, nil, database.NewHealthChecker(nil))
+			_, err := svc.UpdateDataSource(context.Background(), nil, id, &UpdateDataSourceRequest{
+				Config: &model.DataSourceConfig{Host: "ozone.example.test"},
+			})
+			if !errors.Is(err, ErrUnsupportedDataSourceType) {
+				t.Fatalf("UpdateDataSource() error = %v, want unsupported-type error", err)
+			}
+			if repo.updated != nil {
+				t.Fatalf("unsupported Ozone source was updated: %+v", repo.updated)
+			}
+		})
 	}
 }

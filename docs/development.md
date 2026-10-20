@@ -44,7 +44,7 @@ data-fabric/
 │           ├── warehouses/      # Snowflake, Databricks, etc.
 │           ├── olap/            # ClickHouse, Doris, etc.
 │           ├── object_storage/  # S3, MinIO, etc.
-│           ├── file_system/     # HDFS, Ozone, etc.
+│           ├── file_system/     # HDFS; Ozone placeholders are not registered
 │           └── domestic/        # OceanBase, TiDB, etc.
 ├── configs/                     # Configuration files
 ├── docs/                        # Documentation
@@ -89,7 +89,7 @@ type Driver interface {
 - `warehouses`: Cloud data warehouses (Snowflake, Redshift, BigQuery, etc.)
 - `olap`: OLAP engines (ClickHouse, Doris, StarRocks, etc.)
 - `object_storage`: Object storage (S3, MinIO, etc.)
-- `file_system`: Distributed file systems (HDFS, Ozone, etc.)
+- `file_system`: Distributed file systems (HDFS; Ozone client placeholders are not registered as supported drivers)
 - `table_formats`: Data lake table formats (Iceberg, Delta, Hudi)
 - `domestic`: Domestic databases (OceanBase, TiDB, Dameng, etc.)
 
@@ -238,7 +238,7 @@ if err := someOperation(); err != nil {
    - `warehouses/` for cloud data warehouses (Snowflake, Databricks, etc.)
    - `olap/` for OLAP engines (ClickHouse, Doris, etc.)
    - `object_storage/` for object storage systems (S3, MinIO, etc.)
-   - `file_system/` for distributed file systems (HDFS, Ozone, etc.)
+   - `file_system/` for distributed file systems (HDFS; Ozone is not currently a registered driver)
    - `domestic/` for Chinese domestic databases (OceanBase, TiDB, etc.)
 
 2. **Implement the Driver Interface**:

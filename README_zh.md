@@ -86,8 +86,10 @@ flowchart LR
 | 分析型数据库 | ClickHouse、Doris、StarRocks、Druid、Hologres |
 | 云数仓与大数据平台 | Snowflake、Databricks、Redshift、BigQuery、Hive、MaxCompute |
 | 湖仓表格式 | Apache Iceberg、Delta Lake、Apache Hudi |
-| 对象存储与文件系统 | S3、MinIO、阿里云 OSS、腾讯云 COS、Azure Blob、HDFS、Apache Ozone |
+| 对象存储与文件系统 | S3、MinIO、阿里云 OSS、腾讯云 COS、Azure Blob、HDFS |
 | 文件格式 | Parquet、ORC、Avro、CSV、JSON、XML、文本 |
+
+Apache Ozone 当前不作为受支持的数据源对外提供，因为对象操作尚未完成。驱动注册表会拒绝 Ozone 数据源配置，待操作实现并验证后再开放。详见[Ozone 支持状态](docs/ozone-support.md)。
 
 ### 驱动打包与运行占用
 

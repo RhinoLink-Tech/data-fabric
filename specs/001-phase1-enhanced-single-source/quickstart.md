@@ -14,7 +14,7 @@ Data Fabric Phase 1 extends support beyond traditional relational databases to i
 - **Object Storage**: AWS S3, MinIO, Alibaba OSS, Tencent COS, Azure Blob
 - **OLAP Engines**: ClickHouse, Apache Doris, StarRocks, Apache Druid
 - **Domestic Chinese Databases**: OceanBase, TiDB, TDSQL, GaussDB, DaMeng, KingbaseES, GBase, Oscar, OpenGauss
-- **Distributed File Systems**: HDFS, Apache Ozone
+- **Distributed File Systems**: HDFS
 
 ---
 
@@ -550,26 +550,7 @@ SELECT * FROM s3object WHERE column1 = 'value' LIMIT 100
 
 #### Apache Ozone
 
-```json
-{
-  "name": "Ozone Storage",
-  "type": "ozone_parquet",
-  "config": {
-    "endpoint": "http://ozone1:9880",
-    "bucket": "volume1/bucket1",
-    "prefix": "analytics/",
-    "fileFormat": "parquet",
-    "authentication": {
-      "type": "accessKey",
-      "accessKeyId": "ozoneuser",
-      "secretAccessKey": "ozonepassword"
-    },
-    "additionalProps": {
-      "useS3A": true
-    }
-  }
-}
-```
+Apache Ozone is not currently a supported connector. The example configuration has been removed because the client operations are placeholders and the Ozone driver types are not registered. See [the current Ozone support status](../../docs/ozone-support.md) before using this repository's connector list.
 
 ---
 
