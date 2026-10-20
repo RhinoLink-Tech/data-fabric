@@ -59,6 +59,9 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Run race-enabled core tests
+        run: go test -race ./internal/database ./internal/service
+
       - name: Build all packages
         run: go build ./...
 
