@@ -23,8 +23,8 @@ type StreamingService interface {
 	//ExecuteQuery(ctx context.Context, req *model.QueryRequest) (*model.QueryResponse, error)
 	//ValidateQuery(ctx context.Context, req *model.QueryRequest) error
 	//GetQueryStats(ctx context.Context) (*model.QueryStats, error)
-	FetchWithStreaming(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
-	FetchNextBatchWithStreaming(ctx context.Context, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error)
+	FetchWithStreaming(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
+	FetchNextBatchWithStreaming(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error)
 	// Start cleanup using the owning server's context, and close active streams
 	// after that context ends.
 	StartCleanupRoutine(ctx context.Context, interval time.Duration)
@@ -84,9 +84,11 @@ func (ss *streamingService) mapQueryEngineTypeToStandard(dbTypeName string) mode
 
 // StreamingSession represents a streaming query session for batch fetching
 type StreamingSession struct {
-	QueryID          string
-	Slug             string
-	Token            string
+	QueryID string
+	Slug    string
+	Token   string
+	// CreatorID binds a session to the identity that created it (#9).
+	CreatorID        string
 	DataSourceID     string
 	SQL              string
 	Type             int
@@ -290,7 +292,7 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 }
 
 // ExecuteStreamQuery executes a query and returns a stream ID
-func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, req *model.QueryRequest) (string, int64, error) {
+func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) (string, int64, error) {
 	requestCtx, requestCancel := withQueryTimeout(ctx, req.Timeout)
 	defer requestCancel()
 
@@ -302,6 +304,9 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, req *model.Q
 	dataSource, err := ss.datasourceRepo.GetByID(requestCtx, req.DataSourceID)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to get data source: %w", err)
+	}
+	if !caller.CanRead(dataSource) {
+		return "", 0, security.ErrDataSourceAccessDenied
 	}
 
 	// Inactive or errored sources must not open streams (#118)
@@ -837,7 +842,7 @@ func (ss *streamingService) writeCSVRows(writer io.Writer, rows [][]interface{})
 }
 
 // fetchWithStreaming executes a fetch query using the streaming approach
-func (ss *streamingService) FetchWithStreaming(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
@@ -846,6 +851,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, req *model.F
 		QueryID:      ss.generateSessionID(),
 		Slug:         ss.generateSlug(),
 		Token:        ss.generateToken(),
+		CreatorID:    caller.Key(),
 		DataSourceID: req.DataSourceID,
 		SQL:          req.SQL,
 		Type:         req.Type,
@@ -863,7 +869,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, req *model.F
 		Offset:        0,
 		Timeout:       req.Timeout,
 	}
-	streamID, totalCount, err := ss.ExecuteStreamQuery(ctx, streamReq)
+	streamID, totalCount, err := ss.ExecuteStreamQuery(ctx, caller, streamReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start streaming query: %w", err)
 	}
@@ -935,7 +941,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, req *model.F
 }
 
 // fetchNextBatchWithStreaming fetches the next batch using the streaming approach
-func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
+func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
 	ctx, cancel := withQueryTimeout(ctx, defaultQueryTimeoutSeconds)
 	defer cancel()
 
@@ -953,6 +959,12 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, que
 	}
 	if err := session.validateToken(slug, token); err != nil {
 		return nil, err
+	}
+
+	// Sessions are bound to their creator (#9). The response matches an
+	// unknown session so session existence is not disclosed.
+	if session.CreatorID != caller.Key() {
+		return nil, ErrQuerySessionUnavailable
 	}
 
 	// Re-check the data source on continuation: the source may have been

@@ -23,7 +23,7 @@ func TestExecuteStreamQueryRejectsInactiveDataSource(t *testing.T) {
 	}
 	ss := NewStreamingService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
 
-	_, _, err := ss.ExecuteStreamQuery(context.Background(), &model.QueryRequest{
+	_, _, err := ss.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: "ds-1",
 		SQL:          "DELETE FROM orders",
 	})
@@ -58,7 +58,7 @@ func TestFetchNextBatchWithStreamingRechecksDataSourceStatus(t *testing.T) {
 
 	source.Status = model.DataSourceStatusInactive
 
-	_, err := ss.FetchNextBatchWithStreaming(context.Background(), "q-1", "slug-1", "token-1", 10)
+	_, err := ss.FetchNextBatchWithStreaming(context.Background(), nil, "q-1", "slug-1", "token-1", 10)
 	if !errors.Is(err, ErrDataSourceInactive) {
 		t.Fatalf("FetchNextBatchWithStreaming() error = %v, want ErrDataSourceInactive", err)
 	}
@@ -95,7 +95,7 @@ func TestFetchNextBatchWithStreamingReportsDeletedDataSource(t *testing.T) {
 	}
 	ss.streamingSessionManager.Store(session)
 
-	_, err := ss.FetchNextBatchWithStreaming(context.Background(), "q-1", "slug-1", "token-1", 10)
+	_, err := ss.FetchNextBatchWithStreaming(context.Background(), nil, "q-1", "slug-1", "token-1", 10)
 	if !errors.Is(err, repository.ErrDataSourceNotFound) {
 		t.Fatalf("FetchNextBatchWithStreaming() error = %v, want ErrDataSourceNotFound", err)
 	}

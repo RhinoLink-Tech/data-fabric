@@ -16,7 +16,6 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -75,7 +74,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 
 	// Auto migrate database schema
-	if err := db.AutoMigrate(&model.DataSource{}); err != nil {
+	if err := repository.MigrateDataSourceSchema(db); err != nil {
 		return fmt.Errorf("database schema migration failed: %w", err)
 	}
 
@@ -201,7 +200,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&model.DataSource{}); err != nil {
+	if err := repository.MigrateDataSourceSchema(db); err != nil {
 		return fmt.Errorf("database schema migration failed: %w", err)
 	}
 	datasourceRepo, err := repository.NewDataSourceRepository(db, vault)

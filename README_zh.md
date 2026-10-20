@@ -134,16 +134,18 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 | GET | /health | 服务健康检查 | 无 |
 | GET | /api/v1/database/types | 查询服务识别的数据源类型 | 无 |
 | GET | /api/v1/database/compatibility | 查看数据库兼容性信息 | 无 |
-| GET / POST | /api/v1/datasources | 列出或创建数据源 | 开启认证时需要 Bearer |
-| GET / PUT / DELETE | /api/v1/datasources/:id | 查看、更新或删除数据源 | 开启认证时需要 Bearer |
-| POST | /api/v1/datasources/:id/activate | 启用数据源 | 开启认证时需要 Bearer |
-| POST | /api/v1/datasources/:id/deactivate | 停用数据源 | 开启认证时需要 Bearer |
+| GET / POST | /api/v1/datasources | 列出或创建数据源 | 开启认证时需要 Bearer；按所有者/租户隔离 |
+| GET / PUT / DELETE | /api/v1/datasources/:id | 查看、更新或删除数据源 | 同上；非管理员对不存在与他人数据源返回统一的 403 |
+| POST | /api/v1/datasources/:id/activate | 启用数据源 | 同上 |
+| POST | /api/v1/datasources/:id/deactivate | 停用数据源 | 同上 |
 | POST | /api/v1/database/test-connection | 测试数据源连接 | 开启认证时需要 Bearer |
 | POST | /api/v1/database/validate-config | 校验数据源配置 | 开启认证时需要 Bearer |
-| POST | /api/v1/fetch | 执行查询并获取首批结果 | 始终需要 Bearer |
-| GET | /api/v1/fetch/:query_id/:slug/:token | 获取后续结果批次 | 始终需要 Bearer |
+| GET | /api/v1/database/health | 全量数据源健康探测 | 开启认证时仅限 admin 角色 |
+| GET | /api/v1/database/connections/stats | 连接池统计 | 开启认证时仅限 admin 角色 |
+| POST | /api/v1/fetch | 执行查询并获取首批结果 | 始终需要 Bearer；需对目标数据源有读权限 |
+| GET | /api/v1/fetch/:query_id/:slug/:token | 获取后续结果批次 | 始终需要 Bearer；会话仅创建者可续拉 |
 
-请求字段、响应结构和认证行为见 [API 使用指南](docs/api_usage.md)。
+请求字段、响应结构和认证行为见 [API 使用指南](docs/api_usage.md)，数据源授权模型见 [配置文档](docs/configuration.md#data-source-authorization)。
 
 ## 项目文档
 

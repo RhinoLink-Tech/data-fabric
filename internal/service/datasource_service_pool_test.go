@@ -63,7 +63,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 
 	t.Run("config update evicts", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
-		if _, err := svc.UpdateDataSource(ctx, poolInvalidationTestID, &UpdateDataSourceRequest{
+		if _, err := svc.UpdateDataSource(ctx, nil, poolInvalidationTestID, &UpdateDataSourceRequest{
 			Config: &model.DataSourceConfig{Host: "new-host", Port: 3306, Database: "demo", Username: "u"},
 		}); err != nil {
 			t.Fatalf("UpdateDataSource failed: %v", err)
@@ -76,7 +76,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 	t.Run("status update evicts", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
 		inactive := model.DataSourceStatusInactive
-		if _, err := svc.UpdateDataSource(ctx, poolInvalidationTestID, &UpdateDataSourceRequest{Status: &inactive}); err != nil {
+		if _, err := svc.UpdateDataSource(ctx, nil, poolInvalidationTestID, &UpdateDataSourceRequest{Status: &inactive}); err != nil {
 			t.Fatalf("UpdateDataSource failed: %v", err)
 		}
 		if len(inv.ids) != 1 {
@@ -87,7 +87,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 	t.Run("name-only update keeps the pool", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
 		newName := "renamed"
-		if _, err := svc.UpdateDataSource(ctx, poolInvalidationTestID, &UpdateDataSourceRequest{Name: &newName}); err != nil {
+		if _, err := svc.UpdateDataSource(ctx, nil, poolInvalidationTestID, &UpdateDataSourceRequest{Name: &newName}); err != nil {
 			t.Fatalf("UpdateDataSource failed: %v", err)
 		}
 		if len(inv.ids) != 0 {
@@ -97,7 +97,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 
 	t.Run("delete evicts", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
-		if err := svc.DeleteDataSource(ctx, poolInvalidationTestID); err != nil {
+		if err := svc.DeleteDataSource(ctx, nil, poolInvalidationTestID); err != nil {
 			t.Fatalf("DeleteDataSource failed: %v", err)
 		}
 		if len(inv.ids) != 1 {
@@ -107,7 +107,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 
 	t.Run("deactivate evicts", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
-		if err := svc.DeactivateDataSource(ctx, poolInvalidationTestID); err != nil {
+		if err := svc.DeactivateDataSource(ctx, nil, poolInvalidationTestID); err != nil {
 			t.Fatalf("DeactivateDataSource failed: %v", err)
 		}
 		if len(inv.ids) != 1 {
@@ -117,7 +117,7 @@ func TestDataSourceMutationsInvalidatePool(t *testing.T) {
 
 	t.Run("activate evicts", func(t *testing.T) {
 		svc, inv := newInvalidationTestService()
-		if err := svc.ActivateDataSource(ctx, poolInvalidationTestID); err != nil {
+		if err := svc.ActivateDataSource(ctx, nil, poolInvalidationTestID); err != nil {
 			t.Fatalf("ActivateDataSource failed: %v", err)
 		}
 		if len(inv.ids) != 1 {

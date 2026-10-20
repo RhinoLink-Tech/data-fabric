@@ -76,7 +76,7 @@ func TestRateLimitUsesVerifiedJWTIdentity(t *testing.T) {
 	})
 
 	for _, userID := range []string{"user-1", "user-2"} {
-		token, err := jwtManager.GenerateToken(userID, userID, nil)
+		token, err := jwtManager.GenerateToken(userID, "", userID, nil)
 		if err != nil {
 			t.Fatalf("generate JWT for %s: %v", userID, err)
 		}

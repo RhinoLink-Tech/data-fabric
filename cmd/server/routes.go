@@ -119,8 +119,18 @@ func newRouter(deps routerDeps) *gin.Engine {
 		{
 			database.POST("/test-connection", jsonRequestLimit, deps.databaseController.TestDataSourceConnection)
 			database.POST("/validate-config", jsonRequestLimit, deps.databaseController.ValidateDataSourceConfig)
-			database.GET("/connections/stats", deps.databaseController.GetConnectionStats)
-			database.GET("/health", deps.databaseController.GetDatabaseHealth)
+			// Pool stats and the fleet health probe enumerate every stored
+			// data source (names, types, hosts, connectivity), so they are
+			// admin-only (#9). With enable_auth disabled there is no identity
+			// to check and the endpoints stay open, matching the switch's
+			// documented meaning for the management API.
+			if deps.cfg.Security.EnableAuth {
+				database.GET("/connections/stats", deps.authMiddleware.RequireAnyRole(security.AdminRole), deps.databaseController.GetConnectionStats)
+				database.GET("/health", deps.authMiddleware.RequireAnyRole(security.AdminRole), deps.databaseController.GetDatabaseHealth)
+			} else {
+				database.GET("/connections/stats", deps.databaseController.GetConnectionStats)
+				database.GET("/health", deps.databaseController.GetDatabaseHealth)
+			}
 		}
 	}
 

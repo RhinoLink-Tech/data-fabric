@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils"
 
@@ -39,6 +40,8 @@ type DataSourceResponse struct {
 	Type      model.DatabaseType       `json:"type"`
 	Config    DataSourceConfigResponse `json:"config"`
 	Status    model.DataSourceStatus   `json:"status"`
+	OwnerID   string                   `json:"ownerId"`
+	TenantID  string                   `json:"tenantId"`
 	CreatedAt time.Time                `json:"created_at"`
 	UpdatedAt time.Time                `json:"updated_at"`
 }
@@ -75,6 +78,8 @@ func toDataSourceResponse(dataSource *model.DataSource) *DataSourceResponse {
 		Name:      dataSource.Name,
 		Type:      dataSource.Type,
 		Status:    dataSource.Status,
+		OwnerID:   dataSource.OwnerID,
+		TenantID:  dataSource.TenantID,
 		CreatedAt: dataSource.CreatedAt,
 		UpdatedAt: dataSource.UpdatedAt,
 		Config: DataSourceConfigResponse{
@@ -154,6 +159,39 @@ func NewDataSourceController(service service.DataSourceService) *DataSourceContr
 	}
 }
 
+// datasourceAccessDeniedMessage is the single response body non-admin callers
+// get for both missing and forbidden data sources (#9): identical bytes mean
+// no existence oracle.
+const datasourceAccessDeniedMessage = "You do not have access to this data source"
+
+// mapDataSourceError writes the HTTP response for a failed data-source
+// operation (#9): non-admin callers get one uniform 403 for missing and
+// forbidden IDs, admins keep the distinct 404. internalCode/internalMsg are
+// used for unexpected failures.
+func (dc *DataSourceController) mapDataSourceError(c *gin.Context, caller *security.Caller, err error, internalCode, internalMsg string) {
+	hideExistence := caller != nil && !caller.IsAdmin()
+	switch {
+	case errors.Is(err, service.ErrDataSourceNotFound):
+		if hideExistence {
+			dc.sendError(c, http.StatusForbidden, "DATASOURCE_ACCESS_DENIED", datasourceAccessDeniedMessage)
+			return
+		}
+		dc.sendError(c, http.StatusNotFound, "DATASOURCE_NOT_FOUND", "Data source not found")
+	case errors.Is(err, security.ErrDataSourceAccessDenied):
+		if hideExistence {
+			dc.sendError(c, http.StatusForbidden, "DATASOURCE_ACCESS_DENIED", datasourceAccessDeniedMessage)
+			return
+		}
+		dc.sendError(c, http.StatusInternalServerError, internalCode, internalMsg)
+	case errors.Is(err, security.ErrDataSourceAdoptionRequired):
+		dc.sendError(c, http.StatusForbidden, "DATASOURCE_ADOPTION_REQUIRED", `Legacy data source: retry the update with "adopt": true to claim it`)
+	case errors.Is(err, service.ErrInvalidUUID):
+		dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
+	default:
+		dc.sendError(c, http.StatusInternalServerError, internalCode, internalMsg)
+	}
+}
+
 // CreateDataSource godoc
 // @Summary Create a new data source
 // @Description Creates a new data source with the provided configuration
@@ -179,7 +217,7 @@ func (dc *DataSourceController) CreateDataSource(c *gin.Context) {
 		return
 	}
 
-	dataSource, err := dc.service.CreateDataSource(c.Request.Context(), &req)
+	dataSource, err := dc.service.CreateDataSource(c.Request.Context(), security.CallerFromGin(c), &req)
 	if err != nil {
 		if errors.Is(err, service.ErrUnsupportedDataSourceType) {
 			dc.sendError(c, http.StatusBadRequest, "INVALID_TYPE", "Unsupported data source type")
@@ -215,6 +253,7 @@ func (dc *DataSourceController) CreateDataSource(c *gin.Context) {
 // @Success 200 {object} Response{data=DataSourceResponse}
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
+// @Failure 403 {object} Response
 // @Router /api/v1/datasources/{id} [get]
 func (dc *DataSourceController) GetDataSource(c *gin.Context) {
 	id := c.Param("id")
@@ -223,17 +262,9 @@ func (dc *DataSourceController) GetDataSource(c *gin.Context) {
 		return
 	}
 
-	dataSource, err := dc.service.GetDataSource(c.Request.Context(), id)
+	dataSource, err := dc.service.GetDataSource(c.Request.Context(), security.CallerFromGin(c), id)
 	if err != nil {
-		if errors.Is(err, service.ErrDataSourceNotFound) {
-			dc.sendError(c, http.StatusNotFound, "DATASOURCE_NOT_FOUND", "Data source not found")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidUUID) {
-			dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
-			return
-		}
-		dc.sendError(c, http.StatusInternalServerError, "GET_FAILED", "Failed to get data source")
+		dc.mapDataSourceError(c, security.CallerFromGin(c), err, "GET_FAILED", "Failed to get data source")
 		return
 	}
 
@@ -279,7 +310,7 @@ func (dc *DataSourceController) ListDataSources(c *gin.Context) {
 		return
 	}
 
-	response, err := dc.service.ListDataSources(c.Request.Context(), req)
+	response, err := dc.service.ListDataSources(c.Request.Context(), security.CallerFromGin(c), req)
 	if err != nil {
 		dc.sendError(c, http.StatusInternalServerError, "LIST_FAILED", "Failed to list data sources")
 		return
@@ -303,6 +334,7 @@ func (dc *DataSourceController) ListDataSources(c *gin.Context) {
 // @Success 200 {object} Response{data=DataSourceResponse}
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
+// @Failure 403 {object} Response
 // @Router /api/v1/datasources/{id} [put]
 func (dc *DataSourceController) UpdateDataSource(c *gin.Context) {
 	id := c.Param("id")
@@ -322,7 +354,7 @@ func (dc *DataSourceController) UpdateDataSource(c *gin.Context) {
 		return
 	}
 
-	dataSource, err := dc.service.UpdateDataSource(c.Request.Context(), id, &req)
+	dataSource, err := dc.service.UpdateDataSource(c.Request.Context(), security.CallerFromGin(c), id, &req)
 	if err != nil {
 		if errors.Is(err, service.ErrUnsupportedDataSourceType) {
 			dc.sendError(c, http.StatusBadRequest, "INVALID_TYPE", "Unsupported data source type")
@@ -332,15 +364,7 @@ func (dc *DataSourceController) UpdateDataSource(c *gin.Context) {
 			dc.sendError(c, http.StatusBadRequest, "INVALID_CONFIG", "Invalid data source configuration")
 			return
 		}
-		if errors.Is(err, service.ErrDataSourceNotFound) {
-			dc.sendError(c, http.StatusNotFound, "DATASOURCE_NOT_FOUND", "Data source not found")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidUUID) {
-			dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
-			return
-		}
-		dc.sendError(c, http.StatusInternalServerError, "UPDATE_FAILED", "Failed to update data source")
+		dc.mapDataSourceError(c, security.CallerFromGin(c), err, "UPDATE_FAILED", "Failed to update data source")
 		return
 	}
 
@@ -360,6 +384,7 @@ func (dc *DataSourceController) UpdateDataSource(c *gin.Context) {
 // @Success 200 {object} Response
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
+// @Failure 403 {object} Response
 // @Router /api/v1/datasources/{id} [delete]
 func (dc *DataSourceController) DeleteDataSource(c *gin.Context) {
 	id := c.Param("id")
@@ -368,17 +393,9 @@ func (dc *DataSourceController) DeleteDataSource(c *gin.Context) {
 		return
 	}
 
-	err := dc.service.DeleteDataSource(c.Request.Context(), id)
+	err := dc.service.DeleteDataSource(c.Request.Context(), security.CallerFromGin(c), id)
 	if err != nil {
-		if errors.Is(err, service.ErrDataSourceNotFound) {
-			dc.sendError(c, http.StatusNotFound, "DATASOURCE_NOT_FOUND", "Data source not found")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidUUID) {
-			dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
-			return
-		}
-		dc.sendError(c, http.StatusInternalServerError, "DELETE_FAILED", "Failed to delete data source")
+		dc.mapDataSourceError(c, security.CallerFromGin(c), err, "DELETE_FAILED", "Failed to delete data source")
 		return
 	}
 
@@ -398,6 +415,7 @@ func (dc *DataSourceController) DeleteDataSource(c *gin.Context) {
 // @Success 200 {object} Response
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
+// @Failure 403 {object} Response
 // @Router /api/v1/datasources/{id}/activate [post]
 func (dc *DataSourceController) ActivateDataSource(c *gin.Context) {
 	dc.changeDataSourceStatus(c, "activate", dc.service.ActivateDataSource)
@@ -412,6 +430,7 @@ func (dc *DataSourceController) ActivateDataSource(c *gin.Context) {
 // @Success 200 {object} Response
 // @Failure 400 {object} Response
 // @Failure 404 {object} Response
+// @Failure 403 {object} Response
 // @Router /api/v1/datasources/{id}/deactivate [post]
 func (dc *DataSourceController) DeactivateDataSource(c *gin.Context) {
 	dc.changeDataSourceStatus(c, "deactivate", dc.service.DeactivateDataSource)
@@ -425,7 +444,7 @@ func (dc *DataSourceController) DeactivateDataSource(c *gin.Context) {
 // @Success 200 {object} Response{data=service.DataSourceStatsResponse}
 // @Router /api/v1/datasources/stats [get]
 func (dc *DataSourceController) GetDataSourceStats(c *gin.Context) {
-	stats, err := dc.service.GetDataSourceStats(c.Request.Context())
+	stats, err := dc.service.GetDataSourceStats(c.Request.Context(), security.CallerFromGin(c))
 	if err != nil {
 		dc.sendError(c, http.StatusInternalServerError, "STATS_FAILED", "Failed to get data source statistics")
 		return
@@ -440,24 +459,17 @@ func (dc *DataSourceController) GetDataSourceStats(c *gin.Context) {
 
 // Helper methods
 
-func (dc *DataSourceController) changeDataSourceStatus(c *gin.Context, action string, statusFunc func(ctx context.Context, id string) error) {
+func (dc *DataSourceController) changeDataSourceStatus(c *gin.Context, action string, statusFunc func(ctx context.Context, caller *security.Caller, id string) error) {
 	id := c.Param("id")
 	if id == "" {
 		dc.sendError(c, http.StatusBadRequest, "MISSING_ID", "Data source ID is required")
 		return
 	}
 
-	err := statusFunc(c.Request.Context(), id)
+	caller := security.CallerFromGin(c)
+	err := statusFunc(c.Request.Context(), caller, id)
 	if err != nil {
-		if errors.Is(err, service.ErrDataSourceNotFound) {
-			dc.sendError(c, http.StatusNotFound, "DATASOURCE_NOT_FOUND", "Data source not found")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidUUID) {
-			dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
-			return
-		}
-		dc.sendError(c, http.StatusInternalServerError, action+"_FAILED", "Failed to "+action+" data source")
+		dc.mapDataSourceError(c, caller, err, action+"_FAILED", "Failed to "+action+" data source")
 		return
 	}
 

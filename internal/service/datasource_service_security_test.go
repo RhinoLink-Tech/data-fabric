@@ -66,7 +66,7 @@ func TestUpdateDataSourcePreservesOmittedSecrets(t *testing.T) {
 				},
 			}
 
-			updated, err := svc.UpdateDataSource(context.Background(), id, req)
+			updated, err := svc.UpdateDataSource(context.Background(), nil, id, req)
 			if err != nil {
 				t.Fatalf("UpdateDataSource() error = %v", err)
 			}

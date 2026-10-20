@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 )
 
@@ -15,11 +16,11 @@ type stubPaginationService struct {
 	err  error
 }
 
-func (s stubPaginationService) FetchQuery(_ context.Context, _ *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (s stubPaginationService) FetchQuery(_ context.Context, _ *security.Caller, _ *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	return s.resp, s.err
 }
 
-func (s stubPaginationService) FetchNextBatch(_ context.Context, _, _, _ string, _ int) (*model.FetchQueryResponse, error) {
+func (s stubPaginationService) FetchNextBatch(_ context.Context, _ *security.Caller, _, _, _ string, _ int) (*model.FetchQueryResponse, error) {
 	return s.resp, s.err
 }
 
@@ -40,7 +41,7 @@ func newTestUnifiedService(resp *model.FetchQueryResponse, err error) UnifiedQue
 func TestFetchQueryRecordsHistory(t *testing.T) {
 	unified := newTestUnifiedService(&model.FetchQueryResponse{QueryID: "q-1"}, nil)
 
-	if _, err := unified.FetchQuery(service.WithQueryUser(context.Background(), "alice"), &model.FetchQueryRequest{
+	if _, err := unified.FetchQuery(service.WithQueryUser(context.Background(), "alice"), nil, &model.FetchQueryRequest{
 		DataSourceID: "ds-1",
 		SQL:          "SELECT 1",
 	}); err != nil {
@@ -82,7 +83,7 @@ func historyList(t *testing.T, unified UnifiedQueryService, user string) *servic
 func TestFetchQueryRecordsErrorsAndAnonymousCallers(t *testing.T) {
 	unified := newTestUnifiedService(nil, errors.New("engine unavailable"))
 
-	if _, err := unified.FetchQuery(context.Background(), &model.FetchQueryRequest{
+	if _, err := unified.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 		DataSourceID: "ds-1",
 		SQL:          "SELECT 1",
 	}); err == nil {

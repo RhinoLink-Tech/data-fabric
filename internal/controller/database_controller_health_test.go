@@ -12,6 +12,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +24,7 @@ type databaseHealthDataSourceListerStub struct {
 	calls   int
 }
 
-func (s *databaseHealthDataSourceListerStub) GetAll(_ context.Context, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error) {
+func (s *databaseHealthDataSourceListerStub) GetAll(_ context.Context, _ *repository.AccessScope, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error) {
 	s.calls++
 	s.status = status
 	if s.err != nil {

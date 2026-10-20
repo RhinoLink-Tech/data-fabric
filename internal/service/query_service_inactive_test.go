@@ -35,7 +35,7 @@ func TestFetchQueryRejectsInactiveDataSource(t *testing.T) {
 			}
 			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false)
 
-			_, err := qs.FetchQuery(context.Background(), &model.FetchQueryRequest{
+			_, err := qs.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 				DataSourceID: "ds-1",
 				SQL:          "DELETE FROM orders",
 				Type:         1,
@@ -57,7 +57,7 @@ func TestFetchQueryAllowsActiveDataSource(t *testing.T) {
 	}
 	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false)
 
-	_, err := qs.FetchQuery(context.Background(), &model.FetchQueryRequest{
+	_, err := qs.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 		DataSourceID: "ds-1",
 		SQL:          "SELECT * FROM orders",
 		Type:         1,
@@ -93,7 +93,7 @@ func TestFetchNextBatchRechecksDataSourceStatus(t *testing.T) {
 
 	source.Status = model.DataSourceStatusInactive
 
-	_, err := qs.FetchNextBatch(context.Background(), "q-1", "slug-1", "token-1", 10)
+	_, err := qs.FetchNextBatch(context.Background(), nil, "q-1", "slug-1", "token-1", 10)
 	if !errors.Is(err, ErrDataSourceInactive) {
 		t.Fatalf("FetchNextBatch() error = %v, want ErrDataSourceInactive", err)
 	}

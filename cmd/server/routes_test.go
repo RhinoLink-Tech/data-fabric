@@ -24,16 +24,16 @@ const testJWTSecret = "route-test-secret-0123456789abcdef0123456789"
 
 type stubUnifiedQueryService struct{}
 
-func (stubUnifiedQueryService) ValidateQuery(context.Context, *model.QueryRequest) error {
+func (stubUnifiedQueryService) ValidateQuery(context.Context, *security.Caller, *model.QueryRequest) error {
 	return nil
 }
 func (stubUnifiedQueryService) GetQueryStats(context.Context) (*model.QueryStats, error) {
 	return &model.QueryStats{}, nil
 }
-func (stubUnifiedQueryService) FetchQuery(context.Context, *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (stubUnifiedQueryService) FetchQuery(context.Context, *security.Caller, *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	return &model.FetchQueryResponse{QueryID: "stub-query"}, nil
 }
-func (stubUnifiedQueryService) FetchNextBatch(context.Context, string, string, string, int) (*model.FetchQueryResponse, error) {
+func (stubUnifiedQueryService) FetchNextBatch(context.Context, *security.Caller, string, string, string, int) (*model.FetchQueryResponse, error) {
 	return &model.FetchQueryResponse{QueryID: "stub-query"}, nil
 }
 func (stubUnifiedQueryService) GetQueryHistory(context.Context, service.QueryHistoryFilter) (*service.QueryHistoryPage, error) {
@@ -42,29 +42,31 @@ func (stubUnifiedQueryService) GetQueryHistory(context.Context, service.QueryHis
 
 type stubDataSourceService struct{}
 
-func (stubDataSourceService) CreateDataSource(context.Context, *service.CreateDataSourceRequest) (*model.DataSource, error) {
+func (stubDataSourceService) CreateDataSource(context.Context, *security.Caller, *service.CreateDataSourceRequest) (*model.DataSource, error) {
 	return &model.DataSource{}, nil
 }
-func (stubDataSourceService) GetDataSource(context.Context, string) (*model.DataSource, error) {
+func (stubDataSourceService) GetDataSource(context.Context, *security.Caller, string) (*model.DataSource, error) {
 	return &model.DataSource{}, nil
 }
-func (stubDataSourceService) GetDataSourceByName(context.Context, string) (*model.DataSource, error) {
+func (stubDataSourceService) GetDataSourceByName(context.Context, *security.Caller, string) (*model.DataSource, error) {
 	return &model.DataSource{}, nil
 }
-func (stubDataSourceService) ListDataSources(context.Context, *service.ListDataSourcesRequest) (*service.ListDataSourcesResponse, error) {
+func (stubDataSourceService) ListDataSources(context.Context, *security.Caller, *service.ListDataSourcesRequest) (*service.ListDataSourcesResponse, error) {
 	return &service.ListDataSourcesResponse{}, nil
 }
-func (stubDataSourceService) UpdateDataSource(context.Context, string, *service.UpdateDataSourceRequest) (*model.DataSource, error) {
+func (stubDataSourceService) UpdateDataSource(context.Context, *security.Caller, string, *service.UpdateDataSourceRequest) (*model.DataSource, error) {
 	return &model.DataSource{}, nil
 }
-func (stubDataSourceService) DeleteDataSource(context.Context, string) error { return nil }
-func (stubDataSourceService) ActivateDataSource(context.Context, string) error {
+func (stubDataSourceService) DeleteDataSource(context.Context, *security.Caller, string) error {
 	return nil
 }
-func (stubDataSourceService) DeactivateDataSource(context.Context, string) error {
+func (stubDataSourceService) ActivateDataSource(context.Context, *security.Caller, string) error {
 	return nil
 }
-func (stubDataSourceService) GetDataSourceStats(context.Context) (*service.DataSourceStatsResponse, error) {
+func (stubDataSourceService) DeactivateDataSource(context.Context, *security.Caller, string) error {
+	return nil
+}
+func (stubDataSourceService) GetDataSourceStats(context.Context, *security.Caller) (*service.DataSourceStatsResponse, error) {
 	return &service.DataSourceStatsResponse{}, nil
 }
 
@@ -72,14 +74,31 @@ func (stubDataSourceService) GetDataSourceStats(context.Context) (*service.DataS
 // a Bearer token signed with the same secret the middleware verifies against.
 func newTestRouter(t *testing.T, enableAuth bool) (*gin.Engine, string) {
 	t.Helper()
+	router, tokens := newTestRouterWithTokens(t, enableAuth)
+	return router, tokens.admin
+}
+
+type testTokens struct {
+	admin string
+	user  string
+}
+
+// newTestRouterWithTokens also mints a non-admin token so route-level
+// authorization tests can act as a regular caller.
+func newTestRouterWithTokens(t *testing.T, enableAuth bool) (*gin.Engine, testTokens) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Server:   config.ServerConfig{Mode: "debug"},
 		Security: config.SecurityConfig{EnableAuth: enableAuth},
 	}
 	jwtManager := security.NewJWTManager(testJWTSecret, time.Hour)
-	token, err := jwtManager.GenerateToken("user-1", "tester", []string{"admin"})
-	if err != nil {
+	tokens := testTokens{}
+	var err error
+	if tokens.admin, err = jwtManager.GenerateToken("user-1", "", "tester", []string{"admin"}); err != nil {
+		t.Fatalf("GenerateToken() error = %v", err)
+	}
+	if tokens.user, err = jwtManager.GenerateToken("user-2", "acme", "plain-user", []string{"user"}); err != nil {
 		t.Fatalf("GenerateToken() error = %v", err)
 	}
 	router := newRouter(routerDeps{
@@ -91,7 +110,7 @@ func newTestRouter(t *testing.T, enableAuth bool) (*gin.Engine, string) {
 		databaseController:       controller.NewDatabaseController(nil, nil),
 		sqlTranslationController: controller.NewSQLTranslationController(),
 	})
-	return router, token
+	return router, tokens
 }
 
 // TestFetchEndpointsAlwaysRequireAuth is the #6 regression test: /fetch must
@@ -240,6 +259,60 @@ func TestQueryEndpointsRegisteredAndAuthenticated(t *testing.T) {
 					t.Fatalf("status = %d, want %d; body: %s", recorder.Code, tt.want, recorder.Body.String())
 				}
 			})
+		}
+	}
+}
+
+// TestDatabaseFleetEndpointsAreAdminOnly is the #9 route gate: pool stats and
+// the fleet health probe enumerate every stored data source (names, types,
+// hosts, connectivity), so with enable_auth on, only admins may reach them.
+// The controllers are wired with nil dependencies, so a caller that gets
+// past the gate sees the handler's 503 — which is exactly what distinguishes
+// "rejected by the route" (401/403) from "reached the handler" here.
+func TestDatabaseFleetEndpointsAreAdminOnly(t *testing.T) {
+	paths := []string{"/api/v1/database/connections/stats", "/api/v1/database/health"}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			router, tokens := newTestRouterWithTokens(t, true)
+
+			requests := []struct {
+				name       string
+				authHeader string
+				want       int
+			}{
+				{"no token", "", http.StatusUnauthorized},
+				{"non-admin token", "Bearer " + tokens.user, http.StatusForbidden},
+				{"admin token reaches handler", "Bearer " + tokens.admin, http.StatusServiceUnavailable},
+			}
+			for _, tt := range requests {
+				t.Run(tt.name, func(t *testing.T) {
+					req := httptest.NewRequest(http.MethodGet, path, nil)
+					if tt.authHeader != "" {
+						req.Header.Set("Authorization", tt.authHeader)
+					}
+					recorder := httptest.NewRecorder()
+					router.ServeHTTP(recorder, req)
+					if recorder.Code != tt.want {
+						t.Fatalf("status = %d, want %d; body: %s", recorder.Code, tt.want, recorder.Body.String())
+					}
+				})
+			}
+		})
+	}
+}
+
+// With enable_auth disabled there is no identity to check: the fleet
+// endpoints stay reachable without credentials, matching the switch's
+// documented meaning for the management API.
+func TestDatabaseFleetEndpointsOpenWhenAuthDisabled(t *testing.T) {
+	router, _ := newTestRouterWithTokens(t, false)
+	for _, path := range []string{"/api/v1/database/connections/stats", "/api/v1/database/health"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status = %d, want 503 (handler reached without credentials); body: %s", path, recorder.Code, recorder.Body.String())
 		}
 	}
 }
