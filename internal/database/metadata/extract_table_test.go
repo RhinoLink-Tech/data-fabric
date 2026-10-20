@@ -194,3 +194,87 @@ func TestExtractTableSchemaRejectsUnsupportedSourceBeforeOpeningConnection(t *te
 		t.Fatalf("connection pool called %d times for unsupported source", pool.calls)
 	}
 }
+
+// newLookupExtractor wires an extractor to a canned source of the given type.
+func newLookupExtractor(t *testing.T, sourceType model.DatabaseType, lookup func(query string) driver.Rows) *MetadataExtractor {
+	t.Helper()
+
+	db := sql.OpenDB(cannedConnector{lookup: lookup})
+	return &MetadataExtractor{
+		connPool: &cannedConnectionProvider{db: db},
+		sources:  &dataSourceLookupStub{dataSource: &model.DataSource{ID: "source-under-test", Type: sourceType}},
+		registry: database.NewDriverRegistry(),
+	}
+}
+
+// The MySQL/MariaDB information_schema table query is scanned with the same
+// three-column scan as every other dialect: a column-count mismatch here
+// previously made every real MySQL table masquerade as not found (#201
+// review).
+func TestExtractTableSchemaScansMySQLInformationSchema(t *testing.T) {
+	extractor := newLookupExtractor(t, model.DatabaseTypeMySQL, func(query string) driver.Rows {
+		switch {
+		case strings.Contains(query, "table_schema = DATABASE()"):
+			return &cannedRows{
+				columns: []string{"table_name", "table_type", "table_schema"},
+				values: [][]driver.Value{
+					{"orders", "BASE TABLE", "sample"},
+					{"customers", "BASE TABLE", "sample"},
+				},
+			}
+		case strings.Contains(query, "SHOW COLUMNS FROM orders"):
+			return &cannedRows{
+				columns: []string{"Field", "Type", "Null", "Key", "Default", "Extra"},
+				values: [][]driver.Value{
+					{"id", "bigint(20)", "NO", "PRI", nil, ""},
+					{"amount", "decimal(10,2)", "YES", "", nil, ""},
+				},
+			}
+		default:
+			return &cannedRows{}
+		}
+	})
+
+	table, err := extractor.ExtractTableSchema(context.Background(), "source-under-test", "orders")
+	if err != nil {
+		t.Fatalf("ExtractTableSchema() error = %v", err)
+	}
+	if table.Name != "orders" || table.Schema != "sample" || table.Type != "BASE TABLE" {
+		t.Fatalf("table identity = %q/%q/%q, want orders/sample/BASE TABLE", table.Name, table.Schema, table.Type)
+	}
+	if len(table.Columns) != 2 {
+		t.Fatalf("columns = %+v, want 2", table.Columns)
+	}
+	if table.Columns[0].Name != "id" || table.Columns[0].Type != "bigint(20)" || table.Columns[0].Nullable {
+		t.Errorf("first column = %+v, want id/bigint(20)/not nullable", table.Columns[0])
+	}
+	if table.Columns[1].Name != "amount" || !table.Columns[1].Nullable {
+		t.Errorf("second column = %+v, want amount/nullable (SHOW COLUMNS YES)", table.Columns[1])
+	}
+}
+
+// Row-scan failures surface as errors instead of being swallowed into a
+// not-found verdict (#201 review: findTable must not hide real tables).
+func TestExtractTableSchemaPropagatesScanErrors(t *testing.T) {
+	extractor := newLookupExtractor(t, model.DatabaseTypePostgreSQL, func(query string) driver.Rows {
+		if strings.Contains(query, "FROM pg_tables") {
+			// Two columns where the scan expects three.
+			return &cannedRows{
+				columns: []string{"tablename", "tabletype"},
+				values:  [][]driver.Value{{"orders", "TABLE"}},
+			}
+		}
+		return &cannedRows{}
+	})
+
+	_, err := extractor.ExtractTableSchema(context.Background(), "source-under-test", "orders")
+	if err == nil {
+		t.Fatal("ExtractTableSchema() succeeded despite a row-scan failure")
+	}
+	if errors.Is(err, ErrTableNotFound) {
+		t.Fatalf("scan failure masqueraded as a missing table: %v", err)
+	}
+	if !strings.Contains(err.Error(), "failed to look up table") {
+		t.Fatalf("error = %v, want a table-lookup failure", err)
+	}
+}
