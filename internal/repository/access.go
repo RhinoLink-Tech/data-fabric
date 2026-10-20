@@ -46,6 +46,16 @@ const legacyNameIndex = "idx_data_sources_name"
 // pre-#9 globally unique name index. It is idempotent and runs at startup
 // before any repository use.
 func MigrateDataSourceSchema(db *gorm.DB) error {
+	// MySQL reports a single-column unique index as a unique column during
+	// AutoMigrate's column inspection. GORM then tries to drop a constraint
+	// named uni_data_sources_name using DROP FOREIGN KEY, which fails because
+	// the historical schema stores it as an index. Remove the known legacy
+	// index first, before AutoMigrate inspects that column.
+	if db.Migrator().HasTable(&model.DataSource{}) {
+		if err := retireLegacyNameIndex(db); err != nil {
+			return err
+		}
+	}
 	if err := db.AutoMigrate(&model.DataSource{}); err != nil {
 		return err
 	}
@@ -53,9 +63,8 @@ func MigrateDataSourceSchema(db *gorm.DB) error {
 }
 
 // retireLegacyNameIndex drops the old single-column unique index on name.
-// AutoMigrate never drops indexes; without this step the old index would keep
-// rejecting same-name sources across tenants even after the composite
-// (tenant_id, name) index exists.
+// AutoMigrate never drops indexes; the pre-migration call also avoids a
+// MySQL/GORM unique-index-to-constraint mismatch on historical schemas.
 func retireLegacyNameIndex(db *gorm.DB) error {
 	migrator := db.Migrator()
 	if !migrator.HasIndex(&model.DataSource{}, legacyNameIndex) {
