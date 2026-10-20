@@ -113,9 +113,8 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 // FetchNextBatch godoc
 // @Summary Fetch next batch of data
 // @Description Fetches the next batch of data using the query ID, slug, and token.
-// This endpoint retrieves subsequent batches for streaming queries (created by
-// either `/query` when it returned a `nextUri` or `/fetch`), and also supports
-// offset-based continuation for legacy sessions that fall back to LIMIT/OFFSET.
+// This endpoint retrieves subsequent batches for sessions created by POST
+// `/fetch`. It supports streaming cursors and offset-based pagination.
 // @Tags queries
 // @Accept json
 // @Produce json
