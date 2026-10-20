@@ -2,7 +2,7 @@
 
 **Status:** Candidate instructions. Apply only after a stable v2.0.0 release is published.
 
-The only currently published starting release is v1.2.0. Upgrade paths from untagged snapshots or custom builds need a separate rehearsal. The security-maintenance candidate in #206 is not a published release.
+The latest published stable release is v1.2.0. This guide only covers upgrading from v1.2.0; v1.0.0, v1.1.0, untagged snapshots, and custom builds need a separate rehearsal before upgrading. The security-maintenance candidate in #206 is not a published release.
 
 ## Before upgrading
 
