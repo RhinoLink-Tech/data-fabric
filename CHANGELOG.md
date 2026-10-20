@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Align the container runtime and documentation on Go 1.26.1, port 8080, and a non-root application user; add a reproducible Docker build/run example and CI image smoke test (#30).
 - Validate required startup settings, ports, query execution mode, and HTTP server limits before database initialization; reject malformed MCP listener ports and document fail-closed schema migration behavior (#31).
+- Generate dialect-correct second-page SQL for SQL Server and Oracle; add connection recovery, concurrent close, pagination, and COUNT rewrite regression coverage (#34).
 
 ### Security
 - Query API errors now use stable public messages and keep submitted SQL, query-history SQL, and backend error details out of responses; detailed failures are recorded in structured server logs (#29).

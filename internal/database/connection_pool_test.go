@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	sqldriver "database/sql/driver"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -161,6 +163,8 @@ func (stubPoolDriver) Open(string) (*sql.DB, error)            { return sql.Open
 
 const stubPoolTestType = model.DatabaseType("__stub_pool_test__")
 
+const recoveryPoolTestType = model.DatabaseType("__recovery_pool_test__")
+
 func stubPoolDataSource(id string) *model.DataSource {
 	return &model.DataSource{
 		ID:     id,
@@ -286,5 +290,157 @@ func TestInvalidateDataSourceClosesAndIsIdempotent(t *testing.T) {
 
 	if err := pool.InvalidateDataSource("ds-1"); err != nil {
 		t.Errorf("second InvalidateDataSource for a pool-less source returned an error: %v", err)
+	}
+}
+
+type recoveryPoolState struct {
+	failedGeneration atomic.Int32
+	openCount        atomic.Int32
+	closeCount       atomic.Int32
+}
+
+type recoveryPoolDriver struct {
+	drivers.Driver
+	state *recoveryPoolState
+}
+
+func (d recoveryPoolDriver) BuildDSN(*model.DataSourceConfig) string { return "recovery://" }
+
+func (d recoveryPoolDriver) Open(string) (*sql.DB, error) {
+	generation := d.state.openCount.Add(1)
+	return sql.OpenDB(recoveryPoolConnector{state: d.state, generation: generation}), nil
+}
+
+type recoveryPoolConnector struct {
+	state      *recoveryPoolState
+	generation int32
+}
+
+func (c recoveryPoolConnector) Connect(context.Context) (sqldriver.Conn, error) {
+	return recoveryPoolConn{state: c.state, generation: c.generation}, nil
+}
+
+func (c recoveryPoolConnector) Driver() sqldriver.Driver { return failingDriver{} }
+
+type recoveryPoolConn struct {
+	state      *recoveryPoolState
+	generation int32
+}
+
+func (recoveryPoolConn) Prepare(string) (sqldriver.Stmt, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c recoveryPoolConn) Close() error {
+	c.state.closeCount.Add(1)
+	return nil
+}
+
+func (recoveryPoolConn) Begin() (sqldriver.Tx, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c recoveryPoolConn) Ping(context.Context) error {
+	if c.state.failedGeneration.Load() == c.generation {
+		return errors.New("injected ping failure")
+	}
+	return nil
+}
+
+func TestGetConnectionRebuildsAfterPingFailure(t *testing.T) {
+	state := &recoveryPoolState{}
+	GetDriverRegistry().RegisterDriver(recoveryPoolTestType, recoveryPoolDriver{state: state})
+	pool := NewConnectionPool(nil, nil, false)
+	defer pool.CloseAll()
+
+	dataSource := stubPoolDataSource("ds-recovery")
+	dataSource.Type = recoveryPoolTestType
+	first, err := pool.GetConnection(context.Background(), dataSource)
+	if err != nil {
+		t.Fatalf("initial GetConnection failed: %v", err)
+	}
+	if got := state.openCount.Load(); got != 1 {
+		t.Fatalf("opened %d pools on initial connection, want 1", got)
+	}
+
+	state.failedGeneration.Store(1)
+	result := make(chan struct {
+		db  *sql.DB
+		err error
+	}, 1)
+	go func() {
+		db, err := pool.GetConnection(context.Background(), dataSource)
+		result <- struct {
+			db  *sql.DB
+			err error
+		}{db: db, err: err}
+	}()
+
+	select {
+	case got := <-result:
+		if got.err != nil {
+			t.Fatalf("GetConnection failed to replace an unhealthy pool: %v", got.err)
+		}
+		if got.db == first {
+			t.Fatal("GetConnection returned the same pool after its health check failed")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("GetConnection did not release the pool lock after a failed health check")
+	}
+
+	if got := state.openCount.Load(); got != 2 {
+		t.Errorf("opened %d pools after recovery, want 2 total", got)
+	}
+	if !pool.IsHealthy(dataSource.ID) {
+		t.Error("rebuilt connection is not marked healthy")
+	}
+	if got := state.closeCount.Load(); got == 0 {
+		t.Error("failed connection was not closed during rebuild")
+	}
+}
+
+func TestConcurrentConnectionCloseIsIdempotent(t *testing.T) {
+	state := &recoveryPoolState{}
+	db := sql.OpenDB(recoveryPoolConnector{state: state, generation: 1})
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatalf("prepare fake connection: %v", err)
+	}
+
+	pool := NewConnectionPool(nil, nil, false)
+	const dataSourceID = "ds-concurrent-close"
+	pool.pools[dataSourceID] = db
+	pool.fingerprints[dataSourceID] = "test"
+	pool.setHealth(dataSourceID, true)
+
+	var workers sync.WaitGroup
+	workers.Add(3)
+	go func() {
+		defer workers.Done()
+		if err := pool.CloseConnection(dataSourceID); err != nil && !strings.Contains(err.Error(), "connection not found") {
+			t.Errorf("CloseConnection returned unexpected error: %v", err)
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		if err := pool.InvalidateDataSource(dataSourceID); err != nil {
+			t.Errorf("InvalidateDataSource returned error: %v", err)
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		if err := pool.CloseAll(); err != nil {
+			t.Errorf("CloseAll returned error: %v", err)
+		}
+	}()
+	workers.Wait()
+
+	if got := state.closeCount.Load(); got != 1 {
+		t.Errorf("underlying connection closed %d times, want exactly 1", got)
+	}
+	if stats := pool.GetStats(); len(stats) != 0 {
+		t.Errorf("pool still contains connections after concurrent close: %#v", stats)
+	}
+	if pool.IsHealthy(dataSourceID) {
+		t.Error("closed data source is still reported healthy")
 	}
 }

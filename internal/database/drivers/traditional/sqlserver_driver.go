@@ -26,9 +26,129 @@ func NewSQLServerDriver() *SQLServerDriver {
 
 // ApplyBatchPagination applies pagination to SQL query for batch processing
 func (sd *SQLServerDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// SQL Server uses OFFSET/FETCH for pagination (available since SQL Server 2012)
-	// Need to ensure the query has ORDER BY clause for OFFSET/FETCH to work
-	return fmt.Sprintf("%s ORDER BY (SELECT NULL) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, batchSize), nil
+	sql = strings.TrimSpace(sql)
+	if hasTopLevelSQLKeyword(sql, "OFFSET") || hasTopLevelSQLKeyword(sql, "FETCH") || hasTopLevelSQLKeyword(sql, "TOP") {
+		// Apply a second page to the result of an already paginated statement.
+		sql = fmt.Sprintf("SELECT * FROM (%s) AS batch_query", sql)
+	}
+	if !hasTopLevelOrderBy(sql) {
+		// SQL Server requires ORDER BY for OFFSET/FETCH. A nested ORDER BY does
+		// not order the outer query, so only a top-level clause is sufficient.
+		sql += " ORDER BY (SELECT NULL)"
+	}
+	return fmt.Sprintf("%s OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, batchSize), nil
+}
+
+// findTopLevelSQLKeyword skips nested expressions, quoted text, and SQL
+// comments so pagination keywords inside a CTE or string do not affect the
+// outer statement.
+func findTopLevelSQLKeyword(query, keyword string, start int) int {
+	depth := 0
+	for index := 0; index < len(query); {
+		switch query[index] {
+		case 39, 34, 96:
+			index = skipSQLQuoted(query, index, query[index])
+		case '[':
+			index = skipSQLBracketIdentifier(query, index)
+		case '-':
+			if index+1 < len(query) && query[index+1] == '-' {
+				index += 2
+				for index < len(query) && query[index] != 10 {
+					index++
+				}
+			} else {
+				index++
+			}
+		case '/':
+			if index+1 < len(query) && query[index+1] == '*' {
+				index += 2
+				for index+1 < len(query) && !(query[index] == '*' && query[index+1] == '/') {
+					index++
+				}
+				if index+1 < len(query) {
+					index += 2
+				}
+			} else {
+				index++
+			}
+		case '(':
+			depth++
+			index++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+			index++
+		default:
+			if index >= start && depth == 0 && index+len(keyword) <= len(query) &&
+				strings.EqualFold(query[index:index+len(keyword)], keyword) &&
+				(index == 0 || !isSQLWordByte(query[index-1])) &&
+				(index+len(keyword) == len(query) || !isSQLWordByte(query[index+len(keyword)])) {
+				return index
+			}
+			index++
+		}
+	}
+	return -1
+}
+
+func hasTopLevelSQLKeyword(query, keyword string) bool {
+	return findTopLevelSQLKeyword(query, keyword, 0) >= 0
+}
+
+func hasTopLevelOrderBy(query string) bool {
+	for start := 0; start < len(query); {
+		index := findTopLevelSQLKeyword(query, "ORDER", start)
+		if index < 0 {
+			return false
+		}
+		afterOrder := index + len("ORDER")
+		for afterOrder < len(query) && isSQLSpace(query[afterOrder]) {
+			afterOrder++
+		}
+		if afterOrder+len("BY") <= len(query) &&
+			strings.EqualFold(query[afterOrder:afterOrder+len("BY")], "BY") &&
+			(afterOrder+len("BY") == len(query) || !isSQLWordByte(query[afterOrder+len("BY")])) {
+			return true
+		}
+		start = afterOrder
+	}
+	return false
+}
+
+func skipSQLQuoted(query string, start int, quote byte) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] == quote {
+			if index+1 < len(query) && query[index+1] == quote {
+				index++
+				continue
+			}
+			return index + 1
+		}
+	}
+	return len(query)
+}
+
+func skipSQLBracketIdentifier(query string, start int) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] == ']' {
+			if index+1 < len(query) && query[index+1] == ']' {
+				index++
+				continue
+			}
+			return index + 1
+		}
+	}
+	return len(query)
+}
+
+func isSQLSpace(value byte) bool {
+	return value == ' ' || value == 9 || value == 10 || value == 13
+}
+
+func isSQLWordByte(value byte) bool {
+	return value == '_' || value >= '0' && value <= '9' ||
+		value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
 }
 
 // Open opens a connection to SQL Server database

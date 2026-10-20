@@ -124,6 +124,8 @@ func TestBuildCountSQLKeepsTheQueryCountable(t *testing.T) {
 		{name: "ordering with an offset is kept", sql: "SELECT * FROM users ORDER BY id LIMIT 5 OFFSET 10", want: "SELECT * FROM users ORDER BY id LIMIT 5 OFFSET 10"},
 		{name: "ordering by a column whose name starts with a keyword is dropped", sql: "SELECT * FROM users ORDER BY limit_count", want: "SELECT * FROM users"},
 		{name: "ordering followed by a fetch is kept", sql: "SELECT * FROM users ORDER BY id FETCH FIRST 5 ROWS ONLY", want: "SELECT * FROM users ORDER BY id FETCH FIRST 5 ROWS ONLY"},
+		{name: "cte ordering remains inside the cte while outer ordering is dropped", sql: "WITH recent AS (SELECT id FROM users ORDER BY created_at) SELECT id FROM recent ORDER BY id", want: "WITH recent AS (SELECT id FROM users ORDER BY created_at) SELECT id FROM recent"},
+		{name: "limited subquery ordering remains when outer ordering is dropped", sql: "SELECT * FROM (SELECT id FROM users ORDER BY created_at LIMIT 10) AS recent ORDER BY id", want: "SELECT * FROM (SELECT id FROM users ORDER BY created_at LIMIT 10) AS recent"},
 	}
 
 	for _, tt := range tests {
