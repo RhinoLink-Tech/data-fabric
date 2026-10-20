@@ -56,6 +56,12 @@ func (sv *SQLValidator) validateStatement(sql string, supportsThreePartCatalogNa
 	// Normalize SQL first (removes trailing semicolon and whitespace)
 	normalizedSQL := sv.normalizeSQL(sql)
 
+	// Mask string literals before the text heuristics below run: the checks
+	// judge SQL structure, and with literal contents replaced by a placeholder
+	// they can no longer flag keywords, comments, or patterns that appear
+	// inside what is user-controlled data (#19).
+	maskedSQL := maskStringLiterals(normalizedSQL)
+
 	// Parse SQL statement (use normalized SQL). Vitess accepts schema.table but
 	// not Trino's catalog.schema.table form, so retry with a validation-only
 	// copy that removes catalog prefixes. The SQL used for execution is intact.
@@ -75,13 +81,15 @@ func (sv *SQLValidator) validateStatement(sql string, supportsThreePartCatalogNa
 		return ErrNotSelectQuery
 	}
 
-	// Check for dangerous keywords (use normalized SQL)
-	if err := sv.checkDangerousKeywords(normalizedSQL); err != nil {
+	// Check for dangerous keywords (masked SQL: keywords inside literals are
+	// data, not structure)
+	if err := sv.checkDangerousKeywords(maskedSQL); err != nil {
 		return err
 	}
 
-	// Check for potential SQL injection patterns (use normalized SQL)
-	if err := sv.checkSQLInjection(normalizedSQL); err != nil {
+	// Check for potential SQL injection patterns (masked SQL for the pattern
+	// scan; the original for character-level signals)
+	if err := sv.checkSQLInjection(normalizedSQL, maskedSQL); err != nil {
 		return err
 	}
 
@@ -241,10 +249,8 @@ func (sv *SQLValidator) basicValidation(sql string) error {
 		return ErrQueryTooLong
 	}
 
-	// Check for comment patterns that might hide malicious code
-	if strings.Contains(sql, "--") || strings.Contains(sql, "/*") || strings.Contains(sql, "*/") {
-		return ErrSQLInjection
-	}
+	// Comment patterns are rejected in checkSQLInjection on literal-masked
+	// SQL: a "--" inside a string literal is data, not a comment (#19).
 
 	return nil
 }
@@ -302,19 +308,23 @@ func (sv *SQLValidator) checkDangerousKeywords(sql string) error {
 	return nil
 }
 
-func (sv *SQLValidator) checkSQLInjection(sql string) error {
+// checkSQLInjection scans for injection-shaped structure. The pattern scan
+// runs on maskedSQL — string literals replaced by "?" — so literal contents
+// cannot look like comments, semicolons, or write statements (#19); sql keeps
+// the original text for character-level signals.
+func (sv *SQLValidator) checkSQLInjection(sql, maskedSQL string) error {
 	// Check for suspicious patterns
 	// Note: sql should already be normalized (trailing semicolon removed)
 	suspiciousPatterns := []string{
-		// SQL comment patterns
-		"--",
+		// SQL comment patterns (escaped: a bare "/*" would quantify the
+		// slash and match everything, "*/" would be an invalid regex)
+		"--", "\\/\\*", "\\*\\/",
 		// Multiple statements (check for multiple semicolons - should not exist after normalization)
 		";.*;",       // Multiple semicolons indicate multiple statements
 		";\\s+[a-z]", // Content after semicolon (another statement)
-		// UNION with SELECT in unusual places (potential injection)
-		"union.*select.*union",
-		// String concatenation patterns (multiple quotes in suspicious context)
-		"'.*'.*'.*'",
+		// Comparing two string literals ('1'='1') is the masked form of the
+		// classic tautology probe; real columns never become placeholders.
+		"\\?\\s*=\\s*\\?",
 		// Or patterns with suspicious operators (injection patterns)
 		"\\bor\\s+1\\s*=\\s*1\\b",  // OR 1=1 (injection pattern)
 		"\\band\\s+1\\s*=\\s*1\\b", // AND 1=1 (injection pattern)
@@ -328,7 +338,7 @@ func (sv *SQLValidator) checkSQLInjection(sql string) error {
 		"\\bdrop\\s+table\\b", "\\bdelete\\s+from\\b", "\\bupdate\\s+.*\\s+set\\b", "\\binsert\\s+into\\b",
 	}
 
-	lowerSQL := strings.ToLower(sql)
+	lowerSQL := strings.ToLower(maskedSQL)
 
 	for _, pattern := range suspiciousPatterns {
 		matched, _ := regexp.MatchString(pattern, lowerSQL)
@@ -338,14 +348,19 @@ func (sv *SQLValidator) checkSQLInjection(sql string) error {
 	}
 
 	// Check for unusual character sequences
-	if sv.hasSuspiciousCharacters(sql) {
+	if sv.hasSuspiciousCharacters(sql, maskedSQL) {
 		return ErrSQLInjection
 	}
 
 	return nil
 }
 
-func (sv *SQLValidator) hasSuspiciousCharacters(sql string) bool {
+// hasSuspiciousCharacters reports character-level anomalies. Non-printable
+// bytes are counted on the original sql — control characters are suspicious
+// even inside literals. The repeated-character heuristic runs on maskedSQL
+// and letters only: runs like "000" in 1000 or 0.0001 are ordinary numeric
+// literals, not obfuscation (#19).
+func (sv *SQLValidator) hasSuspiciousCharacters(sql, maskedSQL string) bool {
 	// Count non-printable characters
 	suspiciousCount := 0
 	for _, r := range sql {
@@ -358,13 +373,13 @@ func (sv *SQLValidator) hasSuspiciousCharacters(sql string) bool {
 	}
 
 	// Check for repeated characters (might indicate obfuscation)
-	// Only check for 3+ consecutive identical non-space characters
-	if len(sql) > 10 {
-		for i := 0; i < len(sql)-2; i++ {
-			char := sql[i]
-			// Skip spaces and common SQL characters that might repeat legitimately
-			if char != ' ' && char != '\t' && char != '\n' &&
-				sql[i] == sql[i+1] && sql[i+1] == sql[i+2] {
+	// Only check for 3+ consecutive identical letters outside literals
+	if len(maskedSQL) > 10 {
+		for i := 0; i < len(maskedSQL)-2; i++ {
+			char := maskedSQL[i]
+			isLetter := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z'
+			if isLetter &&
+				maskedSQL[i] == maskedSQL[i+1] && maskedSQL[i+1] == maskedSQL[i+2] {
 				return true
 			}
 		}
@@ -384,6 +399,58 @@ func (sv *SQLValidator) normalizeSQL(sql string) string {
 	}
 
 	return sql
+}
+
+// maskStringLiterals replaces every single-quoted string literal, including
+// its delimiters, with a "?" placeholder. The validator's text heuristics
+// judge SQL structure, and masked literals can no longer match keywords,
+// comments, or injection patterns that live in user-controlled data (#19).
+// Quoted identifiers ("…" / `…`) are left intact: they name objects, and
+// masking them would make two different columns indistinguishable to the
+// literal-comparison probe. Escapes follow the MySQL syntax the vitess
+// parser behind the AST gate uses: ” doubling and backslash escapes.
+func maskStringLiterals(sql string) string {
+	hasLiteral := false
+	for i := 0; i < len(sql); i++ {
+		if sql[i] == '\'' {
+			hasLiteral = true
+			break
+		}
+	}
+	if !hasLiteral {
+		return sql
+	}
+
+	var out strings.Builder
+	out.Grow(len(sql))
+	for i := 0; i < len(sql); {
+		if sql[i] != '\'' {
+			out.WriteByte(sql[i])
+			i++
+			continue
+		}
+		// Skip the whole literal and emit one placeholder. An unterminated
+		// literal consumes the rest of the input; the parser rejects the
+		// original anyway.
+		i++
+		for i < len(sql) {
+			if sql[i] == '\\' && i+1 < len(sql) {
+				i += 2
+				continue
+			}
+			if sql[i] == '\'' {
+				if i+1 < len(sql) && sql[i+1] == '\'' {
+					i += 2 // escaped quote inside the literal
+					continue
+				}
+				i++ // closing delimiter
+				break
+			}
+			i++
+		}
+		out.WriteByte('?')
+	}
+	return out.String()
 }
 
 // GetTableName extracts table name from SELECT statement
