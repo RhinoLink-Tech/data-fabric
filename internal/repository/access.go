@@ -8,9 +8,8 @@ import (
 )
 
 // AccessScope narrows list and count queries to the data sources a non-admin
-// caller may see (#9). It mirrors security.Caller.CanRead: own records,
-// records of the caller's real tenant, and legacy rows. A nil scope means no
-// restriction (admin or authorization-disabled mode).
+// caller may see (#9): own records and records of the caller's real tenant.
+// A nil scope means no restriction (admin or authorization-disabled mode).
 type AccessScope struct {
 	OwnerID  string
 	TenantID string
@@ -26,16 +25,16 @@ func ScopeForCaller(caller *security.Caller) *AccessScope {
 }
 
 // apply adds the scope predicate to a query. A caller without a tenant claim
-// is not matched against the empty tenant: they see their own records and
-// legacy rows, not other tenant-less users' records.
+// is not matched against the empty tenant: they see their own records, not
+// other tenant-less users' records or legacy rows.
 func (s *AccessScope) apply(query *gorm.DB) *gorm.DB {
 	if s == nil {
 		return query
 	}
 	if s.TenantID == "" {
-		return query.Where("owner_id = ? OR (owner_id = '' AND tenant_id = '')", s.OwnerID)
+		return query.Where("owner_id = ?", s.OwnerID)
 	}
-	return query.Where("owner_id = ? OR tenant_id = ? OR (owner_id = '' AND tenant_id = '')", s.OwnerID, s.TenantID)
+	return query.Where("owner_id = ? OR tenant_id = ?", s.OwnerID, s.TenantID)
 }
 
 // legacyNameIndex is the pre-#9 single-column unique index that made data

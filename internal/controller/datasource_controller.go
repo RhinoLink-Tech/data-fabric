@@ -183,8 +183,6 @@ func (dc *DataSourceController) mapDataSourceError(c *gin.Context, caller *secur
 			return
 		}
 		dc.sendError(c, http.StatusInternalServerError, internalCode, internalMsg)
-	case errors.Is(err, security.ErrDataSourceAdoptionRequired):
-		dc.sendError(c, http.StatusForbidden, "DATASOURCE_ADOPTION_REQUIRED", `Legacy data source: retry the update with "adopt": true to claim it`)
 	case errors.Is(err, service.ErrInvalidUUID):
 		dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
 	default:

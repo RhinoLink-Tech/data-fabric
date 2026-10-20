@@ -2,6 +2,7 @@ package security
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -33,6 +34,10 @@ func NewJWTManager(secretKey string, tokenDuration time.Duration) *JWTManager {
 // GenerateToken generates a new JWT token. tenantID may be empty; tokens
 // without a tenant act as members of the default tenant bucket (#9).
 func (j *JWTManager) GenerateToken(userID, tenantID, username string, roles []string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", fmt.Errorf("user ID is required")
+	}
 	claims := &Claims{
 		UserID:   userID,
 		TenantID: tenantID,
@@ -59,7 +64,7 @@ func (j *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(j.secretKey), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
@@ -69,6 +74,21 @@ func (j *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("invalid token")
 	}
+
+	// The standard JWT subject is the canonical identity. Keep accepting the
+	// existing userId claim for compatibility, but reject conflicting values.
+	userID := strings.TrimSpace(claims.UserID)
+	subject := strings.TrimSpace(claims.Subject)
+	if userID == "" {
+		userID = subject
+	}
+	if userID == "" {
+		return nil, fmt.Errorf("token is missing a user identity")
+	}
+	if subject != "" && subject != userID {
+		return nil, fmt.Errorf("token userId and subject do not match")
+	}
+	claims.UserID = userID
 
 	// Check if token is expired
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
@@ -105,13 +125,12 @@ func (j *JWTManager) ExtractTokenFromHeader(authHeader string) (string, error) {
 		return "", fmt.Errorf("authorization header is required")
 	}
 
-	// Check if header starts with "Bearer "
-	const bearerPrefix = "Bearer "
-	if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
-		return "", fmt.Errorf("authorization header must start with 'Bearer '")
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return "", fmt.Errorf("authorization header must use the Bearer scheme")
 	}
 
-	return authHeader[len(bearerPrefix):], nil
+	return parts[1], nil
 }
 
 // HasRole checks if the user has the specified role

@@ -34,9 +34,8 @@ func TestCallerCanReadMatrix(t *testing.T) {
 		{"owner keeps access with a foreign tenant claim", &Caller{UserID: "alice", TenantID: "contoso"}, ownerSource(), true},
 		{"tenantless user denied on tenant row", &Caller{UserID: "bob"}, ownerSource(), false},
 
-		// Legacy rows (pre-#9, no owner and no tenant) stay readable by any
-		// authenticated caller so upgrades do not break existing deployments.
-		{"legacy row readable by any user", &Caller{UserID: "eve", TenantID: "contoso"}, &model.DataSource{ID: "legacy"}, true},
+		// Legacy rows have no verifiable owner and are visible only to admins.
+		{"legacy row denied to regular user", &Caller{UserID: "eve", TenantID: "contoso"}, &model.DataSource{ID: "legacy"}, false},
 		{"legacy row readable by admin", &Caller{UserID: "root", Roles: []string{AdminRole}}, &model.DataSource{ID: "legacy"}, true},
 
 		// The empty tenant is never matched as a tenant: a tenantless caller
@@ -67,8 +66,7 @@ func TestCallerCanWriteMatrix(t *testing.T) {
 		{"tenant member cannot write tenant row", &Caller{UserID: "bob", TenantID: "acme"}, ownerSource(), false},
 		{"foreign user cannot write", &Caller{UserID: "eve", TenantID: "contoso"}, ownerSource(), false},
 
-		// Legacy rows are never writable through CanWrite; updates claim them
-		// via the explicit adopt flag instead.
+		// Legacy rows are writable only by administrators.
 		{"legacy row not writable by non-admin", &Caller{UserID: "bob"}, &model.DataSource{ID: "legacy"}, false},
 		{"legacy row writable by admin", &Caller{UserID: "root", Roles: []string{AdminRole}}, &model.DataSource{ID: "legacy"}, true},
 	}

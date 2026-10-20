@@ -18,11 +18,6 @@ var (
 	// source. Controllers answer missing and forbidden IDs with the same
 	// response for non-admin callers so existence cannot be probed.
 	ErrDataSourceAccessDenied = errors.New("data source access denied")
-
-	// ErrDataSourceAdoptionRequired means the record is a legacy row (no
-	// owner, no tenant) and a non-admin write must pass adopt=true to claim
-	// it before the change is applied.
-	ErrDataSourceAdoptionRequired = errors.New("legacy data source requires adopt")
 )
 
 // SystemUserID identifies the MCP stdio caller. MCP runs as a trusted local
@@ -30,8 +25,9 @@ var (
 // the authenticated Streamable HTTP transport (#185).
 const SystemUserID = "__system__"
 
-// AdminRole grants unrestricted data-source access. Tokens are minted by the
-// deployment (no issuer endpoint yet); identity assurance is issue #7.
+// AdminRole grants unrestricted data-source access. Tokens must be minted by
+// a trusted deployment identity provider or operator; anyone holding the
+// signing secret can assert user, tenant, and role claims.
 const AdminRole = "admin"
 
 // Caller is the identity a request executes as. A nil Caller means
@@ -95,8 +91,8 @@ func CallerFromGin(c *gin.Context) *Caller {
 }
 
 // IsLegacyDataSource reports whether a record predates ownership tracking:
-// no owner and no tenant. Legacy rows are readable by any authenticated
-// caller; writes require an explicit adopt (#9).
+// no owner and no tenant. Only administrators can access legacy rows because
+// their original owner cannot be established safely.
 func IsLegacyDataSource(ds *model.DataSource) bool {
 	return ds != nil && ds.OwnerID == "" && ds.TenantID == ""
 }
@@ -112,11 +108,9 @@ func StampCaller(ds *model.DataSource, caller *Caller) {
 }
 
 // CanRead reports whether the caller may read or query through the data
-// source: admins read everything, owners read their own records, members of
-// a real tenant read the tenant's records, and legacy rows stay readable so
-// pre-upgrade deployments keep working. Callers without a tenant claim do
-// not gain access to other tenants' rows — the empty tenant is not matched
-// as a tenant.
+// source: admins read everything, owners read their own records, and members
+// of a real tenant read that tenant's records. Legacy rows are admin-only
+// because their original owner cannot be established safely.
 func (c *Caller) CanRead(ds *model.DataSource) bool {
 	if ds == nil {
 		return false
@@ -130,13 +124,12 @@ func (c *Caller) CanRead(ds *model.DataSource) bool {
 	if ds.TenantID != "" && ds.TenantID == c.TenantID {
 		return true
 	}
-	return IsLegacyDataSource(ds)
+	return false
 }
 
 // CanWrite reports whether the caller may modify or delete the data source:
 // only its owner or an admin. Same-tenant members get read sharing, not
-// write sharing. Legacy rows are not writable through CanWrite; updates
-// claim them via adopt first (see ErrDataSourceAdoptionRequired).
+// write sharing. Legacy rows are admin-only.
 func (c *Caller) CanWrite(ds *model.DataSource) bool {
 	if ds == nil {
 		return false

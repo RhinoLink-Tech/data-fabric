@@ -51,9 +51,6 @@ type UpdateDataSourceRequest struct {
 	Name   *string                 `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 	Config *model.DataSourceConfig `json:"config,omitempty"`
 	Status *model.DataSourceStatus `json:"status,omitempty"`
-	// Adopt claims a legacy data source (no owner/tenant) for the caller.
-	// Required for non-admin writes to legacy rows; ignored otherwise.
-	Adopt *bool `json:"adopt,omitempty"`
 }
 
 type ListDataSourcesRequest struct {
@@ -264,17 +261,9 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *securi
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
 
-	// Write gate (#9). Legacy rows (no owner/tenant) are claimed explicitly:
-	// a non-admin update must pass adopt=true, which stamps the caller's
-	// ownership before the change is applied. Owned rows ignore the flag.
-	if security.IsLegacyDataSource(dataSource) {
-		if caller != nil && !caller.IsAdmin() {
-			if req.Adopt == nil || !*req.Adopt {
-				return nil, security.ErrDataSourceAdoptionRequired
-			}
-			dataSource.OwnerID, dataSource.TenantID = caller.UserID, caller.TenantID
-		}
-	} else if !caller.CanWrite(dataSource) {
+	// Only the owner or an administrator may change a stored data source.
+	// Legacy rows are admin-only because their original owner is unknown.
+	if !caller.CanWrite(dataSource) {
 		return nil, security.ErrDataSourceAccessDenied
 	}
 
@@ -308,8 +297,7 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *securi
 }
 
 // authorizeWrite resolves the record and enforces the #9 write gate shared by
-// delete/activate/deactivate. Unlike update, these operations do not adopt:
-// a legacy row must be claimed via update first.
+// delete/activate/deactivate. Legacy rows are accessible only to administrators.
 func (s *dataSourceService) authorizeWrite(ctx context.Context, caller *security.Caller, id string) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return repository.ErrInvalidUUID

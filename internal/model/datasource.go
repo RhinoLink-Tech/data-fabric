@@ -107,8 +107,7 @@ const (
 // DataSource represents a database connection configuration. OwnerID and
 // TenantID carry the #9 access model: reads are owner/tenant/admin scoped,
 // writes are owner/admin only, and rows with both fields empty are legacy
-// (readable by any authenticated caller, writable after an explicit adopt).
-// Name is unique per tenant, not globally.
+// (visible only to administrators). Name is unique per tenant, not globally.
 type DataSource struct {
 	ID        string           `gorm:"type:char(36);primaryKey" json:"id"`
 	Name      string           `gorm:"size:255;not null;uniqueIndex:idx_datasources_tenant_name,priority:2" json:"name"`

@@ -137,7 +137,7 @@ Back up the database and key material securely before rotation. Do not put actua
 4. Calling `/api/v1/fetch` always needs a Bearer token, regardless of `security.enable_auth`. There is no token-issuing endpoint yet, so mint one yourself with the same `JWT_SECRET` (requires `pyjwt`):
 
    ```bash
-   python3 -c "import jwt,time; print(jwt.encode({'userId':'dev','tenantId':'acme','username':'dev','roles':['admin'],'iat':int(time.time()),'exp':int(time.time())+86400}, 'YOUR_JWT_SECRET', algorithm='HS256'))"
+   python3 -c "import jwt,time; print(jwt.encode({'sub':'dev','tenantId':'acme','username':'dev','roles':['admin'],'iat':int(time.time()),'exp':int(time.time())+86400}, 'YOUR_JWT_SECRET', algorithm='HS256'))"
    ```
 
    `tenantId` is optional: tokens without it belong to the default bucket (see [Data source authorization](#data-source-authorization)). If neither SECURITY_JWT_SECRET nor its JWT_SECRET compatibility alias is set, HTTP server startup fails; there is no built-in fallback secret.
@@ -155,25 +155,25 @@ Startup fails closed on insecure authentication settings before the metadata dat
 
 ## Data source authorization
 
-Every stored data source carries an `ownerId` and a `tenantId`, stamped from the caller's JWT at creation time (`userId` and the optional `tenantId` claim). Tokens without a `tenantId` create rows in the default bucket — an empty tenant is never matched as a tenant, so tenantless callers only see their own rows and legacy rows.
+Every stored data source carries an `ownerId` and a `tenantId`, stamped from the authenticated caller's JWT at creation time (the standard `sub` identity claim; the existing `userId` claim is accepted for compatibility, plus an optional `tenantId` claim). Tokens without a `tenantId` create rows in the default bucket — an empty tenant is never matched as a tenant, so tenantless callers only see their own rows. Rows created before ownership tracking (or while authentication is disabled) are visible only to administrators because their original owner cannot be established safely.
 
 | Caller | Read (get, list, query, fetch) | Write (update, delete, activate, deactivate) |
 |---|---|---|
 | Admin (`roles` contains `admin`) | everything | everything |
-| Owner (`userId` matches `ownerId`) | own rows | own rows |
+| Owner (`sub` or compatibility `userId` matches `ownerId`) | own rows | own rows |
 | Tenant member (`tenantId` matches) | the tenant's rows | no — read sharing only |
-| Any authenticated caller | legacy rows (pre-upgrade, no owner and no tenant) | only via `adopt` (below) |
+| Non-admin caller | not visible (admin only) | no |
 
 Notable behaviors:
 
 - **Uniform 403.** Non-admin callers get the same `403 DATASOURCE_ACCESS_DENIED` ("You do not have access to this data source") whether the data source is missing or belongs to someone else, on every management endpoint and on `/fetch`, so data source existence cannot be probed. Admins keep the distinct `404` for debugging.
-- **Legacy adoption.** Rows created before this change (or while `security.enable_auth` is disabled) have no owner. A non-admin update to a legacy row must pass `"adopt": true`; the update then stamps the caller as the owner. Without the flag the API answers `403 DATASOURCE_ADOPTION_REQUIRED`. Admins edit legacy rows without adopting and do not claim them.
+- **Legacy rows.** Rows created before this change (or while `security.enable_auth` is disabled) have no owner or tenant. Only administrators can list, read, query, update, delete, activate, or deactivate these rows. A regular user cannot claim an unowned row by guessing its ID or adding request fields.
 - **Per-tenant name uniqueness.** Two data sources may share a name across tenants but not within one tenant (or within the default bucket). The pre-upgrade globally unique name index is dropped automatically at startup.
 - **Session binding.** Pagination and streaming sessions are bound to the identity that opened them; another user's valid Bearer token cannot continue someone else's session (`404 QUERY_SESSION_UNAVAILABLE`, indistinguishable from an unknown session).
 - **Fleet endpoints are admin-only.** `/api/v1/database/health` and `/api/v1/database/connections/stats` enumerate every stored data source, so they require the `admin` role when `security.enable_auth` is on.
 - **`security.enable_auth: false` boundary.** The switch only governs the data-source management API, where no identity exists to check: management requests then run in a legacy-equivalent mode, and created rows stay legacy. `/api/v1/fetch` is authenticated either way (#6), and its authorization checks still apply.
 
-The `tenantId` claim is self-asserted by whoever mints the token; structural tenant isolation is only as strong as the minting process (identity assurance is tracked in #7). Fine-grained permissions inside a tenant are out of scope.
+The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Fine-grained permissions inside a tenant are out of scope.
 
 ## Environment Variables
 

@@ -40,8 +40,7 @@ func (r *authzRepositoryStub) GetByID(context.Context, string) (*model.DataSourc
 	if r.existing == nil {
 		return nil, repository.ErrDataSourceNotFound
 	}
-	// The service mutates the record it resolves (adoptions stamp ownership
-	// in place); hand every call a copy so subtests stay independent.
+	// Hand every call a copy so subtests stay independent.
 	copy := *r.existing
 	return &copy, nil
 }
@@ -173,9 +172,16 @@ func TestGetDataSourceEnforcesReadGate(t *testing.T) {
 			}
 		})
 	}
+
+	legacy := authzFixture()
+	legacy.OwnerID, legacy.TenantID = "", ""
+	svc := newAuthzService(&authzRepositoryStub{existing: legacy})
+	if _, err := svc.GetDataSource(ctx, &security.Caller{UserID: "eve"}, id); !errors.Is(err, security.ErrDataSourceAccessDenied) {
+		t.Fatalf("legacy source read error = %v, want ErrDataSourceAccessDenied", err)
+	}
 }
 
-func TestUpdateDataSourceWriteGateAndAdoption(t *testing.T) {
+func TestUpdateDataSourceWriteGate(t *testing.T) {
 	ctx := context.Background()
 	id := authzFixture().ID
 	newName := "renamed"
@@ -206,43 +212,30 @@ func TestUpdateDataSourceWriteGateAndAdoption(t *testing.T) {
 	legacy := authzFixture()
 	legacy.OwnerID, legacy.TenantID = "", ""
 
-	t.Run("legacy update requires explicit adopt", func(t *testing.T) {
+	t.Run("non-admin cannot update legacy row", func(t *testing.T) {
 		repo := &authzRepositoryStub{existing: legacy}
 		svc := newAuthzService(repo)
 		_, err := svc.UpdateDataSource(ctx, &security.Caller{UserID: "bob", TenantID: "acme"}, id, &UpdateDataSourceRequest{Name: &newName})
-		if !errors.Is(err, security.ErrDataSourceAdoptionRequired) {
-			t.Fatalf("error = %v, want ErrDataSourceAdoptionRequired", err)
+		if !errors.Is(err, security.ErrDataSourceAccessDenied) {
+			t.Fatalf("error = %v, want ErrDataSourceAccessDenied", err)
 		}
 		if len(repo.updated) != 0 {
-			t.Fatal("unadopted legacy update reached the repository")
+			t.Fatal("denied legacy update reached the repository")
 		}
 	})
 
-	t.Run("adopt stamps the caller before applying the change", func(t *testing.T) {
+	t.Run("admin updates legacy without claiming it", func(t *testing.T) {
 		repo := &authzRepositoryStub{existing: legacy}
 		svc := newAuthzService(repo)
-		adopt := true
-		if _, err := svc.UpdateDataSource(ctx, &security.Caller{UserID: "bob", TenantID: "acme"}, id, &UpdateDataSourceRequest{Name: &newName, Adopt: &adopt}); err != nil {
-			t.Fatal(err)
-		}
-		if len(repo.updated) != 1 {
-			t.Fatal("adopted update was not persisted")
-		}
-		if got := repo.updated[0]; got.OwnerID != "bob" || got.TenantID != "acme" || got.Name != "renamed" {
-			t.Fatalf("adopted row = %+v, want bob/acme renamed", got)
-		}
-	})
-
-	t.Run("admin updates legacy without adopt and does not claim it", func(t *testing.T) {
-		repo := &authzRepositoryStub{existing: legacy}
-		svc := newAuthzService(repo)
-		if _, err := svc.UpdateDataSource(ctx, &security.Caller{UserID: "root", Roles: []string{security.AdminRole}}, id, &UpdateDataSourceRequest{Name: &newName}); err != nil {
+		admin := &security.Caller{UserID: "root", Roles: []string{security.AdminRole}}
+		if _, err := svc.UpdateDataSource(ctx, admin, id, &UpdateDataSourceRequest{Name: &newName}); err != nil {
 			t.Fatal(err)
 		}
 		if got := repo.updated[0]; got.OwnerID != "" || got.TenantID != "" {
 			t.Fatalf("admin update claimed the row: %+v", got)
 		}
 	})
+
 }
 
 func TestDataSourceMutationsEnforceWriteGate(t *testing.T) {

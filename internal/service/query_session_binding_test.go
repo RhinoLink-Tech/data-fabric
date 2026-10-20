@@ -140,4 +140,43 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 			t.Fatalf("FetchNextBatchWithStreaming() error = %v, want ErrDataSourceNotFound past the creator gate", err)
 		}
 	})
+
+	t.Run("creator who lost tenant access is denied", func(t *testing.T) {
+		tenantSource := &model.DataSource{
+			ID: "ds-1", Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive,
+			OwnerID: "bob", TenantID: "acme",
+		}
+		ss := NewStreamingService(federationSourceRepository{source: tenantSource}, database.NewConnectionPool(nil, nil, false)).(*streamingService)
+		session := newSession()
+		session.DataSourceID = "ds-1"
+		ss.streamingSessionManager.Store(session)
+
+		caller := &security.Caller{UserID: "alice", TenantID: "contoso"}
+		_, err := ss.FetchNextBatchWithStreaming(context.Background(), caller, "q-1", "slug-1", "token-1", 10)
+		if !errors.Is(err, security.ErrDataSourceAccessDenied) {
+			t.Fatalf("FetchNextBatchWithStreaming() error = %v, want ErrDataSourceAccessDenied", err)
+		}
+		if _, err := ss.streamingSessionManager.Get("q-1"); err == nil {
+			t.Fatal("unauthorized streaming session was not cleaned up")
+		}
+	})
+}
+
+func TestFetchNextBatchRechecksCurrentTenantAccess(t *testing.T) {
+	source := &model.DataSource{
+		ID: "ds-1", Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive,
+		OwnerID: "bob", TenantID: "acme",
+	}
+	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(nil, nil, false), false).(*queryService)
+	qs.sessionManager.Store(&QuerySession{
+		QueryID: "q-tenant", Slug: "slug", Token: "token", CreatorID: "alice",
+		DataSourceID: "ds-1", SQL: "SELECT * FROM orders", Type: 2,
+		TotalRows: 10, ExpiresAt: time.Now().Add(time.Minute),
+	})
+
+	caller := &security.Caller{UserID: "alice", TenantID: "contoso"}
+	_, err := qs.FetchNextBatch(context.Background(), caller, "q-tenant", "slug", "token", 10)
+	if !errors.Is(err, security.ErrDataSourceAccessDenied) {
+		t.Fatalf("FetchNextBatch() error = %v, want ErrDataSourceAccessDenied", err)
+	}
 }

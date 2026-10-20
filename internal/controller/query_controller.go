@@ -176,6 +176,8 @@ func (qc *QueryController) FetchNextBatch(c *gin.Context) {
 // @Param request body model.QueryRequest true "Query validation request"
 // @Success 200 {object} response.StandardResponse
 // @Failure 400 {object} response.StandardResponse
+// @Failure 403 {object} response.StandardResponse
+// @Failure 404 {object} response.StandardResponse
 // @Failure 422 {object} response.StandardResponse
 // @Router /api/v1/query/validate [post]
 func (qc *QueryController) ValidateQuery(c *gin.Context) {
@@ -209,6 +211,10 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 	// Validate query using unified service
 	err := qc.queryService.ValidateQuery(c.Request.Context(), security.CallerFromGin(c), &req)
 	if err != nil {
+		if errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied) {
+			qc.writeQueryError(c, security.CallerFromGin(c), err)
+			return
+		}
 		c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
 			"valid":   false,
 			"error":   queryservice.SafeQueryErrorMessage(err),
@@ -329,10 +335,19 @@ func requestingUser(c *gin.Context) string {
 // callers get the same 403 for missing and forbidden data sources (#9), so
 // existence cannot be probed through /fetch either.
 func (qc *QueryController) writeQueryError(c *gin.Context, caller *security.Caller, err error) {
-	if errors.Is(err, repository.ErrDataSourceNotFound) && caller != nil && !caller.IsAdmin() {
+	if (errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied)) && caller != nil && !caller.IsAdmin() {
 		c.JSON(http.StatusForbidden, response.ErrorResponse(
 			"DATASOURCE_ACCESS_DENIED",
 			"You do not have access to this data source",
+			"",
+			qc.getCorrelationID(c),
+		))
+		return
+	}
+	if errors.Is(err, security.ErrDataSourceAccessDenied) && caller != nil && caller.IsAdmin() {
+		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
+			"QUERY_ENGINE_ERROR",
+			"The data-source query failed. Check the service logs.",
 			"",
 			qc.getCorrelationID(c),
 		))
