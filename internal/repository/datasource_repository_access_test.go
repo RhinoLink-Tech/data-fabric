@@ -11,7 +11,8 @@ import (
 
 // #9 repository-level scoping and per-tenant name uniqueness. The seeds below
 // cover every scope class: tenant member (alice/bob in acme), a foreign
-// tenant (carol in contoso), a tenantless owner (dave), and a legacy row.
+// tenant (carol in contoso), a tenantless owner (dave), and an admin-only
+// legacy row.
 
 func seedScopeFixture(t *testing.T, repo DataSourceRepository) {
 	t.Helper()
@@ -50,18 +51,18 @@ func TestGetAllAppliesAccessScope(t *testing.T) {
 	}{
 		{"nil scope sees everything (admin / authorization disabled)", nil,
 			map[string]bool{"alice-olap": true, "bob-mysql": true, "carol-pg": true, "dave-solo": true, "legacy-shared": true}},
-		{"tenant member sees own, tenant, and legacy", &AccessScope{OwnerID: "alice", TenantID: "acme"},
-			map[string]bool{"alice-olap": true, "bob-mysql": true, "legacy-shared": true}},
-		{"tenant member without own rows still sees the tenant and legacy", &AccessScope{OwnerID: "eve", TenantID: "acme"},
-			map[string]bool{"alice-olap": true, "bob-mysql": true, "legacy-shared": true}},
-		{"foreign tenant member sees that tenant's rows and legacy", &AccessScope{OwnerID: "eve", TenantID: "contoso"},
-			map[string]bool{"carol-pg": true, "legacy-shared": true}},
-		{"member of no known tenant sees only legacy", &AccessScope{OwnerID: "eve", TenantID: "globex"},
-			map[string]bool{"legacy-shared": true}},
-		{"tenantless caller sees own rows regardless of their tenant and legacy, not other tenantless rows", &AccessScope{OwnerID: "bob"},
-			map[string]bool{"bob-mysql": true, "legacy-shared": true}},
-		{"tenantless caller sees own tenantless row and legacy", &AccessScope{OwnerID: "dave"},
-			map[string]bool{"dave-solo": true, "legacy-shared": true}},
+		{"tenant member sees own and tenant rows", &AccessScope{OwnerID: "alice", TenantID: "acme"},
+			map[string]bool{"alice-olap": true, "bob-mysql": true}},
+		{"tenant member without own rows sees only the tenant", &AccessScope{OwnerID: "eve", TenantID: "acme"},
+			map[string]bool{"alice-olap": true, "bob-mysql": true}},
+		{"foreign tenant member sees only that tenant's rows", &AccessScope{OwnerID: "eve", TenantID: "contoso"},
+			map[string]bool{"carol-pg": true}},
+		{"member of no known tenant sees no rows", &AccessScope{OwnerID: "eve", TenantID: "globex"},
+			map[string]bool{}},
+		{"tenantless caller sees own rows, not other tenantless rows", &AccessScope{OwnerID: "bob"},
+			map[string]bool{"bob-mysql": true}},
+		{"tenantless caller sees own tenantless row", &AccessScope{OwnerID: "dave"},
+			map[string]bool{"dave-solo": true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,13 +95,13 @@ func TestGetAllScopedTotalDrivesPagination(t *testing.T) {
 	_, repo := testRepository(t, vaultForTest(t))
 	seedScopeFixture(t, repo)
 
-	scope := &AccessScope{OwnerID: "alice", TenantID: "acme"} // 3 visible rows
+	scope := &AccessScope{OwnerID: "alice", TenantID: "acme"} // 2 visible rows
 	page, total, err := repo.GetAll(ctx, scope, "", 2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page) != 2 || total != 3 {
-		t.Fatalf("page = %d rows, total = %d; want 2 rows of 3", len(page), total)
+	if len(page) != 2 || total != 2 {
+		t.Fatalf("page = %d rows, total = %d; want 2 rows of 2", len(page), total)
 	}
 }
 
@@ -109,13 +110,13 @@ func TestCountByStatusAppliesAccessScope(t *testing.T) {
 	_, repo := testRepository(t, vaultForTest(t))
 	seedScopeFixture(t, repo)
 
-	// Alice's scope: alice-olap (active), bob-mysql (inactive), legacy (active).
+	// Alice's scope: alice-olap (active), bob-mysql (inactive).
 	counts, err := repo.CountByStatus(ctx, &AccessScope{OwnerID: "alice", TenantID: "acme"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts[model.DataSourceStatusActive] != 2 || counts[model.DataSourceStatusInactive] != 1 {
-		t.Fatalf("scoped counts = %v, want active=2 inactive=1", counts)
+	if counts[model.DataSourceStatusActive] != 1 || counts[model.DataSourceStatusInactive] != 1 {
+		t.Fatalf("scoped counts = %v, want active=1 inactive=1", counts)
 	}
 
 	all, err := repo.CountByStatus(ctx, nil)

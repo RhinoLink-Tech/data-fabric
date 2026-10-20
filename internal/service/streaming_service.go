@@ -974,6 +974,10 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
+	if !caller.CanRead(datasource) {
+		_ = ss.closeSessionStream(session)
+		return nil, security.ErrDataSourceAccessDenied
+	}
 	if err := requireActiveDataSource(datasource); err != nil {
 		_ = ss.closeSessionStream(session)
 		return nil, err

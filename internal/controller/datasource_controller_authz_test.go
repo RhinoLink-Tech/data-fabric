@@ -174,30 +174,19 @@ func TestManagementErrorsKeepDistinctStatusesForAdmins(t *testing.T) {
 	}
 }
 
-func TestLegacyAdoptionRequiredResponse(t *testing.T) {
-	stub := &dataSourceControllerServiceStub{updateErr: security.ErrDataSourceAdoptionRequired}
-	controller := NewDataSourceController(stub)
-	ctx, recorder := authzMutationContext(t, nonAdminClaims(), `{"name":"renamed"}`)
-	ctx.Params = gin.Params{{Key: "id", Value: authzTestUUID}}
-	controller.UpdateDataSource(ctx)
-
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403; body: %s", recorder.Code, recorder.Body.String())
-	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "DATASOURCE_ADOPTION_REQUIRED") || !strings.Contains(body, `\"adopt\": true`) {
-		t.Fatalf("adoption response lacks the adopt hint: %s", body)
-	}
-}
-
 // stubFetchQueryService stands in for the unified query service on /fetch.
 type stubFetchQueryService struct {
 	unifiedservice.UnifiedQueryService
-	fetchErr error
+	fetchErr    error
+	validateErr error
 }
 
 func (s *stubFetchQueryService) FetchQuery(context.Context, *security.Caller, *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	return nil, s.fetchErr
+}
+
+func (s *stubFetchQueryService) ValidateQuery(context.Context, *security.Caller, *model.QueryRequest) error {
+	return s.validateErr
 }
 
 func TestFetchErrorHidesDataSourceExistenceForNonAdmins(t *testing.T) {
@@ -254,5 +243,45 @@ func TestFetchAccessDeniedMessageIsSafe(t *testing.T) {
 	}
 	if msg := service.SafeQueryErrorMessage(errors.New("wrapped: %!w(io.EOF) password=secret")); strings.Contains(msg, "secret") {
 		t.Fatalf("unexpected leak: %q", msg)
+	}
+}
+
+func TestValidateQueryHidesDataSourceExistenceForNonAdmins(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"missing", repository.ErrDataSourceNotFound},
+		{"forbidden", security.ErrDataSourceAccessDenied},
+	}
+	var bodies []string
+	for _, tc := range cases {
+		controller := NewQueryController(&stubFetchQueryService{validateErr: tc.err})
+		ctx, recorder := authzContext(t, nonAdminClaims())
+		body := "{\"dataSourceId\":\"" + authzTestUUID + "\",\"sql\":\"SELECT 1\"}"
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/query/validate", strings.NewReader(body))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		controller.ValidateQuery(ctx)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("%s: status = %d, want 403; body: %s", tc.name, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "DATASOURCE_ACCESS_DENIED") {
+			t.Fatalf("%s: missing uniform error: %s", tc.name, recorder.Body.String())
+		}
+		bodies = append(bodies, recorder.Body.String())
+	}
+	if normalizeErrorBody(bodies[0]) != normalizeErrorBody(bodies[1]) {
+		t.Fatalf("validate missing vs forbidden responses differ:\nmissing:   %s\nforbidden: %s", bodies[0], bodies[1])
+	}
+
+	controller := NewQueryController(&stubFetchQueryService{validateErr: repository.ErrDataSourceNotFound})
+	ctx, recorder := authzContext(t, adminClaims())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/query/validate", strings.NewReader(
+		"{\"dataSourceId\":\""+authzTestUUID+"\",\"sql\":\"SELECT 1\"}",
+	))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	controller.ValidateQuery(ctx)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("admin missing status = %d, want 404; body: %s", recorder.Code, recorder.Body.String())
 	}
 }

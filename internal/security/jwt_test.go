@@ -3,6 +3,8 @@ package security
 import (
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Tokens must round-trip the tenant claim (#9): it scopes every data-source
@@ -78,5 +80,74 @@ func TestRefreshTokenPreservesTenantID(t *testing.T) {
 	}
 	if refreshedClaims.TenantID != "acme" || refreshedClaims.UserID != "alice" {
 		t.Fatalf("refreshed claims = %+v, want tenant acme for alice", refreshedClaims)
+	}
+}
+
+func TestValidateTokenUsesStandardSubjectAndRequiresIdentity(t *testing.T) {
+	jm := newTestJWTManager()
+	expiry := jwt.NewNumericDate(time.Now().Add(time.Hour))
+
+	subjectToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "alice",
+			ExpiresAt: expiry,
+		},
+	}).SignedString([]byte(jm.secretKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := jm.ValidateToken(subjectToken)
+	if err != nil {
+		t.Fatalf("standard subject token rejected: %v", err)
+	}
+	if claims.UserID != "alice" {
+		t.Fatalf("UserID = %q, want subject alice", claims.UserID)
+	}
+
+	for name, jwtClaims := range map[string]*Claims{
+		"missing identity": {
+			Username: "alice",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: expiry,
+			},
+		},
+		"conflicting identity": {
+			UserID: "alice",
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   "bob",
+				ExpiresAt: expiry,
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims).SignedString([]byte(jm.secretKey))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := jm.ValidateToken(tokenString); err == nil {
+				t.Fatal("token with invalid identity was accepted")
+			}
+		})
+	}
+}
+
+func TestGenerateTokenRequiresUserID(t *testing.T) {
+	if _, err := newTestJWTManager().GenerateToken("  ", "", "alice", nil); err == nil {
+		t.Fatal("GenerateToken accepted an empty user ID")
+	}
+}
+
+func TestExtractTokenFromHeaderAcceptsStandardBearerScheme(t *testing.T) {
+	jm := newTestJWTManager()
+	for _, header := range []string{"Bearer token", "bearer token", "BEARER   token"} {
+		token, err := jm.ExtractTokenFromHeader(header)
+		if err != nil || token != "token" {
+			t.Errorf("ExtractTokenFromHeader(%q) = %q, %v; want token", header, token, err)
+		}
+	}
+	for _, header := range []string{"Basic token", "Bearer", "Bearer token extra", " token"} {
+		if _, err := jm.ExtractTokenFromHeader(header); err == nil {
+			t.Errorf("ExtractTokenFromHeader(%q) unexpectedly succeeded", header)
+		}
 	}
 }

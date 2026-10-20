@@ -556,6 +556,9 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	}
 
 	// Inactive or errored sources must not continue fetch sessions (#118)
+	if !caller.CanRead(datasource) {
+		return nil, security.ErrDataSourceAccessDenied
+	}
 	if err := requireActiveDataSource(datasource); err != nil {
 		return nil, err
 	}
