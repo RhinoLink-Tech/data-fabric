@@ -96,7 +96,8 @@ The standard server build compiles the registered driver implementations and the
 
 ### Requirements
 
-- Go 1.26.1 or newer.
+- Go 1.26.1 or newer for running from source.
+- Docker Engine for building or running the container.
 - A configured and reachable metadata database.
 - Network access to the data sources you plan to register.
 - A JWT secret and a credential-encryption keyring supplied through environment variables.
@@ -120,6 +121,28 @@ go run ./cmd/server
 ~~~
 
 Generate the JWT secret with openssl rand -hex 32 and the credential key with openssl rand -base64 32. Store both securely and reuse them across restarts. The service health-check endpoint is /health. See the [configuration guide](docs/configuration.md) for deployment settings, secret handling, and key rotation.
+
+### Build and Run with Docker
+
+The image uses Go 1.26.1 to match `go.mod`, listens on port 8080 by default, and runs as a non-root user. Create the MySQL metadata database and account before starting the container.
+
+~~~bash
+docker build -t data-fabric:local .
+docker run --rm --name data-fabric \
+  --add-host=host.docker.internal:host-gateway \
+  -p 8080:8080 \
+  -e DATABASE_HOST=host.docker.internal \
+  -e DATABASE_PORT=3306 \
+  -e DATABASE_DATABASE=data_fabric \
+  -e DATABASE_USERNAME=data_fabric \
+  -e DATABASE_PASSWORD="<metadata database password>" \
+  -e SECURITY_JWT_SECRET="<stable secret with at least 32 bytes>" \
+  -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
+  -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64-encoded 32-byte key>"}' \
+  data-fabric:local
+~~~
+
+The container has no live configuration file; it reads environment variables and defaults to port 8080. If you override SERVER_PORT or server.port, update the container port and port mapping to match. Inject real secrets through your deployment platform and reuse the same credential keyring across restarts.
 
 ## Performance Expectations
 

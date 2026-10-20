@@ -22,4 +22,4 @@ The Go workflow checks pull requests and pushes to `master`. It does not publish
 
 ## Container images
 
-Container publishing is not configured. The Docker build definition needs alignment with the Go version and runtime configuration (tracked in [issue #30](https://github.com/RhinoLink-Tech/data-fabric/issues/30)). Do not advertise an image as a supported release artifact until that issue is resolved and the image is built and smoke-checked.
+Container publishing is not configured, so releases do not currently publish an image automatically. The repository Dockerfile builds with the Go version declared by the project, defaults to port 8080, and runs as a non-root user. Build and smoke-check a local image with the Docker instructions in [README.md](../README.md) before treating a container image as a release artifact.

@@ -6,7 +6,7 @@
 # 完整映射见 docs/configuration.md 的 "Environment Variables" 一节。
 
 server:
-  port: "8099"
+  port: "8080"
   mode: "debug"  # debug, release, test
   host: "0.0.0.0"
   # HTTP limits (#128). Fetch operations may run up to 30 minutes.

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Align the container runtime and documentation on Go 1.26.1, port 8080, and a non-root application user; add a reproducible Docker build/run example and CI image smoke test (#30).
 - Validate required startup settings, ports, query execution mode, and HTTP server limits before database initialization; reject malformed MCP listener ports and document fail-closed schema migration behavior (#31).
 
 ### Security
