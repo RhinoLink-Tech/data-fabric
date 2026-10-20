@@ -203,6 +203,17 @@ Before running the application, inject a persistent data-source credential keyri
    go run ./cmd/server
    ```
 
+   Or use the Make targets, which are the same entry points CI exercises:
+   ```bash
+   make run    # go run ./cmd/server
+   make build  # package build into bin/data-fabric
+   make test   # go test ./...
+   ```
+
+   `make build` compiles the whole `./cmd/server` package (never a single
+   `main.go` file) and is what the CI workflow runs in addition to
+   `go build ./...`, so a broken build entry fails the same check locally.
+
 ## Coding Standards
 
 ### Go Code Standards
