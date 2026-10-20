@@ -101,6 +101,19 @@ func newRouter(deps routerDeps) *gin.Engine {
 			fetch.GET("/:query_id/:slug/:token", deps.queryController.FetchNextBatch)
 		}
 
+		// Query endpoints (validation, statistics, history). Same policy as
+		// the fetch group — always authenticated regardless of the
+		// security.enable_auth switch (#102) — because they resolve data
+		// sources by ID and expose operational data. The handlers already
+		// existed; the routes they document were never registered.
+		query := api.Group("/query")
+		query.Use(deps.authMiddleware.RequireAuth())
+		{
+			query.POST("/validate", jsonRequestLimit, deps.queryController.ValidateQuery)
+			query.GET("/stats", deps.queryController.GetQueryStats)
+			query.GET("/history", deps.queryController.GetQueryHistory)
+		}
+
 		// Database management endpoints
 		database := auth.Group("/database")
 		{

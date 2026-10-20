@@ -36,6 +36,9 @@ func (stubUnifiedQueryService) FetchQuery(context.Context, *model.FetchQueryRequ
 func (stubUnifiedQueryService) FetchNextBatch(context.Context, string, string, string, int) (*model.FetchQueryResponse, error) {
 	return &model.FetchQueryResponse{QueryID: "stub-query"}, nil
 }
+func (stubUnifiedQueryService) GetQueryHistory(context.Context, service.QueryHistoryFilter) (*service.QueryHistoryPage, error) {
+	return &service.QueryHistoryPage{Records: []service.QueryRecord{}, Limit: 100}, nil
+}
 
 type stubDataSourceService struct{}
 
@@ -190,5 +193,53 @@ func TestFetchBodyLimitLeavesGETContinuationsUnaffected(t *testing.T) {
 	router.ServeHTTP(getRecorder, get)
 	if getRecorder.Code != http.StatusOK {
 		t.Fatalf("GET continuation status = %d, want %d; body: %s", getRecorder.Code, http.StatusOK, getRecorder.Body.String())
+	}
+}
+
+// TestQueryEndpointsRegisteredAndAuthenticated is the #102 smoke check: the
+// documented query routes (validate, stats, history) must exist behind the
+// same always-on authentication as the fetch group, under both settings of
+// security.enable_auth. Before #102 these handlers were documented but never
+// routed, so the API returned 404.
+func TestQueryEndpointsRegisteredAndAuthenticated(t *testing.T) {
+	validateBody := `{"dataSourceId":"12345678-1234-4234-8234-123456789012","sql":"SELECT 1"}`
+
+	for _, enableAuth := range []bool{true, false} {
+		router, token := newTestRouter(t, enableAuth)
+		requests := []struct {
+			name       string
+			method     string
+			path       string
+			body       string
+			authHeader string
+			want       int
+		}{
+			{"POST validate without credentials", http.MethodPost, "/api/v1/query/validate", validateBody, "", http.StatusUnauthorized},
+			{"GET stats without credentials", http.MethodGet, "/api/v1/query/stats", "", "", http.StatusUnauthorized},
+			{"GET history without credentials", http.MethodGet, "/api/v1/query/history", "", "", http.StatusUnauthorized},
+			{"POST validate with invalid token", http.MethodPost, "/api/v1/query/validate", validateBody, "Bearer not-a-jwt", http.StatusUnauthorized},
+			{"POST validate with valid token", http.MethodPost, "/api/v1/query/validate", validateBody, "Bearer " + token, http.StatusOK},
+			{"GET stats with valid token", http.MethodGet, "/api/v1/query/stats", "", "Bearer " + token, http.StatusOK},
+			{"GET history with valid token", http.MethodGet, "/api/v1/query/history", "", "Bearer " + token, http.StatusOK},
+		}
+		for _, tt := range requests {
+			t.Run(fmt.Sprintf("enable_auth=%v/%s", enableAuth, tt.name), func(t *testing.T) {
+				var req *http.Request
+				if tt.body != "" {
+					req = httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+					req.Header.Set("Content-Type", "application/json")
+				} else {
+					req = httptest.NewRequest(tt.method, tt.path, nil)
+				}
+				if tt.authHeader != "" {
+					req.Header.Set("Authorization", tt.authHeader)
+				}
+				recorder := httptest.NewRecorder()
+				router.ServeHTTP(recorder, req)
+				if recorder.Code != tt.want {
+					t.Fatalf("status = %d, want %d; body: %s", recorder.Code, tt.want, recorder.Body.String())
+				}
+			})
+		}
 	}
 }
