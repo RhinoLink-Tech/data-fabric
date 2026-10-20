@@ -3,3 +3,8 @@ configs/config.yaml
 .env
 
 .git
+
+# Local build and test artifacts
+bin/
+__pycache__/
+*.py[cod]
