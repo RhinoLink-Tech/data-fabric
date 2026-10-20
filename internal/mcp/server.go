@@ -3,12 +3,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	queryservice "github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -16,16 +18,25 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
 
+// TableDescriber reads table metadata from a data source. The metadata
+// extractor implements it; tests substitute a fake (#184).
+type TableDescriber interface {
+	ExtractTableSchema(ctx context.Context, dataSourceID, tableName string) (*metadata.TableSchema, error)
+}
+
 // MCPServer represents the MCP server that exposes Data Fabric functionality
 type MCPServer struct {
 	unifiedQueryService unifiedservice.UnifiedQueryService
 	datasourceRepo      repository.DataSourceRepository
+	tableDescriber      TableDescriber
 	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
 	server              *server.MCPServer
 }
 
-// NewMCPServer creates a new MCP server instance
-func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository) *MCPServer {
+// NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
+// out the describe_table tool; callers without metadata extraction keep the
+// rest of the tool set.
+func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository, tableDescriber TableDescriber) *MCPServer {
 	s := server.NewMCPServer(
 		"Data Fabric MCP Server",
 		"1.0.0",
@@ -34,6 +45,7 @@ func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, dataso
 	mcpServer := &MCPServer{
 		unifiedQueryService: unifiedQueryService,
 		datasourceRepo:      datasourceRepo,
+		tableDescriber:      tableDescriber,
 		sqlTranslator:       sql_translator.NewSQLTranslationManager(true), // Initialize SQL translator
 		server:              s,
 	}
@@ -88,6 +100,17 @@ func (m *MCPServer) registerTools() {
 		mcp.WithDescription("List all tables in a specific data source"),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to list tables from")))
 	m.server.AddTool(listTablesTool, m.handleListTables)
+
+	// Tool to describe one table's schema (#184). Complements list_tables
+	// (enumerate first, inspect one table here) and validate_sql_query (check
+	// column names and types before executing).
+	if m.tableDescriber != nil {
+		describeTableTool := mcp.NewTool("describe_table",
+			mcp.WithDescription("Get the schema of one table in a data source: column names, database types, nullability, primary key, and indexes. Use list_tables to enumerate tables first, then describe_table to inspect one table before writing SQL"),
+			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source holding the table")),
+			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")))
+		m.server.AddTool(describeTableTool, m.handleDescribeTable)
+	}
 
 	// Tool to translate SQL between dialects
 	translateSQLTool := mcp.NewTool("translate_sql",
@@ -362,6 +385,65 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 
 	// Convert result to JSON for response
 	jsonResp, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(string(jsonResp)),
+		},
+	}, nil
+}
+
+// handleDescribeTable handles the describe_table tool call. It returns the
+// metadata of one table — column names, database types, and nullability —
+// without ever returning table rows or data-source credentials (#184).
+func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	datasourceID := mcp.ParseString(request, "datasource_id", "")
+	tableName := mcp.ParseString(request, "table_name", "")
+
+	if m.tableDescriber == nil {
+		return mcp.NewToolResultError("table metadata is not available on this server"), nil
+	}
+	if tableName == "" {
+		return mcp.NewToolResultError("table_name is required"), nil
+	}
+
+	// Keep missing and forbidden IDs indistinguishable to non-admin callers,
+	// matching list_tables and get_data_source_info.
+	dataSource, err := m.datasourceRepo.GetByID(ctx, datasourceID)
+	caller := callerFromContext(ctx)
+	if err != nil || !caller.CanRead(dataSource) {
+		return mcp.NewToolResultError("data source not found or access denied"), nil
+	}
+
+	// Metadata extraction queries the source itself, so it follows the same
+	// active-source policy as query execution (#118).
+	if dataSource.Status != model.DataSourceStatusActive {
+		return mcp.NewToolResultError(fmt.Sprintf("data source %s is not active", datasourceID)), nil
+	}
+
+	table, err := m.tableDescriber.ExtractTableSchema(ctx, datasourceID, tableName)
+	if err != nil {
+		switch {
+		case errors.Is(err, metadata.ErrSchemaDiscoveryUnsupported):
+			return mcp.NewToolResultError(fmt.Sprintf("schema discovery is not supported for data source type %s", dataSource.Type)), nil
+		case errors.Is(err, metadata.ErrTableNotFound):
+			return mcp.NewToolResultError(fmt.Sprintf("table %q not found in data source %s; call list_tables to see the available tables", tableName, datasourceID)), nil
+		default:
+			return mcp.NewToolResultError("failed to describe the table; check the data source connection and retry"), nil
+		}
+	}
+
+	// Identify the data source and table in the result so agents can tie the
+	// columns back to a concrete source (#184 acceptance).
+	response := map[string]interface{}{
+		"datasource_id": datasourceID,
+		"table":         table,
+	}
+
+	jsonResp, err := json.Marshal(response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}

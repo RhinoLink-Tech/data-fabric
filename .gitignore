@@ -30,6 +30,9 @@ go.work.sum
 # Local configuration containing real credentials
 configs/config.yaml
 
+# Local deployment secrets and TLS material for the remote MCP quickstart
+deploy/mcp/tls/
+
 # Editor/IDE
 # .idea/
 # .vscode/

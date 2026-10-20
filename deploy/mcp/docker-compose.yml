@@ -1,0 +1,96 @@
+# Self-hosted remote MCP quickstart (#186): metadata database, seeded sample
+# source, and the Data Fabric gateway serving MCP over authenticated
+# Streamable HTTP with direct TLS.
+#
+# Start here → docs/mcp-deployment.md walks through every step.
+# All secrets come from .env (copy .env.example); nothing sensitive is baked
+# into this file or into the image.
+#
+#   docker compose up -d --build
+
+name: data-fabric-mcp
+
+services:
+  metadata-db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${METADATA_DB_ROOT_PASSWORD:?set METADATA_DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: data_fabric
+      MYSQL_USER: data_fabric
+      MYSQL_PASSWORD: ${METADATA_DB_PASSWORD:?set METADATA_DB_PASSWORD in .env}
+    volumes:
+      - metadata-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    # No published ports: the metadata database stays on the internal network.
+
+  sample-source:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SAMPLE_SOURCE_ROOT_PASSWORD:?set SAMPLE_SOURCE_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: sample
+      MYSQL_USER: sample_reader
+      MYSQL_PASSWORD: ${SAMPLE_READER_PASSWORD:?set SAMPLE_READER_PASSWORD in .env}
+    volumes:
+      - sample-source-data:/var/lib/mysql
+      - ./sample-source-init.sql:/docker-entrypoint-initdb.d/10-sample.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    # No published ports: reachable as `sample-source` inside the stack
+    # network only; clients query it through the gateway.
+
+  data-fabric:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      metadata-db:
+        condition: service_healthy
+      sample-source:
+        condition: service_healthy
+    environment:
+      SERVER_MODE: release
+      SERVER_PORT: "8080"
+      DATABASE_HOST: metadata-db
+      DATABASE_PORT: "3306"
+      DATABASE_DATABASE: data_fabric
+      DATABASE_USERNAME: data_fabric
+      DATABASE_PASSWORD: ${METADATA_DB_PASSWORD:?set METADATA_DB_PASSWORD in .env}
+      SECURITY_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      SECURITY_ENABLE_AUTH: "true"
+      DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID: ${DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID:?set DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID in .env}
+      DATA_FABRIC_CREDENTIAL_KEYS: ${DATA_FABRIC_CREDENTIAL_KEYS:?set DATA_FABRIC_CREDENTIAL_KEYS in .env}
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: streamable-http
+      MCP_ADDRESS: 0.0.0.0:8081
+      MCP_TLS_CERT_FILE: /etc/data-fabric/tls/tls.crt
+      MCP_TLS_KEY_FILE: /etc/data-fabric/tls/tls.key
+    volumes:
+      - ./tls:/etc/data-fabric/tls:ro
+    ports:
+      # Plain-HTTP management API and readiness probe: keep on loopback; put
+      # your own HTTPS proxy in front if it must leave this machine.
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+      # MCP endpoint (HTTPS, terminated directly by the gateway with ./tls).
+      # Widen the binding only on networks you trust, and prefer a real
+      # certificate when clients are remote (docs/mcp-deployment.md).
+      - "${MCP_HTTPS_PORT:-8443}:8081"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+
+volumes:
+  metadata-db-data:
+  sample-source-data:

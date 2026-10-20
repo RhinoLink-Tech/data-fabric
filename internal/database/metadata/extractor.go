@@ -18,6 +18,7 @@ var (
 	ErrMetadataConnectionPoolRequired = errors.New("metadata connection pool is required")
 	ErrMetadataDriverRegistryRequired = errors.New("metadata driver registry is required")
 	ErrSchemaDiscoveryUnsupported     = errors.New("schema discovery is not supported")
+	ErrTableNotFound                  = errors.New("table not found")
 )
 
 type dataSourceLookup interface {
@@ -46,36 +47,9 @@ func NewMetadataExtractor(connPool *database.ConnectionPool, sources repository.
 
 // ExtractSchema extracts the complete schema for a data source.
 func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID string) (*DataSourceSchema, string, error) {
-	if e.sources == nil {
-		return nil, "", ErrMetadataRepositoryRequired
-	}
-	dataSource, err := e.sources.GetByID(ctx, dataSourceID)
+	dataSource, db, err := e.resolveConnection(ctx, dataSourceID)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load data source %q: %w", dataSourceID, err)
-	}
-	if dataSource == nil {
-		return nil, "", fmt.Errorf("failed to load data source %q: %w", dataSourceID, repository.ErrDataSourceNotFound)
-	}
-	if e.registry == nil {
-		return nil, "", ErrMetadataDriverRegistryRequired
-	}
-
-	// Check source support before opening a connection, so unsupported sources
-	// fail clearly without attempting a connection using placeholder settings.
-	driver, err := e.registry.GetDriver(dataSource.Type)
-	if err != nil {
-		return nil, "", fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
-	}
-	if !driver.GetCapabilities().SupportsSchemaDiscovery {
-		return nil, "", fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
-	}
-	if e.connPool == nil {
-		return nil, "", ErrMetadataConnectionPoolRequired
-	}
-
-	db, err := e.connPool.GetConnection(ctx, dataSource)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to get connection for data source %q: %w", dataSourceID, err)
+		return nil, "", err
 	}
 
 	// Extract tables
@@ -94,19 +68,105 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 	return schema, version, nil
 }
 
-// ExtractTableSchema extracts schema for a specific table
+// ExtractTableSchema extracts the schema of one table without scanning every
+// table in the data source: the table list is read once, and column, index,
+// and primary-key details are fetched only for the requested table (#184).
 func (e *MetadataExtractor) ExtractTableSchema(ctx context.Context, dataSourceID, tableName string) (*TableSchema, error) {
-	schema, _, err := e.ExtractSchema(ctx, dataSourceID)
+	dataSource, db, err := e.resolveConnection(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
 	}
 
-	table, exists := schema.Tables[tableName]
-	if !exists {
-		return nil, fmt.Errorf("table %s not found", tableName)
+	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up table %q: %w", tableName, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 	}
 
-	return table, nil
+	columns, err := e.extractColumns(ctx, db, dataSource.Type, tableName, schemaName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract columns for table %q: %w", tableName, err)
+	}
+
+	// Indexes and primary keys are supplementary: keep serving the schema
+	// when the engine cannot provide them, like full-schema extraction does.
+	indexes, err := e.extractIndexes(ctx, db, dataSource.Type, tableName, schemaName)
+	if err != nil {
+		indexes = []IndexSchema{}
+	}
+	pk, err := e.extractPrimaryKey(ctx, db, dataSource.Type, tableName, schemaName)
+	if err != nil {
+		pk = []string{}
+	}
+
+	return &TableSchema{
+		Name:       tableName,
+		Schema:     schemaName,
+		Type:       tableType,
+		Columns:    columns,
+		PrimaryKey: pk,
+		Indexes:    indexes,
+	}, nil
+}
+
+// resolveConnection loads the data source, verifies that its driver supports
+// schema discovery, and opens a pooled connection. Unsupported sources fail
+// before a connection is attempted, so placeholder settings never produce a
+// misleading connection error.
+func (e *MetadataExtractor) resolveConnection(ctx context.Context, dataSourceID string) (*model.DataSource, *sql.DB, error) {
+	if e.sources == nil {
+		return nil, nil, ErrMetadataRepositoryRequired
+	}
+	dataSource, err := e.sources.GetByID(ctx, dataSourceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load data source %q: %w", dataSourceID, err)
+	}
+	if dataSource == nil {
+		return nil, nil, fmt.Errorf("failed to load data source %q: %w", dataSourceID, repository.ErrDataSourceNotFound)
+	}
+	if e.registry == nil {
+		return nil, nil, ErrMetadataDriverRegistryRequired
+	}
+	driver, err := e.registry.GetDriver(dataSource.Type)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
+	}
+	if !driver.GetCapabilities().SupportsSchemaDiscovery {
+		return nil, nil, fmt.Errorf("%w: %s", ErrSchemaDiscoveryUnsupported, dataSource.Type)
+	}
+	if e.connPool == nil {
+		return nil, nil, ErrMetadataConnectionPoolRequired
+	}
+
+	db, err := e.connPool.GetConnection(ctx, dataSource)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get connection for data source %q: %w", dataSourceID, err)
+	}
+	return dataSource, db, nil
+}
+
+// findTable scans the table list for one table name and reports its schema
+// name and table type without extracting details for the other tables.
+func (e *MetadataExtractor) findTable(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName string) (schemaName, tableType string, found bool, err error) {
+	rows, err := db.QueryContext(ctx, e.getTableQuery(dbType))
+	if err != nil {
+		return "", "", false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name, kind string
+		var schema sql.NullString
+		if err := e.scanTableRow(rows, dbType, &name, &kind, &schema); err != nil {
+			continue
+		}
+		if name == tableName {
+			return schema.String, kind, true, nil
+		}
+	}
+	return "", "", false, rows.Err()
 }
 
 // ValidateSchema validates that the cached schema is still valid
@@ -269,7 +329,10 @@ func (e *MetadataExtractor) extractPrimaryKey(ctx context.Context, db *sql.DB, d
 func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return "SHOW TABLE STATUS"
+		// information_schema instead of SHOW TABLE STATUS: the result aligns
+		// with the three-column scan and reports the real schema and type
+		// (SHOW TABLE STATUS would feed the row count into the schema column).
+		return "SELECT table_name, table_type, table_schema FROM information_schema.tables WHERE table_schema = DATABASE()"
 	case model.DatabaseTypePostgreSQL:
 		return "SELECT tablename, 'TABLE' as tabletype, schemaname FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')"
 	case model.DatabaseTypeOracle:
@@ -357,9 +420,14 @@ func (e *MetadataExtractor) scanColumnRow(rows *sql.Rows, dbType model.DatabaseT
 		*colDefault = sql.NullString{String: defaultVal, Valid: defaultVal != ""}
 		*colComment = sql.NullString{Valid: false}
 	default:
-		if err := rows.Scan(colName, colType, isNullable, colDefault, colComment); err != nil {
+		// information_schema reports nullability as the strings "YES"/"NO";
+		// scanning that into a bool always fails and silently drops the
+		// column, so scan the string and convert (#184).
+		var nullable string
+		if err := rows.Scan(colName, colType, &nullable, colDefault, colComment); err != nil {
 			return err
 		}
+		*isNullable = strings.EqualFold(nullable, "YES")
 	}
 	return nil
 }
