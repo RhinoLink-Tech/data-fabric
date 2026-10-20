@@ -14,11 +14,12 @@ The Go workflow checks pull requests and pushes to `master`. It does not publish
    go build ./...
    ```
    Also confirm changed Go files are formatted with `gofmt`.
-3. Move relevant `[Unreleased]` entries in [CHANGELOG.md](../CHANGELOG.md) under a new `vX.Y.Z` heading and date. Call out breaking changes and migration steps.
+3. Move relevant [`Unreleased`] entries in [CHANGELOG.md](../CHANGELOG.md) under a new `vX.Y.Z` heading and date. Call out breaking changes and migration steps.
 4. Check that README, configuration, and supported-source claims match the release code.
-5. Create and push an annotated tag, for example `git tag -a v1.3.0 -m "Release v1.3.0"` and `git push origin v1.3.0`.
-6. Create a GitHub Release with highlights, fixes, known limitations, and a changelog link.
-7. Verify the release page and tag point to the intended `master` commit.
+5. Review the source, binary, and container artifact inventory and attach the applicable license materials. Follow the [release artifact provenance checklist](operations/release-artifact-provenance.md).
+6. Create and push an annotated tag, for example `git tag -a v1.3.0 -m "Release v1.3.0"` and `git push origin v1.3.0`.
+7. Create a GitHub Release with highlights, fixes, known limitations, and a changelog link.
+8. Verify the release page and tag point to the intended `master` commit and the source archive contains LICENSE and THIRD_PARTY_NOTICES.md.
 
 ## Container images
 

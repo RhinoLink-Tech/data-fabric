@@ -11,8 +11,8 @@ info:
     name: RhinoLink Tech
     url: https://github.com/RhinoLink-Tech/data-fabric/discussions
   license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
   - url: http://localhost:8080/api/v1
