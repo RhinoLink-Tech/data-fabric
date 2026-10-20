@@ -33,6 +33,12 @@ jobs:
       - name: Install SQL translation dependency
         run: python -m pip install --requirement requirements-sql-translation.txt
 
+      - name: Install OpenAPI validator
+        run: python -m pip install --requirement requirements-api-validation.txt
+
+      - name: Validate OpenAPI contract
+        run: openapi-spec-validator specs/001-phase1-enhanced-single-source/contracts/openapi.yaml
+
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
