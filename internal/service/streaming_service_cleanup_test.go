@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
 type cleanupRowsState struct {
@@ -276,5 +278,48 @@ func TestCleanupRoutineStopsWhenItsServerContextEnds(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("cleanup routine did not stop when its server context ended")
+	}
+}
+
+func TestFetchStreamChunkClosesRowsAndSessionAfterScanFailure(t *testing.T) {
+	const streamID = "scan-failure-stream"
+	manager := &StreamingSessionManager{sessions: make(map[string]*StreamingSession)}
+	state := &cleanupRowsState{
+		manager: manager,
+		queryID: "scan-failure-session",
+	}
+	rows, _ := newCleanupTestRows(t, state)
+	session := &StreamingSession{QueryID: state.queryID, StreamID: streamID}
+	manager.Store(session)
+
+	stream := &ActiveStream{
+		ID:             streamID,
+		Rows:           rows,
+		Columns:        []model.ColumnInfo{{Name: "value"}, {Name: "unexpected"}},
+		StartedAt:      time.Now(),
+		LastActivityAt: time.Now(),
+	}
+	svc := &streamingService{
+		activeStreams:           map[string]*ActiveStream{streamID: stream},
+		streamTimeout:           time.Minute,
+		streamingSessionManager: manager,
+	}
+
+	_, err := svc.FetchStreamChunk(context.Background(), streamID, 1)
+	if err == nil || !strings.Contains(err.Error(), "error scanning row") {
+		t.Fatalf("FetchStreamChunk() error = %v, want a row scan error", err)
+	}
+
+	state.mutex.Lock()
+	closed := state.closed
+	state.mutex.Unlock()
+	if !closed {
+		t.Fatal("stream rows were not closed after a scan failure")
+	}
+	if got := len(svc.GetAllStreams()); got != 0 {
+		t.Fatalf("active streams = %d after scan failure, want 0", got)
+	}
+	if manager.isCurrent(session) {
+		t.Fatal("streaming session remains after a scan failure")
 	}
 }
