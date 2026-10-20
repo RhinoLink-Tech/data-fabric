@@ -93,7 +93,7 @@ type typedConnector struct{ lookup func(query string) *typedRows }
 func (c typedConnector) Connect(context.Context) (sqldriver.Conn, error) {
 	return typedConn{lookup: c.lookup}, nil
 }
-func (typedConnector) Driver() sqldriver.Driver                          { return typedDriver{} }
+func (typedConnector) Driver() sqldriver.Driver { return typedDriver{} }
 
 type typedDriver struct{}
 

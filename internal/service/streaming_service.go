@@ -1102,11 +1102,11 @@ func (ss *streamingService) generateToken() string {
 }
 
 // getRowCount gets the total row count for the query
-func (ss *streamingService) getRowCount(ctx context.Context, db *sql.DB, sql string) (int64, error) {
+func (ss *streamingService) getRowCount(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return countRowsInQuery(ctx, db, sql)
+	return countRowsInQuery(ctx, db, sql, args...)
 }
 
 // mapDatabaseTypeToStandard maps database-specific type to standardized type
