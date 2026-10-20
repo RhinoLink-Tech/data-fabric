@@ -40,6 +40,8 @@ func SafeQueryErrorMessage(err error) string {
 		return "The query was cancelled before completion."
 	case errors.Is(err, repository.ErrDataSourceNotFound):
 		return "The selected data source was not found."
+	case errors.Is(err, security.ErrDataSourceAccessDenied):
+		return "You do not have access to this data source"
 	case errors.Is(err, ErrDataSourceInactive):
 		return "The selected data source is not active. Ask an administrator to re-enable it, then retry the query."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):

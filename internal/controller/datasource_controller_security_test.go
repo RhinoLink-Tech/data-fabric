@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -25,33 +26,33 @@ type dataSourceControllerServiceStub struct {
 	deactivateErr error
 }
 
-func (s *dataSourceControllerServiceStub) CreateDataSource(context.Context, *service.CreateDataSourceRequest) (*model.DataSource, error) {
+func (s *dataSourceControllerServiceStub) CreateDataSource(context.Context, *security.Caller, *service.CreateDataSourceRequest) (*model.DataSource, error) {
 	return s.dataSource, s.createErr
 }
-func (s *dataSourceControllerServiceStub) GetDataSource(context.Context, string) (*model.DataSource, error) {
+func (s *dataSourceControllerServiceStub) GetDataSource(context.Context, *security.Caller, string) (*model.DataSource, error) {
 	return s.dataSource, s.getErr
 }
-func (s *dataSourceControllerServiceStub) GetDataSourceByName(context.Context, string) (*model.DataSource, error) {
+func (s *dataSourceControllerServiceStub) GetDataSourceByName(context.Context, *security.Caller, string) (*model.DataSource, error) {
 	return s.dataSource, nil
 }
-func (s *dataSourceControllerServiceStub) ListDataSources(context.Context, *service.ListDataSourcesRequest) (*service.ListDataSourcesResponse, error) {
+func (s *dataSourceControllerServiceStub) ListDataSources(context.Context, *security.Caller, *service.ListDataSourcesRequest) (*service.ListDataSourcesResponse, error) {
 	return &service.ListDataSourcesResponse{
 		DataSources: []*model.DataSource{s.dataSource}, Total: 1, Limit: 20, Offset: 0,
 	}, nil
 }
-func (s *dataSourceControllerServiceStub) UpdateDataSource(context.Context, string, *service.UpdateDataSourceRequest) (*model.DataSource, error) {
+func (s *dataSourceControllerServiceStub) UpdateDataSource(context.Context, *security.Caller, string, *service.UpdateDataSourceRequest) (*model.DataSource, error) {
 	return s.dataSource, s.updateErr
 }
-func (s *dataSourceControllerServiceStub) DeleteDataSource(context.Context, string) error {
+func (s *dataSourceControllerServiceStub) DeleteDataSource(context.Context, *security.Caller, string) error {
 	return s.deleteErr
 }
-func (s *dataSourceControllerServiceStub) ActivateDataSource(context.Context, string) error {
+func (s *dataSourceControllerServiceStub) ActivateDataSource(context.Context, *security.Caller, string) error {
 	return s.activateErr
 }
-func (s *dataSourceControllerServiceStub) DeactivateDataSource(context.Context, string) error {
+func (s *dataSourceControllerServiceStub) DeactivateDataSource(context.Context, *security.Caller, string) error {
 	return s.deactivateErr
 }
-func (s *dataSourceControllerServiceStub) GetDataSourceStats(context.Context) (*service.DataSourceStatsResponse, error) {
+func (s *dataSourceControllerServiceStub) GetDataSourceStats(context.Context, *security.Caller) (*service.DataSourceStatsResponse, error) {
 	return &service.DataSourceStatsResponse{Total: 1}, nil
 }
 

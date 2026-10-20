@@ -87,7 +87,7 @@ func TestFetchQueryRoutesFederatedRequestAndNormalizesResult(t *testing.T) {
 		BatchSize:     10,
 		Type:          1,
 	}
-	response, err := queryService.FetchQuery(context.Background(), req)
+	response, err := queryService.FetchQuery(context.Background(), nil, req)
 	if err != nil {
 		t.Fatalf("FetchQuery() error = %v", err)
 	}
@@ -121,7 +121,7 @@ func TestFetchQueryRoutesFederatedRequestAndNormalizesResult(t *testing.T) {
 	// A full page is ambiguous: there may be more rows, so retain the exact
 	// count query and its existing pagination behavior.
 	req.BatchSize = len(response.Entries)
-	fullPageResponse, err := queryService.FetchQuery(context.Background(), req)
+	fullPageResponse, err := queryService.FetchQuery(context.Background(), nil, req)
 	if err != nil {
 		t.Fatalf("FetchQuery() for a full page error = %v", err)
 	}

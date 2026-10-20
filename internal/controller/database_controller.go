@@ -23,7 +23,7 @@ const (
 )
 
 type databaseHealthDataSourceLister interface {
-	GetAll(ctx context.Context, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error)
+	GetAll(ctx context.Context, scope *repository.AccessScope, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error)
 }
 
 type connectionPoolStatsProvider interface {
@@ -306,7 +306,9 @@ func (dc *DatabaseController) GetDatabaseHealth(c *gin.Context) {
 func (dc *DatabaseController) loadActiveDataSources(ctx context.Context) ([]*model.DataSource, error) {
 	var sources []*model.DataSource
 	for offset := 0; ; {
-		page, total, err := dc.datasourceRepo.GetAll(ctx, model.DataSourceStatusActive, databaseHealthPageSize, offset)
+		// The health probe is admin-only at the route layer (#9) and sees the
+		// whole fleet; an unscoped read is intended here.
+		page, total, err := dc.datasourceRepo.GetAll(ctx, nil, model.DataSourceStatusActive, databaseHealthPageSize, offset)
 		if err != nil {
 			return nil, err
 		}

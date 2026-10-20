@@ -19,17 +19,21 @@ import (
 )
 
 type QueryService interface {
-	ValidateQuery(ctx context.Context, req *model.QueryRequest) error
+	ValidateQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) error
 	GetQueryStats(ctx context.Context) (*model.QueryStats, error)
-	FetchQuery(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
-	FetchNextBatch(ctx context.Context, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error)
+	FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
+	FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error)
 }
 
 // QuerySession represents a query session for batch fetching
 type QuerySession struct {
-	QueryID          string
-	Slug             string
-	Token            string
+	QueryID string
+	Slug    string
+	Token   string
+	// CreatorID binds a session to the identity that created it (#9): a
+	// continuation Bearer token from a different user is rejected the same
+	// way as an unknown session.
+	CreatorID        string
 	DataSourceID     string
 	SQL              string
 	Type             int
@@ -105,7 +109,7 @@ func newQueryStats() *queryStats {
 	}
 }
 
-func (qs *queryService) ValidateQuery(ctx context.Context, req *model.QueryRequest) error {
+func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) error {
 	// Basic validation
 	if !req.IsValid() {
 		return fmt.Errorf("invalid query request")
@@ -118,6 +122,9 @@ func (qs *queryService) ValidateQuery(ctx context.Context, req *model.QueryReque
 	dataSource, err := qs.datasourceRepo.GetByID(ctx, req.DataSourceID)
 	if err != nil {
 		return err
+	}
+	if !caller.CanRead(dataSource) {
+		return security.ErrDataSourceAccessDenied
 	}
 
 	// Translate SQL if needed
@@ -413,7 +420,7 @@ func (qs *queryService) recordQueryStats(dataSourceID string, success bool, dura
 }
 
 // FetchQuery executes a fetch query and returns the first batch of data
-func (qs *queryService) FetchQuery(ctx context.Context, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
@@ -421,6 +428,9 @@ func (qs *queryService) FetchQuery(ctx context.Context, req *model.FetchQueryReq
 	datasource, err := qs.datasourceRepo.GetByID(ctx, req.DataSourceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source: %w", err)
+	}
+	if !caller.CanRead(datasource) {
+		return nil, security.ErrDataSourceAccessDenied
 	}
 
 	// Inactive or errored sources must not execute queries (#118)
@@ -457,6 +467,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, req *model.FetchQueryReq
 		QueryID:      qs.generateSessionID(),
 		Slug:         qs.generateSlug(),
 		Token:        qs.generateToken(),
+		CreatorID:    caller.Key(),
 		DataSourceID: req.DataSourceID,
 		SQL:          sqlToExecute,
 		Type:         req.Type,
@@ -498,7 +509,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, req *model.FetchQueryReq
 }
 
 // FetchNextBatch fetches the next batch of data for a query session
-func (qs *queryService) FetchNextBatch(ctx context.Context, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
+func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
 	ctx, cancel := withQueryTimeout(ctx, defaultQueryTimeoutSeconds)
 	defer cancel()
 
@@ -516,6 +527,13 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, queryID, slug, token
 	}
 	if err := validateContinuationToken(session.Slug, session.Token, slug, token); err != nil {
 		return nil, err
+	}
+
+	// Sessions are bound to their creator (#9): another user's valid Bearer
+	// token cannot drain a stream it did not open. The response matches an
+	// unknown session so session existence is not disclosed.
+	if session.CreatorID != caller.Key() {
+		return nil, ErrQuerySessionUnavailable
 	}
 
 	// Check if all data has been fetched

@@ -104,13 +104,19 @@ const (
 	DataSourceStatusError    DataSourceStatus = "error"
 )
 
-// DataSource represents a database connection configuration
+// DataSource represents a database connection configuration. OwnerID and
+// TenantID carry the #9 access model: reads are owner/tenant/admin scoped,
+// writes are owner/admin only, and rows with both fields empty are legacy
+// (readable by any authenticated caller, writable after an explicit adopt).
+// Name is unique per tenant, not globally.
 type DataSource struct {
 	ID        string           `gorm:"type:char(36);primaryKey" json:"id"`
-	Name      string           `gorm:"size:255;not null;uniqueIndex" json:"name"`
+	Name      string           `gorm:"size:255;not null;uniqueIndex:idx_datasources_tenant_name,priority:2" json:"name"`
 	Type      DatabaseType     `gorm:"type:enum('mysql','mariadb','postgresql','oracle','trino','presto','openlookeng','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','oss_parquet','cos_parquet','azure_blob_parquet','hdfs_avro','hdfs_parquet','hdfs_csv','ozone_parquet','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute');not null" json:"type"`
 	Config    DataSourceConfig `gorm:"type:json;not null" json:"config"`
 	Status    DataSourceStatus `gorm:"type:enum('active','inactive','error');default:'active'" json:"status"`
+	OwnerID   string           `gorm:"size:255;not null;default:'';index" json:"ownerId"`
+	TenantID  string           `gorm:"size:255;not null;default:'';index;uniqueIndex:idx_datasources_tenant_name,priority:1" json:"tenantId"`
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
 }

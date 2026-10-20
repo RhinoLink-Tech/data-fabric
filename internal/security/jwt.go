@@ -16,6 +16,7 @@ type JWTManager struct {
 // Claims represents the JWT claims
 type Claims struct {
 	UserID   string   `json:"userId"`
+	TenantID string   `json:"tenantId,omitempty"`
 	Username string   `json:"username"`
 	Roles    []string `json:"roles"`
 	jwt.RegisteredClaims
@@ -29,10 +30,12 @@ func NewJWTManager(secretKey string, tokenDuration time.Duration) *JWTManager {
 	}
 }
 
-// GenerateToken generates a new JWT token
-func (j *JWTManager) GenerateToken(userID, username string, roles []string) (string, error) {
+// GenerateToken generates a new JWT token. tenantID may be empty; tokens
+// without a tenant act as members of the default tenant bucket (#9).
+func (j *JWTManager) GenerateToken(userID, tenantID, username string, roles []string) (string, error) {
 	claims := &Claims{
 		UserID:   userID,
+		TenantID: tenantID,
 		Username: username,
 		Roles:    roles,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -80,6 +83,7 @@ func (j *JWTManager) RefreshToken(claims *Claims) (string, error) {
 	// Create new claims with same user info but extended expiration
 	newClaims := &Claims{
 		UserID:   claims.UserID,
+		TenantID: claims.TenantID,
 		Username: claims.Username,
 		Roles:    claims.Roles,
 		RegisteredClaims: jwt.RegisteredClaims{

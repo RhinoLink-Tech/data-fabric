@@ -67,7 +67,7 @@ func TestExecuteStreamQueryHonorsRequestDeadline(t *testing.T) {
 
 	svc, pool := newStreamingTestService(t, server)
 	defer func() { _ = pool.CloseAll() }()
-	_, _, err := svc.ExecuteStreamQuery(context.Background(), &model.QueryRequest{
+	_, _, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM slow_table",
 		Timeout:      1,
@@ -116,7 +116,7 @@ func TestFetchStreamChunkCancellationDeletesCoordinatorQuery(t *testing.T) {
 
 	svc, pool := newStreamingTestService(t, server)
 	defer func() { _ = pool.CloseAll() }()
-	streamID, total, err := svc.ExecuteStreamQuery(context.Background(), &model.QueryRequest{
+	streamID, total, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM sales.orders",
 	})
@@ -189,7 +189,7 @@ func TestExecuteStreamQueryCleansUpWhenCountFails(t *testing.T) {
 
 	svc, pool := newStreamingTestService(t, server)
 	defer func() { _ = pool.CloseAll() }()
-	_, _, err := svc.ExecuteStreamQuery(context.Background(), &model.QueryRequest{
+	_, _, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM sales.orders",
 	})

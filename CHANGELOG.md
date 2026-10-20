@@ -20,6 +20,13 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
+- Data sources are now access-controlled per caller (#9): records carry `ownerId`/`tenantId` stamped from the JWT, queries and management operations enforce owner/tenant/admin permissions, and the JWT gains an optional `tenantId` claim.
+  - **Behavior change**: non-admin callers receive a uniform `403 DATASOURCE_ACCESS_DENIED` for missing *and* foreign data sources on every management endpoint and `/fetch` (admins keep `404`), so data source existence can no longer be probed.
+  - **Behavior change**: pagination/streaming continuation is bound to the session's creator; another user's token gets `404 QUERY_SESSION_UNAVAILABLE`.
+  - **Behavior change**: data source names are unique per tenant instead of globally; the old global unique index is dropped at startup. A non-admin update to a legacy (pre-upgrade, unowned) row must pass `"adopt": true` to claim it.
+  - `/api/v1/database/health` and `/api/v1/database/connections/stats` require the `admin` role when authentication is enabled.
+  - Fixed `RequireRole`/`RequireAnyRole`: the composed role check previously ran *after* the route handler (the inner `RequireAuth` advanced the chain), so any valid token reached the handler and the 403 body was appended to the handler's response. Role checks now run before the handler.
+  - MCP stdio runs as an administrator-equivalent system caller; remote MCP identity is deferred to #185. The `tenantId` claim is self-asserted — structural isolation only, identity assurance is #7.
 - Data-source sessions are now opened read-only where the engine supports it (#20), adding database-side defense-in-depth on top of application-layer SELECT validation.
   - MySQL-protocol engines (mysql, mariadb, tidb, oceanbase_mysql, tdsql, gbase_8s/8t) run `SET SESSION TRANSACTION READ ONLY` on every pooled connection; PostgreSQL-protocol engines (postgresql, gaussdb_*, kingbasees, opengauss, oscar) receive `default_transaction_read_only=on`.
   - **Behavior change**: engines that reject the init statement or parameter fail connection creation instead of silently continuing (fail-closed). If an engine version rejects it, opt out per data source with `additionalProps: {enforce_read_only: false}`.

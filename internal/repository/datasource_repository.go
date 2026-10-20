@@ -56,9 +56,9 @@ func (r *dataSourceRepository) GetByID(ctx context.Context, id string) (*model.D
 	return &ds, nil
 }
 
-func (r *dataSourceRepository) GetByName(ctx context.Context, name string) (*model.DataSource, error) {
+func (r *dataSourceRepository) GetByName(ctx context.Context, tenantID, name string) (*model.DataSource, error) {
 	var ds model.DataSource
-	if err := r.db.WithContext(ctx).Where("name = ?", name).First(&ds).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND name = ?", tenantID, name).First(&ds).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDataSourceNotFound
 		}
@@ -70,10 +70,10 @@ func (r *dataSourceRepository) GetByName(ctx context.Context, name string) (*mod
 	return &ds, nil
 }
 
-func (r *dataSourceRepository) GetAll(ctx context.Context, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error) {
+func (r *dataSourceRepository) GetAll(ctx context.Context, scope *AccessScope, status model.DataSourceStatus, limit, offset int) ([]*model.DataSource, int64, error) {
 	var sources []*model.DataSource
 	var total int64
-	query := r.db.WithContext(ctx).Model(&model.DataSource{})
+	query := scope.apply(r.db.WithContext(ctx).Model(&model.DataSource{}))
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -98,7 +98,7 @@ func (r *dataSourceRepository) Update(ctx context.Context, ds *model.DataSource)
 	}
 	result := r.db.WithContext(ctx).Model(&model.DataSource{}).
 		Where("id = ?", stored.ID).
-		Select("name", "type", "config", "status").
+		Select("name", "type", "config", "status", "owner_id", "tenant_id").
 		Updates(stored)
 	if err := r.checkMutationResult(ctx, stored.ID, result); err != nil {
 		return err
@@ -311,12 +311,12 @@ func transformPropertyValue(vault *security.CredentialVault, value interface{}, 
 	}
 }
 
-func (r *dataSourceRepository) CountByStatus(ctx context.Context) (map[model.DataSourceStatus]int64, error) {
+func (r *dataSourceRepository) CountByStatus(ctx context.Context, scope *AccessScope) (map[model.DataSourceStatus]int64, error) {
 	var results []struct {
 		Status model.DataSourceStatus
 		Count  int64
 	}
-	if err := r.db.WithContext(ctx).Model(&model.DataSource{}).
+	if err := scope.apply(r.db.WithContext(ctx).Model(&model.DataSource{})).
 		Select("status, COUNT(*) as count").Group("status").Scan(&results).Error; err != nil {
 		return nil, err
 	}

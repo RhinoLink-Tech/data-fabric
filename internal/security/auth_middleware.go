@@ -20,64 +20,98 @@ func NewAuthMiddleware(jwtManager *JWTManager) *AuthMiddleware {
 }
 
 // RequireAuth creates a middleware that requires authentication
+// authenticate validates the Bearer token and stores the claims. It never
+// advances the chain, so middlewares composed around it can run further
+// checks before any route handler executes. Authentication failures are
+// answered and the context aborted; on success the claims are returned.
+func (am *AuthMiddleware) authenticate(c *gin.Context) *Claims {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
+			"Authorization header is required",
+			am.getCorrelationID(c),
+		))
+		c.Abort()
+		return nil
+	}
+
+	// Extract token from header
+	token, err := am.jwtManager.ExtractTokenFromHeader(authHeader)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
+			err.Error(),
+			am.getCorrelationID(c),
+		))
+		c.Abort()
+		return nil
+	}
+
+	// Validate token
+	claims, err := am.jwtManager.ValidateToken(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
+			"Invalid or expired token",
+			am.getCorrelationID(c),
+		))
+		c.Abort()
+		return nil
+	}
+
+	// Store claims in context
+	c.Set("user_claims", claims)
+	c.Set("user_id", claims.UserID)
+	c.Set("username", claims.Username)
+	c.Set("user_roles", claims.Roles)
+	return claims
+}
+
 func (am *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
-				"Authorization header is required",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
+		if am.authenticate(c) == nil {
 			return
 		}
-
-		// Extract token from header
-		token, err := am.jwtManager.ExtractTokenFromHeader(authHeader)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
-				err.Error(),
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		// Validate token
-		claims, err := am.jwtManager.ValidateToken(token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
-				"Invalid or expired token",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		// Store claims in context
-		c.Set("user_claims", claims)
-		c.Set("user_id", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("user_roles", claims.Roles)
-
 		c.Next()
 	}
 }
 
-// RequireRole creates a middleware that requires specific role
+// RequireRole creates a middleware that requires a specific role. The role
+// check runs after authentication but before the chain advances, so a caller
+// without the role never reaches the route handler.
 func (am *AuthMiddleware) RequireRole(role string) gin.HandlerFunc {
-	return am.combineMiddleware(
-		am.RequireAuth(),
-		am.roleMiddleware(role),
-	)
+	return func(c *gin.Context) {
+		claims := am.authenticate(c)
+		if claims == nil {
+			return
+		}
+		if !claims.HasRole(role) {
+			am.rejectRole(c)
+			return
+		}
+		c.Next()
+	}
 }
 
 // RequireAnyRole creates a middleware that requires any of the specified roles
 func (am *AuthMiddleware) RequireAnyRole(roles ...string) gin.HandlerFunc {
-	return am.combineMiddleware(
-		am.RequireAuth(),
-		am.anyRoleMiddleware(roles...),
-	)
+	return func(c *gin.Context) {
+		claims := am.authenticate(c)
+		if claims == nil {
+			return
+		}
+		if !claims.HasAnyRole(roles...) {
+			am.rejectRole(c)
+			return
+		}
+		c.Next()
+	}
+}
+
+func (am *AuthMiddleware) rejectRole(c *gin.Context) {
+	c.JSON(http.StatusForbidden, response.ForbiddenResponse(
+		"Insufficient permissions",
+		am.getCorrelationID(c),
+	))
+	c.Abort()
 }
 
 // OptionalAuth creates a middleware that optionally validates authentication
@@ -118,76 +152,6 @@ func (am *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 // SkipAuth creates a middleware that skips authentication
 func (am *AuthMiddleware) SkipAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Next()
-	}
-}
-
-// Role-based middleware
-
-func (am *AuthMiddleware) roleMiddleware(requiredRole string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		claims, exists := c.Get("user_claims")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
-				"User claims not found",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		userClaims, ok := claims.(*Claims)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, response.InternalServerErrorResponse(
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		if !userClaims.HasRole(requiredRole) {
-			c.JSON(http.StatusForbidden, response.ForbiddenResponse(
-				"Insufficient permissions",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-func (am *AuthMiddleware) anyRoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		claims, exists := c.Get("user_claims")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, response.UnauthorizedResponse(
-				"User claims not found",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		userClaims, ok := claims.(*Claims)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, response.InternalServerErrorResponse(
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
-		if !userClaims.HasAnyRole(requiredRoles...) {
-			c.JSON(http.StatusForbidden, response.ForbiddenResponse(
-				"Insufficient permissions",
-				am.getCorrelationID(c),
-			))
-			c.Abort()
-			return
-		}
-
 		c.Next()
 	}
 }

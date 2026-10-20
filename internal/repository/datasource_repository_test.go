@@ -19,7 +19,7 @@ func testRepository(t *testing.T, vault *security.CredentialVault) (*gorm.DB, Da
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec("CREATE TABLE data_sources (id text primary key, name text, type text, config json not null, status text, created_at datetime, updated_at datetime)").Error; err != nil {
+	if err := db.Exec("CREATE TABLE data_sources (id text primary key, name text, type text, config json not null, status text, owner_id text not null default '', tenant_id text not null default '', created_at datetime, updated_at datetime, UNIQUE (tenant_id, name))").Error; err != nil {
 		t.Fatal(err)
 	}
 	repo, err := NewDataSourceRepository(db, vault)

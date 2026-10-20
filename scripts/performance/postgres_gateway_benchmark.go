@@ -16,6 +16,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 )
 
@@ -271,7 +272,7 @@ func run() error {
 			return e
 		}
 		gateway := func() error {
-			r, e := qs.FetchQuery(context.Background(), &model.FetchQueryRequest{DataSourceID: sourceID, SQL: w.sql, BatchSize: w.batch, Type: 1, Timeout: 60})
+			r, e := qs.FetchQuery(context.Background(), security.SystemCaller(), &model.FetchQueryRequest{DataSourceID: sourceID, SQL: w.sql, BatchSize: w.batch, Type: 1, Timeout: 60})
 			if e != nil {
 				return e
 			}

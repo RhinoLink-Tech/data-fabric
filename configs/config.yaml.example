@@ -30,9 +30,13 @@ security:
   jwt_expiration: "24h"
   # enable_auth 只控制数据源管理端点（/api/v1/datasources、/api/v1/database）；
   # /api/v1/fetch 无论开关都需要 Bearer token（#6）。本地自签一枚（24h 有效，需 pyjwt）：
-  # python3 -c "import jwt,time; print(jwt.encode({'userId':'dev','username':'dev','roles':['admin'],'iat':int(time.time()),'exp':int(time.time())+86400}, '与JWT_SECRET相同的值', algorithm='HS256'))"
+  # python3 -c "import jwt,time; print(jwt.encode({'userId':'dev','tenantId':'acme','username':'dev','roles':['admin'],'iat':int(time.time()),'exp':int(time.time())+86400}, '与JWT_SECRET相同的值', algorithm='HS256'))"
   # 注意：HTTP 服务启动即要求合法 JWT_SECRET（非空、非占位、≥32 字节，#8/#6）；
   # release 模式下也不允许将 enable_auth 设为 false。
+  # 数据源按所有者/租户授权（#9）：token 里的 userId/tenantId 决定可见范围，
+  # roles 含 admin 则不受限；tenantId 可省略（默认桶）。详见 docs/configuration.md
+  # 的 "Data source authorization" 一节。/api/v1/database/health 与
+  # /api/v1/database/connections/stats 需要 admin 角色。
   enable_auth: true
   enable_rate_limit: true
   rate_limit_per_minute: 60

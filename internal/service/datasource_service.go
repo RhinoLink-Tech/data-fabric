@@ -7,19 +7,21 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+
 	"github.com/google/uuid"
 )
 
 type DataSourceService interface {
-	CreateDataSource(ctx context.Context, req *CreateDataSourceRequest) (*model.DataSource, error)
-	GetDataSource(ctx context.Context, id string) (*model.DataSource, error)
-	GetDataSourceByName(ctx context.Context, name string) (*model.DataSource, error)
-	ListDataSources(ctx context.Context, req *ListDataSourcesRequest) (*ListDataSourcesResponse, error)
-	UpdateDataSource(ctx context.Context, id string, req *UpdateDataSourceRequest) (*model.DataSource, error)
-	DeleteDataSource(ctx context.Context, id string) error
-	ActivateDataSource(ctx context.Context, id string) error
-	DeactivateDataSource(ctx context.Context, id string) error
-	GetDataSourceStats(ctx context.Context) (*DataSourceStatsResponse, error)
+	CreateDataSource(ctx context.Context, caller *security.Caller, req *CreateDataSourceRequest) (*model.DataSource, error)
+	GetDataSource(ctx context.Context, caller *security.Caller, id string) (*model.DataSource, error)
+	GetDataSourceByName(ctx context.Context, caller *security.Caller, name string) (*model.DataSource, error)
+	ListDataSources(ctx context.Context, caller *security.Caller, req *ListDataSourcesRequest) (*ListDataSourcesResponse, error)
+	UpdateDataSource(ctx context.Context, caller *security.Caller, id string, req *UpdateDataSourceRequest) (*model.DataSource, error)
+	DeleteDataSource(ctx context.Context, caller *security.Caller, id string) error
+	ActivateDataSource(ctx context.Context, caller *security.Caller, id string) error
+	DeactivateDataSource(ctx context.Context, caller *security.Caller, id string) error
+	GetDataSourceStats(ctx context.Context, caller *security.Caller) (*DataSourceStatsResponse, error)
 }
 
 // ConnectionInvalidator closes the pooled connections of a data source. The
@@ -49,6 +51,9 @@ type UpdateDataSourceRequest struct {
 	Name   *string                 `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 	Config *model.DataSourceConfig `json:"config,omitempty"`
 	Status *model.DataSourceStatus `json:"status,omitempty"`
+	// Adopt claims a legacy data source (no owner/tenant) for the caller.
+	// Required for non-admin writes to legacy rows; ignored otherwise.
+	Adopt *bool `json:"adopt,omitempty"`
 }
 
 type ListDataSourcesRequest struct {
@@ -104,7 +109,7 @@ func (s *dataSourceService) validateDataSourceConfig(config *model.DataSourceCon
 	return nil
 }
 
-func (s *dataSourceService) CreateDataSource(ctx context.Context, req *CreateDataSourceRequest) (*model.DataSource, error) {
+func (s *dataSourceService) CreateDataSource(ctx context.Context, caller *security.Caller, req *CreateDataSourceRequest) (*model.DataSource, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: request is required", ErrInvalidDataSourceConfig)
 	}
@@ -113,18 +118,26 @@ func (s *dataSourceService) CreateDataSource(ctx context.Context, req *CreateDat
 		return nil, err
 	}
 
-	// Check if data source with the same name already exists
-	if existing, _ := s.repo.GetByName(ctx, req.Name); existing != nil {
+	// Name uniqueness is per tenant (#9): only a same-name source in the
+	// caller's bucket collides. Callers without a tenant claim share the
+	// default bucket.
+	tenantID := ""
+	if caller != nil {
+		tenantID = caller.TenantID
+	}
+	if existing, _ := s.repo.GetByName(ctx, tenantID, req.Name); existing != nil {
 		return nil, repository.ErrDataSourceExists
 	}
 
-	// Create new data source
+	// Create new data source with ownership stamped from the caller. Rows
+	// created while authorization is disabled stay legacy (empty fields).
 	dataSource := &model.DataSource{
 		Name:   req.Name,
 		Type:   req.Type,
 		Config: config,
 		Status: model.DataSourceStatusActive,
 	}
+	security.StampCaller(dataSource, caller)
 
 	if err := s.repo.Create(ctx, dataSource); err != nil {
 		return nil, fmt.Errorf("failed to create data source: %w", err)
@@ -133,7 +146,7 @@ func (s *dataSourceService) CreateDataSource(ctx context.Context, req *CreateDat
 	return dataSource, nil
 }
 
-func (s *dataSourceService) GetDataSource(ctx context.Context, id string) (*model.DataSource, error) {
+func (s *dataSourceService) GetDataSource(ctx context.Context, caller *security.Caller, id string) (*model.DataSource, error) {
 	// Validate UUID format
 	if _, err := uuid.Parse(id); err != nil {
 		return nil, repository.ErrInvalidUUID
@@ -143,24 +156,34 @@ func (s *dataSourceService) GetDataSource(ctx context.Context, id string) (*mode
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
+	if !caller.CanRead(dataSource) {
+		return nil, security.ErrDataSourceAccessDenied
+	}
 
 	return dataSource, nil
 }
 
-func (s *dataSourceService) GetDataSourceByName(ctx context.Context, name string) (*model.DataSource, error) {
+func (s *dataSourceService) GetDataSourceByName(ctx context.Context, caller *security.Caller, name string) (*model.DataSource, error) {
 	if name == "" {
 		return nil, fmt.Errorf("name cannot be empty")
 	}
 
-	dataSource, err := s.repo.GetByName(ctx, name)
+	tenantID := ""
+	if caller != nil {
+		tenantID = caller.TenantID
+	}
+	dataSource, err := s.repo.GetByName(ctx, tenantID, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source by name: %w", err)
+	}
+	if !caller.CanRead(dataSource) {
+		return nil, security.ErrDataSourceAccessDenied
 	}
 
 	return dataSource, nil
 }
 
-func (s *dataSourceService) ListDataSources(ctx context.Context, req *ListDataSourcesRequest) (*ListDataSourcesResponse, error) {
+func (s *dataSourceService) ListDataSources(ctx context.Context, caller *security.Caller, req *ListDataSourcesRequest) (*ListDataSourcesResponse, error) {
 	// Set default values
 	if req.Limit == 0 {
 		req.Limit = 20
@@ -169,7 +192,7 @@ func (s *dataSourceService) ListDataSources(ctx context.Context, req *ListDataSo
 		req.Limit = 100
 	}
 
-	dataSources, total, err := s.repo.GetAll(ctx, req.Status, req.Limit, req.Offset)
+	dataSources, total, err := s.repo.GetAll(ctx, repository.ScopeForCaller(caller), req.Status, req.Limit, req.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list data sources: %w", err)
 	}
@@ -225,7 +248,7 @@ func cloneAdditionalProperties(source map[string]interface{}) map[string]interfa
 	return clone
 }
 
-func (s *dataSourceService) UpdateDataSource(ctx context.Context, id string, req *UpdateDataSourceRequest) (*model.DataSource, error) {
+func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *security.Caller, id string, req *UpdateDataSourceRequest) (*model.DataSource, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: request is required", ErrInvalidDataSourceConfig)
 	}
@@ -239,6 +262,20 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, id string, req
 	dataSource, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source: %w", err)
+	}
+
+	// Write gate (#9). Legacy rows (no owner/tenant) are claimed explicitly:
+	// a non-admin update must pass adopt=true, which stamps the caller's
+	// ownership before the change is applied. Owned rows ignore the flag.
+	if security.IsLegacyDataSource(dataSource) {
+		if caller != nil && !caller.IsAdmin() {
+			if req.Adopt == nil || !*req.Adopt {
+				return nil, security.ErrDataSourceAdoptionRequired
+			}
+			dataSource.OwnerID, dataSource.TenantID = caller.UserID, caller.TenantID
+		}
+	} else if !caller.CanWrite(dataSource) {
+		return nil, security.ErrDataSourceAccessDenied
 	}
 
 	// Update fields if provided
@@ -270,10 +307,26 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, id string, req
 	return dataSource, nil
 }
 
-func (s *dataSourceService) DeleteDataSource(ctx context.Context, id string) error {
-	// Validate UUID format
+// authorizeWrite resolves the record and enforces the #9 write gate shared by
+// delete/activate/deactivate. Unlike update, these operations do not adopt:
+// a legacy row must be claimed via update first.
+func (s *dataSourceService) authorizeWrite(ctx context.Context, caller *security.Caller, id string) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return repository.ErrInvalidUUID
+	}
+	dataSource, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get data source: %w", err)
+	}
+	if !caller.CanWrite(dataSource) {
+		return security.ErrDataSourceAccessDenied
+	}
+	return nil
+}
+
+func (s *dataSourceService) DeleteDataSource(ctx context.Context, caller *security.Caller, id string) error {
+	if err := s.authorizeWrite(ctx, caller, id); err != nil {
+		return err
 	}
 
 	if err := s.repo.Delete(ctx, id); err != nil {
@@ -287,10 +340,9 @@ func (s *dataSourceService) DeleteDataSource(ctx context.Context, id string) err
 	return nil
 }
 
-func (s *dataSourceService) ActivateDataSource(ctx context.Context, id string) error {
-	// Validate UUID format
-	if _, err := uuid.Parse(id); err != nil {
-		return repository.ErrInvalidUUID
+func (s *dataSourceService) ActivateDataSource(ctx context.Context, caller *security.Caller, id string) error {
+	if err := s.authorizeWrite(ctx, caller, id); err != nil {
+		return err
 	}
 
 	if err := s.repo.Activate(ctx, id); err != nil {
@@ -304,10 +356,9 @@ func (s *dataSourceService) ActivateDataSource(ctx context.Context, id string) e
 	return nil
 }
 
-func (s *dataSourceService) DeactivateDataSource(ctx context.Context, id string) error {
-	// Validate UUID format
-	if _, err := uuid.Parse(id); err != nil {
-		return repository.ErrInvalidUUID
+func (s *dataSourceService) DeactivateDataSource(ctx context.Context, caller *security.Caller, id string) error {
+	if err := s.authorizeWrite(ctx, caller, id); err != nil {
+		return err
 	}
 
 	if err := s.repo.Deactivate(ctx, id); err != nil {
@@ -321,8 +372,8 @@ func (s *dataSourceService) DeactivateDataSource(ctx context.Context, id string)
 	return nil
 }
 
-func (s *dataSourceService) GetDataSourceStats(ctx context.Context) (*DataSourceStatsResponse, error) {
-	counts, err := s.repo.CountByStatus(ctx)
+func (s *dataSourceService) GetDataSourceStats(ctx context.Context, caller *security.Caller) (*DataSourceStatsResponse, error) {
+	counts, err := s.repo.CountByStatus(ctx, repository.ScopeForCaller(caller))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source stats: %w", err)
 	}

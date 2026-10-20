@@ -33,7 +33,7 @@ type validatingDataSourceRepositoryStub struct {
 	updated  *model.DataSource
 }
 
-func (r *validatingDataSourceRepositoryStub) GetByName(context.Context, string) (*model.DataSource, error) {
+func (r *validatingDataSourceRepositoryStub) GetByName(context.Context, string, string) (*model.DataSource, error) {
 	return nil, repository.ErrDataSourceNotFound
 }
 func (r *validatingDataSourceRepositoryStub) Create(_ context.Context, dataSource *model.DataSource) error {
@@ -58,7 +58,7 @@ func TestCreateDataSourceValidatesTypeAndConfigBeforePersistence(t *testing.T) {
 		repo := &validatingDataSourceRepositoryStub{}
 		validator := &datasourceConfigValidatorStub{supported: false}
 		svc := &dataSourceService{repo: repo, configValidator: validator}
-		_, err := svc.CreateDataSource(context.Background(), validRequest)
+		_, err := svc.CreateDataSource(context.Background(), nil, validRequest)
 		if !errors.Is(err, ErrUnsupportedDataSourceType) {
 			t.Fatalf("CreateDataSource() error = %v, want ErrUnsupportedDataSourceType", err)
 		}
@@ -71,7 +71,7 @@ func TestCreateDataSourceValidatesTypeAndConfigBeforePersistence(t *testing.T) {
 		repo := &validatingDataSourceRepositoryStub{}
 		validator := &datasourceConfigValidatorStub{supported: true, validationErr: errors.New("host is required")}
 		svc := &dataSourceService{repo: repo, configValidator: validator}
-		_, err := svc.CreateDataSource(context.Background(), validRequest)
+		_, err := svc.CreateDataSource(context.Background(), nil, validRequest)
 		if !errors.Is(err, ErrInvalidDataSourceConfig) {
 			t.Fatalf("CreateDataSource() error = %v, want ErrInvalidDataSourceConfig", err)
 		}
@@ -84,7 +84,7 @@ func TestCreateDataSourceValidatesTypeAndConfigBeforePersistence(t *testing.T) {
 		repo := &validatingDataSourceRepositoryStub{}
 		validator := &datasourceConfigValidatorStub{supported: true}
 		svc := &dataSourceService{repo: repo, configValidator: validator}
-		if _, err := svc.CreateDataSource(context.Background(), validRequest); err != nil {
+		if _, err := svc.CreateDataSource(context.Background(), nil, validRequest); err != nil {
 			t.Fatalf("CreateDataSource() error = %v", err)
 		}
 		if repo.created == nil || validator.calls != 1 || validator.lastType != model.DatabaseTypeSQLServer {
@@ -103,7 +103,7 @@ func TestUpdateDataSourceValidatesExistingTypeAndFinalConfigBeforePersistence(t 
 	validator := &datasourceConfigValidatorStub{supported: true, validationErr: errors.New("host is required")}
 	svc := &dataSourceService{repo: repo, configValidator: validator}
 
-	_, err := svc.UpdateDataSource(context.Background(), dataSource.ID, &UpdateDataSourceRequest{
+	_, err := svc.UpdateDataSource(context.Background(), nil, dataSource.ID, &UpdateDataSourceRequest{
 		Config: &model.DataSourceConfig{Host: "", Database: "analytics", Username: "gateway"},
 	})
 	if !errors.Is(err, ErrInvalidDataSourceConfig) {

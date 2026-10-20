@@ -11,6 +11,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	queryservice "github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
@@ -107,7 +108,9 @@ func (m *MCPServer) registerTools() {
 func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Get all data sources from the repository
 	// Using empty status filter and large limit to get all data sources
-	dataSources, _, err := m.datasourceRepo.GetAll(ctx, "", 1000, 0) // Get up to 1000 data sources
+	// MCP stdio is a trusted local channel and runs as the system caller (#9):
+	// administrator-equivalent, unrestricted scope.
+	dataSources, _, err := m.datasourceRepo.GetAll(ctx, nil, "", 1000, 0) // Get up to 1000 data sources
 	if err != nil {
 		return nil, fmt.Errorf("failed to list data sources: %w", err)
 	}
@@ -179,10 +182,11 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	}
 
 	// Execute the query using the unified query service. MCP stdio carries no
-	// JWT identity; attribute the history record to the shared "mcp" bucket
-	// instead of an unrelated user's (#103).
+	// JWT identity: attribute the history record to the shared "mcp" bucket
+	// instead of an unrelated user's (#103), and authorize as the system
+	// caller (#9).
 	ctx = queryservice.WithQueryUser(ctx, "mcp")
-	result, err := m.unifiedQueryService.FetchQuery(ctx, req)
+	result, err := m.unifiedQueryService.FetchQuery(ctx, security.SystemCaller(), req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
@@ -213,7 +217,7 @@ func (m *MCPServer) handleFetchNextBatch(ctx context.Context, request mcp.CallTo
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	result, err := m.unifiedQueryService.FetchNextBatch(ctx, queryID, slug, token, batchSize)
+	result, err := m.unifiedQueryService.FetchNextBatch(ctx, security.SystemCaller(), queryID, slug, token, batchSize)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
@@ -277,7 +281,7 @@ func (m *MCPServer) handleValidateSQLQuery(ctx context.Context, request mcp.Call
 	}
 
 	// Validate the query using the unified query service
-	err := m.unifiedQueryService.ValidateQuery(ctx, req)
+	err := m.unifiedQueryService.ValidateQuery(ctx, security.SystemCaller(), req)
 	if err != nil {
 		response := map[string]interface{}{
 			"valid": false,
@@ -349,10 +353,11 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		Timeout:      30,
 	}
 
-	// Same attribution as the fetch tool: table discovery runs under the
-	// shared "mcp" bucket (#103).
+	// Same attribution and authorization as the fetch tool: the history record
+	// goes to the shared "mcp" bucket (#103) and the caller is the system
+	// caller (#9).
 	ctx = queryservice.WithQueryUser(ctx, "mcp")
-	result, err := m.unifiedQueryService.FetchQuery(ctx, req)
+	result, err := m.unifiedQueryService.FetchQuery(ctx, security.SystemCaller(), req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}

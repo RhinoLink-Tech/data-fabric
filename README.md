@@ -134,14 +134,16 @@ Using a local PostgreSQL instance as the simulated data source, we benchmarked 5
 | GET | /health | Service health check | None |
 | GET | /api/v1/database/types | List source types recognized by the service | None |
 | GET | /api/v1/database/compatibility | Inspect database compatibility information | None |
-| GET / POST | /api/v1/datasources | List or create data sources | Bearer when authentication is enabled |
-| GET / PUT / DELETE | /api/v1/datasources/:id | Inspect, update, or delete a data source | Bearer when authentication is enabled |
-| POST | /api/v1/datasources/:id/activate | Activate a data source | Bearer when authentication is enabled |
-| POST | /api/v1/datasources/:id/deactivate | Deactivate a data source | Bearer when authentication is enabled |
+| GET / POST | /api/v1/datasources | List or create data sources | Bearer when authentication is enabled; scoped by owner/tenant |
+| GET / PUT / DELETE | /api/v1/datasources/:id | Inspect, update, or delete a data source | Same; non-admins get a uniform 403 for missing and foreign sources |
+| POST | /api/v1/datasources/:id/activate | Activate a data source | Same |
+| POST | /api/v1/datasources/:id/deactivate | Deactivate a data source | Same |
 | POST | /api/v1/database/test-connection | Test a data-source connection | Bearer when authentication is enabled |
 | POST | /api/v1/database/validate-config | Validate data-source configuration | Bearer when authentication is enabled |
-| POST | /api/v1/fetch | Run a query and retrieve its first result batch | Bearer (always) |
-| GET | /api/v1/fetch/:query_id/:slug/:token | Retrieve a subsequent result batch | Bearer (always) |
+| GET | /api/v1/database/health | Probe the health of every data source | Admin role when authentication is enabled |
+| GET | /api/v1/database/connections/stats | Connection pool statistics | Admin role when authentication is enabled |
+| POST | /api/v1/fetch | Run a query and retrieve its first result batch | Bearer (always); requires read access to the data source |
+| GET | /api/v1/fetch/:query_id/:slug/:token | Retrieve a subsequent result batch | Bearer (always); only the session's creator may continue |
 
 See the [API usage guide](docs/api_usage.md) for request fields, response structures, and authentication behavior.
 

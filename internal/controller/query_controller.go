@@ -48,6 +48,7 @@ func NewQueryController(unifiedQueryService unifiedservice.UnifiedQueryService) 
 // @Router /api/v1/fetch [post]
 func (qc *QueryController) FetchQuery(c *gin.Context) {
 	correlationID := qc.getCorrelationID(c)
+	caller := security.CallerFromGin(c)
 
 	var req model.FetchQueryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -98,15 +99,9 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 	ctx = queryservice.WithQueryUser(ctx, requestingUser(c))
 
 	// Execute fetch query using unified service
-	result, err := qc.queryService.FetchQuery(ctx, &req)
+	result, err := qc.queryService.FetchQuery(ctx, caller, &req)
 	if err != nil {
-		status, code := queryFailureStatusAndCode(err)
-		c.JSON(status, response.ErrorResponse(
-			code,
-			queryservice.SafeQueryErrorMessage(err),
-			"",
-			correlationID,
-		))
+		qc.writeQueryError(c, caller, err)
 		return
 	}
 
@@ -130,6 +125,7 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 // @Success 200 {object} response.StandardResponse{data=model.FetchQueryResponse}
 // @Failure 400 {object} response.StandardResponse
 // @Failure 404 {object} response.StandardResponse
+// @Failure 403 {object} response.StandardResponse
 // @Failure 500 {object} response.StandardResponse
 // @Router /api/v1/fetch/{query_id}/{slug}/{token} [get]
 func (qc *QueryController) FetchNextBatch(c *gin.Context) {
@@ -162,15 +158,9 @@ func (qc *QueryController) FetchNextBatch(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Fetch next batch using unified service
-	result, err := qc.queryService.FetchNextBatch(ctx, queryID, slug, token, batchSize)
+	result, err := qc.queryService.FetchNextBatch(ctx, security.CallerFromGin(c), queryID, slug, token, batchSize)
 	if err != nil {
-		status, code := queryFailureStatusAndCode(err)
-		c.JSON(status, response.ErrorResponse(
-			code,
-			queryservice.SafeQueryErrorMessage(err),
-			"",
-			correlationID,
-		))
+		qc.writeQueryError(c, security.CallerFromGin(c), err)
 		return
 	}
 
@@ -217,7 +207,7 @@ func (qc *QueryController) ValidateQuery(c *gin.Context) {
 	}
 
 	// Validate query using unified service
-	err := qc.queryService.ValidateQuery(c.Request.Context(), &req)
+	err := qc.queryService.ValidateQuery(c.Request.Context(), security.CallerFromGin(c), &req)
 	if err != nil {
 		c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
 			"valid":   false,
@@ -335,6 +325,28 @@ func requestingUser(c *gin.Context) string {
 	return "anonymous"
 }
 
+// writeQueryError maps a query failure to its HTTP response. Non-admin
+// callers get the same 403 for missing and forbidden data sources (#9), so
+// existence cannot be probed through /fetch either.
+func (qc *QueryController) writeQueryError(c *gin.Context, caller *security.Caller, err error) {
+	if errors.Is(err, repository.ErrDataSourceNotFound) && caller != nil && !caller.IsAdmin() {
+		c.JSON(http.StatusForbidden, response.ErrorResponse(
+			"DATASOURCE_ACCESS_DENIED",
+			"You do not have access to this data source",
+			"",
+			qc.getCorrelationID(c),
+		))
+		return
+	}
+	status, code := queryFailureStatusAndCode(err)
+	c.JSON(status, response.ErrorResponse(
+		code,
+		queryservice.SafeQueryErrorMessage(err),
+		"",
+		qc.getCorrelationID(c),
+	))
+}
+
 func (qc *QueryController) getCorrelationID(c *gin.Context) string {
 	if correlationID, exists := c.Get("correlation_id"); exists {
 		if id, ok := correlationID.(string); ok {
@@ -363,6 +375,8 @@ func queryFailureStatusAndCode(err error) (int, string) {
 	switch {
 	case errors.Is(err, repository.ErrDataSourceNotFound):
 		return http.StatusNotFound, "DATASOURCE_NOT_FOUND"
+	case errors.Is(err, security.ErrDataSourceAccessDenied):
+		return http.StatusForbidden, "DATASOURCE_ACCESS_DENIED"
 	case errors.Is(err, queryservice.ErrDataSourceInactive):
 		// The source exists but its current state forbids execution (#118)
 		return http.StatusConflict, "DATASOURCE_INACTIVE"
