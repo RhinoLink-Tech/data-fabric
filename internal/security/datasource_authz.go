@@ -2,6 +2,7 @@ package security
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 
@@ -39,6 +40,7 @@ type Caller struct {
 	UserID   string
 	TenantID string
 	Roles    []string
+	Scopes   []string
 }
 
 // IsAdmin reports whether the caller holds the admin role.
@@ -81,6 +83,7 @@ func CallerFromClaims(claims *Claims) *Caller {
 		UserID:   claims.UserID,
 		TenantID: claims.TenantID,
 		Roles:    claims.Roles,
+		Scopes:   strings.Fields(claims.Scope),
 	}
 }
 

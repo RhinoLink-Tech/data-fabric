@@ -174,3 +174,34 @@ func TestSQLTranslationConfigValidation(t *testing.T) {
 		t.Fatalf("disabled SQL translation should not require a runtime: %v", err)
 	}
 }
+
+func TestValidateStartupReleaseRemoteMCPRequiresOIDC(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Server.Mode = "release"
+	cfg.MCP.Enabled = true
+	cfg.MCP.Transport = MCPTransportStreamableHTTP
+	cfg.MCP.Address = "127.0.0.1:8081"
+	if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "mcp.auth_mode must be oidc") {
+		t.Fatalf("ValidateStartup() error = %v, want release remote MCP OIDC requirement", err)
+	}
+}
+
+func TestValidateStartupOIDCRemoteMCPDoesNotRequireLocalJWTSecret(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Server.Mode = "release"
+	cfg.MCP.Enabled = true
+	cfg.MCP.Transport = MCPTransportStreamableHTTP
+	cfg.MCP.Address = "127.0.0.1:8081"
+	cfg.MCP.AuthMode = MCPAuthModeOIDC
+	cfg.MCP.OIDCIssuer = "https://identity.example/tenant"
+	cfg.MCP.OIDCAudience = "data-fabric-mcp"
+	cfg.MCP.OIDCRequiredScopes = "data-fabric.query"
+	cfg.MCP.OIDCTenantClaim = "tenant"
+	cfg.MCP.OIDCRolesClaim = "roles"
+	cfg.MCP.OIDCUsernameClaim = "preferred_username"
+	cfg.MCP.OIDCJWKSRefreshInterval = time.Minute
+	cfg.Security.JWTSecret = ""
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want OIDC to replace the local MCP JWT secret", err)
+	}
+}

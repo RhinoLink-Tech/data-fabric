@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMCPConfigValidate(t *testing.T) {
 	tests := []struct {
@@ -10,6 +13,19 @@ func TestMCPConfigValidate(t *testing.T) {
 	}{
 		{name: "stdio default", config: MCPConfig{Transport: "stdio"}},
 		{name: "loopback behind proxy", config: MCPConfig{Transport: "streamable-http", Address: "127.0.0.1:8081"}},
+		{name: "OIDC remote MCP", config: MCPConfig{
+			Transport: MCPTransportStreamableHTTP, Address: "127.0.0.1:8081", AuthMode: MCPAuthModeOIDC,
+			OIDCIssuer: "https://identity.example/tenant", OIDCAudience: "data-fabric-mcp",
+			OIDCRequiredScopes: "data-fabric.query", OIDCTenantClaim: "tenant_id",
+			OIDCRolesClaim: "roles", OIDCUsernameClaim: "preferred_username",
+			OIDCJWKSRefreshInterval: time.Minute,
+		}},
+		{name: "OIDC issuer must use HTTPS", config: MCPConfig{
+			Transport: MCPTransportStreamableHTTP, Address: "127.0.0.1:8081", AuthMode: MCPAuthModeOIDC,
+			OIDCIssuer: "http://identity.example", OIDCAudience: "data-fabric-mcp", OIDCRequiredScopes: "data-fabric.query",
+			OIDCTenantClaim: "tenant", OIDCRolesClaim: "roles", OIDCUsernameClaim: "preferred_username",
+			OIDCJWKSRefreshInterval: time.Minute,
+		}, wantErr: true},
 		{name: "localhost behind proxy", config: MCPConfig{Transport: "streamable-http", Address: "localhost:8081"}},
 		{name: "direct TLS", config: MCPConfig{Transport: "streamable-http", Address: "0.0.0.0:8081", TLSCertFile: "server.crt", TLSKeyFile: "server.key"}},
 		{name: "unencrypted external listener", config: MCPConfig{Transport: "streamable-http", Address: "0.0.0.0:8081"}, wantErr: true},

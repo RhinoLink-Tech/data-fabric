@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type Claims struct {
 	TenantID string   `json:"tenantId,omitempty"`
 	Username string   `json:"username"`
 	Roles    []string `json:"roles"`
+	Scope    string   `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -29,6 +31,11 @@ func NewJWTManager(secretKey string, tokenDuration time.Duration) *JWTManager {
 		secretKey:     secretKey,
 		tokenDuration: tokenDuration,
 	}
+}
+
+// ValidateMCPToken adapts local JWT validation to the remote MCP token-validator interface.
+func (j *JWTManager) ValidateMCPToken(_ context.Context, token string) (*Claims, error) {
+	return j.ValidateToken(token)
 }
 
 // GenerateToken generates a new JWT token. tenantID may be empty; tokens
@@ -121,6 +128,11 @@ func (j *JWTManager) RefreshToken(claims *Claims) (string, error) {
 
 // ExtractTokenFromHeader extracts JWT token from Authorization header
 func (j *JWTManager) ExtractTokenFromHeader(authHeader string) (string, error) {
+	return ExtractBearerToken(authHeader)
+}
+
+// ExtractBearerToken parses an Authorization header using the Bearer scheme.
+func ExtractBearerToken(authHeader string) (string, error) {
 	if authHeader == "" {
 		return "", fmt.Errorf("authorization header is required")
 	}

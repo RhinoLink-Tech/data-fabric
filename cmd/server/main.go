@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -213,6 +214,14 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		return err
 	}
 
+	var tokenValidator mcp.MCPTokenValidator
+	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+		tokenValidator, err = newMCPTokenValidator(context.Background(), cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize remote MCP token validation: %w", err)
+		}
+	}
+
 	db, err := config.InitDatabase(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
@@ -241,14 +250,33 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor, translationManager)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
-		jwtManager := security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration)
-		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(jwtManager), streamingService)
+		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService)
 	}
 
 	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
 	defer stopStreaming()
 	log.Println("Starting MCP server with transport: stdio")
 	return mcpServer.StartStdio()
+}
+
+func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPTokenValidator, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is required")
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.MCP.AuthMode), config.MCPAuthModeOIDC) {
+		oidcConfig := security.OIDCTokenConfig{
+			Issuer:              cfg.MCP.OIDCIssuer,
+			Audience:            cfg.MCP.OIDCAudience,
+			RequiredScopes:      strings.Fields(cfg.MCP.OIDCRequiredScopes),
+			ScopeClaim:          cfg.MCP.OIDCScopeClaim,
+			TenantClaim:         cfg.MCP.OIDCTenantClaim,
+			RolesClaim:          cfg.MCP.OIDCRolesClaim,
+			UsernameClaim:       cfg.MCP.OIDCUsernameClaim,
+			JWKSRefreshInterval: cfg.MCP.OIDCJWKSRefreshInterval,
+		}
+		return security.NewOIDCTokenValidator(ctx, oidcConfig)
+	}
+	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
 func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService) error {

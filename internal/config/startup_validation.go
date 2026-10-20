@@ -29,6 +29,12 @@ func (c Config) ValidateStartup() error {
 			if err := validateServerMode(c.Server.Mode); err != nil {
 				return err
 			}
+			if c.Server.Mode == "release" && !strings.EqualFold(strings.TrimSpace(c.MCP.AuthMode), MCPAuthModeOIDC) {
+				return fmt.Errorf("mcp.auth_mode must be oidc for remote MCP in release mode")
+			}
+			if strings.EqualFold(strings.TrimSpace(c.MCP.AuthMode), MCPAuthModeOIDC) {
+				return c.ValidateMCPReleaseSecurity()
+			}
 			return c.ValidateSecurity()
 		}
 		return nil
@@ -133,6 +139,16 @@ func (c SQLTranslationConfig) Validate() error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required when translation is enabled", name)
 		}
+	}
+	return nil
+}
+
+func (c Config) ValidateMCPReleaseSecurity() error {
+	if c.Server.Mode == "release" && !c.Security.EnableAuth {
+		return fmt.Errorf("security.enable_auth cannot be disabled in release mode")
+	}
+	if c.Server.Mode == "release" && !c.Security.EnforceReadOnly {
+		return fmt.Errorf("security.enforce_read_only cannot be disabled in release mode")
 	}
 	return nil
 }

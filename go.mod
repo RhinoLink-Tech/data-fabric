@@ -41,6 +41,7 @@ require (
 require (
 	github.com/aliyun/aliyun-odps-go-sdk v0.3.8
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.5
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/spf13/viper v1.21.0
 	gorm.io/driver/sqlite v1.5.7

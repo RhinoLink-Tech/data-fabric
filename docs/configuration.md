@@ -48,6 +48,16 @@ query:
 mcp:
   enabled: false
   transport: "stdio"
+  address: "127.0.0.1:8081"
+  auth_mode: "local-jwt"
+  oidc_issuer: ""
+  oidc_audience: ""
+  oidc_required_scopes: "data-fabric.query"
+  oidc_scope_claim: "scope"
+  oidc_tenant_claim: "tenant"
+  oidc_roles_claim: "roles"
+  oidc_username_claim: "preferred_username"
+  oidc_jwks_refresh_interval: "5m"
 
 sql_translation:
   enabled: true
@@ -114,6 +124,16 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `query.execution_mode` | String | `auto` (`auto`, `streaming`, or `pagination`) |
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
+| `mcp.address` | String | `127.0.0.1:8081` |
+| `mcp.auth_mode` | String | `local-jwt` (development); `oidc` for remote MCP in release mode |
+| `mcp.oidc_issuer` | HTTPS URL | Empty; required for OIDC |
+| `mcp.oidc_audience` | String | Empty; required for OIDC |
+| `mcp.oidc_required_scopes` | Space-separated scopes | `data-fabric.query` |
+| `mcp.oidc_scope_claim` | Claim path (string or string array) | `scope` |
+| `mcp.oidc_tenant_claim` | Claim path | `tenant` |
+| `mcp.oidc_roles_claim` | Claim path | `roles` |
+| `mcp.oidc_username_claim` | Claim path | `preferred_username` |
+| `mcp.oidc_jwks_refresh_interval` | Duration | `5m` (1m–1h) |
 
 In `auto` mode, `type: 1` explicitly keeps a request on pagination. `type: 2`
 requests streaming. Requests without a type use pagination for batches below
@@ -320,3 +340,15 @@ Treat metadata schema changes as part of the application release: back up the me
 - Configure appropriate rate limiting
 - Enable secure logging practices
 - Use TLS for all communications
+
+
+Remote MCP with Streamable HTTP accepts OIDC-issued access tokens configured by
+`mcp.oidc_issuer`, `mcp.oidc_audience`, and `mcp.oidc_required_scopes`.
+The configured scope claim may be a space-separated string or a string array.
+The issuer must expose HTTPS discovery metadata and a signing JWKS. Data Fabric
+checks the signature, issuer, audience, expiration, not-before time, and every
+configured required scope before forwarding the verified subject, tenant,
+roles, and scopes to query authorization. Claim paths support dot notation for
+nested provider claims. Local `local-jwt` remains available for development;
+release-mode remote MCP requires `oidc`. MCP stdio remains a trusted local
+process and does not use remote bearer authentication.
