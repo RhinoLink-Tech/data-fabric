@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
+	"nexus-gateway/internal/model"
+	"nexus-gateway/internal/repository"
 )
 
 type updateDataSourceRepositoryStub struct {

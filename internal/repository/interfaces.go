@@ -40,4 +40,7 @@ type DataSourceRepository interface {
 
 	// CountByStatus returns the count of data sources by status
 	CountByStatus(ctx context.Context) (map[model.DataSourceStatus]int64, error)
+
+	// MigrateCredentials encrypts legacy plaintext secrets and rotates old ciphertext.
+	MigrateCredentials(ctx context.Context) (int64, error)
 }

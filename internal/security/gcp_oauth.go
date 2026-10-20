@@ -56,8 +56,6 @@ func (g *GCPAuth) GetToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	return creds.TokenSource.Token()
-
-	return creds.TokenSource.Token()
 }
 
 // RefreshToken refreshes an expired OAuth2 token

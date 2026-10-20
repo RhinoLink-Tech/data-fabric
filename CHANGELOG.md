@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2025-12-31
+## [Unreleased]
+
+### Security
+- Remove the tracked local configuration file and its built-in JWT secret; require runtime JWT and credential-encryption keys.
+- Encrypt data-source passwords and secret-valued additional properties at rest; migrate legacy plaintext credentials transactionally before startup.
+- Require Bearer authentication on both fetch routes regardless of the management API authentication switch.
+- Redact data-source credentials from API responses.
+
+### Compatibility
+- Fetch clients must send a valid Bearer token; the HTTP service now refuses to start without a strong JWT secret and a configured credential keyring.
+- See docs/releases/v1.2.1-security-maintenance.md for the v1.2.0 upgrade and backup procedure.
 
 ### Changed
 - `ExecuteQuery` now prefers establishing a backend streaming cursor when supported. Returns the first batch of rows and a `nextUri` to continue the stream.

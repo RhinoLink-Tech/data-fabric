@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -54,7 +56,17 @@ func Load() (*Config, error) {
 	setDefaults()
 
 	// Enable environment variable support
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	_ = viper.BindEnv("security.jwt_secret", "JWT_SECRET", "SECURITY_JWT_SECRET")
+	_ = viper.BindEnv("security.enable_auth", "SECURITY_ENABLE_AUTH")
+	_ = viper.BindEnv("server.port", "SERVER_PORT")
+	_ = viper.BindEnv("server.mode", "SERVER_MODE")
+	_ = viper.BindEnv("database.username", "DATABASE_USERNAME")
+	_ = viper.BindEnv("database.password", "DATABASE_PASSWORD")
+	_ = viper.BindEnv("database.host", "DATABASE_HOST")
+	_ = viper.BindEnv("database.port", "DATABASE_PORT")
+	_ = viper.BindEnv("database.database", "DATABASE_NAME", "DATABASE_DATABASE")
 
 	// Read config file
 	if err := viper.ReadInConfig(); err != nil {
@@ -69,6 +81,9 @@ func Load() (*Config, error) {
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		config.Security.JWTSecret = secret
 	}
 
 	return &config, nil
@@ -88,7 +103,6 @@ func setDefaults() {
 	viper.SetDefault("database.ssl", "false")
 
 	// Security defaults
-	viper.SetDefault("security.jwt_secret", "your-secret-key")
 	viper.SetDefault("security.jwt_expiration", "24h")
 	viper.SetDefault("security.rate_limit_per_minute", 60)
 	viper.SetDefault("security.rate_limit_burst", 10)

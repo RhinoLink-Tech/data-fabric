@@ -1,0 +1,39 @@
+# Data Fabric configuration example.
+# Copy this file to configs/config.yaml for non-secret settings.
+# Keep credentials out of Git. Inject these values through the environment:
+#   DATABASE_USERNAME, DATABASE_PASSWORD, JWT_SECRET
+#
+# Before starting the service, provide a 32-byte credential-encryption key:
+#   DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=key-1
+#   DATA_FABRIC_CREDENTIAL_KEYS='{"key-1":"<base64-encoded-32-byte-key>"}'
+# Generate the key with: openssl rand -base64 32
+# Store the key in a secret manager and back it up separately from the metadata DB.
+
+server:
+  port: "8080"
+  mode: "debug"
+  host: "0.0.0.0"
+
+database:
+  host: "localhost"
+  port: "3306"
+  database: "data_fabric"
+  username: "data_fabric"
+  password: ""
+  ssl: "false"
+
+security:
+  # Required from JWT_SECRET even when enable_auth is false because /api/v1/fetch is protected.
+  jwt_expiration: "24h"
+  enable_auth: true
+  enable_rate_limit: true
+  rate_limit_per_minute: 60
+  rate_limit_burst: 10
+
+logging:
+  level: "info"
+  format: "json"
+
+query:
+  prefer_streaming: true
+  execution_mode: "auto"

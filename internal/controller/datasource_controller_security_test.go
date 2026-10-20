@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/gin-gonic/gin"
+	"nexus-gateway/internal/model"
+	"nexus-gateway/internal/service"
 )
 
 type dataSourceControllerServiceStub struct {
@@ -51,7 +51,7 @@ func (s *dataSourceControllerServiceStub) GetDataSourceStats(context.Context) (*
 func TestDataSourceCRUDResponsesRedactCredentials(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	dataSource := &model.DataSource{
-		ID: "source-id", Name: "federated", Type: model.DatabaseTypeTrino,
+		ID: "source-id", Name: "federated", Type: model.DatabaseTypeMySQL,
 		Config: model.DataSourceConfig{
 			Host: "coordinator.example.com", Port: 8443, Database: "lakehouse", Username: "gateway",
 			Password: "password-sentinel",

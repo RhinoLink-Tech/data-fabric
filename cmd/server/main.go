@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -25,6 +26,14 @@ func main() {
 		log.Fatal("Failed to load configuration:", err)
 	}
 
+	vault, err := security.LoadCredentialVaultFromEnv()
+	if err != nil {
+		log.Fatal("Failed to load credential encryption keys:", err)
+	}
+	if err := cfg.ValidateSecurity(); err != nil {
+		log.Fatal("Invalid security configuration:", err)
+	}
+
 	// Set Gin mode
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -36,21 +45,23 @@ func main() {
 		log.Fatal("Failed to initialize database:", err)
 	}
 
-	// Auto migrate database schema
-	if err := db.AutoMigrate(&model.DataSource{}); err != nil {
-		log.Printf("Warning: Database migration failed: %v", err)
-		log.Println("Continuing with existing database schema...")
+	// The maintenance candidate does not change metadata columns. Create the
+	// schema for a clean install, but avoid rerunning legacy GORM DDL against
+	// existing v1.2.0 installations; that path can try to drop a missing index.
+	if !db.Migrator().HasTable(&model.DataSource{}) {
+		if err := db.AutoMigrate(&model.DataSource{}); err != nil {
+			log.Fatalf("Database schema initialization failed: %v", err)
+		}
 	}
 
-	// Initialize repositories
-	datasourceRepo := repository.NewDataSourceRepository(db)
-
-	// Initialize security
-	// Use a 32-byte key for AES-256 encryption
-	masterKey := []byte("12345678901234567890123456789012") // 32 bytes - TODO: make this configurable
-	vault, err := security.NewCredentialVault(masterKey)
+	datasourceRepo, err := repository.NewDataSourceRepository(db, vault)
 	if err != nil {
-		log.Fatalf("Failed to create credential vault: %v", err)
+		log.Fatalf("Failed to initialize data-source repository: %v", err)
+	}
+	if migrated, err := datasourceRepo.MigrateCredentials(context.Background()); err != nil {
+		log.Fatalf("Credential migration failed; refusing to start: %v", err)
+	} else if migrated > 0 {
+		log.Printf("Encrypted or rotated credentials for %d data sources", migrated)
 	}
 
 	// Initialize infrastructure
@@ -89,81 +100,15 @@ func main() {
 	healthController := controller.NewHealthController(db)
 
 	// Create Gin router
-	router := gin.New()
-
-	// Add middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-	router.Use(middleware.Cors())
-	router.Use(middleware.CorrelationID())
-
-	// Add rate limiting if enabled
-	if cfg.Security.EnableRateLimit {
-		router.Use(rateLimiter.RateLimit())
-	}
-
-	// Health check endpoint (always available)
-	router.GET("/health", healthController.HealthCheck)
-
-	// API v1 group
-	api := router.Group("/api/v1")
-
-	// Public endpoints (no authentication required)
-	public := api.Group("")
-	{
-		public.GET("/health", healthController.HealthCheck)
-		public.GET("/database/types", databaseController.GetDatabaseTypes)
-		public.GET("/database/compatibility", databaseController.GetDatabaseCompatibility)
-	}
-
-	// Auth endpoints (authentication required)
-	auth := api.Group("")
-	if cfg.Security.EnableAuth {
-		auth.Use(authMiddleware.RequireAuth())
-	}
-	{
-		// Data source endpoints
-		datasources := auth.Group("/datasources")
-		{
-			datasources.POST("", datasourceController.CreateDataSource)
-			datasources.GET("", datasourceController.ListDataSources)
-			datasources.GET("/stats", datasourceController.GetDataSourceStats)
-			datasources.GET("/:id", datasourceController.GetDataSource)
-			datasources.PUT("/:id", datasourceController.UpdateDataSource)
-			datasources.DELETE("/:id", datasourceController.DeleteDataSource)
-			datasources.POST("/:id/activate", datasourceController.ActivateDataSource)
-			datasources.POST("/:id/deactivate", datasourceController.DeactivateDataSource)
-		}
-
-		// Fetch endpoints (batch data retrieval)
-		fetch := api.Group("/fetch")
-		{
-			fetch.POST("", queryController.FetchQuery)
-			fetch.GET("/:query_id/:slug/:token", queryController.FetchNextBatch)
-		}
-
-		// Database management endpoints
-		database := auth.Group("/database")
-		{
-			database.POST("/test-connection", databaseController.TestDataSourceConnection)
-			database.POST("/validate-config", databaseController.ValidateDataSourceConfig)
-			database.GET("/connections/stats", databaseController.GetConnectionStats)
-			database.GET("/health", databaseController.GetDatabaseHealth)
-		}
-	}
-
-	// Internal API v2 group (for gateway compatibility)
-	internalAPI := router.Group("/api/internal/v2")
-
-	// Internal fetch endpoints
-	internalFetch := internalAPI.Group("/fetch")
-	{
-		// Internal fetch query endpoint (requires account headers)
-		internalFetch.POST("", queryController.InternalFetchQuery)
-
-		// Internal fetch next batch endpoint (requires account headers)
-		internalFetch.GET("/:query_id/:slug/:token", queryController.InternalFetchNextBatch)
-	}
+	router := newRouter(routerDeps{
+		cfg:                  cfg,
+		authMiddleware:       authMiddleware,
+		rateLimiter:          rateLimiter,
+		healthController:     healthController,
+		datasourceController: datasourceController,
+		queryController:      queryController,
+		databaseController:   databaseController,
+	})
 
 	// Start server
 	log.Printf("Starting server on port %s", cfg.Server.Port)

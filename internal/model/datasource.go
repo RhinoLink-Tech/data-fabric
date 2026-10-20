@@ -81,13 +81,13 @@ const (
 	DatabaseTypeOpenGauss       DatabaseType = "opengauss"
 
 	// Big Data Warehouses
-	DatabaseTypeApacheHive    DatabaseType = "hive"
+	DatabaseTypeApacheHive DatabaseType = "hive"
 
 	// Traditional databases
-	DatabaseTypeSQLServer  DatabaseType = "sqlserver"
+	DatabaseTypeSQLServer DatabaseType = "sqlserver"
 
 	// NoSQL databases
-	DatabaseTypeMongoDB    DatabaseType = "mongodb"
+	DatabaseTypeMongoDB DatabaseType = "mongodb"
 
 	// Big Data Processing Platforms
 	DatabaseTypeMaxCompute DatabaseType = "maxcompute"
@@ -117,6 +117,7 @@ type DataSourceConfig struct {
 	Host            string                 `json:"host" validate:"required"`
 	Port            int                    `json:"port" validate:"required,min=1,max=65535"`
 	Database        string                 `json:"database" validate:"required"`
+	Schema          string                 `json:"schema,omitempty"`
 	Username        string                 `json:"username" validate:"required"`
 	Password        string                 `json:"password"` // Never include this field in API response DTOs
 	SSL             bool                   `json:"ssl"`

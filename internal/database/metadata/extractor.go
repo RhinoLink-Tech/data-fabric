@@ -71,7 +71,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 
 // ExtractTableSchema extracts schema for a specific table
 func (e *MetadataExtractor) ExtractTableSchema(ctx context.Context, dataSourceID, tableName string) (*TableSchema, error) {
-	schema, err := e.ExtractSchema(ctx, dataSourceID)
+	schema, _, err := e.ExtractSchema(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +276,7 @@ func (e *MetadataExtractor) getIndexQuery(dbType model.DatabaseType, tableName, 
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
 		return fmt.Sprintf("SHOW INDEX FROM %s", tableName)
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), '"', ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", tableName, schemaName)
+		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), chr(34), ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", tableName, schemaName)
 	default:
 		return fmt.Sprintf("SELECT index_name, column_name, not non_unique FROM information_schema.statistics WHERE table_name = '%s'", tableName)
 	}
@@ -353,7 +353,7 @@ func (e *MetadataExtractor) GetCachedSchemaWithRefresh(ctx context.Context, cach
 
 // ExtractTableCount returns the number of tables in a data source
 func (e *MetadataExtractor) ExtractTableCount(ctx context.Context, dataSourceID string) (int, error) {
-	schema, err := e.ExtractSchema(ctx, dataSourceID)
+	schema, _, err := e.ExtractSchema(ctx, dataSourceID)
 	if err != nil {
 		return 0, err
 	}
