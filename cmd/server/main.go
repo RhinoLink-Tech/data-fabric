@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -148,12 +149,19 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		sqlTranslationController: sqlTranslationController,
 	})
 
-	// Start server
-	log.Printf("Starting server on port %s", cfg.Server.Port)
+	// Bind the listener before anything else starts so an invalid or occupied
+	// bind address fails startup with the actual address in the error (#127).
+	listenAddr := cfg.HTTPListenAddress()
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("failed to bind HTTP listener %s: %w", listenAddr, err)
+	}
+
+	log.Printf("Starting server on %s", listenAddr)
 	log.Printf("Health check available at: http://localhost:%s/health", cfg.Server.Port)
 	log.Printf("API documentation: http://localhost:%s/swagger/index.html", cfg.Server.Port)
 
-	server := newHTTPServer(":"+cfg.Server.Port, router, cfg.Server)
+	server := newHTTPServer(listener.Addr().String(), router, cfg.Server)
 	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopServer()
 
@@ -162,7 +170,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	listenResult := make(chan error, 1)
 	go func() {
-		listenResult <- server.ListenAndServe()
+		listenResult <- server.Serve(listener)
 	}()
 
 	select {

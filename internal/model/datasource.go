@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -155,7 +156,9 @@ func (dsc *DataSourceConfig) Scan(value interface{}) error {
 	case string:
 		bytes = []byte(v)
 	default:
-		return json.Unmarshal([]byte(v.(string)), dsc)
+		// The previous default type-asserted to string and panicked for any
+		// other driver value; unsupported types now surface as an error (#122).
+		return fmt.Errorf("DataSourceConfig.Scan: unsupported database value type %T, expected JSON as string or []byte", value)
 	}
 
 	return json.Unmarshal(bytes, dsc)

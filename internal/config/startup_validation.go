@@ -60,7 +60,13 @@ func (c DatabaseConfig) Validate() error {
 			return fmt.Errorf("%s is required", field.name)
 		}
 	}
-	return validatePort("database.port", c.Port)
+	if err := validatePort("database.port", c.Port); err != nil {
+		return err
+	}
+	// Unsupported database.ssl values fail before the metadata connection is
+	// attempted, in every transport mode (#143).
+	_, err := metadataTLSConfig(c.SSL)
+	return err
 }
 
 func (c ServerConfig) Validate() error {
@@ -69,6 +75,13 @@ func (c ServerConfig) Validate() error {
 	}
 	if err := validatePort("server.port", c.Port); err != nil {
 		return err
+	}
+	// A bind host may be an IP address (v4/v6) or a hostname resolved by the
+	// listener; whitespace is never part of either (#127). Everything else —
+	// unparseable addresses, unknown names, bad ports — is rejected when the
+	// listener is opened at startup.
+	if strings.ContainsAny(c.Host, " \t\r\n") {
+		return fmt.Errorf("server.host must be an IP address or hostname, not %q", c.Host)
 	}
 	timeouts := []struct {
 		name  string
