@@ -96,7 +96,8 @@ flowchart LR
 
 ### 环境要求
 
-- Go 1.26.1 或更高版本。
+- 本地源码运行需要 Go 1.26.1 或更高版本。
+- 构建或运行容器需要 Docker Engine。
 - 已配置且可访问的元数据数据库。
 - 服务能够访问计划登记的数据源。
 - 通过环境变量提供 JWT 密钥和凭证加密密钥环。
@@ -120,6 +121,28 @@ go run ./cmd/server
 ~~~
 
 JWT 密钥可用 openssl rand -hex 32 生成，凭证加密密钥可用 openssl rand -base64 32 生成。请妥善保存，并在服务重启时继续使用相同值。服务健康检查路径为 /health；部署参数、密钥管理和轮换方式见[配置指南](docs/configuration.md)。
+
+### 使用 Docker 构建和运行
+
+镜像使用与 `go.mod` 一致的 Go 1.26.1，默认监听 8080，并以非 root 用户运行。启动前请先创建 MySQL 元数据数据库和账号。
+
+~~~bash
+docker build -t data-fabric:local .
+docker run --rm --name data-fabric \
+  --add-host=host.docker.internal:host-gateway \
+  -p 8080:8080 \
+  -e DATABASE_HOST=host.docker.internal \
+  -e DATABASE_PORT=3306 \
+  -e DATABASE_DATABASE=data_fabric \
+  -e DATABASE_USERNAME=data_fabric \
+  -e DATABASE_PASSWORD="<元数据库密码>" \
+  -e SECURITY_JWT_SECRET="<至少 32 字节且稳定的密钥>" \
+  -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
+  -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}' \
+  data-fabric:local
+~~~
+
+容器镜像不包含实际配置文件，通过环境变量和默认值启动，默认端口为 8080。如果通过 SERVER_PORT 或 server.port 覆盖端口，请同步修改容器端口和端口映射。真实密钥应由部署平台注入，重启时复用相同的凭证密钥环。
 
 ## 性能预期
 

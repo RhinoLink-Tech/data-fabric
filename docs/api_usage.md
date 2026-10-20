@@ -19,7 +19,7 @@ Choose `type` as `trino`, `presto`, or `openlookeng` to match the
 coordinator:
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/datasources \
+curl -X POST http://localhost:8080/api/v1/datasources \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -49,7 +49,7 @@ Presto SQL translation is also used as the baseline for OpenLooKeng; engine
 specific extensions may still require query adjustments.
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -66,7 +66,7 @@ target dialects.
 ### Querying Snowflake Data Warehouse
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -80,7 +80,7 @@ curl -X POST http://localhost:8099/api/v1/query \
 ### Querying S3 Parquet Files
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -98,7 +98,7 @@ object as a table; `table_name` is optional and defaults to the object filename
 without `.csv`.
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/datasources \
+curl -X POST http://localhost:8080/api/v1/datasources \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -144,7 +144,7 @@ use a query engine designed for distributed file processing.
 ### Time Travel Query (Delta Lake/Iceberg/Hudi)
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -157,7 +157,7 @@ curl -X POST http://localhost:8099/api/v1/query \
 ### Querying TiDB with Distribution Info
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -182,7 +182,7 @@ open and returns results in batches to avoid re-executing the full query with LI
 Example: Execute query and get `nextUri` from `/query` (or use `/fetch`):
 
 ```bash
-curl -X POST http://localhost:8099/api/v1/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -196,7 +196,7 @@ curl -X POST http://localhost:8099/api/v1/query \
 If the response contains `nextUri`, call it to fetch subsequent batches:
 
 ```bash
-curl -X GET "http://localhost:8099/api/v1/fetch/{queryId}/{slug}/{token}?batch_size=1000" \
+curl -X GET "http://localhost:8080/api/v1/fetch/{queryId}/{slug}/{token}?batch_size=1000" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
