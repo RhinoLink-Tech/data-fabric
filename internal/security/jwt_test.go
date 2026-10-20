@@ -131,6 +131,19 @@ func TestValidateTokenUsesStandardSubjectAndRequiresIdentity(t *testing.T) {
 	}
 }
 
+func TestValidateTokenRequiresExpiration(t *testing.T) {
+	jm := newTestJWTManager()
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "alice"},
+	}).SignedString([]byte(jm.secretKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jm.ValidateToken(token); err == nil {
+		t.Fatal("token without exp was accepted")
+	}
+}
+
 func TestGenerateTokenRequiresUserID(t *testing.T) {
 	if _, err := newTestJWTManager().GenerateToken("  ", "", "alice", nil); err == nil {
 		t.Fatal("GenerateToken accepted an empty user ID")

@@ -64,7 +64,7 @@ func (j *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(j.secretKey), nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)

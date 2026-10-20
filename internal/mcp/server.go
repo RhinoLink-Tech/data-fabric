@@ -11,7 +11,6 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
-	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	queryservice "github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
@@ -106,11 +105,10 @@ func (m *MCPServer) registerTools() {
 
 // handleListDataSources handles the list_data_sources tool call
 func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Get all data sources from the repository
-	// Using empty status filter and large limit to get all data sources
-	// MCP stdio is a trusted local channel and runs as the system caller (#9):
-	// administrator-equivalent, unrestricted scope.
-	dataSources, _, err := m.datasourceRepo.GetAll(ctx, nil, "", 1000, 0) // Get up to 1000 data sources
+	// Restrict remote callers to their own and tenant-shared data sources.
+	caller := callerFromContext(ctx)
+	scope := repository.ScopeForCaller(caller)
+	dataSources, _, err := m.datasourceRepo.GetAll(ctx, scope, "", 1000, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list data sources: %w", err)
 	}
@@ -181,12 +179,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		Timeout:       timeout,
 	}
 
-	// Execute the query using the unified query service. MCP stdio carries no
-	// JWT identity: attribute the history record to the shared "mcp" bucket
-	// instead of an unrelated user's (#103), and authorize as the system
-	// caller (#9).
-	ctx = queryservice.WithQueryUser(ctx, "mcp")
-	result, err := m.unifiedQueryService.FetchQuery(ctx, security.SystemCaller(), req)
+	// Attribute remote query history to the authenticated user; stdio stays in
+	// the shared local "mcp" bucket.
+	ctx = queryservice.WithQueryUser(ctx, queryUserFromContext(ctx))
+	result, err := m.unifiedQueryService.FetchQuery(ctx, callerFromContext(ctx), req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
@@ -217,7 +213,7 @@ func (m *MCPServer) handleFetchNextBatch(ctx context.Context, request mcp.CallTo
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	result, err := m.unifiedQueryService.FetchNextBatch(ctx, security.SystemCaller(), queryID, slug, token, batchSize)
+	result, err := m.unifiedQueryService.FetchNextBatch(ctx, callerFromContext(ctx), queryID, slug, token, batchSize)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
@@ -237,8 +233,10 @@ func (m *MCPServer) handleGetDataSourceInfo(ctx context.Context, request mcp.Cal
 
 	// Get the data source from the repository
 	dataSource, err := m.datasourceRepo.GetByID(ctx, datasourceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get data source: %w", err)
+	caller := callerFromContext(ctx)
+	if err != nil || !caller.CanRead(dataSource) {
+		// Keep missing and forbidden IDs indistinguishable to non-admin users.
+		return mcp.NewToolResultError("data source not found or access denied"), nil
 	}
 
 	info := map[string]interface{}{
@@ -281,7 +279,7 @@ func (m *MCPServer) handleValidateSQLQuery(ctx context.Context, request mcp.Call
 	}
 
 	// Validate the query using the unified query service
-	err := m.unifiedQueryService.ValidateQuery(ctx, security.SystemCaller(), req)
+	err := m.unifiedQueryService.ValidateQuery(ctx, callerFromContext(ctx), req)
 	if err != nil {
 		response := map[string]interface{}{
 			"valid": false,
@@ -324,8 +322,9 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 
 	// First, get the data source to determine its type
 	dataSource, err := m.datasourceRepo.GetByID(ctx, datasourceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get data source: %w", err)
+	caller := callerFromContext(ctx)
+	if err != nil || !caller.CanRead(dataSource) {
+		return mcp.NewToolResultError("data source not found or access denied"), nil
 	}
 
 	// For now, we'll execute a query to list tables based on the database type
@@ -353,11 +352,10 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		Timeout:      30,
 	}
 
-	// Same attribution and authorization as the fetch tool: the history record
-	// goes to the shared "mcp" bucket (#103) and the caller is the system
-	// caller (#9).
-	ctx = queryservice.WithQueryUser(ctx, "mcp")
-	result, err := m.unifiedQueryService.FetchQuery(ctx, security.SystemCaller(), req)
+	// Attribute remote query history to the authenticated user; stdio stays in
+	// the shared local "mcp" bucket.
+	ctx = queryservice.WithQueryUser(ctx, queryUserFromContext(ctx))
+	result, err := m.unifiedQueryService.FetchQuery(ctx, caller, req)
 	if err != nil {
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}

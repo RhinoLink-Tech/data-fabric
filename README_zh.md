@@ -19,7 +19,7 @@ Data Fabric 为 AI 应用提供轻量、自托管的异构数据访问层。团�
 
 ## AI 应用场景
 
-- **AI Agent：** 可选的 MCP 工具支持可信本地客户端发现数据源、校验只读 SQL、执行查询并分批获取结果，详见 [MCP 使用指南](MCP_DOCUMENTATION.md)。
+- **AI Agent：** 可选的 MCP 工具支持本地 stdio 客户端，以及使用 Bearer JWT 认证的远程 Streamable HTTP 客户端发现数据源、校验只读 SQL、执行查询并分批获取结果，详见 [MCP 使用指南](MCP_DOCUMENTATION.md)。
 - **RAG 检索：** 从数据库、数仓、对象存储及已支持的文件源获取结构化或半结构化记录；切分、Embedding、向量存储和排序仍由 RAG 应用负责。
 - **Text-to-SQL：** 模型生成的只读查询可以经统一 API 提交，并在兼容范围内转换为目标数据源方言。
 - **AI 智能分析：** 让助手通过统一入口访问已登记的数据源；需要跨源 SQL 时再连接联邦查询引擎。
