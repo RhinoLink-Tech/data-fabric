@@ -19,7 +19,7 @@ gateway runs either the HTTP API or MCP in a given process — never both — so
 the stack runs one container per mode against the shared metadata database:
 
 ```
-MCP client ──HTTPS + Bearer JWT──▶ data-fabric-mcp :8081 (MCP, direct TLS)
+MCP client ──HTTPS + IdP access token──▶ data-fabric-mcp :8081 (MCP, direct TLS)
 operator  ──HTTP, loopback────────▶ data-fabric-api :8080 (mgmt API)
                                        ├──▶ metadata-db   (MySQL, internal)
                                        └──▶ sample-source (MySQL, internal)
@@ -36,8 +36,10 @@ operator  ──HTTP, loopback────────▶ data-fabric-api :8080 
 
 - Docker Engine 24+ with the Compose plugin
 - `openssl` for secrets and a self-signed certificate
+- An OIDC-compatible identity provider configured to issue access tokens for
+  the Data Fabric MCP audience and required query scope
 - `python3` with [PyJWT](https://pypi.org/project/PyJWT/) (`pip install pyjwt`)
-  to mint Bearer tokens
+  to mint a local token for the HTTP management API quickstart
 
 ## Quickstart
 
@@ -49,7 +51,8 @@ All commands run from `deploy/mcp/`.
 cp .env.example .env
 ```
 
-Fill in every value in `.env`. Generate each secret with
+Fill in the database and vault secrets, plus the OIDC issuer and audience
+registered with your identity provider. Generate each secret with
 `openssl rand -base64 32`; for the credential vault, wrap one generated key in
 the JSON object shown in the file:
 
@@ -109,21 +112,39 @@ listener — an MCP-only process serves no HTTP `/health` — and the `401` from
 curl is the real end-to-end confirmation: TLS is up and the authentication
 gate is rejecting an unauthenticated request before any MCP processing.
 
-### 5. Mint a client token
+### 5. Prepare management and MCP access tokens
 
-Tokens are HS256 JWTs signed with your `JWT_SECRET`; you issue them yourself
-— the deployment includes token *verification*, not an OAuth server.
+The local HS256 token below is for the HTTP management API only. Remote MCP
+uses an access token issued by your OIDC identity provider; Data Fabric
+validates it against the configured discovery metadata and signing keys. The
+deployment does not run an identity provider or mint OIDC access tokens.
 
 ```bash
 export JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
 
-# One non-admin identity both registers the sample source and queries it, so
-# the quickstart needs no role or tenant plumbing.
-export AGENT_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'agent-1','username':'agent-1','iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
+# This local token registers the sample source through the management API.
+export AGENT_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'agent-1','username':'agent-1','tenantId':'quickstart','iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
 ```
 
-Mint a token with `'roles':['admin']` only when you need the admin-only
-endpoints (fleet health, connections stats) or cross-owner visibility.
+Obtain an OIDC-signed JWT access token from your provider using its supported
+OAuth flow, then set it in this shell:
+
+```bash
+export MCP_ACCESS_TOKEN='<OIDC-signed JWT access token>'
+```
+
+Opaque access tokens and ID tokens are not accepted. The token issuer must
+match `MCP_OIDC_ISSUER`, its audience must match `MCP_OIDC_AUDIENCE`, and its
+scopes must include
+every value in `MCP_OIDC_REQUIRED_SCOPES` (default: `data-fabric.query`).
+Configure the provider's token claims to include a stable `sub`; optional
+tenant, roles, and username claims can be mapped through the `MCP_OIDC_*`
+settings. The sample source is registered in tenant `quickstart`, so the
+provider token needs the configured tenant claim set to `quickstart`; alternatively,
+register it with an API identity whose subject matches the MCP token's `sub`.
+
+Mint an API token with `'roles':['admin']` only when you need the management
+API's admin-only endpoints or cross-owner visibility.
 
 ### 6. Register the sample source
 
@@ -165,7 +186,7 @@ With Claude Code (self-signed trial certificate shown; export
 ```bash
 export NODE_EXTRA_CA_CERTS=$PWD/tls/tls.crt
 claude mcp add --transport http data-fabric https://localhost:8443/mcp \
-  --header "Authorization: Bearer $AGENT_JWT"
+  --header "Authorization: Bearer $MCP_ACCESS_TOKEN"
 ```
 
 Then, inside a session, ask for the round trip the deployment is built for:
@@ -186,7 +207,7 @@ holds only `SELECT` privileges.
 
 ```bash
 claude mcp add --transport http data-fabric https://<host>:8443/mcp \
-  --header "Authorization: Bearer $AGENT_JWT"
+  --header "Authorization: Bearer $MCP_ACCESS_TOKEN"
 ```
 
 With a self-signed certificate, start `claude` with
@@ -199,7 +220,7 @@ Add the server to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.data-fabric]
 url = "https://<host>:8443/mcp"
-http_headers = { "Authorization" = "Bearer <agent token>" }
+http_headers = { "Authorization" = "Bearer <OIDC access token>" }
 ```
 
 Codex verifies TLS with the system trust store: add the certificate to it
@@ -218,7 +239,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 URL = "https://localhost:8443/mcp"
-TOKEN = "<agent token>"
+TOKEN = "<OIDC access token>"
 
 async def main():
     async with streamablehttp_client(URL, headers={"Authorization": f"Bearer {TOKEN}"}) as (read, write, _):
@@ -241,7 +262,7 @@ client's default verification accepts it.
 | --- | --- | --- |
 | Start | `mcp.enabled: true`, `transport: "stdio"` from the repo | The Compose stack above, or your own deployment |
 | Audience | One trusted local client process | Remote authenticated clients |
-| Identity | Runs with your OS user; tools act as the local system identity | Every request carries a Bearer JWT; identity comes from token claims |
+| Identity | Runs with your OS user; tools act as the local system identity | Every request carries an OIDC access token; identity comes from verified token claims |
 | Transport security | OS process pipes | HTTPS required; without TLS files the listener only binds loopback |
 | Data-source scoping | Trusted local access | Owner, tenant, and admin rules enforced per request |
 
@@ -269,15 +290,22 @@ nothing.
 ## Authentication model
 
 - Every MCP request — initialize, tool call, session GET — must carry
-  `Authorization: Bearer <JWT>` and is re-verified per request; missing,
-  invalid, or expired tokens are rejected before any tool logic.
-- Tokens are HS256 JWTs signed with your `JWT_SECRET`, with `exp` required.
-  Identity is the standard `sub` claim (legacy `userId` also accepted);
-  optional `tenantId` and `roles` (`admin`) drive data-source visibility.
+  `Authorization: Bearer <OIDC access token>` and is verified per request.
+  Missing, invalid, expired, wrong-issuer, wrong-audience, or under-scoped
+  tokens are rejected before any tool logic.
+- Remote MCP validates the signature using the issuer's HTTPS discovery
+  metadata and JWKS, then checks `iss`, `aud`, `exp`, `nbf`, and configured
+  scopes. The standard `sub` is the caller identity; configured tenant, roles,
+  and username claims are propagated to the shared authorization context.
+- The HTTP management API continues to use the local `JWT_SECRET`; it is
+  separate from the OIDC access token used by remote MCP. Local MCP
+  `local-jwt` mode is intended for development; release-mode remote MCP
+  requires OIDC.
 - Query history is scoped to the token identity; one client never sees
   another's queries.
-- There is no OAuth authorization server or dynamic client registration:
-  rotating a client means minting a new token with your own tooling.
+- Data Fabric does not provide an OAuth authorization server or dynamic
+  client registration. Your identity provider issues and rotates the access
+  tokens; Data Fabric validates them as a protected resource.
 
 ## Operations
 

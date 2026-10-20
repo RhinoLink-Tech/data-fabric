@@ -29,28 +29,32 @@ func queryUserFromContext(ctx context.Context) string {
 	return caller.UserID
 }
 
-// StreamableHTTPHandler exposes the MCP tools using the MCP Streamable HTTP
-// transport. It requires a valid Authorization: Bearer JWT on every HTTP
-// method and propagates the validated identity to tool handlers.
-func (m *MCPServer) StreamableHTTPHandler(jwtManager *security.JWTManager) http.Handler {
+// MCPTokenValidator validates bearer tokens for the remote MCP transport.
+type MCPTokenValidator interface {
+	ValidateMCPToken(context.Context, string) (*security.Claims, error)
+}
+
+// StreamableHTTPHandler exposes MCP over Streamable HTTP and propagates the
+// validated bearer-token identity to tool handlers.
+func (m *MCPServer) StreamableHTTPHandler(tokenValidator MCPTokenValidator) http.Handler {
 	transport := server.NewStreamableHTTPServer(m.server)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", authenticateMCPRequests(jwtManager, transport))
+	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, transport))
 	return mux
 }
 
-func authenticateMCPRequests(jwtManager *security.JWTManager, next http.Handler) http.Handler {
+func authenticateMCPRequests(tokenValidator MCPTokenValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if jwtManager == nil {
+		if tokenValidator == nil {
 			writeMCPUnauthorized(w)
 			return
 		}
-		token, err := jwtManager.ExtractTokenFromHeader(r.Header.Get("Authorization"))
+		token, err := security.ExtractBearerToken(r.Header.Get("Authorization"))
 		if err != nil {
 			writeMCPUnauthorized(w)
 			return
 		}
-		claims, err := jwtManager.ValidateToken(token)
+		claims, err := tokenValidator.ValidateMCPToken(r.Context(), token)
 		if err != nil || claims == nil || claims.UserID == "" {
 			writeMCPUnauthorized(w)
 			return

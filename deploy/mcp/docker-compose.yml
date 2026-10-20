@@ -14,8 +14,9 @@
 
 name: data-fabric-mcp
 
-# Shared by both gateway services: image, metadata database access, JWT
-# verification, and the credential vault keyring.
+# Shared by both gateway services: image, metadata database access, API JWT
+# settings, and the credential vault keyring. Remote MCP has separate OIDC
+# resource-token validation settings below.
 x-data-fabric-base: &data-fabric-base
   build:
     context: ../..
@@ -107,6 +108,15 @@ services:
       <<: *data-fabric-env
       MCP_ENABLED: "true"
       MCP_TRANSPORT: streamable-http
+      MCP_AUTH_MODE: oidc
+      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER:?set MCP_OIDC_ISSUER in .env}
+      MCP_OIDC_AUDIENCE: ${MCP_OIDC_AUDIENCE:?set MCP_OIDC_AUDIENCE in .env}
+      MCP_OIDC_REQUIRED_SCOPES: ${MCP_OIDC_REQUIRED_SCOPES:-data-fabric.query}
+      MCP_OIDC_SCOPE_CLAIM: ${MCP_OIDC_SCOPE_CLAIM:-scope}
+      MCP_OIDC_TENANT_CLAIM: ${MCP_OIDC_TENANT_CLAIM:-tenant}
+      MCP_OIDC_ROLES_CLAIM: ${MCP_OIDC_ROLES_CLAIM:-roles}
+      MCP_OIDC_USERNAME_CLAIM: ${MCP_OIDC_USERNAME_CLAIM:-preferred_username}
+      MCP_OIDC_JWKS_REFRESH_INTERVAL: ${MCP_OIDC_JWKS_REFRESH_INTERVAL:-5m}
       MCP_ADDRESS: 0.0.0.0:8081
       MCP_TLS_CERT_FILE: /etc/data-fabric/tls/tls.crt
       MCP_TLS_KEY_FILE: /etc/data-fabric/tls/tls.key

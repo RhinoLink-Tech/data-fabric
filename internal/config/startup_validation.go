@@ -17,6 +17,9 @@ func (c Config) ValidateStartup() error {
 	if err := c.Query.Validate(); err != nil {
 		return err
 	}
+	if err := c.SQLTranslation.Validate(); err != nil {
+		return err
+	}
 
 	if c.MCP.Enabled {
 		if err := c.MCP.Validate(); err != nil {
@@ -25,6 +28,12 @@ func (c Config) ValidateStartup() error {
 		if strings.TrimSpace(c.MCP.Transport) == MCPTransportStreamableHTTP {
 			if err := validateServerMode(c.Server.Mode); err != nil {
 				return err
+			}
+			if c.Server.Mode == "release" && !strings.EqualFold(strings.TrimSpace(c.MCP.AuthMode), MCPAuthModeOIDC) {
+				return fmt.Errorf("mcp.auth_mode must be oidc for remote MCP in release mode")
+			}
+			if strings.EqualFold(strings.TrimSpace(c.MCP.AuthMode), MCPAuthModeOIDC) {
+				return c.ValidateMCPReleaseSecurity()
 			}
 			return c.ValidateSecurity()
 		}
@@ -118,4 +127,41 @@ func validateServerMode(mode string) error {
 	default:
 		return fmt.Errorf("server.mode must be debug, test, or release")
 	}
+}
+
+func (c SQLTranslationConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.Timeout <= 0 || c.Timeout > time.Minute {
+		return fmt.Errorf("sql_translation.timeout must be positive and at most 1m")
+	}
+	if c.MaxConcurrent < 1 || c.MaxConcurrent > 32 {
+		return fmt.Errorf("sql_translation.max_concurrent must be between 1 and 32")
+	}
+	if c.MaxSQLBytes < 1 || c.MaxSQLBytes > 16<<20 {
+		return fmt.Errorf("sql_translation.max_sql_bytes must be between 1 and 16777216")
+	}
+	if c.MaxOutputBytes < 1 || c.MaxOutputBytes > 16<<20 {
+		return fmt.Errorf("sql_translation.max_output_bytes must be between 1 and 16777216")
+	}
+	for name, value := range map[string]string{
+		"sql_translation.python_path": c.PythonPath,
+		"sql_translation.script_path": c.ScriptPath,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required when translation is enabled", name)
+		}
+	}
+	return nil
+}
+
+func (c Config) ValidateMCPReleaseSecurity() error {
+	if c.Server.Mode == "release" && !c.Security.EnableAuth {
+		return fmt.Errorf("security.enable_auth cannot be disabled in release mode")
+	}
+	if c.Server.Mode == "release" && !c.Security.EnforceReadOnly {
+		return fmt.Errorf("security.enforce_read_only cannot be disabled in release mode")
+	}
+	return nil
 }

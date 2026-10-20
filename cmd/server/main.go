@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -64,6 +66,11 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	// Validate settings before connecting to the metadata database.
 	if err := cfg.ValidateStartup(); err != nil {
 		return fmt.Errorf("invalid startup configuration: %w", err)
+	}
+
+	translationManager, err := newSQLTranslationManager(cfg)
+	if err != nil {
+		return err
 	}
 
 	// Set Gin mode
@@ -115,10 +122,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	datasourceService := service.NewDataSourceService(datasourceRepo, connPool, healthChecker)
 
 	// Initialize streaming service
-	streamingService := service.NewStreamingService(datasourceRepo, connPool)
+	streamingService := service.NewStreamingService(datasourceRepo, connPool, translationManager)
 
 	// Initialize pagination service (original query service) with streaming support
-	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming)
+	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming, translationManager)
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
 	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
@@ -128,7 +135,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	queryController := controller.NewQueryController(unifiedQueryService)
 	databaseController := controller.NewDatabaseController(datasourceRepo, healthChecker)
 	healthController := controller.NewHealthController(db)
-	sqlTranslationController := controller.NewSQLTranslationController() // Added SQL translation controller
+	sqlTranslationController := controller.NewSQLTranslationController(translationManager)
 
 	// Create Gin router
 	router := newRouter(routerDeps{
@@ -210,6 +217,19 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
 
+	translationManager, err := newSQLTranslationManager(cfg)
+	if err != nil {
+		return err
+	}
+
+	var tokenValidator mcp.MCPTokenValidator
+	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+		tokenValidator, err = newMCPTokenValidator(context.Background(), cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize remote MCP token validation: %w", err)
+		}
+	}
+
 	db, err := config.InitDatabase(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
@@ -231,21 +251,40 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 
 	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
-	streamingService := service.NewStreamingService(datasourceRepo, connPool)
-	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming)
+	streamingService := service.NewStreamingService(datasourceRepo, connPool, translationManager)
+	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
-	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor)
+	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor, translationManager)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
-		jwtManager := security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration)
-		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(jwtManager), streamingService)
+		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService)
 	}
 
 	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
 	defer stopStreaming()
 	log.Println("Starting MCP server with transport: stdio")
 	return mcpServer.StartStdio()
+}
+
+func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPTokenValidator, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is required")
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.MCP.AuthMode), config.MCPAuthModeOIDC) {
+		oidcConfig := security.OIDCTokenConfig{
+			Issuer:              cfg.MCP.OIDCIssuer,
+			Audience:            cfg.MCP.OIDCAudience,
+			RequiredScopes:      strings.Fields(cfg.MCP.OIDCRequiredScopes),
+			ScopeClaim:          cfg.MCP.OIDCScopeClaim,
+			TenantClaim:         cfg.MCP.OIDCTenantClaim,
+			RolesClaim:          cfg.MCP.OIDCRolesClaim,
+			UsernameClaim:       cfg.MCP.OIDCUsernameClaim,
+			JWKSRefreshInterval: cfg.MCP.OIDCJWKSRefreshInterval,
+		}
+		return security.NewOIDCTokenValidator(ctx, oidcConfig)
+	}
+	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
 func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService) error {
@@ -295,4 +334,17 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 		}
 		return nil
 	}
+}
+
+func newSQLTranslationManager(cfg *config.Config) (*sql_translator.SQLTranslationManager, error) {
+	c := cfg.SQLTranslation
+	options := sql_translator.SQLTranslationRuntimeOptionsFromConfig(
+		c.Enabled, c.PythonPath, c.ScriptPath, c.PythonModulePath,
+		c.Timeout, c.MaxConcurrent, c.MaxSQLBytes, c.MaxOutputBytes,
+	)
+	manager := sql_translator.NewRuntimeSQLTranslationManager(options)
+	if err := manager.ValidateRuntime(); err != nil {
+		return nil, fmt.Errorf("SQL translation runtime validation failed: %w", err)
+	}
+	return manager, nil
 }

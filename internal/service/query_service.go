@@ -78,7 +78,11 @@ type queryStats struct {
 }
 
 // NewQueryService creates a new instance of QueryService
-func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool) QueryService {
+func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, translators ...*sql_translator.SQLTranslationManager) QueryService {
+	translator := sql_translator.NewSQLTranslationManager(true)
+	if len(translators) > 0 && translators[0] != nil {
+		translator = translators[0]
+	}
 	return &queryService{
 		datasourceRepo:  datasourceRepo,
 		connPool:        connPool,
@@ -87,7 +91,7 @@ func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *d
 		stats:           newQueryStats(),
 		sessionManager:  NewSessionManager(),
 		preferStreaming: preferStreaming,
-		sqlTranslator:   sql_translator.NewSQLTranslationManager(true), // Initialize SQL translator
+		sqlTranslator:   translator,
 	}
 }
 
@@ -130,7 +134,7 @@ func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Call
 
 	// Translate SQL if needed
 	// If the user is sending SQL in a different dialect, translate it to the target database dialect
-	translatedSQL, err := qs.translateSQLIfNeeded(req.SQL, req.SourceDialect, string(dataSource.Type))
+	translatedSQL, err := qs.translateSQLIfNeeded(ctx, req.SQL, req.SourceDialect, string(dataSource.Type))
 	if err != nil {
 		return fmt.Errorf("failed to translate SQL: %w", err)
 	}
@@ -151,7 +155,7 @@ func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Call
 }
 
 // translateSQLIfNeeded translates SQL if a source dialect is specified and differs from target
-func (qs *queryService) translateSQLIfNeeded(sql, sourceDialect, targetDialect string) (string, error) {
+func (qs *queryService) translateSQLIfNeeded(ctx context.Context, sql, sourceDialect, targetDialect string) (string, error) {
 	// If no source dialect is specified, no translation is needed
 	if sourceDialect == "" {
 		return "", nil
@@ -163,7 +167,7 @@ func (qs *queryService) translateSQLIfNeeded(sql, sourceDialect, targetDialect s
 	}
 
 	// Translate the SQL
-	translatedSQL, err := qs.sqlTranslator.TranslateQuery(sql, sourceDialect, targetDialect)
+	translatedSQL, err := qs.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
 	if err != nil {
 		return "", fmt.Errorf("failed to translate SQL from %s to %s: %w", sourceDialect, targetDialect, err)
 	}
@@ -195,7 +199,7 @@ func (qs *queryService) executeQueryWithConnection(ctx context.Context, db *sql.
 	// Translate SQL if needed
 	sqlToExecute := req.SQL
 	if req.SourceDialect != "" {
-		translatedSQL, err := qs.translateSQLIfNeeded(req.SQL, req.SourceDialect, string(dbType))
+		translatedSQL, err := qs.translateSQLIfNeeded(ctx, req.SQL, req.SourceDialect, string(dbType))
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate SQL: %w", err)
 		}
@@ -419,7 +423,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	// Translate SQL if needed
 	sqlToExecute := req.SQL
 	if req.SourceDialect != "" {
-		translatedSQL, err := qs.translateSQLIfNeeded(req.SQL, req.SourceDialect, string(datasource.Type))
+		translatedSQL, err := qs.translateSQLIfNeeded(ctx, req.SQL, req.SourceDialect, string(datasource.Type))
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate SQL: %w", err)
 		}

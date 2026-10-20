@@ -147,9 +147,88 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	})
 }
 
+func TestAuthenticateMCPRequestsRejectsInvalidAccessTokenBeforeHandler(t *testing.T) {
+	handlerCalled := false
+	handler := authenticateMCPRequests(staticMCPTokenValidator{}, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		handlerCalled = true
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer rejected-access-token")
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", recorder.Code)
+	}
+	if handlerCalled {
+		t.Fatal("MCP handler ran for a rejected access token")
+	}
+}
+
+func TestStreamableHTTPPropagatesOIDCIdentityToQueryAuthorization(t *testing.T) {
+	source := &model.DataSource{ID: "source-oidc", OwnerID: "alice", TenantID: "tenant-a"}
+	queryService := &mcpHTTPQueryService{source: source}
+	mcpServer := NewMCPServer(queryService, mcpHTTPRepository{}, nil)
+	validator := staticMCPTokenValidator{claims: &security.Claims{
+		UserID: "oidc-subject-1", TenantID: "tenant-a", Username: "alice",
+		Roles: []string{"reader"}, Scope: "data-fabric.query profile",
+	}}
+	httpServer := httptest.NewServer(mcpServer.StreamableHTTPHandler(validator))
+	defer httpServer.Close()
+
+	client, err := client.NewStreamableHttpClient(httpServer.URL+"/mcp", transport.WithHTTPHeaders(map[string]string{
+		"Authorization": "Bearer trusted-access-token",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	ctx := context.Background()
+	if err := client.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+		ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+		ClientInfo:      mcp.Implementation{Name: "oidc-test-client", Version: "1"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+		Name:      "execute_sql_query",
+		Arguments: map[string]any{"datasource_id": source.ID, "sql": "SELECT 1"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("OIDC identity was not authorized for the same tenant: %+v", result.Content)
+	}
+	caller := queryService.lastCaller
+	if caller == nil || caller.UserID != "oidc-subject-1" || caller.TenantID != "tenant-a" ||
+		len(caller.Roles) != 1 || caller.Roles[0] != "reader" ||
+		len(caller.Scopes) != 2 || caller.Scopes[0] != "data-fabric.query" {
+		t.Fatalf("query authorization received caller = %+v", caller)
+	}
+	if queryService.lastQueryUser != "oidc-subject-1" {
+		t.Fatalf("query history user = %q, want verified subject", queryService.lastQueryUser)
+	}
+}
+
+type staticMCPTokenValidator struct {
+	claims *security.Claims
+}
+
+func (v staticMCPTokenValidator) ValidateMCPToken(_ context.Context, token string) (*security.Claims, error) {
+	if token != "trusted-access-token" {
+		return nil, errors.New("invalid token")
+	}
+	return v.claims, nil
+}
+
 type mcpHTTPQueryService struct {
-	source     *model.DataSource
-	lastCaller *security.Caller
+	source        *model.DataSource
+	lastCaller    *security.Caller
+	lastQueryUser string
 }
 
 func (s *mcpHTTPQueryService) ValidateQuery(_ context.Context, caller *security.Caller, _ *model.QueryRequest) error {
@@ -162,8 +241,9 @@ func (s *mcpHTTPQueryService) ValidateQuery(_ context.Context, caller *security.
 func (*mcpHTTPQueryService) GetQueryStats(context.Context) (*model.QueryStats, error) {
 	return nil, nil
 }
-func (s *mcpHTTPQueryService) FetchQuery(_ context.Context, caller *security.Caller, _ *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (s *mcpHTTPQueryService) FetchQuery(ctx context.Context, caller *security.Caller, _ *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	s.lastCaller = caller
+	s.lastQueryUser = service.QueryUserFromContext(ctx)
 	if !caller.CanRead(s.source) {
 		return nil, security.ErrDataSourceAccessDenied
 	}

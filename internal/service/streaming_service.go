@@ -31,14 +31,14 @@ type StreamingService interface {
 	Shutdown() error
 }
 
-func (ss *streamingService) translateSQLIfNeeded(sql, sourceDialect, targetDialect string) (string, error) {
+func (ss *streamingService) translateSQLIfNeeded(ctx context.Context, sql, sourceDialect, targetDialect string) (string, error) {
 	if sourceDialect == "" || strings.EqualFold(sourceDialect, targetDialect) {
 		return sql, nil
 	}
 	if ss.sqlTranslator == nil {
 		return "", fmt.Errorf("SQL translator is not configured")
 	}
-	return ss.sqlTranslator.TranslateQuery(sql, sourceDialect, targetDialect)
+	return ss.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
 }
 
 func (ss *streamingService) mapQueryEngineTypeToStandard(dbTypeName string) model.StandardizedType {
@@ -298,7 +298,11 @@ func (ss *streamingService) SupportsStreaming(ctx context.Context, caller *secur
 }
 
 // NewStreamingService creates a new streaming service.
-func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool) StreamingService {
+func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	translator := sql_translator.NewSQLTranslationManager(true)
+	if len(translators) > 0 && translators[0] != nil {
+		translator = translators[0]
+	}
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
 		connPool:                connPool,
@@ -307,7 +311,7 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 		streamTimeout:           5 * time.Minute,
 		streamingSessionManager: NewStreamingSessionManager(),
 		sqlValidator:            security.NewSQLValidator(10000),
-		sqlTranslator:           sql_translator.NewSQLTranslationManager(true),
+		sqlTranslator:           translator,
 	}
 	return ss
 }
@@ -335,7 +339,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		return "", 0, err
 	}
 
-	querySQL, err := ss.translateSQLIfNeeded(req.SQL, req.SourceDialect, string(dataSource.Type))
+	querySQL, err := ss.translateSQLIfNeeded(requestCtx, req.SQL, req.SourceDialect, string(dataSource.Type))
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to translate SQL: %w", err)
 	}
