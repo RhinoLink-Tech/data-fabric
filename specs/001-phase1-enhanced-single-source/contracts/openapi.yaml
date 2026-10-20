@@ -1,13 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Data Fabric API - Phase 1 Enhanced Single-Source Capabilities
+  title: Data Fabric API
   description: |
-    Multi-database proxy gateway REST API with support for 30+ data source types including
-    data lake table formats (Iceberg, Delta Lake, Hudi), cloud warehouses (Snowflake, Databricks,
-    Redshift, BigQuery), object storage (S3, MinIO, OSS, COS, Azure Blob), OLAP engines
-    (ClickHouse, Doris, StarRocks, Druid), domestic Chinese databases, and distributed
-    file systems (HDFS, Ozone).
-  version: 1.1.0
+    HTTP API for managing configured data sources and executing read-only batch queries.
+    SQL execution uses POST /fetch. The /query routes validate SQL and expose query
+    statistics and per-user history. Driver support is described in the repository
+    documentation and is not inferred from registry names alone.
+  version: 1.2.0
   contact:
     name: RhinoLink Tech
     url: https://github.com/RhinoLink-Tech/data-fabric/discussions
@@ -55,10 +54,9 @@ paths:
       parameters:
         - name: type
           in: query
-          description: Filter by data source type
+          description: Filter by a type currently registered in the runtime driver registry
           schema:
-            type: string
-            enum: [mysql, mariadb, postgresql, oracle, iceberg, delta_lake, hudi, snowflake, databricks, redshift, bigquery, s3_parquet, minio_parquet, oss_parquet, cos_parquet, azure_parquet, hdfs_avro, ozone_parquet, clickhouse, doris, starrocks, druid, oceanbase_mysql, oceanbase_oracle, tidb, tdsql, gaussdb_mysql, gaussdb_postgres, dameng, kingbasees, gbase_8s, gbase_8t, oscar, opengauss]
+            $ref: '#/components/schemas/DataSourceType'
         - name: status
           in: query
           description: Filter by status
@@ -290,46 +288,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConnectionTestResponse'
 
-  /query:
+  /fetch:
     post:
       tags:
         - Queries
-      summary: Execute a SQL query
-      description: Executes a read-only SQL query against the specified data source with streaming result support
-      operationId: executeQuery
-      parameters:
-        - name: X-Correlation-ID
-          in: header
-          description: Correlation ID for request tracing
-          schema:
-            type: string
-            format: uuid
+      summary: Execute read-only SQL and return the first batch
+      description: >-
+        Executes one read-only SELECT statement against an authorized data source.
+        The response reports the actual execution mode and includes a continuation
+        URI when a query session has more rows.
+      operationId: fetchQuery
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QueryRequest'
+              $ref: '#/components/schemas/FetchQueryRequest'
       responses:
         '200':
-          description: Query executed successfully
+          description: First result batch
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QueryResponse'
-          headers:
-            X-Correlation-ID:
-              schema:
-                type: string
-              description: Correlation ID for request tracing
+                $ref: '#/components/schemas/FetchQueryResponse'
         '400':
-          description: Invalid request data or SQL query
+          description: Malformed request body
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Unauthorized
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller cannot read the data source
           content:
             application/json:
               schema:
@@ -340,56 +337,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '408':
-          description: Query execution timeout
+        '422':
+          description: Request fields failed validation
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
-          description: Internal server error during query execution
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /fetch:
-    post:
-      tags:
-        - Queries
-      summary: Execute a batch SQL query (streaming)
-      description: >-
-        Executes a SQL query and returns a batch of rows. The server will attempt
-        to open a backend streaming cursor when supported and return the first
-        batch along with a `nextUri` to continue fetching additional batches.
-      operationId: fetchQuery
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FetchQueryRequest'
-      responses:
-        '200':
-          description: Fetch query executed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FetchQueryResponse'
-        '400':
-          description: Invalid request data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error during fetch
+          description: Query execution failed
           content:
             application/json:
               schema:
@@ -399,18 +354,20 @@ paths:
     get:
       tags:
         - Queries
-      summary: Fetch next batch of a streaming query
+      summary: Fetch the next query batch
       description: >-
-        Retrieves the next batch of rows for a previously opened streaming
-        query session. For legacy sessions (offset-based), this endpoint will
-        return the next batch computed via LIMIT/OFFSET.
+        Retrieves a continuation batch for a session created by POST /fetch.
+        Session state is process-local and is lost on restart.
       operationId: fetchNextBatch
+      security:
+        - BearerAuth: []
       parameters:
         - name: query_id
           in: path
           required: true
           schema:
             type: string
+            format: uuid
         - name: slug
           in: path
           required: true
@@ -424,6 +381,7 @@ paths:
         - name: batch_size
           in: query
           required: false
+          description: Requested size of this continuation batch
           schema:
             type: integer
             minimum: 1
@@ -431,25 +389,37 @@ paths:
             default: 10000
       responses:
         '200':
-          description: Next batch fetched
+          description: Next result batch
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FetchQueryResponse'
         '400':
-          description: Invalid parameters
+          description: Invalid path or query parameters
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Unauthorized
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller does not own the query session
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Session not found or expired
+          description: Session not found, expired, or lost after restart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Continuation fetch failed
           content:
             application/json:
               schema:
@@ -459,9 +429,11 @@ paths:
     post:
       tags:
         - Queries
-      summary: Validate a SQL query
-      description: Validates a SQL query without executing it (syntax check, schema validation, permission check)
+      summary: Validate a SQL statement
+      description: Validates the SQL and data-source access without executing the statement.
       operationId: validateQuery
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -470,19 +442,116 @@ paths:
               $ref: '#/components/schemas/QueryValidateRequest'
       responses:
         '200':
-          description: Query validation result
+          description: Validation result, including invalid SQL details in data when applicable
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueryValidateResponse'
         '400':
-          description: Invalid request data
+          description: Malformed request body
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Unauthorized
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller cannot read the data source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Data source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request fields failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /query/stats:
+    get:
+      tags:
+        - Queries
+      summary: Get query statistics
+      operationId: getQueryStats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Query statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryStatsResponse'
+        '401':
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Statistics could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /query/history:
+    get:
+      tags:
+        - Queries
+      summary: Get the caller's recent query history
+      operationId: getQueryHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of records, default 100 and maximum 1000
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: dataSourceId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Recent records scoped to the authenticated caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryHistoryResponse'
+        '401':
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Query history could not be retrieved
           content:
             application/json:
               schema:
@@ -493,7 +562,7 @@ paths:
       tags:
         - Databases
       summary: Test database connection
-      description: **DEPRECATED** - Use POST /datasources/{id}/test instead
+      description: "**DEPRECATED** - Use POST /datasources/{id}/test instead"
       deprecated: true
       operationId: testDatabase
       parameters:
@@ -534,55 +603,68 @@ components:
     DataSourceType:
       type: string
       enum:
-        # Traditional databases (existing)
+        # Relational and domestic databases
         - mysql
         - mariadb
         - postgresql
         - oracle
-        # Data lake table formats (Phase 1)
-        - iceberg
-        - delta_lake
-        - hudi
-        # Cloud data warehouses (Phase 1)
-        - snowflake
-        - databricks
-        - redshift
-        - bigquery
-        # Object storage (Phase 1)
-        - s3_parquet
-        - s3_orc
-        - s3_avro
-        - s3_csv
-        - s3_json
-        - minio_parquet
-        - minio_csv
-        - oss_parquet
-        - cos_parquet
-        - azure_parquet
-        # Distributed file systems (Phase 1)
-        - hdfs_avro
-        - hdfs_parquet
-        - hdfs_csv
-        - ozone_parquet
-        # OLAP engines (Phase 1)
-        - clickhouse
-        - doris
-        - starrocks
-        - druid
-        # Domestic Chinese databases (Phase 1)
+        - sqlserver
+        - dameng
         - oceanbase_mysql
         - oceanbase_oracle
         - tidb
         - tdsql
         - gaussdb_mysql
         - gaussdb_postgres
-        - dameng
         - kingbasees
         - gbase_8s
         - gbase_8t
         - oscar
         - opengauss
-      description: Data source type identifier
+        # Warehouses and query engines
+        - snowflake
+        - databricks
+        - redshift
+        - bigquery
+        - hive
+        - trino
+        - presto
+        - openlookeng
+        - maxcompute
+        # OLAP and NoSQL databases
+        - clickhouse
+        - doris
+        - starrocks
+        - druid
+        - hologres
+        - mongodb
+        # Data lake table formats
+        - iceberg
+        - delta_lake
+        - hudi
+        # Object storage and file formats
+        - azure_blob_parquet
+        - azure_delta
+        - azure_parquet
+        - cos_parquet
+        - minio_csv
+        - minio_delta
+        - minio_iceberg
+        - minio_parquet
+        - oss_delta
+        - oss_parquet
+        - s3_parquet
+        - s3_orc
+        - s3_avro
+        - s3_csv
+        - s3_json
+        # Distributed file systems
+        - hdfs_avro
+        - hdfs_parquet
+        - hdfs_csv
+        - hdfs_text
+        - hdfs_parquet_compressed
+      description: Data source types with a driver registered in the current runtime
 
     DataSourceStatus:
       type: string
@@ -615,7 +697,7 @@ components:
           type: string
           format: password
           description: Database password (encrypted in storage)
-          example: ********
+          example: "********"
         ssl:
           type: boolean
           description: Enable SSL/TLS connection
@@ -777,41 +859,6 @@ components:
                   type: integer
                   example: 3
 
-    QueryRequest:
-      type: object
-      required:
-        - dataSourceId
-        - sql
-      properties:
-        dataSourceId:
-          type: string
-          format: uuid
-          description: Data source UUID
-          example: 550e8400-e29b-41d4-a716-446655440000
-        sql:
-          type: string
-          description: SQL SELECT query to execute
-          example: SELECT id, name, email FROM users WHERE status = ? LIMIT 100
-        parameters:
-          type: array
-          description: Query parameters for parameterized queries
-          items:
-            type: string
-          example: ['active']
-        limit:
-          type: integer
-          minimum: 1
-          maximum: 10000
-          description: Maximum number of rows to return
-          default: 100
-          example: 100
-        offset:
-          type: integer
-          minimum: 0
-          description: Number of rows to skip
-          default: 0
-          example: 0
-
     FetchQueryRequest:
       type: object
       required:
@@ -821,68 +868,92 @@ components:
         dataSourceId:
           type: string
           format: uuid
-          description: Data source UUID
+          description: ID of a registered data source the caller can read
         sql:
           type: string
-          description: SQL SELECT query to execute
+          description: One read-only SELECT statement in the target dialect
+        sourceDialect:
+          type: string
+          description: Optional input dialect for supported SQL translation
+          example: postgres
         type:
           type: integer
-          description: Query type (1 = synchronous/legacy, 2 = streaming)
-          example: 2
+          enum: [1, 2]
+          description: Omit for configured execution mode; 1 requests pagination and 2 requests streaming
         batch_size:
           type: integer
           minimum: 1
           maximum: 10000
-          description: Desired batch size for streaming fetch
           default: 10000
+          description: Maximum rows requested in the first result batch
         timeout:
           type: integer
-          description: Timeout in seconds for opening the streaming cursor
+          minimum: 1
+          maximum: 1800
           default: 60
+          description: Timeout in seconds for the initial request
+
+    FetchQueryData:
+      type: object
+      required:
+        - queryId
+        - slug
+        - token
+        - executionMode
+        - columns
+        - entries
+        - totalCount
+      properties:
+        queryId:
+          type: string
+          format: uuid
+          description: Server-generated query-session ID
+        slug:
+          type: string
+          description: Short session identifier
+        token:
+          type: string
+          description: Per-session continuation token
+        executionMode:
+          type: string
+          enum: [streaming, pagination]
+          description: Execution path that handled this query
+        nextUri:
+          type: string
+          description: Relative URI for the next batch; omitted when no continuation is available
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryColumn'
+        entries:
+          type: array
+          description: Result rows, with each row ordered to match columns
+          items:
+            type: array
+            items: {}
+        totalCount:
+          type: integer
+          format: int64
+          description: Count reported for the submitted SQL
 
     FetchQueryResponse:
       type: object
       required:
         - success
         - data
+        - correlationId
+        - timestamp
       properties:
         success:
           type: boolean
-          example: true
+          enum: [true]
         data:
-          type: object
-          required:
-            - queryId
-            - slug
-            - token
-            - columns
-            - entries
-          properties:
-            queryId:
-              type: string
-              description: Server-generated query session ID
-            slug:
-              type: string
-              description: Short slug for session verification
-            token:
-              type: string
-              description: Token for session continuation
-            nextUri:
-              type: string
-              description: URI to fetch the next batch (empty when exhausted)
-            columns:
-              type: array
-              items:
-                $ref: '#/components/schemas/QueryColumn'
-            entries:
-              type: array
-              items:
-                type: array
-                items: {}
+          $ref: '#/components/schemas/FetchQueryData'
         correlationId:
           type: string
-          format: uuid
-          description: Correlation ID for request tracing
+        timestamp:
+          type: string
+          format: date-time
 
     QueryValidateRequest:
       type: object
@@ -893,10 +964,62 @@ components:
         dataSourceId:
           type: string
           format: uuid
-          description: Data source UUID
+          description: Data source to validate access against
         sql:
           type: string
-          description: SQL query to validate
+          description: Read-only SQL statement to validate; it is not executed
+        sourceDialect:
+          type: string
+          description: Optional input dialect for supported SQL validation and translation
+        parameters:
+          type: array
+          description: Accepted by the validation request model; values are not bound or executed
+          items: {}
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        offset:
+          type: integer
+          minimum: 0
+        timeout:
+          type: integer
+          minimum: 1
+          maximum: 300
+
+    QueryValidationData:
+      type: object
+      required:
+        - valid
+        - queryId
+      properties:
+        valid:
+          type: boolean
+        queryId:
+          type: string
+          format: uuid
+        error:
+          type: string
+          description: Safe validation error message when valid is false
+
+    QueryValidateResponse:
+      type: object
+      required:
+        - success
+        - data
+        - correlationId
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/QueryValidationData'
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
 
     QueryColumn:
       type: object
@@ -907,109 +1030,170 @@ components:
       properties:
         name:
           type: string
-          description: Column name
-          example: user_id
+          example: order_id
         type:
           type: string
-          description: Column data type
-          example: INTEGER
+          description: Normalized result type
+          example: integer
         nullable:
           type: boolean
-          description: Whether column can contain NULL values
           example: false
+        nestedFields:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryColumn'
 
-    QueryMetadata:
+    QueryStatsData:
       type: object
       required:
-        - rowCount
-        - executionTimeMs
-        - dataSourceId
-        - databaseType
+        - totalQueries
+        - successfulQueries
+        - failedQueries
+        - avgExecutionTime
+        - lastQueryTime
+        - queriesByType
       properties:
-        rowCount:
+        totalQueries:
           type: integer
-          description: Number of rows returned
-          example: 42
-        executionTimeMs:
+          format: int64
+        successfulQueries:
           type: integer
-          description: Query execution time in milliseconds
-          example: 145
-        dataSourceId:
+          format: int64
+        failedQueries:
+          type: integer
+          format: int64
+        avgExecutionTime:
+          type: number
+          format: double
+          description: Average query execution time in seconds
+        lastQueryTime:
           type: string
-          format: uuid
-          description: Data source UUID
-        databaseType:
-          $ref: '#/components/schemas/DataSourceType'
-        dataProcessedBytes:
-          type: integer
-          description: Amount of data scanned in bytes (if available)
-          example: 1048576
+          format: date-time
+        queriesByType:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
 
-    QueryResponse:
+    QueryStatsResponse:
       type: object
       required:
         - success
         - data
         - correlationId
+        - timestamp
       properties:
         success:
           type: boolean
-          example: true
+          enum: [true]
         data:
-          type: object
-          required:
-            - columns
-            - rows
-            - metadata
-          properties:
-            columns:
-              type: array
-              description: Column definitions
-              items:
-                $ref: '#/components/schemas/QueryColumn'
-            rows:
-              type: array
-              description: Query result rows (array of arrays)
-              items:
-                type: array
-                items: {}
-              example:
-                - [1, 'John Doe', 'john@example.com']
-                - [2, 'Jane Smith', 'jane@example.com']
-            nextUri:
-              type: string
-              description: URI to fetch the next batch for streaming queries (empty when exhausted)
-            
-            metadata:
-              $ref: '#/components/schemas/QueryMetadata'
+          $ref: '#/components/schemas/QueryStatsData'
         correlationId:
           type: string
-          format: uuid
-          description: Correlation ID for request tracing
+        timestamp:
+          type: string
+          format: date-time
 
-    QueryValidateResponse:
+    QueryRecord:
+      type: object
+      required:
+        - queryId
+        - dataSourceId
+        - status
+        - durationMs
+        - user
+        - executedAt
+      properties:
+        queryId:
+          type: string
+          format: uuid
+        dataSourceId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [success, error]
+        durationMs:
+          type: integer
+          format: int64
+        user:
+          type: string
+        executedAt:
+          type: string
+          format: date-time
+
+    QueryHistoryData:
+      type: object
+      required:
+        - queries
+        - total
+        - limit
+        - offset
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRecord'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    QueryHistoryResponse:
       type: object
       required:
         - success
-        - valid
+        - data
         - correlationId
+        - timestamp
       properties:
         success:
           type: boolean
-          example: true
-        valid:
-          type: boolean
-          description: Whether the query is valid
-          example: true
-        errors:
-          type: array
-          description: Validation errors (if any)
-          items:
-            type: string
-          example: []
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/QueryHistoryData'
         correlationId:
           type: string
-          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+
+    StandardResponse:
+      type: object
+      required:
+        - success
+        - correlationId
+        - timestamp
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: '#/components/schemas/ErrorInfo'
+        message:
+          type: string
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorInfo:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: string
 
     ConnectionTestResponse:
       type: object
@@ -1091,32 +1275,19 @@ components:
       required:
         - success
         - error
+        - correlationId
+        - timestamp
       properties:
         success:
           type: boolean
-          example: false
+          enum: [false]
         error:
-          type: object
-          required:
-            - code
-            - message
-          properties:
-            code:
-              type: string
-              description: Error code
-              example: INVALID_REQUEST
-            message:
-              type: string
-              description: Human-readable error message
-              example: Invalid request data
-            details:
-              type: object
-              description: Additional error details
-              additionalProperties: true
-            correlationId:
-              type: string
-              format: uuid
-              description: Correlation ID for support tracking
+          $ref: '#/components/schemas/ErrorInfo'
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
 
   securitySchemes:
     BearerAuth:
