@@ -43,12 +43,11 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 		t.Errorf("S3 default port = %d, want 443", s3Config.Port)
 	}
 
-	ozoneConfig := &model.DataSourceConfig{Host: "ozone.example.test"}
-	if err := checker.ValidateDataSourceConfiguration(ozoneConfig, model.DatabaseTypeOzoneParquet); err != nil {
-		t.Fatalf("Ozone config should validate through its registered driver: %v", err)
+	if checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneParquet) {
+		t.Fatal("Ozone must stay unregistered until its object operations are implemented")
 	}
-	if ozoneConfig.Port != 9880 || ozoneConfig.Database != "/" {
-		t.Errorf("Ozone defaults = port %d, path %q; want port 9880 and root path", ozoneConfig.Port, ozoneConfig.Database)
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{Host: "ozone.example.test"}, model.DatabaseTypeOzoneParquet); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("Ozone validation error = %v, want unsupported-type error", err)
 	}
 
 	invalidPort := &model.DataSourceConfig{

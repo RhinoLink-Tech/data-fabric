@@ -86,8 +86,10 @@ The repository defines representative source types across these categories. Avai
 | Analytical databases | ClickHouse, Doris, StarRocks, Druid, Hologres |
 | Cloud warehouses and big-data platforms | Snowflake, Databricks, Redshift, BigQuery, Hive, MaxCompute |
 | Lakehouse table formats | Apache Iceberg, Delta Lake, Apache Hudi |
-| Object storage and file systems | S3, MinIO, Alibaba OSS, Tencent COS, Azure Blob, HDFS, Apache Ozone |
+| Object storage and file systems | S3, MinIO, Alibaba OSS, Tencent COS, Azure Blob, HDFS |
 | File formats | Parquet, ORC, Avro, CSV, JSON, XML, text |
+
+Apache Ozone is not currently advertised as a supported source because its object operations are incomplete. The registry rejects Ozone source configuration until those operations are implemented and verified. See the [Ozone support status](docs/ozone-support.md).
 
 ### Build and Runtime Footprint
 

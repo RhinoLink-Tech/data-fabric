@@ -2,6 +2,8 @@ package database
 
 import (
 	"testing"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
 // Every driver the registry hands out must be usable: it has to report its own
@@ -39,5 +41,22 @@ func TestRegisteredDriversReportTypeAndCategory(t *testing.T) {
 				t.Errorf("GetCategory() = %q, want a non-empty category", got)
 			}
 		})
+	}
+}
+
+func TestOzoneDriversAreNotAdvertisedUntilClientOperationsExist(t *testing.T) {
+	registry := NewDriverRegistry()
+	ozoneTypes := []model.DatabaseType{
+		model.DatabaseTypeOzoneParquet,
+		model.DatabaseTypeOzoneText,
+		model.DatabaseTypeOzoneAvro,
+	}
+	for _, dbType := range ozoneTypes {
+		if registry.IsSupported(dbType) {
+			t.Errorf("registry still advertises %s", dbType)
+		}
+		if _, err := registry.GetDriver(dbType); err == nil {
+			t.Errorf("GetDriver(%s) error = nil, want unsupported type", dbType)
+		}
 	}
 }

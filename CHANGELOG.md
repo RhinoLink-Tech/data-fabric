@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Stop advertising Apache Ozone source types whose object client operations are placeholders; reject their configuration and document the unsupported operation set (#110).
 - Align the container runtime and documentation on Go 1.26.1, port 8080, and a non-root application user; add a reproducible Docker build/run example and CI image smoke test (#30).
 - Validate required startup settings, ports, query execution mode, and HTTP server limits before database initialization; reject malformed MCP listener ports and document fail-closed schema migration behavior (#31).
 - Add a regression test proving row scan failures close the active stream and remove its continuation session (#27).
@@ -92,7 +93,7 @@ All notable changes to this project will be documented in this file.
 - **Cloud Data Warehouses**: Added Snowflake, Databricks, Redshift, BigQuery connectors
 - **OLAP Engines**: Added ClickHouse, Doris, StarRocks, Druid drivers
 - **Object Storage Integration**: Added S3, MinIO, OSS, COS, Azure Blob clients
-- **Distributed Storage**: Added HDFS, Apache Ozone support
+- **Distributed Storage**: Added HDFS support and initial Apache Ozone driver scaffolding (not an end-to-end supported connector)
 - **File Formats**: Added Parquet, ORC, Avro, CSV, JSON file readers
 - **Domestic Database Support**: Added OceanBase, TiDB, TDSQL, GaussDB drivers
 - **Chinese Databases**: Added DaMeng, KingbaseES, GBase, Oscar, OpenGauss support
