@@ -200,7 +200,7 @@ Before running the application, inject a persistent data-source credential keyri
 
 4. Run the application:
    ```bash
-   go run cmd/server/main.go
+   go run ./cmd/server
    ```
 
 ## Coding Standards
@@ -407,9 +407,9 @@ The application uses structured logging:
 
 ### Profiling
 
-To enable profiling for performance analysis:
+The server does not currently expose CPU or memory profiling flags. To run it locally:
 ```bash
-go run cmd/server/main.go -cpuprofile cpu.prof -memprofile mem.prof
+go run ./cmd/server
 ```
 
 ## Contributing

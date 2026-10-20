@@ -2,11 +2,12 @@
 
 # Build the application
 build:
-	go build -o bin/data-fabric cmd/server/main.go
+	mkdir -p bin
+	go build -o bin/data-fabric ./cmd/server
 
 # Run the application
 run:
-	go run cmd/server/main.go
+	go run ./cmd/server
 
 # Run tests
 test:
@@ -32,7 +33,7 @@ docker-run:
 
 # Run Docker with config volume
 docker-run-with-config:
-	docker run -p 8080:8080 -v $(PWD)/configs:/root/configs data-fabric:latest
+	docker run -p 8080:8080 -v $(PWD)/configs:/app/configs:ro data-fabric:latest
 
 # Format code
 fmt:

@@ -2,6 +2,7 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+/bin/
 *.exe
 *.exe~
 *.dll
@@ -36,3 +37,7 @@ deploy/mcp/tls/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]

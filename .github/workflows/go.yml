@@ -65,6 +65,9 @@ jobs:
       - name: Build all packages
         run: go build ./...
 
+      - name: Build public Makefile target
+        run: make build
+
       - name: Build container image
         run: docker build --tag data-fabric:ci .
 
@@ -79,3 +82,8 @@ jobs:
             exit 1
           fi
           grep -q 'Invalid startup configuration: server.port' /tmp/data-fabric-container-smoke.log
+          config_dir="$(mktemp -d)"
+          trap 'rm -rf "$config_dir"' EXIT
+          chmod 755 "$config_dir"
+          touch "$config_dir"/mount-smoke
+          docker run --rm --entrypoint /bin/sh -v "$config_dir:/app/configs:ro" data-fabric:ci -c "test -r /app/configs/mount-smoke"
