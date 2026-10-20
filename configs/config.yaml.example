@@ -8,6 +8,7 @@
 server:
   port: "8080"
   mode: "debug"  # debug, release, test
+  # HTTP 监听地址（#127）：IP 或可解析主机名；留空监听全部接口（容器友好）。
   host: "0.0.0.0"
   # HTTP limits (#128). Fetch operations may run up to 30 minutes.
   read_header_timeout: "10s"
@@ -22,6 +23,8 @@ database:
   database: "data_fabric"
   username: "data_fabric"   # 或 export DATABASE_USERNAME=...
   password: ""              # 或 export DATABASE_PASSWORD=...
+  # 元数据库 TLS（#143）：false=不加密（默认）；true=TLS 且校验证书；
+  # skip-verify=TLS 但不校验证书（自签场景）。其它值启动即报错。
   ssl: "false"
 
 security:

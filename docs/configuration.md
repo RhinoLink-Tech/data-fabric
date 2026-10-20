@@ -61,6 +61,12 @@ Copy `configs/config.yaml.example` to `configs/config.yaml` for local use. Keep 
 | `server.port` | String | `8080` |
 | `server.mode` | String | `debug` (`debug`, `test`, or `release`) |
 | `server.host` | String | `0.0.0.0` |
+
+`server.host` is the actual bind address of the HTTP listener (#127): an IP
+address (IPv4 or bracket-escaped IPv6) or a hostname the listener resolves.
+An empty value binds every interface, which keeps container deployments
+working. An invalid or already-occupied address fails startup with the
+address in the error.
 | `server.read_header_timeout` | Duration | `10s` |
 | `server.read_timeout` | Duration | `30s` |
 | `server.write_timeout` | Duration | `31m` |
@@ -79,6 +85,12 @@ The body limit returns HTTP 413 with error code `REQUEST_TOO_LARGE`. It wraps JS
 | `database.username` | String | `gateway_user` |
 | `database.password` | String | Empty |
 | `database.ssl` | String | `false` |
+
+`database.ssl` controls TLS for the metadata database connection (#143):
+`false` (default) connects in plaintext, `true` requires TLS and verifies the
+server certificate against the system roots and the connected hostname, and
+`skip-verify` requires TLS without certificate verification for self-signed
+servers. Any other value fails startup.
 
 ### Security Configuration
 
@@ -243,7 +255,7 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 ## Configuration Validation and Schema Migration
 
-Before opening the metadata database, startup validates the selected server mode, listener and database ports, required database host/name/user, positive HTTP timeouts and request size, query execution mode, and the security requirements for HTTP transports. Database credentials are then used to open and ping the metadata database; a failed connection prevents the service from accepting requests. HTTP and remote MCP also require a non-placeholder JWT secret of at least 32 bytes. Release mode requires authentication and read-only session enforcement. Invalid duration or scalar values that cannot be decoded into the typed configuration are reported during configuration loading.
+Before opening the metadata database, startup validates the selected server mode, listener and database ports, the bind host, required database host/name/user, the `database.ssl` value, positive HTTP timeouts and request size, query execution mode, and the security requirements for HTTP transports. Database credentials are then used to open and ping the metadata database; a failed connection — or a bind address that cannot be listened on — prevents the service from accepting requests. HTTP and remote MCP also require a non-placeholder JWT secret of at least 32 bytes. Release mode requires authentication and read-only session enforcement. Invalid duration or scalar values that cannot be decoded into the typed configuration are reported during configuration loading.
 
 For HTTP and MCP startup, Data Fabric applies the metadata schema migration before serving requests. The migration uses GORM AutoMigrate for the data-source schema and removes the legacy global name index; it is idempotent. A migration error is returned from startup and the process exits instead of serving against a partial schema.
 
