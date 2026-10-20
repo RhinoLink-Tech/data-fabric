@@ -14,20 +14,23 @@ first — the quickstart below is the remote path.
 ## What gets deployed
 
 The Compose stack in [`deploy/mcp/`](../deploy/mcp/) builds one image from the
-repository `Dockerfile` and runs three services on a private network:
+repository `Dockerfile` and runs four services on a private network. The
+gateway runs either the HTTP API or MCP in a given process — never both — so
+the stack runs one container per mode against the shared metadata database:
 
 ```
-MCP client ──HTTPS + Bearer JWT──▶ data-fabric :8081 (MCP, direct TLS)
-                                   data-fabric :8080 (mgmt API, loopback only)
-                                   ├──▶ metadata-db   (MySQL, internal)
-                                   └──▶ sample-source (MySQL, internal)
+MCP client ──HTTPS + Bearer JWT──▶ data-fabric-mcp :8081 (MCP, direct TLS)
+operator  ──HTTP, loopback────────▶ data-fabric-api :8080 (mgmt API)
+                                       ├──▶ metadata-db   (MySQL, internal)
+                                       └──▶ sample-source (MySQL, internal)
 ```
 
 | Service | Purpose |
 | --- | --- |
 | `metadata-db` | Stores the configured data sources; schema is migrated automatically at startup. Not published. |
 | `sample-source` | MySQL with a read-only user and three seeded `orders` rows for the first query. Not published. |
-| `data-fabric` | The gateway: HTTP management API on loopback, MCP endpoint with direct TLS. |
+| `data-fabric-api` | The gateway's HTTP management API on loopback: registration, health, readiness. |
+| `data-fabric-mcp` | The gateway's remote MCP endpoint: Streamable HTTP with direct TLS. Starts after `data-fabric-api` is healthy so schema initialization is serialized. |
 
 ## Prerequisites
 
@@ -77,6 +80,16 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
 For internet-facing deployments, use a real certificate for your domain in
 place of both files — nothing else changes.
 
+The gateway containers run as a non-root user, so make sure that user can read
+the mounted key. For the quickstart:
+
+```bash
+chmod 644 tls/tls.crt tls/tls.key
+```
+
+For a longer-lived deployment, prefer tightening ownership to the container's
+UID over leaving the private key world-readable.
+
 ### 3. Start the stack
 
 ```bash
@@ -86,14 +99,15 @@ docker compose up -d --build
 ### 4. Verify readiness
 
 ```bash
-docker compose ps                 # all three services report "healthy"
+docker compose ps                 # all four services report "healthy"
 curl -s http://127.0.0.1:8080/health && echo
 curl -sk https://localhost:8443/mcp -o /dev/null -w '%{http_code}\n'   # 401
 ```
 
-The `401` on the MCP endpoint is the expected healthy state: TLS is up and the
-authentication gate is rejecting an unauthenticated request before any MCP
-processing.
+The `data-fabric-mcp` container's own health check is a TCP probe on its
+listener — an MCP-only process serves no HTTP `/health` — and the `401` from
+curl is the real end-to-end confirmation: TLS is up and the authentication
+gate is rejecting an unauthenticated request before any MCP processing.
 
 ### 5. Mint a client token
 
@@ -103,17 +117,13 @@ Tokens are HS256 JWTs signed with your `JWT_SECRET`; you issue them yourself
 ```bash
 export JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
 
-# Token for the deployment operator (registers the sample source).
-export ADMIN_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'operator','username':'operator','roles':['admin'],'iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
-
-# Token for an MCP client — no admin role.
+# One non-admin identity both registers the sample source and queries it, so
+# the quickstart needs no role or tenant plumbing.
 export AGENT_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'agent-1','username':'agent-1','iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
 ```
 
-Data sources are scoped by owner, tenant, and role: whoever registers a source
-owns it. Registering with `operator` and querying with `agent-1` works only
-because of the admin role — for multi-user deployments, register shared
-sources with the identity (or `tenantId`) your agents will present.
+Mint a token with `'roles':['admin']` only when you need the admin-only
+endpoints (fleet health, connections stats) or cross-owner visibility.
 
 ### 6. Register the sample source
 
@@ -121,7 +131,7 @@ sources with the identity (or `tenantId`) your agents will present.
 SAMPLE_READER_PASSWORD=$(grep -E '^SAMPLE_READER_PASSWORD=' .env | cut -d= -f2-)
 
 curl -s http://127.0.0.1:8080/api/v1/datasources \
-  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Authorization: Bearer $AGENT_JWT" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"sample-mysql\",
@@ -135,6 +145,13 @@ curl -s http://127.0.0.1:8080/api/v1/datasources \
     }
   }"
 ```
+
+Data sources are scoped by owner, tenant, and role: whoever registers a source
+owns it, and this source is owned by `agent-1` — the same identity the MCP
+client presents in the next step. To serve several clients, either share one
+identity, give the tokens a common `tenantId`, or register with an admin
+identity (admins read every source); a token with a different user and no
+shared tenant sees none of them.
 
 Note the response `id` — that is the `datasource_id` tools take. Credentials
 are encrypted at rest with the credential-vault key from step 1 and are never
@@ -265,10 +282,10 @@ nothing.
 ## Operations
 
 ```bash
-docker compose ps            # health at a glance
-docker compose logs -f data-fabric
-docker compose restart data-fabric
-docker compose down          # stop; add -v to also drop both databases
+docker compose ps                     # health at a glance
+docker compose logs -f data-fabric-api data-fabric-mcp
+docker compose restart data-fabric-mcp
+docker compose down                   # stop; add -v to also drop both databases
 ```
 
 Secrets live only in `.env` and the containers. Rotating `JWT_SECRET`

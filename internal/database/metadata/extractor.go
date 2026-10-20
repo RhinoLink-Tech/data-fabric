@@ -159,8 +159,11 @@ func (e *MetadataExtractor) findTable(ctx context.Context, db *sql.DB, dbType mo
 	for rows.Next() {
 		var name, kind string
 		var schema sql.NullString
-		if err := e.scanTableRow(rows, dbType, &name, &kind, &schema); err != nil {
-			continue
+		if err := e.scanTableRow(rows, &name, &kind, &schema); err != nil {
+			// A scan failure must surface as an error, not masquerade as a
+			// missing table (#184 review: swallowed errors made real tables
+			// unfindable).
+			return "", "", false, fmt.Errorf("failed to scan table row: %w", err)
 		}
 		if name == tableName {
 			return schema.String, kind, true, nil
@@ -193,7 +196,7 @@ func (e *MetadataExtractor) extractTables(ctx context.Context, db *sql.DB, dbTyp
 		var tableSchema sql.NullString
 
 		// Scan based on database type
-		if err := e.scanTableRow(rows, dbType, &tableName, &tableType, &tableSchema); err != nil {
+		if err := e.scanTableRow(rows, &tableName, &tableType, &tableSchema); err != nil {
 			continue
 		}
 
@@ -385,24 +388,12 @@ func (e *MetadataExtractor) getPrimaryKeyQuery(dbType model.DatabaseType, tableN
 // Row scanning helpers
 // =============================================================================
 
-func (e *MetadataExtractor) scanTableRow(rows *sql.Rows, dbType model.DatabaseType, tableName, tableType *string, tableSchema *sql.NullString) error {
-	switch dbType {
-	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		var name, engine, rowFormat string
-		var comment sql.NullString
-		if err := rows.Scan(&name, &engine, &rowFormat, &comment, &tableSchema, &tableType, &comment); err != nil {
-			return err
-		}
-		*tableName = name
-		*tableType = "TABLE"
-	case model.DatabaseTypePostgreSQL:
-		if err := rows.Scan(tableName, tableType, tableSchema); err != nil {
-			return err
-		}
-	default:
-		if err := rows.Scan(tableName, tableType, tableSchema); err != nil {
-			return err
-		}
+func (e *MetadataExtractor) scanTableRow(rows *sql.Rows, tableName, tableType *string, tableSchema *sql.NullString) error {
+	// Every getTableQuery variant — including the MySQL/MariaDB
+	// information_schema query — returns (table_name, table_type,
+	// table_schema), so one three-column scan serves all dialects.
+	if err := rows.Scan(tableName, tableType, tableSchema); err != nil {
+		return err
 	}
 	return nil
 }
@@ -410,14 +401,18 @@ func (e *MetadataExtractor) scanTableRow(rows *sql.Rows, dbType model.DatabaseTy
 func (e *MetadataExtractor) scanColumnRow(rows *sql.Rows, dbType model.DatabaseType, colName, colType *string, isNullable *bool, colDefault, colComment *sql.NullString) error {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		var field, typ, null, key, defaultVal, extra string
+		var field, typ, null, key, extra string
+		// SHOW COLUMNS reports NULL for columns without a default; scanning
+		// that into a plain string fails and dropped the whole row (#201
+		// review).
+		var defaultVal sql.NullString
 		if err := rows.Scan(&field, &typ, &null, &key, &defaultVal, &extra); err != nil {
 			return err
 		}
 		*colName = field
 		*colType = typ
 		*isNullable = strings.ToUpper(null) == "YES"
-		*colDefault = sql.NullString{String: defaultVal, Valid: defaultVal != ""}
+		*colDefault = defaultVal
 		*colComment = sql.NullString{Valid: false}
 	default:
 		// information_schema reports nullability as the strings "YES"/"NO";
