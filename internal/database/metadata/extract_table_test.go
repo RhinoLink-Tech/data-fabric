@@ -278,3 +278,71 @@ func TestExtractTableSchemaPropagatesScanErrors(t *testing.T) {
 		t.Fatalf("error = %v, want a table-lookup failure", err)
 	}
 }
+
+func TestListTablesReturnsOnlyIdentities(t *testing.T) {
+	var queries []string
+	extractor := newLookupExtractor(t, model.DatabaseTypePostgreSQL, func(query string) driver.Rows {
+		queries = append(queries, query)
+		if strings.Contains(query, "FROM pg_tables") {
+			return &cannedRows{
+				columns: []string{"tablename", "tabletype", "schemaname"},
+				values:  [][]driver.Value{{"orders", "TABLE", "public"}, {"payroll", "TABLE", "private"}},
+			}
+		}
+		return &cannedRows{}
+	})
+
+	tables, err := extractor.ListTables(context.Background(), "source-under-test")
+	if err != nil {
+		t.Fatalf("ListTables() error = %v", err)
+	}
+	if len(tables) != 2 || tables[0].Name != "orders" || tables[0].Schema != "public" || tables[1].Name != "payroll" || tables[1].Schema != "private" {
+		t.Fatalf("ListTables() = %+v, want public.orders and private.payroll", tables)
+	}
+	if len(queries) != 1 || !strings.Contains(queries[0], "FROM pg_tables") {
+		t.Fatalf("ListTables queries = %v, want only the table identity query", queries)
+	}
+}
+
+func TestExtractTableSchemaInSchemaAndRejectAmbiguousName(t *testing.T) {
+	extractor := newLookupExtractor(t, model.DatabaseTypePostgreSQL, func(query string) driver.Rows {
+		switch {
+		case strings.Contains(query, "FROM pg_tables"):
+			return &cannedRows{
+				columns: []string{"tablename", "tabletype", "schemaname"},
+				values: [][]driver.Value{
+					{"orders", "TABLE", "public"},
+					{"orders", "TABLE", "private"},
+				},
+			}
+		case strings.Contains(query, "information_schema.columns") && strings.Contains(query, "'private'"):
+			return &cannedRows{
+				columns: []string{"column_name", "data_type", "is_nullable", "column_default", "comment"},
+				values:  [][]driver.Value{{"secret_id", "integer", "NO", nil, ""}},
+			}
+		default:
+			return &cannedRows{}
+		}
+	})
+
+	table, err := extractor.ExtractTableSchemaInSchema(context.Background(), "source-under-test", "private", "orders")
+	if err != nil {
+		t.Fatalf("qualified ExtractTableSchemaInSchema() error = %v", err)
+	}
+	if table.Schema != "private" || len(table.Columns) != 1 || table.Columns[0].Name != "secret_id" {
+		t.Fatalf("qualified table = %+v, want private.orders with private columns", table)
+	}
+
+	_, err = extractor.ExtractTableSchema(context.Background(), "source-under-test", "orders")
+	if !errors.Is(err, ErrAmbiguousTable) {
+		t.Fatalf("unqualified ExtractTableSchema() error = %v, want ErrAmbiguousTable", err)
+	}
+}
+
+func TestPostgresRegclassLiteralIsSchemaQualifiedAndEscaped(t *testing.T) {
+	got := postgresRegclassLiteral(`sales"archive`, `order's`)
+	want := `'"sales""archive"."order''s"'`
+	if got != want {
+		t.Fatalf("postgresRegclassLiteral() = %s, want %s", got, want)
+	}
+}

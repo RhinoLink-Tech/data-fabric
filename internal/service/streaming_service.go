@@ -15,6 +15,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 	"github.com/google/uuid"
 )
@@ -91,6 +92,7 @@ type StreamingSession struct {
 	CreatorID        string
 	DataSourceID     string
 	SQL              string
+	Tables           []sqlanalysis.TableReference
 	Type             int
 	BatchSize        int
 	Cursor           interface{} // Cursor for pagination
@@ -230,6 +232,7 @@ type streamingService struct {
 	streamingSessionManager *StreamingSessionManager
 	sqlValidator            *security.SQLValidator
 	sqlTranslator           *sql_translator.SQLTranslationManager
+	tableAuthorizer         *security.TableAuthorizer
 }
 
 // ActiveStream represents an active streaming query
@@ -239,6 +242,7 @@ type ActiveStream struct {
 	DatabaseType   model.DatabaseType
 	Rows           *sql.Rows
 	Columns        []model.ColumnInfo
+	Tables         []sqlanalysis.TableReference
 	StartedAt      time.Time
 	LastActivityAt time.Time
 	RowsSent       int64
@@ -299,6 +303,12 @@ func (ss *streamingService) SupportsStreaming(ctx context.Context, caller *secur
 
 // NewStreamingService creates a new streaming service.
 func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return NewStreamingServiceWithTableAuthorizer(datasourceRepo, connPool, nil, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizer creates a streaming service with
+// optional per-table authorization. Existing callers retain the legacy constructor.
+func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -316,6 +326,7 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 		streamingSessionManager: NewStreamingSessionManager(),
 		sqlValidator:            validator,
 		sqlTranslator:           translator,
+		tableAuthorizer:         authorizer,
 	}
 	return ss
 }
@@ -355,7 +366,20 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to translate SQL: %w", err)
 	}
-	if ss.sqlValidator != nil {
+	var tables []sqlanalysis.TableReference
+	if ss.tableAuthorizer != nil && ss.tableAuthorizer.Enabled() {
+		if !ss.sqlValidator.SupportsASTAnalysis() {
+			return "", 0, security.ErrTableAuthorizationUnavailable
+		}
+		analysis, err := ss.sqlValidator.AnalyzeStatementForDataSourceContext(requestCtx, querySQL, dataSource.Type)
+		if err != nil {
+			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
+		}
+		if err := ss.tableAuthorizer.AuthorizeAnalysis(requestCtx, caller, dataSource, analysis, security.TablePermissionRead); err != nil {
+			return "", 0, err
+		}
+		tables = analysis.Tables
+	} else if ss.sqlValidator != nil {
 		if err := ss.sqlValidator.ValidateStatementForDataSourceContext(requestCtx, querySQL, dataSource.Type); err != nil {
 			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
 		}
@@ -427,6 +451,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		DatabaseType:   dataSource.Type,
 		Rows:           rows,
 		Columns:        columnInfo,
+		Tables:         append([]sqlanalysis.TableReference(nil), tables...),
 		StartedAt:      time.Now(),
 		LastActivityAt: time.Now(),
 		CancelFunc:     cancel,
@@ -918,6 +943,11 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	if err != nil {
 		return nil, fmt.Errorf("failed to start streaming query: %w", err)
 	}
+	ss.streamsMutex.RLock()
+	if active, ok := ss.activeStreams[streamID]; ok {
+		session.Tables = append([]sqlanalysis.TableReference(nil), active.Tables...)
+	}
+	ss.streamsMutex.RUnlock()
 
 	// Fetch the first batch of data
 	chunk, err := ss.FetchStreamChunk(ctx, streamID, req.BatchSize)
@@ -1020,6 +1050,12 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	if err := requireActiveDataSource(datasource); err != nil {
 		_ = ss.closeSessionStream(session)
 		return nil, err
+	}
+	if ss.tableAuthorizer != nil && ss.tableAuthorizer.Enabled() {
+		if err := ss.tableAuthorizer.AuthorizeReferences(ctx, caller, datasource, session.Tables, security.TablePermissionRead); err != nil {
+			_ = ss.closeSessionStream(session)
+			return nil, err
+		}
 	}
 
 	// Check if stream exists and is valid

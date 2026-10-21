@@ -5,17 +5,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Server         ServerConfig         `mapstructure:"server"`
-	Database       DatabaseConfig       `mapstructure:"database"`
-	Security       SecurityConfig       `mapstructure:"security"`
-	Logging        LoggingConfig        `mapstructure:"logging"`
-	Query          QueryConfig          `mapstructure:"query"`
-	MCP            MCPConfig            `mapstructure:"mcp"`
-	SQLTranslation SQLTranslationConfig `mapstructure:"sql_translation"`
+	Server             ServerConfig                      `mapstructure:"server"`
+	Database           DatabaseConfig                    `mapstructure:"database"`
+	Security           SecurityConfig                    `mapstructure:"security"`
+	Logging            LoggingConfig                     `mapstructure:"logging"`
+	Query              QueryConfig                       `mapstructure:"query"`
+	MCP                MCPConfig                         `mapstructure:"mcp"`
+	SQLTranslation     SQLTranslationConfig              `mapstructure:"sql_translation"`
+	TableAuthorization security.TableAuthorizationConfig `mapstructure:"table_authorization"`
 }
 
 type ServerConfig struct {

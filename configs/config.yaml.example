@@ -50,6 +50,35 @@ security:
   # additionalProps: { enforce_read_only: false }（详见 docs/readonly-access.md）。
   enforce_read_only: true
 
+# Optional table-level permissions (#218). Disabled by default; when enabled,
+# queries and metadata requests are denied unless a caller rule matches. Admin
+# access bypasses rules only for a source that explicitly sets admin_override.
+# Unqualified SQL requires an explicit datasource schema (or MySQL database)
+# unless the rule uses schema: "*".
+table_authorization:
+  enabled: false
+  data_sources:
+    # Replace with a datasource ID from /api/v1/datasources.
+    example-datasource-id:
+      admin_override: false
+      rules:
+        - tenant_id: analytics
+          read:
+            - catalog: "*"
+              schema: reporting
+              table: "*"
+          metadata:
+            - catalog: "*"
+              schema: reporting
+              table: "*"
+        - user_id: analyst-01
+          read:
+            - schema: public
+              table: daily_summary
+          metadata:
+            - schema: public
+              table: daily_summary
+
 logging:
   level: "info"
   format: "json"  # json, text

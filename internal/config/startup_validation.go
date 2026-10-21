@@ -20,6 +20,9 @@ func (c Config) ValidateStartup() error {
 	if err := c.SQLTranslation.Validate(); err != nil {
 		return err
 	}
+	if err := c.TableAuthorization.Validate(); err != nil {
+		return err
+	}
 
 	if c.MCP.Enabled {
 		if err := c.MCP.Validate(); err != nil {

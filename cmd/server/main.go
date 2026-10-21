@@ -125,12 +125,11 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize services
 	datasourceService := service.NewDataSourceService(datasourceRepo, connPool, healthChecker)
+	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
 
-	// Initialize streaming service
-	streamingService := service.NewStreamingService(datasourceRepo, connPool, translationManager)
-
-	// Initialize pagination service (original query service) with streaming support
-	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming, translationManager)
+	// Initialize streaming and pagination services with one shared table policy.
+	streamingService := service.NewStreamingServiceWithTableAuthorizer(datasourceRepo, connPool, tableAuthorizer, translationManager)
+	paginationService := service.NewQueryServiceWithTableAuthorizer(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, translationManager)
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
 	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
@@ -285,11 +284,12 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	// Unwinds after the streaming maintenance defer below: cursors close
 	// first, then pooled connections and the metadata database (#32).
 	defer closeGatewayResources(db, connPool)
-	streamingService := service.NewStreamingService(datasourceRepo, connPool, translationManager)
-	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming, translationManager)
+	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
+	streamingService := service.NewStreamingServiceWithTableAuthorizer(datasourceRepo, connPool, tableAuthorizer, translationManager)
+	paginationService := service.NewQueryServiceWithTableAuthorizer(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
-	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor, translationManager)
+	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
 		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService, db, connPool)

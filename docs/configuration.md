@@ -259,7 +259,7 @@ Notable behaviors:
 - **Fleet endpoints are admin-only.** `/api/v1/database/health` and `/api/v1/database/connections/stats` enumerate every stored data source, so they require the `admin` role when `security.enable_auth` is on.
 - **`security.enable_auth: false` boundary.** The switch only governs the data-source management API, where no identity exists to check: management requests then run in a legacy-equivalent mode, and created rows stay legacy. `/api/v1/fetch` is authenticated either way (#6), and its authorization checks still apply.
 
-The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Fine-grained permissions inside a tenant are out of scope.
+The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Optional per-user and per-tenant table permissions are documented in [Table-Level Authorization](security/table-level-authorization.md).
 
 ## Environment Variables
 
@@ -290,6 +290,7 @@ Every service-config field supports this mapping:
 | `security.enable_auth` | `SECURITY_ENABLE_AUTH` |
 | `security.enable_rate_limit` | `SECURITY_ENABLE_RATE_LIMIT` |
 | `security.enforce_read_only` | `SECURITY_ENFORCE_READ_ONLY` |
+| `table_authorization.enabled` | `TABLE_AUTHORIZATION_ENABLED` |
 | `logging.level` | `LOGGING_LEVEL` |
 | `logging.format` | `LOGGING_FORMAT` |
 | `query.prefer_streaming` | `QUERY_PREFER_STREAMING` |

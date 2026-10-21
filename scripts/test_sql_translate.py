@@ -127,6 +127,33 @@ class SQLTranslationRegressionTests(unittest.TestCase):
                 self.assertTrue(result["is_query"])
                 self.assertFalse(result["has_mutation"])
 
+    def test_ast_table_references_cover_joins_nested_queries_and_ctes(self):
+        sql = (
+            "WITH recent_orders AS ("
+            " SELECT o.id FROM hive.sales.orders o "
+            " JOIN crm.public.customers c ON c.id = o.customer_id"
+            ") SELECT r.id FROM recent_orders r "
+            "JOIN audit.events e ON e.order_id = r.id "
+            "WHERE EXISTS (SELECT 1 FROM security.blocked_ids b WHERE b.id = r.id)"
+        )
+        result = analyze_sql(sql, "trino")
+        self.assertNotIn("error", result, result)
+        self.assertFalse(result["unresolved_tables"])
+        self.assertEqual(
+            [
+                {"catalog": "", "schema": "audit", "table": "events", "unqualified": False},
+                {"catalog": "", "schema": "security", "table": "blocked_ids", "unqualified": False},
+                {"catalog": "crm", "schema": "public", "table": "customers", "unqualified": False},
+                {"catalog": "hive", "schema": "sales", "table": "orders", "unqualified": False},
+            ],
+            result["tables"],
+        )
+
+    def test_ast_marks_table_functions_unresolved(self):
+        result = analyze_sql("SELECT * FROM UNNEST(ARRAY[1, 2]) AS t(value)", "trino")
+        self.assertNotIn("error", result, result)
+        self.assertTrue(result["unresolved_tables"])
+
     def test_read_only_ast_analysis_reports_security_constructs(self):
         cases = [
             (

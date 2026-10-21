@@ -13,12 +13,15 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 )
 
+const maxListedTableIdentities = 1000
+
 var (
 	ErrMetadataRepositoryRequired     = errors.New("data source repository is required")
 	ErrMetadataConnectionPoolRequired = errors.New("metadata connection pool is required")
 	ErrMetadataDriverRegistryRequired = errors.New("metadata driver registry is required")
 	ErrSchemaDiscoveryUnsupported     = errors.New("schema discovery is not supported")
 	ErrTableNotFound                  = errors.New("table not found")
+	ErrAmbiguousTable                 = errors.New("table name is ambiguous")
 )
 
 type dataSourceLookup interface {
@@ -72,12 +75,18 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 // table in the data source: the table list is read once, and column, index,
 // and primary-key details are fetched only for the requested table (#184).
 func (e *MetadataExtractor) ExtractTableSchema(ctx context.Context, dataSourceID, tableName string) (*TableSchema, error) {
+	return e.ExtractTableSchemaInSchema(ctx, dataSourceID, "", tableName)
+}
+
+// ExtractTableSchemaInSchema describes a table only after resolving its exact
+// schema. An empty schema accepts a unique table name and rejects ambiguity.
+func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, dataSourceID, requestedSchema, tableName string) (*TableSchema, error) {
 	dataSource, db, err := e.resolveConnection(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
 	}
 
-	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, tableName)
+	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up table %q: %w", tableName, err)
 	}
@@ -149,7 +158,7 @@ func (e *MetadataExtractor) resolveConnection(ctx context.Context, dataSourceID 
 
 // findTable scans the table list for one table name and reports its schema
 // name and table type without extracting details for the other tables.
-func (e *MetadataExtractor) findTable(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName string) (schemaName, tableType string, found bool, err error) {
+func (e *MetadataExtractor) findTable(ctx context.Context, db *sql.DB, dbType model.DatabaseType, requestedSchema, tableName string) (schemaName, tableType string, found bool, err error) {
 	rows, err := db.QueryContext(ctx, e.getTableQuery(dbType))
 	if err != nil {
 		return "", "", false, err
@@ -165,11 +174,46 @@ func (e *MetadataExtractor) findTable(ctx context.Context, db *sql.DB, dbType mo
 			// unfindable).
 			return "", "", false, fmt.Errorf("failed to scan table row: %w", err)
 		}
-		if name == tableName {
-			return schema.String, kind, true, nil
+		if name != tableName || (requestedSchema != "" && requestedSchema != schema.String) {
+			continue
+		}
+		if found && schemaName != schema.String {
+			return "", "", false, ErrAmbiguousTable
+		}
+		schemaName, tableType, found = schema.String, kind, true
+	}
+	return schemaName, tableType, found, rows.Err()
+}
+
+// ListTables returns only table identities, without reading column or index
+// metadata. Callers can filter the result before exposing names to users.
+func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string) ([]TableIdentity, error) {
+	dataSource, db, err := e.resolveConnection(ctx, dataSourceID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, e.getTableQuery(dataSource.Type))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query table identities: %w", err)
+	}
+	defer rows.Close()
+
+	var tables []TableIdentity
+	for rows.Next() {
+		var name, kind string
+		var schema sql.NullString
+		if err := e.scanTableRow(rows, &name, &kind, &schema); err != nil {
+			return nil, fmt.Errorf("failed to scan table identity: %w", err)
+		}
+		tables = append(tables, TableIdentity{Name: name, Schema: schema.String, Type: kind})
+		if len(tables) == maxListedTableIdentities {
+			break
 		}
 	}
-	return "", "", false, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read table identities: %w", err)
+	}
+	return tables, nil
 }
 
 // ValidateSchema validates that the cached schema is still valid
@@ -329,6 +373,21 @@ func (e *MetadataExtractor) extractPrimaryKey(ctx context.Context, db *sql.DB, d
 // Database-specific queries
 // =============================================================================
 
+func escapeSQLStringLiteral(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
+}
+
+func postgresRegclassLiteral(schemaName, tableName string) string {
+	quoteIdentifier := func(value string) string {
+		return "\"" + strings.ReplaceAll(value, "\"", "\"\"") + "\""
+	}
+	qualifiedName := quoteIdentifier(tableName)
+	if schemaName != "" {
+		qualifiedName = quoteIdentifier(schemaName) + "." + qualifiedName
+	}
+	return "'" + escapeSQLStringLiteral(qualifiedName) + "'"
+}
+
 func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
@@ -356,7 +415,7 @@ func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName,
 	case model.DatabaseTypePostgreSQL:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", tableName, schemaName)
 	case model.DatabaseTypeOracle:
-		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s'", tableName)
+		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	default:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", tableName)
 	}
@@ -378,7 +437,7 @@ func (e *MetadataExtractor) getPrimaryKeyQuery(dbType model.DatabaseType, tableN
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
 		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name = 'PRIMARY'", tableName)
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indrelid = '%s'::regclass AND i.indisprimary", tableName)
+		return fmt.Sprintf("SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indrelid = %s::regclass AND i.indisprimary", postgresRegclassLiteral(schemaName, tableName))
 	default:
 		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name LIKE '%%PRIMARY%%'", tableName)
 	}
