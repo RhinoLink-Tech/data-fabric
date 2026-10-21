@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Validate remote MCP access tokens through a configured OIDC issuer and JWKS, including issuer, audience, time, and scope checks, with verified identity propagated into authorization (#217).
+- Package the optional SQL dialect translation runtime in the container with timeout, cancellation, concurrency, and input/output bounds (#212).
+- Bind native SQL parameters consistently through query and fetch batches for REST and MCP requests (#21).
+
+### Changed
+- Use one consistent wire representation for query rows in regular, paginated, and streaming responses (#123).
+- Report exact result counts only when the source query can provide a reliable count (#23).
+
+### Fixed
+- Honor configured HTTP bind addresses and metadata database DSN/TLS options, and reject unsafe metadata scan targets (#127, #143, #122).
+- Honor connection-pool idle timeouts and close server resources during graceful shutdown (#116, #32).
+
 ### Fixed
 - Stop advertising Apache Ozone source types whose object client operations are placeholders; reject their configuration and document the unsupported operation set (#110).
 - Align the container runtime and documentation on Go 1.26.1, port 8080, and a non-root application user; add a reproducible Docker build/run example and CI image smoke test (#30).
