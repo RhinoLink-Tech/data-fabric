@@ -96,6 +96,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if profiles[string(model.DatabaseTypeHDFSCSV)].Status != ConnectorStatusExperimental {
 		t.Errorf("HDFS CSV status = %q, want experimental", profiles[string(model.DatabaseTypeHDFSCSV)].Status)
 	}
+	mongo := profiles[string(model.DatabaseTypeMongoDB)]
+	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || mongo.EndToEndVerified {
+		t.Errorf("MongoDB must expose the restricted adapter as experimental: %+v", mongo)
+	}
+	if !containsSupportLimitation(mongo.Limitations, "restricted single-collection SELECT subset") {
+		t.Errorf("MongoDB catalog must describe its SQL mapping boundary: %+v", mongo.Limitations)
+	}
 
 	s3CSV := profiles[string(model.DatabaseTypeS3CSV)]
 	if s3CSV.Status != ConnectorStatusExperimental || s3CSV.EndToEndVerified {

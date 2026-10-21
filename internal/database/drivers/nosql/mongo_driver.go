@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -19,103 +20,92 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// MongoDriver implements the Driver interface for MongoDB
+// MongoDriver exposes a restricted SQL query surface that the gateway maps to
+// native MongoDB find/count commands. MongoDB itself does not speak SQL.
 type MongoDriver struct {
 	base *drivers.DriverBase
 }
 
-// NewMongoDriver creates a new MongoDB driver instance
 func NewMongoDriver() *MongoDriver {
-	return &MongoDriver{
-		base: drivers.NewDriverBase(model.DatabaseTypeMongoDB, drivers.CategoryNoSQL),
+	return &MongoDriver{base: drivers.NewDriverBase(model.DatabaseTypeMongoDB, drivers.CategoryNoSQL)}
+}
+
+func (md *MongoDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	query = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+	if query == "" {
+		return "", fmt.Errorf("MongoDB query is required")
 	}
+	if batchSize <= 0 {
+		return "", fmt.Errorf("batch size must be positive")
+	}
+	if offset < 0 {
+		return "", fmt.Errorf("offset cannot be negative")
+	}
+	return fmt.Sprintf("SELECT * FROM (%s) AS __data_fabric_page LIMIT %d OFFSET %d", query, batchSize, offset), nil
 }
 
-// ApplyBatchPagination applies pagination to SQL query for batch processing
-// For MongoDB, we'll return a placeholder since MongoDB doesn't use SQL
-func (md *MongoDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For MongoDB, we'll return a placeholder string that can be interpreted later
-	// Since MongoDB doesn't use SQL, we'll return the original query with pagination metadata
-	return fmt.Sprintf("MONGO_QUERY|%s|LIMIT|%d|SKIP|%d", sql, batchSize, offset), nil
-}
-
-// Open opens a connection to MongoDB database
-// We'll create a dummy sql.DB with a custom driver that handles MongoDB operations
 func (md *MongoDriver) Open(dsn string) (*sql.DB, error) {
-	// Create a custom driver that will handle MongoDB operations
-	mongoDriver := &MongoSQLDriver{dsn: dsn}
-
-	// Register the driver temporarily with a unique name
-	driverName := fmt.Sprintf("mongo_%d", time.Now().UnixNano())
-	sql.Register(driverName, mongoDriver)
-
-	// Open a connection using the custom driver
-	db, err := sql.Open(driverName, dsn)
+	database, err := mongoDatabaseFromURI(dsn)
 	if err != nil {
 		return nil, err
 	}
-
-	// Test the connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Parse DSN to get database name
-	parsedDSN := strings.Replace(dsn, "mongodb://", "", 1)
-	parts := strings.Split(parsedDSN, "/")
-	dbName := ""
-	if len(parts) > 1 {
-		dbName = parts[1]
-		if idx := strings.Index(dbName, "?"); idx != -1 {
-			dbName = dbName[:idx]
-		}
-	}
-
-	// Attempt to establish connection
-	clientOptions := options.Client().ApplyURI(dsn)
-	client, err := mongo.Connect(ctx, clientOptions)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
-	}
-
-	// Test ping
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ping MongoDB: %v", err)
-	}
-
-	// Disconnect
-	_ = client.Disconnect(ctx)
-
-	return db, nil
+	return sql.OpenDB(&mongoSQLConnector{uri: dsn, database: database}), nil
 }
 
-// ValidateDSN validates the MongoDB connection string
+func (md *MongoDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, fmt.Errorf("MongoDB data source config is required")
+	}
+	if strings.TrimSpace(config.Host) == "" {
+		return nil, fmt.Errorf("MongoDB host is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return nil, fmt.Errorf("MongoDB database is required")
+	}
+	dsn := md.BuildDSN(config)
+	if err := md.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
+	return sql.OpenDB(&mongoSQLConnector{uri: dsn, database: config.Database}), nil
+}
+
+func mongoDatabaseFromURI(dsn string) (string, error) {
+	parsed, err := connstring.ParseAndValidate(dsn)
+	if err != nil {
+		return "", fmt.Errorf("invalid MongoDB DSN format: %w", err)
+	}
+	if strings.TrimSpace(parsed.Database) == "" {
+		return "", fmt.Errorf("MongoDB database name is required in the connection URI")
+	}
+	return parsed.Database, nil
+}
+
 func (md *MongoDriver) ValidateDSN(dsn string) error {
-	// Parse the connection string to validate its format
-	_, err := connstring.ParseAndValidate(dsn)
-	if err != nil {
-		return fmt.Errorf("invalid MongoDB DSN format: %v", err)
-	}
-
-	return nil
+	_, err := mongoDatabaseFromURI(dsn)
+	return err
 }
 
-// GetDefaultPort returns the default port for MongoDB
-func (md *MongoDriver) GetDefaultPort() int {
-	return 27017 // Default MongoDB port
-}
+func (md *MongoDriver) GetDefaultPort() int { return 27017 }
 
-// BuildDSN builds a MongoDB connection string from configuration
 func (md *MongoDriver) BuildDSN(config *model.DataSourceConfig) string {
+	if config == nil {
+		return ""
+	}
+	port := config.Port
+	if port <= 0 {
+		port = md.GetDefaultPort()
+	}
 	parsed := &url.URL{
 		Scheme: "mongodb",
-		Host:   net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		Host:   net.JoinHostPort(config.Host, strconv.Itoa(port)),
 		Path:   "/" + config.Database,
 	}
 	if config.Username != "" {
 		parsed.User = url.UserPassword(config.Username, config.Password)
 	}
-
 	query := parsed.Query()
 	for key, value := range config.AdditionalProps {
 		query.Set(key, fmt.Sprint(value))
@@ -124,58 +114,84 @@ func (md *MongoDriver) BuildDSN(config *model.DataSourceConfig) string {
 	return parsed.String()
 }
 
-// GetDatabaseTypeName returns the database type name
-func (md *MongoDriver) GetDatabaseTypeName() string {
-	return md.base.GetDatabaseTypeName()
-}
+func (md *MongoDriver) GetDatabaseTypeName() string { return md.base.GetDatabaseTypeName() }
 
-// TestConnection tests if the MongoDB connection is working
 func (md *MongoDriver) TestConnection(db *sql.DB) error {
-	// For MongoDB, we'll do a basic connection test by attempting to ping
-	// Since we're using a custom driver, this would need to be implemented properly
-	// For now, we'll return nil to indicate the connection is valid
-	return nil
+	if db == nil {
+		return fmt.Errorf("MongoDB connection is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return db.PingContext(ctx)
 }
 
-// GetDriverName returns the underlying driver name for MongoDB
-func (md *MongoDriver) GetDriverName() string {
-	return "mongo-go-driver"
-}
+func (md *MongoDriver) GetDriverName() string               { return "mongo-go-driver" }
+func (md *MongoDriver) GetCategory() drivers.DriverCategory { return md.base.GetCategory() }
 
-// GetCategory returns the driver category
-func (md *MongoDriver) GetCategory() drivers.DriverCategory {
-	return md.base.GetCategory()
-}
-
-// GetCapabilities returns driver capabilities
 func (md *MongoDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false, // MongoDB doesn't support SQL
-		SupportsTransaction:     true,  // MongoDB supports transactions (since 4.0)
-		SupportsSchemaDiscovery: true,  // MongoDB supports schema introspection
-		SupportsTimeTravel:      false, // MongoDB doesn't have built-in time travel
-		RequiresTokenRotation:   false, // MongoDB uses traditional authentication
-		SupportsStreaming:       true,  // Supports streaming of large result sets
+		SupportsSQL:             true,
+		SupportsTransaction:     false,
+		SupportsSchemaDiscovery: false,
+		SupportsTimeTravel:      false,
+		RequiresTokenRotation:   false,
+		SupportsStreaming:       true,
 	}
 }
 
-// ConfigureAuth configures authentication for MongoDB (supports various auth mechanisms)
-func (md *MongoDriver) ConfigureAuth(authConfig interface{}) error {
-	// MongoDB supports various authentication methods like SCRAM, X.509, etc.
-	// Implementation would depend on specific authConfig provided
-	// This is a placeholder for future extension
+func (md *MongoDriver) ConfigureAuth(interface{}) error { return nil }
 
-	return nil
+// mongoSQLConnector shares one thread-safe MongoDB client across database/sql
+// connections so the Mongo driver's native socket pool can serve concurrent
+// queries without creating a separate client pool for each SQL connection.
+type mongoSQLConnector struct {
+	uri      string
+	database string
+
+	mu     sync.Mutex
+	client *mongo.Client
+	refs   int
 }
 
-// MongoSQLDriver is a custom SQL driver that wraps MongoDB operations
-type MongoSQLDriver struct {
-	dsn string
+func (c *mongoSQLConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client == nil {
+		client, err := mongo.Connect(ctx, options.Client().ApplyURI(c.uri))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
+		}
+		c.client = client
+	}
+	c.refs++
+	return &mongoSQLConn{
+		client: c.client, database: c.client.Database(c.database), connector: c,
+	}, nil
 }
 
-// Open implements the driver.Driver interface
-func (m *MongoSQLDriver) Open(name string) (driver.Conn, error) {
-	// This would connect to MongoDB and return a connection wrapper
-	// For now, we'll return a placeholder
-	return nil, fmt.Errorf("MongoDB SQL adapter not fully implemented")
+func (c *mongoSQLConnector) release(ctx context.Context, client *mongo.Client) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client != client || c.refs == 0 {
+		return nil
+	}
+	c.refs--
+	if c.refs > 0 {
+		return nil
+	}
+	c.client = nil
+	return client.Disconnect(ctx)
+}
+
+func (c *mongoSQLConnector) Driver() driver.Driver { return mongoSQLDriver{connector: c} }
+
+type mongoSQLDriver struct{ connector *mongoSQLConnector }
+
+func (d mongoSQLDriver) Open(string) (driver.Conn, error) {
+	return d.connector.Connect(context.Background())
 }

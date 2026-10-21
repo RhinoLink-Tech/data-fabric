@@ -112,11 +112,18 @@ func TestValidateStatementForDataSourceFailsClosedWhenDialectIsUnknown(t *testin
 	analyzer := &stubSQLASTAnalyzer{analysis: sqlanalysis.Analysis{StatementCount: 1, IsQuery: true}}
 	validator := NewSQLValidator(10000)
 	validator.SetASTAnalyzer(analyzer)
-	if err := validator.ValidateStatementForDataSource("SELECT 1", model.DatabaseTypeMongoDB); !errors.Is(err, ErrUnsupportedSQLDialect) {
+	if err := validator.ValidateStatementForDataSource("SELECT 1", model.DatabaseType("not_registered")); !errors.Is(err, ErrUnsupportedSQLDialect) {
 		t.Fatalf("validation error = %v, want unsupported dialect", err)
 	}
 	if analyzer.calls != 0 {
 		t.Fatalf("analyzer called %d times for an unsupported dialect", analyzer.calls)
+	}
+}
+
+func TestMongoDBUsesMySQLCompatibleReadOnlySQLGrammar(t *testing.T) {
+	dialect, ok := SQLDialectForDataSource(model.DatabaseTypeMongoDB)
+	if !ok || dialect != "mysql" {
+		t.Fatalf("SQLDialectForDataSource(mongodb) = %q, %t; want mysql, true", dialect, ok)
 	}
 }
 

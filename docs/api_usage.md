@@ -78,6 +78,29 @@ Register an S3 CSV object as one logical table. `database` is the bucket; `addit
 
 The current SQL subset supports one configured table, column projection, `WHERE` comparisons combined with `AND` (including `IN`, `LIKE`, and null checks), `ORDER BY`, `LIMIT`/`OFFSET`, and `COUNT(*)`. Joins, CTEs, `GROUP BY`, and general aggregate expressions are not supported by this connector. It downloads and parses the full CSV object in gateway memory before applying SQL operations; it does not push query work to S3 Select. Treat it as experimental and avoid using it for large objects until streaming and pushdown are implemented.
 
+## MongoDB sources
+
+MongoDB does not speak SQL. Data Fabric accepts a deliberately small read-only SQL subset, parses it with the MySQL-compatible grammar, and maps it to the official MongoDB driver's native find and countDocuments operations. When sourceDialect is supplied, dialect translation targets that same MySQL-compatible subset. The gateway does not send a custom text protocol to MongoDB.
+
+Register a database and read-only user. Add `authSource` through `additionalProps` when the user is defined outside the target database:
+
+```json
+{
+  "name": "customer-mongo",
+  "type": "mongodb",
+  "config": {
+    "host": "127.0.0.1",
+    "port": 27017,
+    "database": "analytics",
+    "username": "YOUR_READ_ONLY_USER",
+    "password": "YOUR_DATABASE_PASSWORD",
+    "additionalProps": {"authSource": "admin"}
+  }
+}
+```
+
+The current subset supports one collection per query, `SELECT` column projection, `WHERE` comparisons combined with `AND` (`=`, `<>`, `<`, `<=`, `>`, `>=`, `IN`, `NOT IN`, `LIKE`, `NOT LIKE`, `IS NULL`, `IS NOT NULL`), `ORDER BY`, `LIMIT`/`OFFSET`, and `COUNT(*)`. Collection aliases are accepted. Writes, joins, `OR`, CTEs, grouping, general aggregate expressions, transactions, and schema discovery are not supported. Unsupported statements and predicates fail before a MongoDB command is sent. `SELECT *` derives result columns and types from the first returned document; empty results have no inferred columns, and heterogeneous document shapes can exceed the single-row SQL contract. MongoDB remains experimental until a live, versioned server contract test is recorded.
+
 ## Execute a query
 
 `POST /api/v1/fetch` executes the SQL and returns the first batch. The JSON field for batch size is `batch_size`.
