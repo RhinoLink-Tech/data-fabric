@@ -16,7 +16,7 @@ Resource sampling runs separately from the latency samples. At 500 rows, the mea
 
 These measurements are a local, serial, in-process lower bound. They exclude HTTP, authentication middleware, concurrent client traffic, and the application-to-gateway network hop. CPU figures measure the Go benchmark process and do not include PostgreSQL server CPU. Allocation figures are Go runtime allocations, not retained heap. Percentile gaps are differences between two independently measured percentiles, not per-request latency guarantees. Hardware, PostgreSQL settings, data shape, connection locality, and concurrent load affect results.
 
-The 14-case suite is a custom microbenchmark, not a TPC benchmark or an official TPC result.
+The 14-case suite is a custom microbenchmark, not a TPC benchmark or an official TPC result. This completes the Phase 1 small-workload baseline scope in issue #44; cross-engine comparisons are outside this benchmark.
 
 ## Environment and Method
 

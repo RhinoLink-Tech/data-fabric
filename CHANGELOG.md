@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Add a reproducible PostgreSQL gateway benchmark with result-equivalence checks, latency samples, per-request CPU and Go allocation measurements, peak RSS, and published raw CSV results (#44).
+- Complete the small-workload baseline in #44 with a reproducible PostgreSQL gateway benchmark, result-equivalence checks, latency samples, per-request CPU and Go allocation measurements, peak RSS, and raw CSV results.
 - Keep common read-only SQL validation on the in-process parser and use SQLGlot as a dialect-aware fallback for syntax it cannot parse.
 - Persist identity-aware REST and MCP access events, provide admin-filtered audit review, and prune records according to configurable retention (#220).
 - Validate remote MCP access tokens through a configured OIDC issuer and JWKS, including issuer, audience, time, and scope checks, with verified identity propagated into authorization (#217).
