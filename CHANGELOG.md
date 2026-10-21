@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Map a restricted, read-only SQL subset to native MongoDB find/count operations, with ping, streaming, pagination, cancellation, and explicit support limits (#17).
+- Verify the S3 CSV query path through bounded gateway batch execution (#16).
 - Complete the small-workload baseline in #44 with a reproducible PostgreSQL gateway benchmark, result-equivalence checks, latency samples, per-request CPU and Go allocation measurements, peak RSS, and raw CSV results.
 - Keep common read-only SQL validation on the in-process parser and use SQLGlot as a dialect-aware fallback for syntax it cannot parse.
 - Persist identity-aware REST and MCP access events, provide admin-filtered audit review, and prune records according to configurable retention (#220).

@@ -1,7 +1,7 @@
 # MySQL Upgrade and Recovery Rehearsal (D15)
 
 **Run date:** 2026-10-21
-**Application source commit:** `efe97ab48c099819fefd11c60179abbac66ff7f7`
+**Application source commit:** `507e15beb8b382ea2d0d75e34acde87fa695fc4f`
 **Result:** Passed on an isolated MySQL 8.0.46 container using synthetic records.
 
 ## Environment and source schemas
@@ -25,7 +25,7 @@ The test uses a temporary Docker container and randomly named databases beginnin
 | Failed credential migration | The real server process exited before opening its HTTP listener when a required key was missing. A preceding row update was rolled back in MySQL. |
 | Backup and restore | Dumped the recent-schema fixture, dropped and recreated only the temporary database, restored it, then verified both rows, decrypted values, and current indexes. |
 
-**Backup checksum from this run:** 59654d01b0c36f5d52760b8cfcfc1303e6d56d37ac66c3adfc61030446770bb9. The dump is temporary and removed when the script exits; the checksum is run evidence, not a retained backup artifact.
+**Backup checksum from this run:** ef9b79b0e79295c0694b4f96f71386c87a8e3ca27358171b983e74fc1c6dea61. The dump is temporary and removed when the script exits; the checksum is run evidence, not a retained backup artifact.
 
 ## Migration behavior found and corrected
 
