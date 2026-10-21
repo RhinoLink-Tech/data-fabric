@@ -49,6 +49,35 @@ Errors use `success: false` and an `error` object containing `code`, `message`, 
 - Each row in `entries` is an array whose positions match the `columns` array. One wire representation covers pagination and streaming: SQL NULL is JSON `null` (the text string `"NULL"` stays a string), binary-typed columns are base64 strings, text-typed columns — including DECIMAL results, which keep their exact digits — are strings, and booleans, integers, and times pass through as JSON booleans, numbers, and strings.
 - `totalCount` reports the row count for the query result. The gateway may issue an additional count query on the data source to provide it, so the count can add backend work and may reflect concurrent source changes between the count and row fetch. A statement the gateway cannot count exactly fails with HTTP 422 `COUNT_UNSUPPORTED` instead of returning a wrong count; simplify the statement or fetch without relying on the total.
 
+## S3 CSV sources
+
+Register an S3 CSV object as one logical table. `database` is the bucket; `additionalProps.object_key` is the object key; `table_name` is the SQL table name. If additionalProps.object_key is omitted, the config host field is accepted as a legacy fallback. For S3-compatible services such as MinIO, set additionalProps.endpoint_url and force_path_style=true. The gateway accepts CSV format options such as `delimiter`, `has_header`, `skip_header_rows`, and `null_values`.
+
+```json
+{
+  "name": "orders-csv",
+  "type": "s3_csv",
+  "config": {
+    "host": "exports/orders.csv",
+    "port": 443,
+    "database": "company-data",
+    "username": "AWS_ACCESS_KEY_ID",
+    "password": "AWS_SECRET_ACCESS_KEY",
+    "additionalProps": {
+      "region": "us-east-1",
+      "object_key": "exports/orders.csv",
+      "table_name": "orders",
+      "delimiter": ",",
+      "has_header": true,
+      "skip_header_rows": 0,
+      "null_values": ["", "NULL"]
+    }
+  }
+}
+```
+
+The current SQL subset supports one configured table, column projection, `WHERE` comparisons combined with `AND` (including `IN`, `LIKE`, and null checks), `ORDER BY`, `LIMIT`/`OFFSET`, and `COUNT(*)`. Joins, CTEs, `GROUP BY`, and general aggregate expressions are not supported by this connector. It downloads and parses the full CSV object in gateway memory before applying SQL operations; it does not push query work to S3 Select. Treat it as experimental and avoid using it for large objects until streaming and pushdown are implemented.
+
 ## Execute a query
 
 `POST /api/v1/fetch` executes the SQL and returns the first batch. The JSON field for batch size is `batch_size`.

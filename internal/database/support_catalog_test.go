@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
@@ -95,6 +96,33 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if profiles[string(model.DatabaseTypeHDFSCSV)].Status != ConnectorStatusExperimental {
 		t.Errorf("HDFS CSV status = %q, want experimental", profiles[string(model.DatabaseTypeHDFSCSV)].Status)
 	}
+
+	s3CSV := profiles[string(model.DatabaseTypeS3CSV)]
+	if s3CSV.Status != ConnectorStatusExperimental || s3CSV.EndToEndVerified {
+		t.Errorf("S3 CSV must remain experimental until provider/version contract evidence exists: %+v", s3CSV)
+	}
+	if !containsSupportLimitation(s3CSV.Limitations, "downloads the full object into gateway memory") {
+		t.Errorf("S3 CSV catalog must disclose full-object buffering: %+v", s3CSV.Limitations)
+	}
+	for _, dbType := range []model.DatabaseType{
+		model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
+		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet,
+		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
+	} {
+		profile := profiles[string(dbType)]
+		if profile.Status != ConnectorStatusExperimental || !containsSupportLimitation(profile.Limitations, "No end-to-end query-service execution path") {
+			t.Errorf("%s must disclose that gateway SQL execution is not verified: %+v", dbType, profile)
+		}
+	}
+}
+
+func containsSupportLimitation(limitations []string, expected string) bool {
+	for _, limitation := range limitations {
+		if strings.Contains(limitation, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {

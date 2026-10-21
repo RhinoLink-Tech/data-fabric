@@ -131,11 +131,24 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	case model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet,
 		model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSText,
 		model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeApacheIceberg,
-		model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi,
-		model.DatabaseTypeMinIOParquet:
+		model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"Known parser, mock, or query-execution gaps prevent end-to-end support claims.")
+	case model.DatabaseTypeS3CSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.Limitations = append(profile.Limitations,
+			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.",
+			"The end-to-end test uses an S3-compatible HTTP fixture; no AWS S3 or provider-version contract test is recorded.")
+	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
+		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
+		model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.Limitations = append(profile.Limitations,
+			"No end-to-end query-service execution path is recorded for this connector; registry presence alone does not mean SQL queries are available.")
 	}
 }
 
