@@ -39,6 +39,28 @@ func TestMapQueryEngineTypes(t *testing.T) {
 	}
 }
 
+func TestMapMongoDBSQLAdapterTypes(t *testing.T) {
+	mapper := NewDataTypeMapper()
+	tests := []struct {
+		columnType string
+		want       model.StandardizedType
+	}{
+		{columnType: "INTEGER", want: model.TypeInteger},
+		{columnType: "BIGINT", want: model.TypeBigInt},
+		{columnType: "DOUBLE", want: model.TypeDouble},
+		{columnType: "BOOLEAN", want: model.TypeBoolean},
+		{columnType: "TIMESTAMP", want: model.TypeTimestamp},
+		{columnType: "JSON", want: model.TypeJSON},
+	}
+	for _, tt := range tests {
+		t.Run(tt.columnType, func(t *testing.T) {
+			if got := mapper.MapToStandardType(model.DatabaseTypeMongoDB, tt.columnType, true); got != tt.want {
+				t.Errorf("MapToStandardType(mongodb, %q) = %q, want %q", tt.columnType, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMapS3CSVInferredTypes(t *testing.T) {
 	mapper := NewDataTypeMapper()
 	tests := []struct {

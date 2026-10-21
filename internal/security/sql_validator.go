@@ -154,7 +154,7 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB,
 		model.DatabaseTypeOceanBaseMySQL, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL,
-		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t, model.DatabaseTypeMongoDB:
 		return "mysql", true
 	case model.DatabaseTypePostgreSQL, model.DatabaseTypeGaussDBPostgres, model.DatabaseTypeKingbaseES,
 		model.DatabaseTypeOpenGauss, model.DatabaseTypeHologres:
@@ -200,8 +200,6 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro,
 		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
 		return "mysql", true
-	case model.DatabaseTypeMongoDB:
-		return "", false
 	default:
 		return "", false
 	}

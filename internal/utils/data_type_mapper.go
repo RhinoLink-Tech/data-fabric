@@ -69,7 +69,7 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 		return dtm.mapPostgreSQLType(normalizedType, nullable)
 	case model.DatabaseTypeOracle:
 		return dtm.mapOracleType(normalizedType, nullable)
-	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng:
+	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng, model.DatabaseTypeMongoDB:
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	case model.DatabaseTypeS3CSV:
 		return dtm.mapPrestoCompatibleType(normalizedType)

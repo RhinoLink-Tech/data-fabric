@@ -135,6 +135,13 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"Known parser, mock, or query-execution gaps prevent end-to-end support claims.")
+	case model.DatabaseTypeMongoDB:
+		profile.Status = ConnectorStatusExperimental
+		profile.Limitations = append(profile.Limitations,
+			"MongoDB is not a SQL server; the gateway maps a restricted single-collection SELECT subset to native find/count commands.",
+			"Joins, OR predicates, grouping, schema discovery, and transactions are not supported by this adapter.",
+			"SELECT * infers result columns and types from the first document; an empty result has no inferred columns and heterogeneous document shapes may not fit one SQL row schema.",
+			"No live MongoDB server-version contract test is recorded.")
 	case model.DatabaseTypeS3CSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,

@@ -199,15 +199,22 @@ func (qs *queryService) translateSQLIfNeeded(ctx context.Context, sql, sourceDia
 		return "", nil
 	}
 
-	// If source and target are the same, no translation is needed
-	if strings.EqualFold(sourceDialect, targetDialect) {
+	// MongoDB is queried through a restricted SQL subset parsed with the
+	// MySQL grammar; MongoDB itself is not a SQL dialect.
+	translationTarget := targetDialect
+	if strings.EqualFold(targetDialect, string(model.DatabaseTypeMongoDB)) {
+		translationTarget = "mysql"
+	}
+
+	// If source and target are the same, no translation is needed.
+	if strings.EqualFold(sourceDialect, translationTarget) {
 		return "", nil
 	}
 
-	// Translate the SQL
-	translatedSQL, err := qs.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
+	// Translate into the SQL grammar accepted by the selected connector.
+	translatedSQL, err := qs.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, translationTarget)
 	if err != nil {
-		return "", fmt.Errorf("failed to translate SQL from %s to %s: %w", sourceDialect, targetDialect, err)
+		return "", fmt.Errorf("failed to translate SQL from %s to %s: %w", sourceDialect, translationTarget, err)
 	}
 
 	return translatedSQL, nil
