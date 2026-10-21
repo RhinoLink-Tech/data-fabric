@@ -159,8 +159,12 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
-	case model.DatabaseTypeApacheIceberg,
-		model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi:
+	case model.DatabaseTypeApacheIceberg:
+		profile.Status = ConnectorStatusExperimental
+		profile.Limitations = append(profile.Limitations,
+			"SQL execution is read-only and limited to one table, projections, AND comparisons or NULL checks, LIMIT/OFFSET, and COUNT(*); joins, OR, grouping, ordering, and DML are rejected.",
+			"No live, versioned Iceberg REST catalog and data-file contract test is recorded; retain experimental status until that evidence exists.")
+	case model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"Known parser, mock, or query-execution gaps prevent end-to-end support claims.")
