@@ -73,6 +73,21 @@ func (sv *SQLValidator) SupportsASTAnalysis() bool {
 // target source dialect and respects request cancellation and parser timeouts.
 func (sv *SQLValidator) ValidateStatementForDataSourceContext(ctx context.Context, sql string, dbType model.DatabaseType) error {
 	if sv.astAnalyzer != nil {
+		if _, ok := SQLDialectForDataSource(dbType); !ok {
+			return ErrUnsupportedSQLDialect
+		}
+		// The in-process Vitess parser covers common read-only SQL without
+		// starting Python for every request. Keep SQLGlot as the dialect-aware
+		// fallback for syntax the fast parser cannot parse; table authorization
+		// still requests full AST facts explicitly.
+		if err := sv.validateStatement(sql, supportsThreePartCatalogNames(dbType)); err == nil {
+			return nil
+		} else if errors.Is(err, ErrEmptyQuery) || errors.Is(err, ErrQueryTooLong) || errors.Is(err, ErrNotSelectQuery) {
+			// These results are definitive: the input is empty/too large, or the
+			// parser identified a non-query statement. Text heuristics can have
+			// dialect-specific false positives, so let SQLGlot check those.
+			return err
+		}
 		return sv.validateStatementWithAST(ctx, sql, dbType)
 	}
 	return sv.validateStatement(sql, supportsThreePartCatalogNames(dbType))
@@ -425,9 +440,11 @@ func (sv *SQLValidator) checkDangerousKeywords(sql string) error {
 	dangerousKeywords := []string{
 		"DROP", "DELETE", "UPDATE", "INSERT", "CREATE", "ALTER",
 		"TRUNCATE", "REPLACE", "MERGE", "GRANT", "REVOKE",
-		"COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE",
-		"LOAD_FILE", "INTO OUTFILE", "INTO DUMPFILE",
+		"COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "TRANSACTION",
+		"ATTACH", "DETACH", "COPY", "EXPORT", "IMPORT", "USE",
+		"INTO", "LOAD_FILE", "INTO OUTFILE", "INTO DUMPFILE",
 		"EXEC", "EXECUTE", "CALL", "DO",
+		"FOR SHARE", "FOR KEY SHARE", "LOCK IN SHARE MODE",
 	}
 
 	// Functions with filesystem access, side effects, or outbound
@@ -435,7 +452,14 @@ func (sv *SQLValidator) checkDangerousKeywords(sql string) error {
 	// keep identifiers such as a dblink_id column from matching.
 	dangerousFunctions := []string{
 		"PG_READ_FILE", "PG_READ_BINARY_FILE", "PG_LS_DIR",
-		"LO_IMPORT", "LO_EXPORT", "DBLINK", "PG_SLEEP",
+		"LO_IMPORT", "LO_EXPORT", "DBLINK", "DBLINK_CONNECT", "PG_SLEEP",
+		"PG_ADVISORY_LOCK", "PG_ADVISORY_XACT_LOCK", "PG_ADVISORY_UNLOCK",
+		"PG_ADVISORY_UNLOCK_ALL", "PG_NOTIFY", "PG_TERMINATE_BACKEND",
+		"PG_CANCEL_BACKEND", "PG_CREATE_RESTORE_POINT", "NEXTVAL", "SETVAL",
+		"SLEEP", "BENCHMARK", "GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS",
+		"SYS_EXEC", "XP_CMDSHELL", "XP_READERRORLOG", "SP_OACREATE",
+		"OPENROWSET", "OPENQUERY", "UTL_FILE", "UTL_HTTP", "UTL_INADDR",
+		"DBMS_SCHEDULER", "DBMS_LOCK[.]SLEEP",
 	}
 
 	// Convert to uppercase for comparison

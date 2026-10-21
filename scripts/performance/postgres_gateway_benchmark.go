@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
@@ -18,6 +21,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
 
 const (
@@ -60,6 +64,59 @@ func (s stat) report() (time.Duration, time.Duration) {
 	}
 	return v[(len(v)-1)/2], v[p95]
 }
+
+func processCPUTime() (time.Duration, error) {
+	var usage syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err != nil {
+		return 0, err
+	}
+	user := time.Duration(usage.Utime.Sec)*time.Second + time.Duration(usage.Utime.Usec)*time.Microsecond
+	system := time.Duration(usage.Stime.Sec)*time.Second + time.Duration(usage.Stime.Usec)*time.Microsecond
+	return user + system, nil
+}
+
+func measureResources(fn func() error, samples int) (time.Duration, uint64, error) {
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	cpuBefore, err := processCPUTime()
+	if err != nil {
+		return 0, 0, err
+	}
+	for i := 0; i < samples; i++ {
+		if err := fn(); err != nil {
+			return 0, 0, err
+		}
+	}
+	cpuAfter, err := processCPUTime()
+	if err != nil {
+		return 0, 0, err
+	}
+	runtime.ReadMemStats(&after)
+	if after.TotalAlloc < before.TotalAlloc {
+		return 0, 0, errors.New("Go allocation counter moved backwards")
+	}
+	return (cpuAfter - cpuBefore) / time.Duration(samples), (after.TotalAlloc - before.TotalAlloc) / uint64(samples), nil
+}
+
+func processPeakRSSBytes() (uint64, error) {
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "VmHWM:" {
+			kib, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			return kib * 1024, nil
+		}
+	}
+	return 0, errors.New("VmHWM not found in /proc/self/status")
+}
+
 func uniqueTableName(prefix string) string {
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	return prefix + "_" + strings.Join(strings.Split(suffix, ""), "_")
@@ -177,7 +234,12 @@ func run() error {
 	}
 	pool := database.NewConnectionPool(nil, nil, true)
 	defer pool.CloseAll()
-	qs := service.NewQueryService(sourceRepo{source: src}, pool, false)
+	translatorOptions := sql_translator.DefaultRuntimeOptions()
+	translatorOptions.PythonPath = env("SQL_TRANSLATION_PYTHON_PATH", translatorOptions.PythonPath)
+	translatorOptions.ScriptPath = env("SQL_TRANSLATION_SCRIPT_PATH", translatorOptions.ScriptPath)
+	translatorOptions.PythonModulePath = env("SQL_TRANSLATION_PYTHON_MODULE_PATH", translatorOptions.PythonModulePath)
+	translator := sql_translator.NewRuntimeSQLTranslationManager(translatorOptions)
+	qs := service.NewQueryService(sourceRepo{source: src}, pool, false, translator)
 	fullPageRows := rowsN/5 - 7
 	if fullPageRows < 1 {
 		fullPageRows = 1
@@ -219,8 +281,34 @@ func run() error {
 		{"left_join", fmt.Sprintf("SELECT f.id, d.category, f.payload FROM %s AS f LEFT JOIN %s AS d ON d.id = f.id ORDER BY f.id", tableName, dimTableName), rowsN + 10, false, 0},
 		{"full_page_count", fmt.Sprintf("SELECT id, payload FROM %s WHERE id <= %d ORDER BY id", tableName, fullPageRows), fullPageRows, true, fullPageRows},
 	}
+	resourceSamples := n
+	if resourceSamples > 250 {
+		resourceSamples = 250
+	}
+	var rawFile *os.File
+	var rawCSV *csv.Writer
+	if rawPath := os.Getenv("DATA_FABRIC_PERF_RAW_OUTPUT"); rawPath != "" {
+		rawFile, e = os.Create(rawPath)
+		if e != nil {
+			return fmt.Errorf("create raw results file: %w", e)
+		}
+		rawCSV = csv.NewWriter(rawFile)
+		if e = rawCSV.Write([]string{"rows", "workload", "path", "record_type", "sample", "latency_ns", "cpu_ns_per_request", "allocated_bytes_per_request", "process_peak_rss_bytes"}); e != nil {
+			_ = rawFile.Close()
+			return fmt.Errorf("write raw results header: %w", e)
+		}
+		defer func() {
+			if rawCSV != nil {
+				rawCSV.Flush()
+			}
+			if rawFile != nil {
+				_ = rawFile.Close()
+			}
+		}()
+		fmt.Printf("raw_results=%s\n", rawPath)
+	}
 	fmt.Printf("environment: PostgreSQL %s; Go %s; %s/%s; CPUs=%d\n", pgVersion, runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
-	fmt.Printf("database=%s created_now=%t rows=%d samples=%d warmups=%d; temporary synthetic table is removed after the run\n\n", testDB, created, rowsN, n, warm)
+	fmt.Printf("database=%s created_now=%t rows=%d latency_samples=%d warmups=%d resource_samples_per_path=%d; temporary synthetic tables are removed after the run\n\n", testDB, created, rowsN, n, warm, resourceSamples)
 	for _, w := range workloads {
 		directQuery := func() error {
 			total := int64(0)
@@ -286,8 +374,97 @@ func run() error {
 			_, e = json.Marshal(r)
 			return e
 		}
+		verifyEquivalent := func() error {
+			total := int64(0)
+			if w.fullPage {
+				if e := direct.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM ("+w.sql+") AS df_count").Scan(&total); e != nil {
+					return e
+				}
+			}
+			directSQL := fmt.Sprintf("%s LIMIT %d", w.sql, w.batch)
+			queryUpper := strings.ToUpper(w.sql)
+			if strings.Contains(queryUpper, " LIMIT ") || strings.Contains(queryUpper, " OFFSET ") {
+				directSQL = fmt.Sprintf("SELECT * FROM (%s) AS benchmark_query LIMIT %d OFFSET 0", w.sql, w.batch)
+			}
+			rs, e := direct.QueryContext(context.Background(), directSQL)
+			if e != nil {
+				return e
+			}
+			cols, e := rs.Columns()
+			if e != nil {
+				_ = rs.Close()
+				return e
+			}
+			directRows := make([][]any, 0, w.batch)
+			for rs.Next() {
+				values := make([]any, len(cols))
+				dest := make([]any, len(cols))
+				for i := range values {
+					dest[i] = &values[i]
+				}
+				if e := rs.Scan(dest...); e != nil {
+					_ = rs.Close()
+					return e
+				}
+				for i, value := range values {
+					if raw, ok := value.([]byte); ok {
+						values[i] = string(raw)
+					}
+				}
+				directRows = append(directRows, values)
+			}
+			if e := rs.Err(); e != nil {
+				_ = rs.Close()
+				return e
+			}
+			if e := rs.Close(); e != nil {
+				return e
+			}
+			if int64(len(directRows)) < int64(w.batch) {
+				total = int64(len(directRows))
+			} else if !w.fullPage {
+				return fmt.Errorf("direct workload %s unexpectedly filled its page", w.name)
+			}
+			result, e := qs.FetchQuery(context.Background(), security.SystemCaller(), &model.FetchQueryRequest{DataSourceID: sourceID, SQL: w.sql, BatchSize: w.batch, Type: 1, Timeout: 60})
+			if e != nil {
+				return e
+			}
+			if len(cols) != len(result.Columns) {
+				return fmt.Errorf("column count differs: direct=%d service=%d", len(cols), len(result.Columns))
+			}
+			for i, name := range cols {
+				if result.Columns[i].Name != name {
+					return fmt.Errorf("column %d name differs: direct=%q service=%q", i, name, result.Columns[i].Name)
+				}
+			}
+			serviceRows := make([][]interface{}, 0, len(result.Entries))
+			for _, entry := range result.Entries {
+				if entry == nil {
+					return errors.New("service returned a nil row")
+				}
+				serviceRows = append(serviceRows, *entry)
+			}
+			directJSON, e := json.Marshal(directRows)
+			if e != nil {
+				return e
+			}
+			serviceJSON, e := json.Marshal(serviceRows)
+			if e != nil {
+				return e
+			}
+			if !bytes.Equal(directJSON, serviceJSON) {
+				return errors.New("direct and service row values or JSON types differ")
+			}
+			if int64(result.TotalCount) != total {
+				return fmt.Errorf("total count differs: direct=%d service=%d", total, result.TotalCount)
+			}
+			return nil
+		}
 		names := []string{"direct", "data_fabric_service"}
 		ops := []func() error{directQuery, gateway}
+		if e := verifyEquivalent(); e != nil {
+			return fmt.Errorf("equivalence check for %s failed: %w", w.name, e)
+		}
 		for i := 0; i < warm; i++ {
 			for j, f := range ops {
 				if e := f(); e != nil {
@@ -307,6 +484,28 @@ func run() error {
 				}
 			}
 		}
+		if rawCSV != nil {
+			for _, name := range names {
+				for sample, value := range got[name].vals {
+					if e := rawCSV.Write([]string{strconv.Itoa(rowsN), w.name, name, "latency", strconv.Itoa(sample + 1), strconv.FormatInt(value.Nanoseconds(), 10), "", "", ""}); e != nil {
+						return fmt.Errorf("write raw latency sample: %w", e)
+					}
+				}
+			}
+		}
+		fmt.Printf("  resource metrics (%d serial samples per path):\n", resourceSamples)
+		for pathIndex, name := range names {
+			cpuPerRequest, allocatedBytes, err := measureResources(ops[pathIndex], resourceSamples)
+			if err != nil {
+				return fmt.Errorf("%s workload %s resource sample: %w", name, w.name, err)
+			}
+			fmt.Printf("    %-20s cpu=%.3f ms/request allocated=%.1f B/request\n", name, float64(cpuPerRequest.Nanoseconds())/1e6, float64(allocatedBytes))
+			if rawCSV != nil {
+				if e := rawCSV.Write([]string{strconv.Itoa(rowsN), w.name, name, "resource_summary", "", "", strconv.FormatInt(cpuPerRequest.Nanoseconds(), 10), strconv.FormatUint(allocatedBytes, 10), ""}); e != nil {
+					return fmt.Errorf("write raw resource sample: %w", e)
+				}
+			}
+		}
 		fmt.Printf("[%s]\n", w.name)
 		for _, name := range names {
 			p50, p95 := got[name].report()
@@ -315,6 +514,31 @@ func run() error {
 		g50, g95 := got["data_fabric_service"].report()
 		d50, d95 := got["direct"].report()
 		fmt.Printf("  percentile value gap: p50=%s p95=%s\n\n", (g50 - d50).Round(time.Microsecond), (g95 - d95).Round(time.Microsecond))
+		if rawCSV != nil {
+			rawCSV.Flush()
+			if err := rawCSV.Error(); err != nil {
+				return fmt.Errorf("flush raw results: %w", err)
+			}
+		}
+	}
+	peakRSSBytes, e := processPeakRSSBytes()
+	if e != nil {
+		return fmt.Errorf("measure benchmark-process peak RSS: %w", e)
+	}
+	fmt.Printf("benchmark process peak RSS: %.2f MiB (shared across direct/service paths; process includes the in-process service and benchmark harness)\n", float64(peakRSSBytes)/(1024*1024))
+	if rawCSV != nil {
+		if e := rawCSV.Write([]string{strconv.Itoa(rowsN), "suite", "benchmark_process", "process_summary", "", "", "", "", strconv.FormatUint(peakRSSBytes, 10)}); e != nil {
+			return fmt.Errorf("write process RSS summary: %w", e)
+		}
+		rawCSV.Flush()
+		if err := rawCSV.Error(); err != nil {
+			return fmt.Errorf("flush raw results: %w", err)
+		}
+		if e := rawFile.Close(); e != nil {
+			return fmt.Errorf("close raw results: %w", e)
+		}
+		rawFile = nil
+		rawCSV = nil
 	}
 	if _, e = direct.Exec("DROP TABLE IF EXISTS " + tableName); e != nil {
 		return fmt.Errorf("drop temporary benchmark table: %w", e)

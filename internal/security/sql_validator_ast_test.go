@@ -150,3 +150,75 @@ func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateStatementForDataSourceUsesFastParserForCommonQuery(t *testing.T) {
+	analyzer := &stubSQLASTAnalyzer{}
+	validator := NewSQLValidator(10000)
+	validator.SetASTAnalyzer(analyzer)
+
+	if err := validator.ValidateStatementForDataSourceContext(context.Background(), "SELECT 1", model.DatabaseTypePostgreSQL); err != nil {
+		t.Fatalf("validation error = %v, want nil", err)
+	}
+	if analyzer.calls != 0 {
+		t.Fatalf("SQLGlot analyzer called %d times for a common query, want fast-path validation", analyzer.calls)
+	}
+}
+
+func TestValidateStatementForDataSourceFallsBackForDialectSpecificSyntax(t *testing.T) {
+	analyzer := &stubSQLASTAnalyzer{
+		analysis: sqlanalysis.Analysis{StatementCount: 1, IsQuery: true},
+	}
+	validator := NewSQLValidator(10000)
+	validator.SetASTAnalyzer(analyzer)
+	query := "SELECT '1'::INTEGER"
+	if err := validator.validateStatement(query, false); !errors.Is(err, ErrSQLSyntaxError) {
+		t.Fatalf("fast parser error = %v, want SQL syntax fallback", err)
+	}
+	if err := validator.ValidateStatementForDataSourceContext(context.Background(), query, model.DatabaseTypePostgreSQL); err != nil {
+		t.Fatalf("validation error = %v, want SQLGlot fallback to accept PostgreSQL cast syntax", err)
+	}
+	if analyzer.calls != 1 || analyzer.dialect != "postgres" {
+		t.Fatalf("SQLGlot analyzer called %d times with dialect %q, want one postgres fallback", analyzer.calls, analyzer.dialect)
+	}
+}
+
+func TestValidateStatementForDataSourceFallsBackToASTForDangerousFunctions(t *testing.T) {
+	analyzer := &stubSQLASTAnalyzer{
+		analysis: sqlanalysis.Analysis{
+			StatementCount: 1,
+			IsQuery:        true,
+			Functions:      []string{"PG_SLEEP"},
+		},
+	}
+	validator := NewSQLValidator(10000)
+	validator.SetASTAnalyzer(analyzer)
+	err := validator.ValidateStatementForDataSourceContext(context.Background(), "SELECT pg_sleep(1)", model.DatabaseTypePostgreSQL)
+	if !errors.Is(err, ErrDangerousKeyword) {
+		t.Fatalf("validation error = %v, want %v", err, ErrDangerousKeyword)
+	}
+	if analyzer.calls != 1 {
+		t.Fatalf("SQLGlot analyzer called %d times, want one fallback for a dangerous function", analyzer.calls)
+	}
+}
+
+func TestValidateStatementForDataSourceRejectsLockingQueries(t *testing.T) {
+	analyzer := &stubSQLASTAnalyzer{
+		analysis: sqlanalysis.Analysis{
+			StatementCount: 1,
+			IsQuery:        true,
+			HasLocking:     true,
+		},
+	}
+	validator := NewSQLValidator(10000)
+	validator.SetASTAnalyzer(analyzer)
+	for _, query := range []string{
+		"SELECT 1 FOR UPDATE",
+		"SELECT 1 FOR SHARE",
+		"SELECT 1 FOR KEY SHARE",
+		"SELECT 1 FOR NO KEY UPDATE",
+	} {
+		if err := validator.ValidateStatementForDataSourceContext(context.Background(), query, model.DatabaseTypePostgreSQL); !errors.Is(err, ErrDangerousKeyword) {
+			t.Errorf("validation error for %q = %v, want %v", query, err, ErrDangerousKeyword)
+		}
+	}
+}

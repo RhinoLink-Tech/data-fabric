@@ -1,28 +1,31 @@
 # PostgreSQL Gateway Query Benchmark
 
-**Run date:** 2026-10-19
-**Database:** PostgreSQL 17.11 on the local WSL environment
-**Runtime:** Go 1.26.1, linux/amd64, 24 visible CPUs
-**Dataset:** synthetic tables with 500 and 5,000 rows; local PostgreSQL is the simulated source
+**Run date:** 2026-10-21<br>
+**Environment:** local WSL, PostgreSQL 17.11, Go 1.26.1, linux/amd64, 24 visible CPUs<br>
+**Source data:** generated synthetic tables in a local PostgreSQL database
 
 ## Summary
 
-The 500-row run covered 14 query shapes, with 20 warmups and 1,000 serial samples per path. The in-process Data Fabric query service had P95 latencies from **0.466 ms to 1.929 ms**. The difference between the separately measured direct PostgreSQL and gateway P95 values ranged from **0.281 ms to 0.436 ms**; the P50 value gaps ranged from **0.192 ms to 0.311 ms**.
+This custom benchmark compares direct PostgreSQL access with Data Fabric's in-process QueryService over a real local PostgreSQL driver. Before timing each workload, it checks column names, returned row values and JSON types, and total counts for equivalence.
 
-A second 5,000-row run used 5 warmups and 100 serial samples per path. It provides a scale check rather than a stable capacity claim: the service P95 ranged from **0.454 ms to 17.351 ms**, with the largest value on an unindexed text sort. A wide projection returned 5,000 rows with a 512-character payload and measured 8.735 ms at P95.
+The 500-row run covers 14 workload shapes with 20 warmups and 1,000 serial latency samples per path. Data Fabric P95 latency ranges from **0.682 to 2.159 ms**. The difference between the independently measured direct and Data Fabric P95 values ranges from **0.446 to 0.694 ms**; the P50 value gap ranges from **0.246 to 0.450 ms**.
 
-A percentile value gap is the difference between two independently measured percentile values. It is not a per-request latency guarantee. The 5,000-row run has fewer samples and should be rerun on the target deployment before using it for capacity planning.
+The 5,000-row run uses 5 warmups and 100 serial samples per path as a scale check. Data Fabric P95 ranges from **0.643 to 17.122 ms**. P95 gaps range from **0.418 to 1.373 ms**. The largest latency is an unindexed text sort; the wide projection returns 5,000 rows with a 512-character payload and measures 8.201 ms at P95. This run is directional and is not a capacity guarantee.
+
+Resource sampling runs separately from the latency samples. At 500 rows, the measured per-request CPU time gap is **0.314 to 0.810 ms**, and the Go allocation gap is **204.5 to 440.5 KiB**. At 5,000 rows, those ranges are **0.305 to 1.584 ms** and **98.2 to 1,217.2 KiB**. Peak RSS is **70.47 MiB** for the 500-row suite and **91.92 MiB** for the 5,000-row suite. RSS is the shared peak of the benchmark process, which includes the harness and in-process service; it is not an isolated server footprint.
+
+These measurements are a local, serial, in-process lower bound. They exclude HTTP, authentication middleware, concurrent client traffic, and the application-to-gateway network hop. CPU figures measure the Go benchmark process and do not include PostgreSQL server CPU. Allocation figures are Go runtime allocations, not retained heap. Percentile gaps are differences between two independently measured percentiles, not per-request latency guarantees. Hardware, PostgreSQL settings, data shape, connection locality, and concurrent load affect results.
+
+The 14-case suite is a custom microbenchmark, not a TPC benchmark or an official TPC result.
 
 ## Environment and Method
 
-- Uses a real local PostgreSQL 17.11 instance as the simulated source, populated with generated synthetic data, and Data Fabric's registered PostgreSQL driver. The database server and driver are real; the benchmark data is simulated.
-- Creates an isolated benchmark database if needed, then creates a synthetic fact table with a primary key on **id**, a 128-character text payload, and a dimension table containing about half as many rows. The payload column has no index.
-- Compares direct PostgreSQL access with the in-process Data Fabric **QueryService**. Both paths run the same workload SQL, fetch the first result batch, scan rows, and JSON-encode a response. The gateway path also performs query validation, source lookup, routing, result normalization, and its database-pool path.
-- The full-page case intentionally fills the first page and checks exact-count behavior; the direct path and service both perform the extra count query.
-- Workloads run serially. The direct and gateway paths alternate sample order to reduce order bias. There is no concurrent client load.
-- The metadata repository is stubbed for this isolated service test. The test excludes the HTTP router, authentication middleware, and the client-to-gateway network hop.
-- The temporary fact and dimension tables are dropped and their removal is verified. The dedicated **data_fabric_perf** database remains available for later runs.
-- Results depend on hardware, PostgreSQL settings, data shape, connection locality, and concurrent workload. They are measurements of this local setup, not production guarantees.
+- PostgreSQL 17.11 runs locally in WSL; the benchmark uses Data Fabric's registered PostgreSQL driver for both paths. The database is real; fact and dimension records are generated synthetic data.
+- The runner creates the dedicated `data_fabric_perf` database if needed, then creates isolated temporary fact and dimension tables. The fact table has an **id** primary key and an unindexed text payload; the dimension table has about half as many rows. Tables are dropped and their removal is verified after the run. The dedicated database remains available.
+- The direct and Data Fabric paths execute the same workload SQL. Both retrieve a result batch, scan rows, and JSON-encode a response. The service path also performs validation, source lookup, routing, normalization, and its connection-pool work.
+- The full-page case deliberately fills the first page and requests an exact total, so both paths perform a count query.
+- Latency samples are serial; direct and service order alternates. There is no concurrent load.
+- CPU time and Go allocations are collected in a separate serial batch for each workload and path (250 samples per path for the 500-row run; 100 for the 5,000-row run). RSS is the Go process's `VmHWM` peak over the complete suite.
 
 ## Workload Matrix
 
@@ -43,60 +46,111 @@ A percentile value gap is the difference between two independently measured perc
 | left_join | Fact-to-dimension left join with unmatched fact rows |
 | full_page_count | Exactly full first page, requiring an exact count |
 
-## Results: 500 Rows
+## Latency Results: 500 Rows
 
-All values are milliseconds. Each cell is P50 / P95. “Gap” is the Data Fabric value minus the direct PostgreSQL value at the same percentile.
-
-| Workload | Direct P50 / P95 | Data Fabric P50 / P95 | Gap P50 / P95 |
-| --- | ---: | ---: | ---: |
-| small_constant | 0.115 / 0.184 | 0.307 / 0.466 | 0.192 / 0.281 |
-| point_lookup | 0.155 / 0.231 | 0.370 / 0.550 | 0.215 / 0.319 |
-| selective_filter | 0.178 / 0.277 | 0.417 / 0.604 | 0.239 / 0.327 |
-| broad_filter | 0.312 / 0.483 | 0.547 / 0.828 | 0.235 / 0.345 |
-| ordered_scan | 0.316 / 0.482 | 0.524 / 0.839 | 0.209 / 0.357 |
-| sort_unindexed_text | 1.311 / 1.548 | 1.585 / 1.929 | 0.275 / 0.381 |
-| offset_page | 0.267 / 0.401 | 0.511 / 0.756 | 0.243 / 0.355 |
-| wide_projection | 0.564 / 0.951 | 0.876 / 1.387 | 0.311 / 0.436 |
-| aggregate_statistics | 0.155 / 0.216 | 0.379 / 0.546 | 0.224 / 0.330 |
-| grouped_aggregate | 0.208 / 0.300 | 0.458 / 0.634 | 0.250 / 0.334 |
-| distinct_values | 0.168 / 0.239 | 0.387 / 0.546 | 0.220 / 0.307 |
-| inner_join | 0.423 / 0.578 | 0.710 / 0.977 | 0.287 / 0.398 |
-| left_join | 0.419 / 0.650 | 0.699 / 0.980 | 0.280 / 0.330 |
-| full_page_count | 0.349 / 0.482 | 0.568 / 0.770 | 0.219 / 0.288 |
-
-## Results: 5,000 Rows
-
-This run used 100 samples per path, so treat it as a directional scale check. All values are milliseconds, formatted as P50 / P95.
+All values are milliseconds, shown as P50 / P95. “Gap” is the Data Fabric percentile value minus the direct PostgreSQL percentile value at the same percentile.
 
 | Workload | Direct P50 / P95 | Data Fabric P50 / P95 | Gap P50 / P95 |
 | --- | ---: | ---: | ---: |
-| small_constant | 0.115 / 0.161 | 0.329 / 0.454 | 0.214 / 0.294 |
-| point_lookup | 0.208 / 0.286 | 0.453 / 0.685 | 0.245 / 0.399 |
-| selective_filter | 0.414 / 0.685 | 0.650 / 1.061 | 0.236 / 0.376 |
-| broad_filter | 2.052 / 2.798 | 2.604 / 3.590 | 0.552 / 0.792 |
-| ordered_scan | 1.830 / 2.700 | 2.353 / 3.442 | 0.524 / 0.742 |
-| sort_unindexed_text | 15.052 / 17.049 | 15.716 / 17.351 | 0.665 / 0.303 |
-| offset_page | 1.027 / 1.572 | 1.423 / 2.051 | 0.396 / 0.479 |
-| wide_projection | 5.444 / 6.767 | 6.479 / 8.735 | 1.035 / 1.968 |
-| aggregate_statistics | 0.301 / 0.409 | 0.533 / 0.771 | 0.232 / 0.362 |
-| grouped_aggregate | 0.801 / 1.028 | 1.104 / 1.342 | 0.303 / 0.314 |
-| distinct_values | 0.536 / 0.710 | 0.806 / 1.011 | 0.270 / 0.301 |
-| inner_join | 2.132 / 2.629 | 2.564 / 3.258 | 0.431 / 0.629 |
-| left_join | 2.382 / 3.094 | 3.084 / 3.941 | 0.702 / 0.847 |
-| full_page_count | 0.783 / 1.139 | 0.985 / 1.493 | 0.202 / 0.354 |
+| small_constant | 0.119 / 0.183 | 0.365 / 0.682 | 0.246 / 0.499 |
+| point_lookup | 0.165 / 0.283 | 0.459 / 0.759 | 0.294 / 0.476 |
+| selective_filter | 0.191 / 0.355 | 0.509 / 0.852 | 0.318 / 0.497 |
+| broad_filter | 0.321 / 0.571 | 0.645 / 1.030 | 0.324 / 0.459 |
+| ordered_scan | 0.326 / 0.604 | 0.618 / 1.050 | 0.292 / 0.446 |
+| sort_unindexed_text | 1.327 / 1.655 | 1.695 / 2.159 | 0.368 / 0.504 |
+| offset_page | 0.277 / 0.522 | 0.593 / 1.006 | 0.316 / 0.484 |
+| wide_projection | 0.611 / 1.132 | 1.061 / 1.826 | 0.450 / 0.694 |
+| aggregate_statistics | 0.169 / 0.296 | 0.495 / 0.803 | 0.326 / 0.507 |
+| grouped_aggregate | 0.220 / 0.363 | 0.590 / 0.892 | 0.370 / 0.529 |
+| distinct_values | 0.176 / 0.243 | 0.488 / 0.774 | 0.312 / 0.531 |
+| inner_join | 0.444 / 0.737 | 0.851 / 1.338 | 0.407 / 0.601 |
+| left_join | 0.439 / 0.893 | 0.826 / 1.467 | 0.387 / 0.574 |
+| full_page_count | 0.382 / 0.617 | 0.694 / 1.154 | 0.312 / 0.537 |
+
+### CPU and Allocation Gaps: 500 Rows
+
+Values are Data Fabric minus direct PostgreSQL per request. CPU is process CPU time; allocation is Go bytes allocated during a request, not retained memory.
+
+| Workload | CPU gap (ms/request) | Go allocation gap (KiB/request) |
+| --- | ---: | ---: |
+| small_constant | 0.314 | 216.4 |
+| point_lookup | 0.379 | 205.0 |
+| selective_filter | 0.385 | 210.0 |
+| broad_filter | 0.440 | 239.4 |
+| ordered_scan | 0.447 | 258.8 |
+| sort_unindexed_text | 0.443 | 263.0 |
+| offset_page | 0.463 | 235.3 |
+| wide_projection | 0.547 | 440.5 |
+| aggregate_statistics | 0.418 | 205.5 |
+| grouped_aggregate | 0.453 | 205.5 |
+| distinct_values | 0.387 | 204.5 |
+| inner_join | 0.810 | 224.8 |
+| left_join | 0.524 | 242.0 |
+| full_page_count | 0.427 | 222.3 |
+
+## Latency Results: 5,000 Rows
+
+This run uses 100 samples per path, so treat it as a directional scale check. All values are milliseconds, shown as P50 / P95.
+
+| Workload | Direct P50 / P95 | Data Fabric P50 / P95 | Gap P50 / P95 |
+| --- | ---: | ---: | ---: |
+| small_constant | 0.122 / 0.187 | 0.391 / 0.643 | 0.269 / 0.456 |
+| point_lookup | 0.167 / 0.217 | 0.458 / 0.728 | 0.291 / 0.511 |
+| selective_filter | 0.425 / 0.688 | 0.747 / 1.106 | 0.322 / 0.418 |
+| broad_filter | 1.904 / 2.641 | 2.511 / 3.430 | 0.607 / 0.789 |
+| ordered_scan | 1.746 / 2.464 | 2.454 / 3.219 | 0.708 / 0.755 |
+| sort_unindexed_text | 14.981 / 16.475 | 15.622 / 17.122 | 0.641 / 0.647 |
+| offset_page | 1.093 / 1.552 | 1.600 / 2.187 | 0.507 / 0.635 |
+| wide_projection | 5.119 / 6.828 | 6.361 / 8.201 | 1.242 / 1.373 |
+| aggregate_statistics | 0.299 / 0.404 | 0.621 / 0.895 | 0.322 / 0.491 |
+| grouped_aggregate | 0.807 / 1.067 | 1.201 / 1.519 | 0.394 / 0.452 |
+| distinct_values | 0.586 / 0.683 | 0.938 / 1.209 | 0.352 / 0.526 |
+| inner_join | 1.482 / 2.094 | 2.014 / 2.612 | 0.532 / 0.518 |
+| left_join | 2.410 / 3.123 | 3.085 / 3.863 | 0.675 / 0.740 |
+| full_page_count | 0.721 / 1.052 | 1.041 / 1.493 | 0.320 / 0.441 |
+
+### CPU and Allocation Gaps: 5,000 Rows
+
+Values are Data Fabric minus direct PostgreSQL per request. CPU is process CPU time; allocation is Go bytes allocated during a request, not retained memory.
+
+| Workload | CPU gap (ms/request) | Go allocation gap (KiB/request) |
+| --- | ---: | ---: |
+| small_constant | 0.334 | 218.0 |
+| point_lookup | 0.305 | 99.1 |
+| selective_filter | 0.427 | 156.8 |
+| broad_filter | 0.863 | 1,065.5 |
+| ordered_scan | 1.058 | 1,217.2 |
+| sort_unindexed_text | 1.006 | 981.5 |
+| offset_page | 0.653 | 553.7 |
+| wide_projection | 1.584 | 1,072.6 |
+| aggregate_statistics | 0.338 | 99.3 |
+| grouped_aggregate | 0.407 | 98.2 |
+| distinct_values | 0.346 | 98.5 |
+| inner_join | 0.588 | 384.4 |
+| left_join | 0.634 | 518.8 |
+| full_page_count | 0.548 | 354.6 |
+
+## Raw Results
+
+CSV files contain each latency sample and per-workload CPU/allocation summaries, plus the suite's peak process RSS:
+
+- [500-row raw CSV](results/postgres_gateway_500_rows_2026-10-21.csv)
+- [5,000-row raw CSV](results/postgres_gateway_5000_rows_2026-10-21.csv)
 
 ## Which Standard Benchmarks Fit?
 
-- **TPC-H** is the best first reference for an analytical query engine: its decision-support workload contains 22 business-oriented queries with different joins, aggregations, filters, and data volumes. A supported subset or adapted harness should be described as “TPC-H-derived,” not an official TPC-H result.
-- **TPC-DS** is a broader and more complex decision-support benchmark. It is a stronger later-stage comparison, but requires more schema, query-dialect, data-generation, and execution work.
-- **PostgreSQL pgbench** is useful for PostgreSQL connection concurrency and transaction workloads. Its built-in workload is TPC-B-like, not an analytical SQL suite. It speaks PostgreSQL's wire protocol, so it benchmarks a PostgreSQL endpoint directly; Data Fabric's HTTP API needs an HTTP load tool or a dedicated adapter for end-to-end concurrency testing.
-- The 14-case matrix in this report is a custom microbenchmark, not TPC-compliant. It measures the Data Fabric query service against a real PostgreSQL source.
+- **TPC-H** is a useful first reference for analytical query coverage: its decision-support workload contains 22 business-oriented queries with different joins, aggregations, filters, and data volumes. A supported subset or adapted harness should be described as “TPC-H-derived,” not as an official TPC-H result.
+- **TPC-DS** is broader and more complex. It is a later-stage comparison because it requires more schema, query-dialect, data-generation, and execution work.
+- **PostgreSQL pgbench** is useful for PostgreSQL connection concurrency and transaction workloads. Its built-in workload is TPC-B-like, not an analytical SQL suite. It speaks PostgreSQL's wire protocol; Data Fabric's HTTP API needs an HTTP load tool or a dedicated adapter for end-to-end concurrency testing.
+- The 14-case matrix here is a custom microbenchmark, not TPC-compliant. It compares the Data Fabric query service with a real local PostgreSQL source.
 
 Official references: [TPC current specifications](https://tpc.org/TPC_Documents_Current_Versions/current_specifications5.asp), [TPC-H v3.0.1](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf), [TPC-DS v4.0.0](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-DS_v4.0.0.pdf), and [PostgreSQL pgbench documentation](https://www.postgresql.org/docs/current/pgbench.html).
 
 ## Reproduce
 
-The PostgreSQL account needs permission to connect to the admin database and create **data_fabric_perf** if it does not already exist. Set the password through the shell environment; never put real credentials in the repository.
+The PostgreSQL account needs permission to connect to the admin database and create `data_fabric_perf` if it does not already exist. Set the password through the shell environment; do not put real credentials in the repository. Docker is used to install the pinned SQLGlot Python dependency into a temporary directory, leaving the host Python environment untouched.
+
+The runner defaults to 100 samples, 5 warmups, and 500 rows. To reproduce the recorded 500-row run:
 
 ~~~bash
 export PGHOST=localhost
@@ -105,15 +159,15 @@ export PGUSER=your-postgres-user
 export PGPASSWORD=your-postgres-password
 export PGSSLMODE=disable
 export DATA_FABRIC_PERF_ADMIN_DB=postgres
+export DATA_FABRIC_PERF_ROWS=500
 export DATA_FABRIC_PERF_SAMPLES=1000
 export DATA_FABRIC_PERF_WARMUPS=20
-export DATA_FABRIC_PERF_ROWS=500
-
-go run ./scripts/performance/postgres_gateway_benchmark.go
+export DATA_FABRIC_PERF_RAW_OUTPUT=docs/performance/results/postgres_gateway_500_rows_2026-10-21.csv
+./scripts/performance/run_postgres_gateway_benchmark.sh
 ~~~
 
-For the scale run, set **DATA_FABRIC_PERF_SAMPLES=100**, **DATA_FABRIC_PERF_WARMUPS=5**, and **DATA_FABRIC_PERF_ROWS=5000**. The program prints the PostgreSQL and Go versions, P50/P95 latency for each path, percentile value gaps, and verifies that temporary tables were removed.
+For the 5,000-row scale run, set `DATA_FABRIC_PERF_ROWS=5000`, `DATA_FABRIC_PERF_SAMPLES=100`, `DATA_FABRIC_PERF_WARMUPS=5`, and use `docs/performance/results/postgres_gateway_5000_rows_2026-10-21.csv` for `DATA_FABRIC_PERF_RAW_OUTPUT`. The runner prints PostgreSQL and Go versions, checks result equivalence, reports latency and resource measurements, and verifies removal of its temporary tables.
 
 ## Regression Coverage
 
-The [query routing tests](../../internal/service/query_engine_routing_test.go) verify that a non-full first page returns an exact total without a count query, while a full page still runs a count query to preserve exact totals. The benchmark complements that deterministic coverage with a real local PostgreSQL source.
+The [query routing tests](../../internal/service/query_engine_routing_test.go) verify that a non-full first page returns an exact total without a count query, while a full page still runs a count query to preserve exact totals. This benchmark complements that deterministic coverage with a real local PostgreSQL source.
