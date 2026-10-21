@@ -12,6 +12,7 @@ DB="data_fabric_rehearsal_${RUN_ID}"
 FAIL_DB="data_fabric_rehearsal_failclosed_${RUN_ID}"
 ROOT_PASSWORD="$(openssl rand -hex 24)"
 TMP_DIR="$(mktemp -d)"
+SQL_TRANSLATION_MODULE_PATH="$TMP_DIR/sql-translation-python"
 SERVER_PID=""
 
 fail() {
@@ -32,6 +33,19 @@ trap cleanup EXIT INT TERM
 command -v docker >/dev/null || fail "docker is required"
 command -v go >/dev/null || fail "go is required"
 command -v openssl >/dev/null || fail "openssl is required"
+command -v python3 >/dev/null || fail "python3 is required for the server startup check"
+# The rehearsal starts the Go server outside the application container. Install
+# the same pinned, pure-Python SQLGlot dependency into its temporary directory
+# so the startup check reaches the metadata credential-migration gate even on
+# hosts without a system SQLGlot installation. Install as the invoking user so
+# the host-side cleanup can remove the temporary package without elevated rights.
+mkdir -p "$SQL_TRANSLATION_MODULE_PATH"
+docker run --rm --user "$(id -u):$(id -g)" \
+  --volume "$SQL_TRANSLATION_MODULE_PATH:/runtime" \
+  --volume "$ROOT_DIR/requirements-sql-translation.txt:/tmp/requirements-sql-translation.txt:ro" \
+  python:3.12-alpine3.22 \
+  python -m pip install --no-cache-dir --target=/runtime --requirement /tmp/requirements-sql-translation.txt >/dev/null
+
 docker image inspect "$MYSQL_IMAGE" >/dev/null 2>&1 || docker pull "$MYSQL_IMAGE"
 
 docker run --detach --name "$CONTAINER" --pull=missing \
@@ -86,6 +100,7 @@ env \
   DATABASE_USERNAME=root \
   DATABASE_PASSWORD="$ROOT_PASSWORD" \
   SECURITY_JWT_SECRET='rehearsal-only-jwt-secret-2026-10-20-7c4f7c2d' \
+  SQL_TRANSLATION_PYTHON_MODULE_PATH="$SQL_TRANSLATION_MODULE_PATH" \
   DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=current \
   DATA_FABRIC_CREDENTIAL_KEYS='{"current":"Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2M="}' \
   SERVER_HOST=127.0.0.1 \

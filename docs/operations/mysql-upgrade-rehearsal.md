@@ -1,6 +1,7 @@
 # MySQL Upgrade and Recovery Rehearsal (D15)
 
-**Run date:** 2026-10-20
+**Run date:** 2026-10-21
+**Application source commit:** `efe97ab48c099819fefd11c60179abbac66ff7f7`
 **Result:** Passed on an isolated MySQL 8.0.46 container using synthetic records.
 
 ## Environment and source schemas
@@ -24,13 +25,15 @@ The test uses a temporary Docker container and randomly named databases beginnin
 | Failed credential migration | The real server process exited before opening its HTTP listener when a required key was missing. A preceding row update was rolled back in MySQL. |
 | Backup and restore | Dumped the recent-schema fixture, dropped and recreated only the temporary database, restored it, then verified both rows, decrypted values, and current indexes. |
 
-**Backup checksum from this run:** 76fb4f6f5035618e7186c880963fdd8a72e2f0552d197d287a1d0646c6a686c6. The dump is temporary and removed when the script exits; the checksum is run evidence, not a retained backup artifact.
+**Backup checksum from this run:** 59654d01b0c36f5d52760b8cfcfc1303e6d56d37ac66c3adfc61030446770bb9. The dump is temporary and removed when the script exits; the checksum is run evidence, not a retained backup artifact.
 
 ## Migration behavior found and corrected
 
 The first run exposed an ordering defect in MigrateDataSourceSchema: MySQL exposed the historical single-column unique index while GORM inspected the column, and GORM attempted to drop a nonexistent foreign-key-style constraint. The migration now removes the known legacy index before AutoMigrate, then verifies cleanup afterward. The v1.2.0-to-current MySQL path passed on the rerun.
 
 ## Repeat the rehearsal
+
+The script requires Docker, Go, OpenSSL, and Python 3. It prepares the pinned SQLGlot dependency in a temporary directory using the project requirements file and a disposable Python container; it does not install packages into the host Python environment.
 
 From the repository root, run:
 
