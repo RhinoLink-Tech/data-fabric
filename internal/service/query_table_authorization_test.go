@@ -64,7 +64,7 @@ func TestFetchNextBatchRechecksTableAuthorization(t *testing.T) {
 	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true})
 	service := NewQueryServiceWithTableAuthorizer(
 		federationSourceRepository{source: source},
-		database.NewConnectionPool(nil, nil, false),
+		database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false),
 		false,
 		authorizer,
 		newTestSQLTranslationManager(),

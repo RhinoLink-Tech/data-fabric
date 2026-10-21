@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v2.0.0] - 2026-10-21
+
 ### Added
+- Generate a shared connector support catalog for the database type APIs and documentation, separating registration from verification and reporting server versions when a driver can detect them (#18).
 - Map a restricted, read-only SQL subset to native MongoDB find/count operations, with ping, streaming, pagination, cancellation, and explicit support limits (#17).
 - Verify the S3 CSV query path through bounded gateway batch execution (#16).
 - Complete the small-workload baseline in #44 with a reproducible PostgreSQL gateway benchmark, result-equivalence checks, latency samples, per-request CPU and Go allocation measurements, peak RSS, and raw CSV results.
@@ -15,14 +18,16 @@ All notable changes to this project will be documented in this file.
 - Bind native SQL parameters consistently through query and fetch batches for REST and MCP requests (#21).
 
 ### Changed
+- Inject the driver registry into connection pools so DSN generation, connection opening, pagination, and token capability lookups share one dependency (#14).
 - Use one consistent wire representation for query rows in regular, paginated, and streaming responses (#123).
 - Report exact result counts only when the source query can provide a reliable count (#23).
 
 ### Fixed
+- Mark incomplete HDFS format adapters explicitly unsupported until their unified query path is complete (#112).
+- Emit valid decimal rate-limit headers and an accurate rate-limit response message (#101).
 - Honor configured HTTP bind addresses and metadata database DSN/TLS options, and reject unsafe metadata scan targets (#127, #143, #122).
 - Honor connection-pool idle timeouts and close server resources during graceful shutdown (#116, #32).
 
-### Fixed
 - Stop advertising Apache Ozone source types whose object client operations are placeholders; reject their configuration and document the unsupported operation set (#110).
 - Align the container runtime and documentation on Go 1.26.1, port 8080, and a non-root application user; add a reproducible Docker build/run example and CI image smoke test (#30).
 - Validate required startup settings, ports, query execution mode, and HTTP server limits before database initialization; reject malformed MCP listener ports and document fail-closed schema migration behavior (#31).

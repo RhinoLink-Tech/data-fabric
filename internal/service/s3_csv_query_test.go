@@ -44,7 +44,7 @@ func TestFetchQueryRoutesS3CSVThroughGatewayBatches(t *testing.T) {
 			},
 		},
 	}
-	pool := database.NewConnectionPool(nil, nil, false)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer pool.CloseAll()
 	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager())
 	ctx := context.Background()
@@ -98,7 +98,7 @@ func TestFetchQueryCancellationStopsS3CSVDownload(t *testing.T) {
 			},
 		},
 	}
-	pool := database.NewConnectionPool(nil, nil, false)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer pool.CloseAll()
 	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager())
 	ctx, cancel := context.WithCancel(context.Background())

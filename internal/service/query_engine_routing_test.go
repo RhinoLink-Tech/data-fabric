@@ -75,7 +75,7 @@ func TestFetchQueryRoutesFederatedRequestAndNormalizesResult(t *testing.T) {
 		Config: model.DataSourceConfig{Host: endpoint.Hostname(), Port: port, Database: "lakehouse", Schema: "sales", Username: "data-fabric"},
 	}
 	database.GetDriverRegistry()
-	pool := database.NewConnectionPool(nil, nil, false)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer func() { _ = pool.CloseAll() }()
 	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager())
 

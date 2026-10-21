@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -203,7 +204,7 @@ func TestExecuteBatchQueryBindsParametersForDataAndCount(t *testing.T) {
 	db := sql.OpenDB(recordingConnector{calls: &calls})
 	defer db.Close()
 
-	qs := &queryService{}
+	qs := &queryService{connPool: database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)}
 	args := []interface{}{int64(7), "abc", nil}
 	// batchSize 2 matches the fixture size, so the page counts as full and
 	// the count statement runs as a second database call.

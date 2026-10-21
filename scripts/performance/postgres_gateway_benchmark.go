@@ -232,7 +232,7 @@ func run() error {
 	if _, e = direct.Exec(fmt.Sprintf("INSERT INTO %s SELECT g, 'category-' || (g %% 10)::text FROM generate_series(1,%d) AS g", dimTableName, dimRows)); e != nil {
 		return fmt.Errorf("populate isolated benchmark dimension table: %w", e)
 	}
-	pool := database.NewConnectionPool(nil, nil, true)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, true)
 	defer pool.CloseAll()
 	translatorOptions := sql_translator.DefaultRuntimeOptions()
 	translatorOptions.PythonPath = env("SQL_TRANSLATION_PYTHON_PATH", translatorOptions.PythonPath)

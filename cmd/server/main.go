@@ -110,7 +110,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 
 	// Initialize infrastructure
-	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	connPool := database.NewConnectionPool(database.GetDriverRegistry(), security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
 	// Registered before the streaming maintenance defers so it unwinds after
 	// them: cursors close first, then pooled connections and the metadata
 	// database (#32).
@@ -341,7 +341,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		log.Printf("Encrypted or rotated credentials for %d data sources", migrated)
 	}
 
-	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	connPool := database.NewConnectionPool(database.GetDriverRegistry(), security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
 	// Unwinds after the streaming maintenance defer below: cursors close
 	// first, then pooled connections and the metadata database (#32).
 	defer closeGatewayResources(db, connPool)

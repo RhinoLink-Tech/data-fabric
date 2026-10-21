@@ -56,7 +56,7 @@ func TestS3CSVQueryThroughConnectionPool(t *testing.T) {
 		},
 	}
 
-	pool := database.NewConnectionPool(nil, nil, false)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer pool.CloseAll()
 	checker := database.NewHealthChecker(pool)
 	if err := checker.ValidateDataSourceConfiguration(&ds.Config, ds.Type); err != nil {
@@ -163,7 +163,7 @@ func TestS3CSVQueryHonorsCancellation(t *testing.T) {
 			AdditionalProps: map[string]interface{}{"endpoint_url": server.URL, "force_path_style": true, "object_key": "data.csv", "table_name": "records"},
 		},
 	}
-	pool := database.NewConnectionPool(nil, nil, false)
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer pool.CloseAll()
 	db, err := pool.GetConnection(context.Background(), ds)
 	if err != nil {

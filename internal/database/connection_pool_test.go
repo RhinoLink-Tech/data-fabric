@@ -43,7 +43,7 @@ func deadDB() *sql.DB {
 func TestGetConnectionEvictsDeadPooledConnection(t *testing.T) {
 	const unregisteredType = model.DatabaseType("__unregistered_for_test__")
 
-	pool := NewConnectionPool(nil, nil, false)
+	pool := NewConnectionPool(NewDriverRegistry(), nil, nil, false)
 	pool.pools["ds-1"] = deadDB()
 
 	dataSource := &model.DataSource{
@@ -69,11 +69,8 @@ func TestGetConnectionEvictsDeadPooledConnection(t *testing.T) {
 
 // getConnectUrl and ApplyBatchPagination must not depend on some earlier caller
 // having initialized the package-level driver registry.
-func TestRegistryDependentHelpersWorkOnColdStart(t *testing.T) {
-	registryOnce = sync.Once{}
-	globalDriverRegistry = nil
-
-	pool := NewConnectionPool(nil, nil, false)
+func TestRegistryDependentHelpersUseInjectedRegistry(t *testing.T) {
+	pool := NewConnectionPool(NewDriverRegistry(), nil, nil, false)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -102,6 +99,19 @@ func TestRegistryDependentHelpersWorkOnColdStart(t *testing.T) {
 	}
 }
 
+func TestConnectionPoolReturnsErrorsForUnregisteredDriver(t *testing.T) {
+	const unregisteredType = model.DatabaseType("__unregistered_injected_registry__")
+	registry := &DriverRegistry{drivers: make(map[model.DatabaseType]func() drivers.Driver)}
+	pool := NewConnectionPool(registry, nil, nil, false)
+
+	if _, err := pool.getConnectUrl(unregisteredType, &model.DataSourceConfig{}); err == nil || !strings.Contains(err.Error(), "unsupported database type") {
+		t.Fatalf("getConnectUrl error = %v, want unsupported database type", err)
+	}
+	if _, err := pool.ApplyBatchPagination(unregisteredType, "SELECT 1", 10, 0); err == nil || !strings.Contains(err.Error(), "unsupported database type") {
+		t.Fatalf("ApplyBatchPagination error = %v, want unsupported database type", err)
+	}
+}
+
 // Read-only enforcement is the global flag ANDed with a per-data-source
 // override that can only opt out, never re-enable (#20).
 func TestReadOnlyEnforced(t *testing.T) {
@@ -127,7 +137,7 @@ func TestReadOnlyEnforced(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pool := NewConnectionPool(nil, nil, tt.global)
+			pool := NewConnectionPool(NewDriverRegistry(), nil, nil, tt.global)
 			config := &model.DataSourceConfig{AdditionalProps: tt.props}
 			if got := pool.readOnlyEnforced(config); got != tt.want {
 				t.Errorf("readOnlyEnforced() = %v, want %v", got, tt.want)
@@ -177,8 +187,9 @@ func stubPoolDataSource(id string) *model.DataSource {
 // out again: it is replaced by a pool built from the current configuration
 // (#117).
 func TestGetConnectionEvictsPoolWithStaleFingerprint(t *testing.T) {
-	GetDriverRegistry().RegisterDriver(stubPoolTestType, stubPoolDriver{})
-	pool := NewConnectionPool(nil, nil, false)
+	registry := NewDriverRegistry()
+	registry.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(registry, nil, nil, false)
 	stale := deadDB()
 	pool.pools["ds-1"] = stale
 	pool.fingerprints["ds-1"] = "built-from-old-config"
@@ -204,8 +215,9 @@ func TestGetConnectionEvictsPoolWithStaleFingerprint(t *testing.T) {
 
 // An unchanged configuration reuses the installed pool instead of churning it.
 func TestGetConnectionReusesPoolWithMatchingFingerprint(t *testing.T) {
-	GetDriverRegistry().RegisterDriver(stubPoolTestType, stubPoolDriver{})
-	pool := NewConnectionPool(nil, nil, false)
+	registry := NewDriverRegistry()
+	registry.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(registry, nil, nil, false)
 
 	first, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1"))
 	if err != nil {
@@ -223,8 +235,9 @@ func TestGetConnectionReusesPoolWithMatchingFingerprint(t *testing.T) {
 // Concurrent connection setup for the same data source must resolve to a
 // single installed pool, with the losing duplicates closed (#119).
 func TestConcurrentGetConnectionInstallsSinglePool(t *testing.T) {
-	GetDriverRegistry().RegisterDriver(stubPoolTestType, stubPoolDriver{})
-	pool := NewConnectionPool(nil, nil, false)
+	registry := NewDriverRegistry()
+	registry.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(registry, nil, nil, false)
 
 	const goroutines = 16
 	results := make([]*sql.DB, goroutines)
@@ -271,8 +284,9 @@ func TestConcurrentGetConnectionInstallsSinglePool(t *testing.T) {
 // InvalidateDataSource drops the pooled entry, reports health as false, and is
 // idempotent for sources with no pool (#117).
 func TestInvalidateDataSourceClosesAndIsIdempotent(t *testing.T) {
-	GetDriverRegistry().RegisterDriver(stubPoolTestType, stubPoolDriver{})
-	pool := NewConnectionPool(nil, nil, false)
+	registry := NewDriverRegistry()
+	registry.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(registry, nil, nil, false)
 
 	if _, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1")); err != nil {
 		t.Fatalf("GetConnection failed: %v", err)
@@ -349,8 +363,9 @@ func (c recoveryPoolConn) Ping(context.Context) error {
 
 func TestGetConnectionRebuildsAfterPingFailure(t *testing.T) {
 	state := &recoveryPoolState{}
-	GetDriverRegistry().RegisterDriver(recoveryPoolTestType, recoveryPoolDriver{state: state})
-	pool := NewConnectionPool(nil, nil, false)
+	registry := NewDriverRegistry()
+	registry.RegisterDriver(recoveryPoolTestType, recoveryPoolDriver{state: state})
+	pool := NewConnectionPool(registry, nil, nil, false)
 	defer pool.CloseAll()
 
 	dataSource := stubPoolDataSource("ds-recovery")
@@ -431,7 +446,7 @@ func TestConcurrentConnectionCloseIsIdempotent(t *testing.T) {
 		t.Fatalf("prepare fake connection: %v", err)
 	}
 
-	pool := NewConnectionPool(nil, nil, false)
+	pool := NewConnectionPool(NewDriverRegistry(), nil, nil, false)
 	const dataSourceID = "ds-concurrent-close"
 	pool.pools[dataSourceID] = db
 	pool.fingerprints[dataSourceID] = "test"

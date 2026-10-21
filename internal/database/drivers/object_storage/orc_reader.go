@@ -3,8 +3,6 @@ package object_storage
 import (
 	"context"
 	"fmt"
-
-	"github.com/apache/arrow/go/v14/parquet/file"
 )
 
 // ORCReader reads ORC files from object storage
@@ -37,7 +35,6 @@ func NewORCReader(s3Client *S3Client, config *ORCReaderConfig) *ORCReader {
 
 // ORCFileReader wraps ORC file reader with S3 integration
 type ORCFileReader struct {
-	reader   *file.Reader
 	s3Client *S3Client
 	key      string
 }
