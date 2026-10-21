@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Persist identity-aware REST and MCP access events, provide admin-filtered audit review, and prune records according to configurable retention (#220).
 - Validate remote MCP access tokens through a configured OIDC issuer and JWKS, including issuer, audience, time, and scope checks, with verified identity propagated into authorization (#217).
 - Package the optional SQL dialect translation runtime in the container with timeout, cancellation, concurrency, and input/output bounds (#212).
 - Bind native SQL parameters consistently through query and fetch batches for REST and MCP requests (#21).

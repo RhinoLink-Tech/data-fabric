@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
@@ -43,6 +47,7 @@ type MCPServer struct {
 	tableAuthorizer     *security.TableAuthorizer
 	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
 	server              *server.MCPServer
+	auditRecorder       auditlog.Recorder
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -84,7 +89,7 @@ func (m *MCPServer) registerTools() {
 	// Tool to list available data sources
 	listDataSourcesTool := mcp.NewTool("list_data_sources",
 		mcp.WithDescription("List all configured data sources in Data Fabric"))
-	m.server.AddTool(listDataSourcesTool, m.handleListDataSources)
+	m.addTool("list_data_sources", listDataSourcesTool, m.handleListDataSources)
 
 	// Tool to execute SQL queries against data sources
 	executeSQLQueryTool := mcp.NewTool("execute_sql_query",
@@ -104,7 +109,7 @@ func (m *MCPServer) registerTools() {
 			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
 		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")))
-	m.server.AddTool(executeSQLQueryTool, m.handleExecuteSQLQuery)
+	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
 
 	fetchNextBatchTool := mcp.NewTool("fetch_next_batch",
 		mcp.WithDescription("Fetch the next page from a previous execute_sql_query call"),
@@ -112,13 +117,13 @@ func (m *MCPServer) registerTools() {
 		mcp.WithString("slug", mcp.Required(), mcp.Description("Query slug returned by execute_sql_query")),
 		mcp.WithString("token", mcp.Required(), mcp.Description("Current pagination token")),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return, default 10000")))
-	m.server.AddTool(fetchNextBatchTool, m.handleFetchNextBatch)
+	m.addTool("fetch_next_batch", fetchNextBatchTool, m.handleFetchNextBatch)
 
 	// Tool to get information about a specific data source
 	getDataSourceInfoTool := mcp.NewTool("get_data_source_info",
 		mcp.WithDescription("Get detailed information about a specific data source"),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to get info for")))
-	m.server.AddTool(getDataSourceInfoTool, m.handleGetDataSourceInfo)
+	m.addTool("get_data_source_info", getDataSourceInfoTool, m.handleGetDataSourceInfo)
 
 	// Tool to validate a SQL query against a data source
 	validateSQLQueryTool := mcp.NewTool("validate_sql_query",
@@ -126,13 +131,13 @@ func (m *MCPServer) registerTools() {
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to validate against")),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL query to validate")),
 		mcp.WithString("source_dialect", mcp.Description("Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)")))
-	m.server.AddTool(validateSQLQueryTool, m.handleValidateSQLQuery)
+	m.addTool("validate_sql_query", validateSQLQueryTool, m.handleValidateSQLQuery)
 
 	// Tool to list tables in a specific data source
 	listTablesTool := mcp.NewTool("list_tables",
 		mcp.WithDescription("List all tables in a specific data source"),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to list tables from")))
-	m.server.AddTool(listTablesTool, m.handleListTables)
+	m.addTool("list_tables", listTablesTool, m.handleListTables)
 
 	// Tool to describe one table's schema (#184). Complements list_tables
 	// (enumerate first, inspect one table here) and validate_sql_query (check
@@ -143,7 +148,7 @@ func (m *MCPServer) registerTools() {
 			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source holding the table")),
 			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")),
 			mcp.WithString("schema", mcp.Description("Optional schema name when the data source contains tables with the same name in multiple schemas")))
-		m.server.AddTool(describeTableTool, m.handleDescribeTable)
+		m.addTool("describe_table", describeTableTool, m.handleDescribeTable)
 	}
 
 	if m.sqlTranslator != nil && m.sqlTranslator.Enabled() {
@@ -153,13 +158,147 @@ func (m *MCPServer) registerTools() {
 			mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL to translate")),
 			mcp.WithString("source_dialect", mcp.Required(), mcp.Description("Source SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")),
 			mcp.WithString("target_dialect", mcp.Required(), mcp.Description("Target SQL dialect (e.g., mysql, trino, presto, openlookeng, postgres)")))
-		m.server.AddTool(translateSQLTool, m.handleTranslateSQL)
+		m.addTool("translate_sql", translateSQLTool, m.handleTranslateSQL)
 
 		// Tool to list supported SQL dialects
 		listDialectsTool := mcp.NewTool("list_supported_dialects",
 			mcp.WithDescription("List all supported SQL dialects"))
-		m.server.AddTool(listDialectsTool, m.handleListSupportedDialects)
+		m.addTool("list_supported_dialects", listDialectsTool, m.handleListSupportedDialects)
 	}
+}
+
+func (m *MCPServer) SetAuditRecorder(recorder auditlog.Recorder) { m.auditRecorder = recorder }
+
+func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandlerFunc) {
+	m.server.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		recorder := m.auditRecorder
+		if recorder == nil {
+			return handler(ctx, request)
+		}
+		started := time.Now()
+		ctx = auditlog.WithCapture(ctx)
+		if correlation, _ := ctx.Value(auditCorrelationIDKey{}).(string); correlation == "" {
+			ctx = context.WithValue(ctx, auditCorrelationIDKey{}, uuid.NewString())
+		}
+		transport, _ := ctx.Value(auditTransportKey{}).(string)
+		if transport == "" {
+			transport = "mcp-stdio"
+		}
+		caller := callerFromContext(ctx)
+		args := request.GetArguments()
+		datasourceID := mcpArgumentString(args, "datasource_id", "data_source_id", "dataSourceId")
+		tables := []string{}
+		if table := mcpArgumentString(args, "table_name", "table", "tableName"); table != "" {
+			tables = append(tables, table)
+		}
+		query := mcpArgumentString(args, "sql", "query")
+		fingerprint := ""
+		if f, ok := recorder.(interface{ Fingerprint(string) string }); ok {
+			fingerprint = f.Fingerprint(query)
+		}
+		result, err := handler(ctx, request)
+		tables = append(tables, auditlog.CapturedTables(ctx)...)
+		decision, outcome, reason := auditlog.DecisionAllow, "success", "tool_completed"
+		if capturedDecision, capturedReason := auditlog.CapturedDecision(ctx); capturedDecision != "" {
+			decision, reason = capturedDecision, capturedReason
+			if decision == auditlog.DecisionDeny {
+				outcome = "denied"
+			} else {
+				outcome = "failed"
+			}
+		}
+		if err != nil {
+			if decision != auditlog.DecisionDeny {
+				decision, outcome, reason = auditlog.DecisionError, "failed", "tool_error"
+			}
+		} else if result != nil && result.IsError {
+			if decision != auditlog.DecisionDeny {
+				decision, outcome, reason = auditlog.DecisionError, "failed", "tool_error"
+			}
+			if decision != auditlog.DecisionDeny && resultMentionsDenial(result) {
+				decision, outcome, reason = auditlog.DecisionDeny, "denied", "authorization_denied"
+			}
+		}
+		correlation, _ := ctx.Value(auditCorrelationIDKey{}).(string)
+		event := auditlog.Event{
+			CorrelationID: correlation, ActorID: caller.UserID, TenantID: caller.TenantID,
+			Transport: transport, Operation: "tools/call " + name, DataSourceID: datasourceID,
+			Tables: tables, QueryFingerprint: fingerprint, Decision: decision, ReasonCode: reason,
+			Outcome: outcome, DurationMS: time.Since(started).Milliseconds(), OccurredAt: started.UTC(),
+			RowsReturned: mcpRowsReturned(result),
+		}
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if recordErr := recorder.Record(recordCtx, event); recordErr != nil {
+			slog.ErrorContext(recordCtx, "failed to persist MCP audit event", "correlation_id", correlation, "tool", name, "error", recordErr)
+		}
+		return result, err
+	})
+}
+
+func mcpArgumentString(arguments map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := arguments[key].(string); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func resultMentionsDenial(result *mcp.CallToolResult) bool {
+	for _, item := range result.Content {
+		if text, ok := item.(mcp.TextContent); ok {
+			value := strings.ToLower(text.Text)
+			if strings.Contains(value, "access denied") || strings.Contains(value, "unauthorized") || strings.Contains(value, "forbidden") {
+				return true
+			}
+		}
+		if text, ok := item.(*mcp.TextContent); ok && text != nil {
+			value := strings.ToLower(text.Text)
+			if strings.Contains(value, "access denied") || strings.Contains(value, "unauthorized") || strings.Contains(value, "forbidden") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func mcpRowsReturned(result *mcp.CallToolResult) int64 {
+	if result == nil {
+		return 0
+	}
+	if content, ok := result.StructuredContent.(map[string]any); ok {
+		if count, ok := content["totalCount"].(float64); ok {
+			return int64(count)
+		}
+		if entries, ok := content["entries"].([]any); ok {
+			return int64(len(entries))
+		}
+	}
+	for _, item := range result.Content {
+		text, ok := item.(mcp.TextContent)
+		if !ok {
+			pointer, pointerOK := item.(*mcp.TextContent)
+			if !pointerOK || pointer == nil {
+				continue
+			}
+			text = *pointer
+		}
+		var payload map[string]any
+		if json.Unmarshal([]byte(text.Text), &payload) != nil {
+			continue
+		}
+		if entries, ok := payload["entries"].([]any); ok {
+			return int64(len(entries))
+		}
+		if rows, ok := payload["rows"].([]any); ok {
+			return int64(len(rows))
+		}
+		if count, ok := payload["totalCount"].(float64); ok {
+			return int64(count)
+		}
+	}
+	return 0
 }
 
 // handleListDataSources handles the list_data_sources tool call
@@ -248,6 +387,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	ctx = queryservice.WithQueryUser(ctx, queryUserFromContext(ctx))
 	result, err := m.unifiedQueryService.FetchQuery(ctx, callerFromContext(ctx), req)
 	if err != nil {
+		markMCPAuthorizationError(ctx, err)
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
 
@@ -295,6 +435,7 @@ func (m *MCPServer) handleFetchNextBatch(ctx context.Context, request mcp.CallTo
 
 	result, err := m.unifiedQueryService.FetchNextBatch(ctx, callerFromContext(ctx), queryID, slug, token, batchSize)
 	if err != nil {
+		markMCPAuthorizationError(ctx, err)
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
 	jsonResp, err := json.Marshal(result)
@@ -361,6 +502,7 @@ func (m *MCPServer) handleValidateSQLQuery(ctx context.Context, request mcp.Call
 	// Validate the query using the unified query service
 	err := m.unifiedQueryService.ValidateQuery(ctx, callerFromContext(ctx), req)
 	if err != nil {
+		markMCPAuthorizationError(ctx, err)
 		response := map[string]interface{}{
 			"valid": false,
 			"error": queryservice.SafeQueryErrorMessage(err),
@@ -393,6 +535,14 @@ func (m *MCPServer) handleValidateSQLQuery(ctx context.Context, request mcp.Call
 			mcp.NewTextContent(string(jsonResp)),
 		},
 	}, nil
+}
+
+func markMCPAuthorizationError(ctx context.Context, err error) {
+	if errors.Is(err, security.ErrDataSourceAccessDenied) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "datasource_access_denied")
+	} else if errors.Is(err, security.ErrTableAccessDenied) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "table_access_denied")
+	}
 }
 
 func isPrestoFamily(databaseType model.DatabaseType) bool {

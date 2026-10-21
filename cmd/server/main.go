@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/controller"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -89,6 +91,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	if err := repository.MigrateDataSourceSchema(db); err != nil {
 		return fmt.Errorf("database schema migration failed: %w", err)
 	}
+	auditStore, err := initializeAuditStore(db, cfg)
+	if err != nil {
+		return err
+	}
 
 	// Migrate old plaintext records and rotate any ciphertext before serving requests.
 	datasourceRepo, err := repository.NewDataSourceRepository(db, vault)
@@ -140,6 +146,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	databaseController := controller.NewDatabaseController(datasourceRepo, healthChecker)
 	healthController := controller.NewHealthController(db)
 	sqlTranslationController := controller.NewSQLTranslationController(translationManager)
+	var auditController *controller.AuditController
+	if auditStore != nil {
+		auditController = controller.NewAuditController(auditStore)
+	}
 
 	// Create Gin router
 	router := newRouter(routerDeps{
@@ -151,6 +161,8 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		queryController:          queryController,
 		databaseController:       databaseController,
 		sqlTranslationController: sqlTranslationController,
+		auditController:          auditController,
+		auditRecorder:            auditStore,
 	})
 
 	// Bind the listener before anything else starts so an invalid or occupied
@@ -171,6 +183,8 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	stopStreaming := startStreamingMaintenance(serverCtx, streamingService)
 	defer stopStreaming()
+	stopAuditCleanup := startAuditRetentionMaintenance(serverCtx, auditStore)
+	defer stopAuditCleanup()
 
 	listenResult := make(chan error, 1)
 	go func() {
@@ -202,6 +216,49 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 // metadataDB is the handle shutdown needs from the metadata database; the
 // narrow interface keeps the helper testable without a live gorm instance.
 type metadataDB interface{ DB() (*sql.DB, error) }
+
+func initializeAuditStore(db *gorm.DB, cfg *config.Config) (*auditlog.Store, error) {
+	if cfg == nil || !cfg.Audit.Enabled {
+		return nil, nil
+	}
+	if err := auditlog.Migrate(db); err != nil {
+		return nil, fmt.Errorf("audit schema migration failed: %w", err)
+	}
+	store, err := auditlog.NewStore(db, cfg.Security.JWTSecret, cfg.Audit.RetentionDays)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := store.PruneExpired(context.Background()); err != nil {
+		return nil, fmt.Errorf("audit retention cleanup failed: %w", err)
+	}
+	return store, nil
+}
+
+func startAuditRetentionMaintenance(parent context.Context, store *auditlog.Store) func() {
+	if store == nil {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 10*time.Second)
+				if _, err := store.PruneExpired(cleanupCtx); err != nil {
+					log.Printf("failed to prune expired audit events: %v", err)
+				}
+				cleanupCancel()
+			}
+		}
+	}()
+	return func() { cancel(); <-done }
+}
 
 // closeGatewayResources releases the pooled data-source connections and the
 // metadata database during process shutdown, after in-flight requests have
@@ -268,6 +325,10 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	if err := repository.MigrateDataSourceSchema(db); err != nil {
 		return fmt.Errorf("database schema migration failed: %w", err)
 	}
+	auditStore, err := initializeAuditStore(db, cfg)
+	if err != nil {
+		return err
+	}
 	datasourceRepo, err := repository.NewDataSourceRepository(db, vault)
 	if err != nil {
 		return fmt.Errorf("failed to initialize data-source repository: %w", err)
@@ -290,6 +351,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
+	mcpServer.SetAuditRecorder(auditStore)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
@@ -308,11 +370,13 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		log.Printf("Remote MCP entrance budgets: body %d bytes, %d concurrent requests, rate %d/min",
 			limits.EffectiveBodyBytes(), limits.EffectiveConcurrent(), cfg.Security.RateLimitPerMinute)
 		handler := mcpServer.StreamableHTTPHandlerWithLimits(tokenValidator, rateLimiter, limits)
-		return serveMCPHTTP(cfg, handler, streamingService, db, connPool)
+		return serveMCPHTTP(cfg, handler, streamingService, db, connPool, auditStore)
 	}
 
 	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
 	defer stopStreaming()
+	stopAuditCleanup := startAuditRetentionMaintenance(context.Background(), auditStore)
+	defer stopAuditCleanup()
 	log.Println("Starting MCP server with transport: stdio")
 	return mcpServer.StartStdio()
 }
@@ -337,7 +401,7 @@ func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPToken
 	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
-func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, db metadataDB, connPool *database.ConnectionPool) error {
+func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, db metadataDB, connPool *database.ConnectionPool, auditStore *auditlog.Store) error {
 	// Unwinds after the streaming maintenance defer below: cursors close
 	// first, then pooled connections and the metadata database (#32).
 	defer closeGatewayResources(db, connPool)
@@ -354,6 +418,8 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 	defer stopServer()
 	stopStreaming := startStreamingMaintenance(serverCtx, streamingService)
 	defer stopStreaming()
+	stopAuditCleanup := startAuditRetentionMaintenance(serverCtx, auditStore)
+	defer stopAuditCleanup()
 
 	listenResult := make(chan error, 1)
 	go func() {

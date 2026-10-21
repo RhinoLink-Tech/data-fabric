@@ -18,6 +18,12 @@ type Config struct {
 	MCP                MCPConfig                         `mapstructure:"mcp"`
 	SQLTranslation     SQLTranslationConfig              `mapstructure:"sql_translation"`
 	TableAuthorization security.TableAuthorizationConfig `mapstructure:"table_authorization"`
+	Audit              AuditConfig                       `mapstructure:"audit"`
+}
+
+type AuditConfig struct {
+	Enabled       bool `mapstructure:"enabled"`
+	RetentionDays int  `mapstructure:"retention_days"`
 }
 
 type ServerConfig struct {
@@ -124,6 +130,10 @@ func setDefaults() {
 	viper.SetDefault("security.enable_auth", true)
 	viper.SetDefault("security.enable_rate_limit", true)
 	viper.SetDefault("security.enforce_read_only", true)
+
+	// Audit events are persisted in the metadata database by default.
+	viper.SetDefault("audit.enabled", true)
+	viper.SetDefault("audit.retention_days", 90)
 
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")

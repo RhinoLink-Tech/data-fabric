@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
@@ -184,6 +185,7 @@ func (qs *queryService) validateAndAuthorizeSQL(ctx context.Context, caller *sec
 	if err != nil {
 		return nil, err
 	}
+	auditlog.AddTableReferences(ctx, analysis.Tables)
 	if err := qs.tableAuthorizer.AuthorizeAnalysis(ctx, caller, dataSource, analysis, permission); err != nil {
 		return nil, err
 	}

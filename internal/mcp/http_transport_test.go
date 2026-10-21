@@ -12,10 +12,14 @@ import (
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	service "github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/google/uuid"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
@@ -24,6 +28,24 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	source := &model.DataSource{ID: "source-1", OwnerID: "alice", TenantID: "team-a"}
 	queryService := &mcpHTTPQueryService{source: source}
 	server := NewMCPServer(queryService, mcpHTTPRepository{}, nil)
+	db, err := gorm.Open(sqlite.Open("file:mcp-audit-"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auditlog.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	auditStore, err := auditlog.NewStore(db, secret, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.SetAuditRecorder(auditStore)
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
 	httpServer := httptest.NewServer(server.StreamableHTTPHandler(jwtManager))
 	defer httpServer.Close()
 
@@ -39,6 +61,10 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("WWW-Authenticate") != "Bearer" {
 			t.Fatalf("response = %d, WWW-Authenticate=%q; want 401 Bearer challenge", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+		}
+		page, err := auditStore.List(context.Background(), auditlog.Filter{Transport: "mcp-http", Decision: auditlog.DecisionDeny})
+		if err != nil || page.Total != 1 || page.Events[0].ReasonCode != "missing_or_invalid_bearer_token" {
+			t.Fatalf("missing-token audit page = %+v, error = %v", page, err)
 		}
 	})
 
@@ -79,14 +105,15 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 		}
 	})
 
-	callQuery := func(t *testing.T, userID, tenantID string) (*mcp.CallToolResult, *security.Caller) {
+	callQuery := func(t *testing.T, userID, tenantID, sql string) (*mcp.CallToolResult, *security.Caller) {
 		t.Helper()
 		token, err := jwtManager.GenerateToken(userID, tenantID, userID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		client, err := client.NewStreamableHttpClient(httpServer.URL+"/mcp", transport.WithHTTPHeaders(map[string]string{
-			"Authorization": "Bearer " + token,
+			"Authorization":    "Bearer " + token,
+			"X-Correlation-ID": "mcp-request-bob",
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -107,7 +134,7 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 			Name: "execute_sql_query",
 			Arguments: map[string]any{
 				"datasource_id": source.ID,
-				"sql":           "SELECT 1",
+				"sql":           sql,
 			},
 		}})
 		if err != nil {
@@ -117,32 +144,70 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	}
 
 	t.Run("foreign data source is denied", func(t *testing.T) {
-		result, caller := callQuery(t, "bob", "team-b")
+		result, caller := callQuery(t, "bob", "team-b", "SELECT 1")
 		if !result.IsError {
 			t.Fatal("query from a caller outside the data-source scope was accepted")
 		}
 		if caller == nil || caller.UserID != "bob" || caller.TenantID != "team-b" {
 			t.Fatalf("handler caller = %+v, want bob/team-b", caller)
 		}
+		page, err := auditStore.List(context.Background(), auditlog.Filter{ActorID: "bob", Transport: "mcp-http", Operation: "tools/call execute_sql_query", CorrelationID: "mcp-request-bob"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 1 || page.Events[0].Decision != auditlog.DecisionDeny || page.Events[0].DataSourceID != source.ID || page.Events[0].QueryFingerprint == "" {
+			t.Fatalf("MCP query audit events = %+v, want one denied, identity-aware event", page.Events)
+		}
 	})
 
 	t.Run("same-tenant query is allowed", func(t *testing.T) {
-		result, caller := callQuery(t, "bob", "team-a")
+		result, caller := callQuery(t, "bob", "team-a", "SELECT 1")
 		if result.IsError {
 			t.Fatalf("same-tenant query returned an MCP error: %+v", result.Content)
 		}
 		if caller == nil || caller.UserID != "bob" || caller.TenantID != "team-a" {
 			t.Fatalf("handler caller = %+v, want bob/team-a", caller)
 		}
+		page, err := auditStore.List(context.Background(), auditlog.Filter{ActorID: "bob", Transport: "mcp-http", Operation: "tools/call execute_sql_query", CorrelationID: "mcp-request-bob"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 2 || page.Events[0].Decision != auditlog.DecisionAllow {
+			t.Fatalf("MCP success audit events = %+v, want allowed and denied events", page.Events)
+		}
 	})
 
 	t.Run("owner query is allowed", func(t *testing.T) {
-		result, caller := callQuery(t, "alice", "team-a")
+		result, caller := callQuery(t, "alice", "team-a", "SELECT 1")
 		if result.IsError {
 			t.Fatalf("owner query returned an MCP error: %+v", result.Content)
 		}
 		if caller == nil || caller.UserID != "alice" || caller.TenantID != "team-a" {
 			t.Fatalf("handler caller = %+v, want alice/team-a", caller)
+		}
+	})
+
+	t.Run("backend query failure is recorded", func(t *testing.T) {
+		result, _ := callQuery(t, "bob", "team-a", "SELECT FAIL")
+		if !result.IsError {
+			t.Fatal("backend failure did not produce an MCP tool error")
+		}
+		page, err := auditStore.List(context.Background(), auditlog.Filter{ActorID: "bob", Transport: "mcp-http", Operation: "tools/call execute_sql_query", Decision: auditlog.DecisionError})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 1 || page.Events[0].Outcome != "failed" {
+			t.Fatalf("MCP failed query audit events = %+v, want one failed event", page.Events)
+		}
+	})
+
+	t.Run("successful MCP authentication is recorded", func(t *testing.T) {
+		page, err := auditStore.List(context.Background(), auditlog.Filter{ActorID: "bob", Transport: "mcp-http", Operation: "mcp.authenticate", Decision: auditlog.DecisionAllow})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total == 0 || page.Events[0].ReasonCode != "token_validated" {
+			t.Fatalf("MCP authentication audit events = %+v, want successful verified identity events", page.Events)
 		}
 	})
 }
@@ -241,11 +306,14 @@ func (s *mcpHTTPQueryService) ValidateQuery(_ context.Context, caller *security.
 func (*mcpHTTPQueryService) GetQueryStats(context.Context) (*model.QueryStats, error) {
 	return nil, nil
 }
-func (s *mcpHTTPQueryService) FetchQuery(ctx context.Context, caller *security.Caller, _ *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (s *mcpHTTPQueryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
 	s.lastCaller = caller
 	s.lastQueryUser = service.QueryUserFromContext(ctx)
 	if !caller.CanRead(s.source) {
 		return nil, security.ErrDataSourceAccessDenied
+	}
+	if req.SQL == "SELECT FAIL" {
+		return nil, errors.New("backend unavailable")
 	}
 	return &model.FetchQueryResponse{}, nil
 }

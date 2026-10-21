@@ -4,6 +4,14 @@
 
 Data Fabric is configured primarily through a YAML configuration file located at `configs/config.yaml`. This document explains all available configuration options and their purposes.
 
+## Access audit events
+
+REST API and MCP access outcomes are stored in the metadata database when
+auditing is enabled. It is enabled by default with a 90-day retention window;
+adjust `audit.retention_days` to match the deployment policy. Release mode does
+not permit disabling auditing. See [Access audit events](security/audit-events.md)
+for recorded fields, admin access, and filters.
+
 ## Main Configuration File
 
 ### Example Configuration (`configs/config.yaml`)

@@ -79,6 +79,11 @@ table_authorization:
             - schema: public
               table: daily_summary
 
+# Durable access audit events (#220). Raw SQL and result rows are omitted.
+audit:
+  enabled: true
+  retention_days: 90
+
 logging:
   level: "info"
   format: "json"  # json, text

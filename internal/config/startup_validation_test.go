@@ -30,6 +30,7 @@ func validStartupConfig() Config {
 			EnforceReadOnly: true,
 		},
 		Query: QueryConfig{ExecutionMode: "auto"},
+		Audit: AuditConfig{Enabled: true, RetentionDays: 90},
 		MCP: MCPConfig{
 			Transport: MCPTransportStdio,
 			Address:   "127.0.0.1:8081",
@@ -42,6 +43,24 @@ func TestValidateStartupHTTPConfiguration(t *testing.T) {
 	if err := cfg.ValidateStartup(); err != nil {
 		t.Fatalf("ValidateStartup() error = %v", err)
 	}
+}
+
+func TestValidateStartupRequiresAuditInReleaseAndNonnegativeRetention(t *testing.T) {
+	t.Run("release cannot disable audit", func(t *testing.T) {
+		cfg := validStartupConfig()
+		cfg.Server.Mode = "release"
+		cfg.Audit.Enabled = false
+		if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "audit.enabled") {
+			t.Fatalf("ValidateStartup() error = %v, want audit.enabled release error", err)
+		}
+	})
+	t.Run("retention cannot be negative", func(t *testing.T) {
+		cfg := validStartupConfig()
+		cfg.Audit.RetentionDays = -1
+		if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "audit.retention_days") {
+			t.Fatalf("ValidateStartup() error = %v, want audit.retention_days error", err)
+		}
+	})
 }
 
 func TestValidateStartupRejectsMissingDatabaseSettings(t *testing.T) {

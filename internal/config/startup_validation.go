@@ -23,7 +23,6 @@ func (c Config) ValidateStartup() error {
 	if err := c.TableAuthorization.Validate(); err != nil {
 		return err
 	}
-
 	if c.MCP.Enabled {
 		if err := c.MCP.Validate(); err != nil {
 			return err
@@ -36,17 +35,33 @@ func (c Config) ValidateStartup() error {
 				return fmt.Errorf("mcp.auth_mode must be oidc for remote MCP in release mode")
 			}
 			if strings.EqualFold(strings.TrimSpace(c.MCP.AuthMode), MCPAuthModeOIDC) {
-				return c.ValidateMCPReleaseSecurity()
+				if err := c.ValidateMCPReleaseSecurity(); err != nil {
+					return err
+				}
+			} else if err := c.ValidateSecurity(); err != nil {
+				return err
 			}
-			return c.ValidateSecurity()
 		}
-		return nil
+		return c.validateAuditSettings()
 	}
 
 	if err := c.Server.Validate(); err != nil {
 		return err
 	}
-	return c.ValidateSecurity()
+	if err := c.ValidateSecurity(); err != nil {
+		return err
+	}
+	return c.validateAuditSettings()
+}
+
+func (c Config) validateAuditSettings() error {
+	if c.Audit.RetentionDays < 0 {
+		return fmt.Errorf("audit.retention_days cannot be negative")
+	}
+	if c.Server.Mode == "release" && !c.Audit.Enabled {
+		return fmt.Errorf("audit.enabled cannot be disabled in release mode")
+	}
+	return nil
 }
 
 func (c DatabaseConfig) Validate() error {

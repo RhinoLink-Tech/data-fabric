@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
@@ -375,6 +376,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		if err != nil {
 			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
 		}
+		auditlog.AddTableReferences(requestCtx, analysis.Tables)
 		if err := ss.tableAuthorizer.AuthorizeAnalysis(requestCtx, caller, dataSource, analysis, security.TablePermissionRead); err != nil {
 			return "", 0, err
 		}

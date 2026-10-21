@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -109,6 +110,7 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 		qc.writeQueryError(c, caller, err)
 		return
 	}
+	c.Set(auditlog.RowCountContextKey, len(result.Entries))
 
 	// Return response
 	c.JSON(http.StatusOK, response.SuccessResponse(result, correlationID))
@@ -167,6 +169,7 @@ func (qc *QueryController) FetchNextBatch(c *gin.Context) {
 		qc.writeQueryError(c, security.CallerFromGin(c), err)
 		return
 	}
+	c.Set(auditlog.RowCountContextKey, len(result.Entries))
 
 	c.JSON(http.StatusOK, response.SuccessResponse(result, correlationID))
 }

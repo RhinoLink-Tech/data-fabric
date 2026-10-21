@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/controller"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
@@ -21,6 +22,8 @@ type routerDeps struct {
 	queryController          *controller.QueryController
 	databaseController       *controller.DatabaseController
 	sqlTranslationController *controller.SQLTranslationController
+	auditController          *controller.AuditController
+	auditRecorder            auditlog.Recorder
 }
 
 // newRouter assembles the HTTP API. Setting the gin mode is the caller's job
@@ -35,6 +38,9 @@ func newRouter(deps routerDeps) *gin.Engine {
 	router.Use(middleware.Cors())
 	router.Use(middleware.CorrelationID())
 	router.Use(middleware.PrometheusMiddleware())
+	if deps.cfg.Audit.Enabled && deps.auditRecorder != nil {
+		router.Use(auditlog.HTTPMiddleware(deps.auditRecorder, deps.cfg.Server.MaxRequestBodyBytes))
+	}
 
 	// Authenticate optional JWTs before rate limiting so verified users share
 	// a per-user bucket. Invalid or absent credentials fall back to the peer IP.
@@ -61,6 +67,9 @@ func newRouter(deps routerDeps) *gin.Engine {
 	// API v1 group
 	api := router.Group("/api/v1")
 	jsonRequestLimit := middleware.RequestBodyLimit(deps.cfg.Server.MaxRequestBodyBytes)
+	if deps.cfg.Audit.Enabled && deps.auditController != nil {
+		api.GET("/audit/events", deps.authMiddleware.RequireAnyRole(security.AdminRole), deps.auditController.ListEvents)
+	}
 
 	// Public endpoints (no authentication required)
 	public := api.Group("")

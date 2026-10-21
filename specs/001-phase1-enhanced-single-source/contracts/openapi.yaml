@@ -4,7 +4,8 @@ info:
   description: |
     HTTP API for managing configured data sources and executing read-only batch queries.
     SQL execution uses POST /fetch. The /query routes validate SQL and expose query
-    statistics and per-user history. Driver support is described in the repository
+    statistics and per-user history. Administrators can review access audit events.
+    Driver support is described in the repository
     documentation and is not inferred from registry names alone.
   version: 1.2.0
   contact:
@@ -25,6 +26,8 @@ tags:
     description: Data source management endpoints
   - name: Queries
     description: Query execution endpoints
+  - name: Audit
+    description: Admin-only access audit events
   - name: Databases
     description: Database connection test endpoints
 
@@ -552,6 +555,77 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Query history could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /audit/events:
+    get:
+      tags:
+        - Audit
+      summary: List access audit events
+      description: Requires a verified admin role even when management API authentication is disabled.
+      operationId: listAuditEvents
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: actor_id
+          in: query
+          schema: { type: string }
+        - name: tenant_id
+          in: query
+          schema: { type: string }
+        - name: transport
+          in: query
+          schema: { type: string }
+        - name: operation
+          in: query
+          schema: { type: string }
+        - name: data_source_id
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema: { type: string, enum: [allow, deny, error] }
+        - name: correlation_id
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          description: Inclusive RFC 3339 timestamp
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Exclusive RFC 3339 timestamp
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Filtered events ordered newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsResponse'
+        '401':
+          description: Missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller does not have the admin role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Audit events could not be retrieved
           content:
             application/json:
               schema:
@@ -1171,6 +1245,53 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    AuditEvent:
+      type: object
+      required: [id, transport, operation, decision, outcome, durationMs, rowsReturned, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        correlationId: { type: string }
+        actorId: { type: string }
+        tenantId: { type: string }
+        transport: { type: string }
+        operation: { type: string }
+        dataSourceId: { type: string }
+        tables:
+          type: array
+          items: { type: string }
+        queryFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+        decision: { type: string, enum: [allow, deny, error] }
+        reasonCode: { type: string }
+        outcome: { type: string, enum: [success, denied, failed] }
+        statusCode: { type: integer }
+        durationMs: { type: integer, format: int64 }
+        rowsReturned: { type: integer, format: int64 }
+        occurredAt: { type: string, format: date-time }
+
+    AuditEventsData:
+      type: object
+      required: [events, total, limit, offset]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        total: { type: integer, format: int64 }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AuditEventsResponse:
+      type: object
+      required: [success, data, correlationId, timestamp]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/AuditEventsData'
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }
 
     StandardResponse:
       type: object
