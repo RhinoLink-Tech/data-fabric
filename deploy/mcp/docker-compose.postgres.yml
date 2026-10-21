@@ -1,0 +1,36 @@
+# PostgreSQL sample source for the quickstart (#180): applies on top of
+# docker-compose.yml to swap the seeded MySQL sample source for PostgreSQL.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+#
+# Requires Compose 2.24+ (the !override tags replace the MySQL service's
+# environment, volumes, and healthcheck wholesale). The metadata database
+# stays MySQL; only the queryable sample source changes flavor. Its data
+# lives in a separate named volume, so switching back to the MySQL variant
+# later keeps both data sets.
+#
+# All secrets still come from .env; nothing sensitive is baked in.
+
+services:
+  sample-source:
+    image: postgres:18
+    environment: !override
+      POSTGRES_DB: sample
+      # The container superuser initializes; the read-only sample_reader
+      # account is created by sample-source-init-postgres.sh.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SAMPLE_SOURCE_ROOT_PASSWORD:?set SAMPLE_SOURCE_ROOT_PASSWORD in .env}
+      SAMPLE_READER_PASSWORD: ${SAMPLE_READER_PASSWORD:?set SAMPLE_READER_PASSWORD in .env}
+    volumes: !override
+      - sample-source-pg-data:/var/lib/postgresql/data
+      - ./sample-source-init-postgres.sh:/docker-entrypoint-initdb.d/10-sample.sh:ro
+    healthcheck: !override
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sample"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    # No published ports: reachable as `sample-source` inside the stack
+    # network only; clients query it through the gateway.
+
+volumes:
+  sample-source-pg-data:

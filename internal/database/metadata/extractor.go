@@ -239,15 +239,16 @@ func (e *MetadataExtractor) extractTables(ctx context.Context, db *sql.DB, dbTyp
 		var tableName, tableType string
 		var tableSchema sql.NullString
 
-		// Scan based on database type
+		// Scan and column failures must surface: swallowing them reported a
+		// partial schema as complete success (#108).
 		if err := e.scanTableRow(rows, &tableName, &tableType, &tableSchema); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan table row: %w", err)
 		}
 
 		// Extract columns for this table
 		columns, err := e.extractColumns(ctx, db, dbType, tableName, tableSchema.String)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("failed to extract columns for table %q: %w", tableName, err)
 		}
 
 		// Extract indexes
@@ -271,6 +272,9 @@ func (e *MetadataExtractor) extractTables(ctx context.Context, db *sql.DB, dbTyp
 			Indexes:    indexes,
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate table rows: %w", err)
+	}
 
 	return tables, nil
 }
@@ -293,7 +297,7 @@ func (e *MetadataExtractor) extractColumns(ctx context.Context, db *sql.DB, dbTy
 		var colComment sql.NullString
 
 		if err := e.scanColumnRow(rows, dbType, &colName, &colType, &isNullable, &colDefault, &colComment); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan column row: %w", err)
 		}
 
 		columns = append(columns, ColumnSchema{
@@ -303,6 +307,9 @@ func (e *MetadataExtractor) extractColumns(ctx context.Context, db *sql.DB, dbTy
 			Default:  colDefault.String,
 			Comment:  colComment.String,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate column rows: %w", err)
 	}
 
 	return columns, nil
@@ -326,7 +333,7 @@ func (e *MetadataExtractor) extractIndexes(ctx context.Context, db *sql.DB, dbTy
 		var isUnique bool
 
 		if err := rows.Scan(&indexName, &columnName, &isUnique); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan index row: %w", err)
 		}
 
 		if idx, exists := indexMap[indexName]; exists {
@@ -342,6 +349,9 @@ func (e *MetadataExtractor) extractIndexes(ctx context.Context, db *sql.DB, dbTy
 
 	for _, idx := range indexMap {
 		indexes = append(indexes, *idx)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate index rows: %w", err)
 	}
 
 	return indexes, nil
@@ -361,9 +371,12 @@ func (e *MetadataExtractor) extractPrimaryKey(ctx context.Context, db *sql.DB, d
 	for rows.Next() {
 		var columnName string
 		if err := rows.Scan(&columnName); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan primary-key row: %w", err)
 		}
 		pkColumns = append(pkColumns, columnName)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate primary-key rows: %w", err)
 	}
 
 	return pkColumns, nil
@@ -400,8 +413,10 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	case model.DatabaseTypeOracle:
 		return "SELECT table_name, 'TABLE', owner FROM all_tables WHERE owner NOT IN ('SYS', 'SYSTEM')"
 	case model.DatabaseTypeSnowflake, model.DatabaseTypeBigQuery, model.DatabaseTypeRedshift:
-		// Warehouse-specific queries - to be implemented
-		return "SELECT table_name, table_type FROM information_schema.tables"
+		// Warehouse-specific queries - to be implemented. The column list must
+		// match the three-column scanTableRow contract; a two-column select
+		// failed every row's scan and masqueraded as an empty schema (#108).
+		return "SELECT table_name, table_type, table_schema FROM information_schema.tables"
 	default:
 		// Default to information_schema
 		return "SELECT table_name, table_type, table_schema FROM information_schema.tables"

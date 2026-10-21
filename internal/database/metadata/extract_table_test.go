@@ -19,11 +19,21 @@ type cannedRows struct {
 	columns []string
 	values  [][]driver.Value
 	pos     int
+	// failAt/failErr simulate a connection drop mid-iteration: Next returns
+	// failErr instead of the row at index failAt, which database/sql turns
+	// into rows.Err().
+	failAt  int
+	failErr error
+	failed  bool
 }
 
 func (r *cannedRows) Columns() []string { return r.columns }
 func (r *cannedRows) Close() error      { return nil }
 func (r *cannedRows) Next(dest []driver.Value) error {
+	if r.failErr != nil && !r.failed && r.pos == r.failAt {
+		r.failed = true
+		return r.failErr
+	}
 	if r.pos >= len(r.values) {
 		return io.EOF
 	}

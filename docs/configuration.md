@@ -137,6 +137,7 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |
+| `mcp.max_concurrent_requests` | Integer | `64`; caps in-flight requests on the streamable-HTTP entrance (body size falls back to `server.max_request_body_bytes`) |
 | `mcp.auth_mode` | String | `local-jwt` (development); `oidc` for remote MCP in release mode |
 | `mcp.oidc_issuer` | HTTPS URL | Empty; required for OIDC |
 | `mcp.oidc_audience` | String | Empty; required for OIDC |
@@ -297,6 +298,7 @@ Every service-config field supports this mapping:
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
 | `mcp.enabled` | `MCP_ENABLED` |
 | `mcp.transport` | `MCP_TRANSPORT` |
+| <code>mcp.max_concurrent_requests</code> | <code>MCP_MAX_CONCURRENT_REQUESTS</code> |
 | <code>sql_translation.enabled</code> | <code>SQL_TRANSLATION_ENABLED</code> |
 | <code>sql_translation.timeout</code> | <code>SQL_TRANSLATION_TIMEOUT</code> |
 | <code>sql_translation.max_concurrent</code> | <code>SQL_TRANSLATION_MAX_CONCURRENT</code> |

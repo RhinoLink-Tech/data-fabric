@@ -292,7 +292,23 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
-		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService, db, connPool)
+		// The remote entrance gets the same security budgets as the HTTP API:
+		// per-client rate limiting from the shared config, plus body and
+		// concurrency caps so one client cannot exhaust the gateway before
+		// authentication runs (#185, #186).
+		rateLimiter := middleware.NewRateLimiter(middleware.RateLimiterConfig{
+			RPM:             cfg.Security.RateLimitPerMinute,
+			Burst:           cfg.Security.RateLimitBurst,
+			CleanupInterval: 5 * time.Minute,
+		})
+		limits := mcp.RemoteLimits{
+			MaxBodyBytes:  cfg.Server.MaxRequestBodyBytes,
+			MaxConcurrent: cfg.MCP.MaxConcurrentRequests,
+		}
+		log.Printf("Remote MCP entrance budgets: body %d bytes, %d concurrent requests, rate %d/min",
+			limits.EffectiveBodyBytes(), limits.EffectiveConcurrent(), cfg.Security.RateLimitPerMinute)
+		handler := mcpServer.StreamableHTTPHandlerWithLimits(tokenValidator, rateLimiter, limits)
+		return serveMCPHTTP(cfg, handler, streamingService, db, connPool)
 	}
 
 	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
@@ -328,8 +344,11 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 	server := &http.Server{
 		Addr:              cfg.MCP.Address,
 		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
+		// WriteTimeout stays unset: streamable-HTTP responses may be SSE
+		// streams held open beyond any fixed write deadline.
 	}
 	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopServer()
