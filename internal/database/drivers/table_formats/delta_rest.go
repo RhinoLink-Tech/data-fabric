@@ -5,16 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
 // DeltaRESTClient implements a REST client for Delta Lake
 type DeltaRESTClient struct {
-	baseURL    string
-	httpClient *http.Client
-	auth       *DeltaAuth
+	baseURL     string
+	warehouseID string
+	timeout     time.Duration
+	httpClient  *http.Client
+	auth        *DeltaAuth
 }
 
 // DeltaAuth holds authentication credentials for Delta Lake API
@@ -26,161 +29,139 @@ type DeltaAuth struct {
 
 // DeltaConfig holds configuration for Delta Lake REST client
 type DeltaConfig struct {
-	BaseURL string        // Delta Lake REST endpoint (e.g., Databricks workspace)
-	Timeout time.Duration // Request timeout
-	Auth    *DeltaAuth    // Authentication credentials
+	BaseURL     string        // Databricks workspace URL for Unity Catalog and SQL Statement Execution
+	WarehouseID string        // SQL warehouse used for table history and statements
+	Timeout     time.Duration // Request timeout
+	Auth        *DeltaAuth    // Authentication credentials
 }
 
 // NewDeltaRESTClient creates a new Delta Lake REST client
 func NewDeltaRESTClient(config *DeltaConfig) (*DeltaRESTClient, error) {
-	if config.BaseURL == "" {
-		return nil, fmt.Errorf("base URL is required")
+	if config == nil {
+		return nil, fmt.Errorf("Delta configuration is required")
 	}
-
+	parsed, err := url.Parse(strings.TrimRight(config.BaseURL, "/"))
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+		return nil, fmt.Errorf("base URL must be an absolute HTTP or HTTPS workspace URL")
+	}
 	timeout := config.Timeout
-	if timeout == 0 {
+	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-
 	return &DeltaRESTClient{
-		baseURL: config.BaseURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
-		auth: config.Auth,
+		baseURL: strings.TrimRight(config.BaseURL, "/"), warehouseID: config.WarehouseID,
+		timeout: timeout, httpClient: &http.Client{Timeout: timeout}, auth: config.Auth,
 	}, nil
 }
 
-// ListTables lists all tables in the workspace
+// ListTables lists Unity Catalog tables and follows the service continuation token.
 func (c *DeltaRESTClient) ListTables(ctx context.Context, catalog, schema string) ([]DeltaTableIdentifier, error) {
-	// Databricks API: GET /api/2.1/unity-catalog/tables
-	url := fmt.Sprintf("%s/api/2.1/unity-catalog/tables", c.baseURL)
-
-	if catalog != "" || schema != "" {
-		// Add filters for catalog and schema
-		params := ""
+	tables := make([]DeltaTableIdentifier, 0)
+	pageToken := ""
+	seenTokens := make(map[string]struct{})
+	for pageCount := 0; pageCount < 10000; pageCount++ {
+		params := url.Values{}
 		if catalog != "" {
-			params += fmt.Sprintf("catalog_name=%s", catalog)
+			params.Set("catalog_name", catalog)
 		}
 		if schema != "" {
-			if params != "" {
-				params += "&"
+			params.Set("schema_name", schema)
+		}
+		params.Set("max_results", "100")
+		if pageToken != "" {
+			params.Set("page_token", pageToken)
+		}
+		endpoint := c.baseURL + "/api/2.1/unity-catalog/tables?" + params.Encode()
+
+		var response map[string]json.RawMessage
+		if err := c.requestDeltaJSON(ctx, http.MethodGet, endpoint, nil, &response); err != nil {
+			return nil, err
+		}
+		var page []DeltaTableIdentifier
+		if err := json.Unmarshal(response["tables"], &page); err != nil {
+			return nil, fmt.Errorf("decode Unity Catalog table list: %w", err)
+		}
+		tables = append(tables, page...)
+		var nextToken string
+		if len(response["next_page_token"]) > 0 {
+			if err := json.Unmarshal(response["next_page_token"], &nextToken); err != nil {
+				return nil, fmt.Errorf("decode Unity Catalog page token: %w", err)
 			}
-			params += fmt.Sprintf("schema_name=%s", schema)
 		}
-		if params != "" {
-			url += "?" + params
+		if nextToken == "" {
+			return tables, nil
 		}
+		if _, exists := seenTokens[nextToken]; exists {
+			return nil, fmt.Errorf("Unity Catalog repeated a page token")
+		}
+		seenTokens[nextToken] = struct{}{}
+		pageToken = nextToken
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	c.setAuthHeader(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result struct {
-		Tables []DeltaTableIdentifier `json:"tables"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return result.Tables, nil
+	return nil, fmt.Errorf("Unity Catalog table listing exceeded the page safety limit")
 }
 
-// GetTableDetails retrieves table details
+// GetTableDetails retrieves table details from Unity Catalog.
 func (c *DeltaRESTClient) GetTableDetails(ctx context.Context, catalog, schema, table string) (*DeltaTableDetails, error) {
-	// Databricks API: GET /api/2.1/unity-catalog/tables/{full_name}
-	fullName := fmt.Sprintf("%s.%s.%s", catalog, schema, table)
-	url := fmt.Sprintf("%s/api/2.1/unity-catalog/tables/%s", c.baseURL, fullName)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	parts := []string{catalog, schema, table}
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return nil, fmt.Errorf("catalog, schema, and table are required")
+		}
 	}
-
-	c.setAuthHeader(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
-	}
-
+	fullName := strings.Join(parts, ".")
+	endpoint := c.baseURL + "/api/2.1/unity-catalog/tables/" + url.PathEscape(fullName)
 	var details DeltaTableDetails
-	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := c.requestDeltaJSON(ctx, http.MethodGet, endpoint, nil, &details); err != nil {
+		return nil, err
 	}
-
 	return &details, nil
 }
 
-// QueryTable executes a SQL query (via Databricks SQL endpoint)
-func (c *DeltaRESTClient) QueryTable(ctx context.Context, warehouseID, sql string) (*DeltaQueryResult, error) {
-	// Databricks SQL Warehouse API
-	url := fmt.Sprintf("%s/api/2.0/sql/warehouses/%s/statements", c.baseURL, warehouseID)
-
-	payload := map[string]interface{}{
-		"statement":    sql,
-		"wait_timeout": "50s",
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	c.setAuthHeader(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result DeltaQueryResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &result, nil
+// QueryTable executes a statement through the Databricks SQL Statement Execution API.
+func (c *DeltaRESTClient) QueryTable(ctx context.Context, warehouseID, statement string) (*DeltaQueryResult, error) {
+	return c.executeStatement(ctx, warehouseID, statement)
 }
 
-// GetTableHistory retrieves table history (for time travel)
+// GetTableHistory reads commit history through Databricks SQL Statement Execution.
 func (c *DeltaRESTClient) GetTableHistory(ctx context.Context, tablePath string) ([]DeltaCommitInfo, error) {
-	// Delta Lake history API (requires Databricks or Delta Standalone Reader)
-	// This is a placeholder implementation
-	return []DeltaCommitInfo{}, nil
+	return c.readTableHistory(ctx, tablePath)
+}
+
+// ReadChangeDataFeed reads a fixed inclusive Delta version range through the
+// Databricks SQL table_changes function. Change Data Feed must be enabled for
+// the requested table and range.
+func (c *DeltaRESTClient) ReadChangeDataFeed(ctx context.Context, warehouseID, catalog, schema, table string, startVersion int64, endVersion *int64) (*DeltaQueryResult, error) {
+	statement, err := BuildDeltaChangeDataFeedStatement(catalog, schema, table, startVersion, endVersion)
+	if err != nil {
+		return nil, err
+	}
+	return c.executeStatement(ctx, warehouseID, statement)
+}
+
+// BuildDeltaChangeDataFeedStatement validates identifiers and versions before
+// composing the Databricks table_changes table-valued function call.
+func BuildDeltaChangeDataFeedStatement(catalog, schema, table string, startVersion int64, endVersion *int64) (string, error) {
+	parts := []string{catalog, schema, table}
+	quoted := make([]string, len(parts))
+	for index, part := range parts {
+		if strings.TrimSpace(part) == "" || strings.ContainsRune(part, 0) {
+			return "", fmt.Errorf("catalog, schema, and table identifiers are required")
+		}
+		quoted[index] = "`" + strings.ReplaceAll(part, "`", "``") + "`"
+	}
+	if startVersion < 0 {
+		return "", fmt.Errorf("Delta start version must be non-negative")
+	}
+	versionRange := fmt.Sprintf("%d", startVersion)
+	if endVersion != nil {
+		if *endVersion < startVersion {
+			return "", fmt.Errorf("Delta end version must be greater than or equal to start version")
+		}
+		versionRange += fmt.Sprintf(", %d", *endVersion)
+	}
+	tableIdentifier := strings.Join(quoted, ".")
+	tableLiteral := "'" + strings.ReplaceAll(tableIdentifier, "'", "''") + "'"
+	return fmt.Sprintf("SELECT * FROM table_changes(%s, %s)", tableLiteral, versionRange), nil
 }
 
 // setAuthHeader sets the authentication header
@@ -190,7 +171,7 @@ func (c *DeltaRESTClient) setAuthHeader(req *http.Request) {
 	}
 
 	switch c.auth.TokenType {
-	case "bearer", "databricks-token":
+	case "", "bearer", "databricks-token":
 		req.Header.Set("Authorization", "Bearer "+c.auth.Token)
 	default:
 		req.Header.Set("Authorization", c.auth.Token)
@@ -237,9 +218,12 @@ type DeltaFormat struct {
 
 // DeltaQueryResult represents query results
 type DeltaQueryResult struct {
-	StatementID string               `json:"statement_id"`
-	Status      DeltaStatementStatus `json:"status"`
-	Manifest    DeltaResultManifest  `json:"result"`
+	ErrorMessage          string
+	NextChunkIndex        *int64
+	NextChunkInternalLink string
+	StatementID           string               `json:"statement_id"`
+	Status                DeltaStatementStatus `json:"status"`
+	Manifest              DeltaResultManifest  `json:"result"`
 }
 
 // DeltaStatementStatus represents statement status
@@ -249,8 +233,9 @@ type DeltaStatementStatus struct {
 
 // DeltaResultManifest represents result manifest
 type DeltaResultManifest struct {
-	Schema DeltaResultSchema `json:"schema"`
-	Data   [][]interface{}   `json:"data"`
+	Schema    DeltaResultSchema `json:"schema"`
+	Data      [][]interface{}   `json:"data"`
+	Truncated bool              `json:"truncated,omitempty"`
 }
 
 // DeltaResultSchema represents result schema
