@@ -50,8 +50,8 @@ func NewDatabaseController(datasourceRepo repository.DataSourceRepository, healt
 }
 
 // GetDatabaseTypes godoc
-// @Summary Get supported database types
-// @Description Returns a list of supported database types with their information
+// @Summary Get registered database types and support status
+// @Description Returns registered data source types, driver capabilities, and end-to-end verification status
 // @Tags database
 // @Produce json
 // @Success 200 {object} response.StandardResponse
@@ -389,65 +389,15 @@ func databaseHealthStatus(total, healthy, unhealthy int) string {
 }
 
 // GetDatabaseCompatibility godoc
-// @Summary Get database compatibility information
-// @Description Returns compatibility information for different database types
+// @Summary Get database connector support catalog
+// @Description Returns version ranges, exact verified versions, compatibility modes, and limitations from the shared support catalog
 // @Tags database
 // @Produce json
 // @Success 200 {object} response.StandardResponse
 // @Router /api/v1/database/compatibility [get]
 func (dc *DatabaseController) GetDatabaseCompatibility(c *gin.Context) {
 	correlationID := dc.getCorrelationID(c)
-
-	compatibility := map[string]DatabaseCompatibility{
-		"mysql": {
-			Supported:   true,
-			Version:     "5.7+",
-			Features:    []string{"SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT"},
-			Limitations: []string{"No DML/DDL operations", "No stored procedures"},
-			Recommended: true,
-		},
-		"trino": {
-			Supported:   true,
-			Version:     "372+",
-			Features:    []string{"Unified SQL entry", "Cross-catalog queries", "SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT", "Window functions"},
-			Limitations: []string{"Requires a configured Trino coordinator and catalogs", "Connector capabilities vary by catalog"},
-			Recommended: true,
-		},
-		"presto": {
-			Supported:   true,
-			Features:    []string{"Unified SQL entry", "Cross-catalog queries", "SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT"},
-			Limitations: []string{"Requires a configured Presto coordinator and catalogs", "Connector capabilities vary by catalog"},
-			Recommended: true,
-		},
-		"openlookeng": {
-			Supported:   true,
-			Features:    []string{"Unified SQL entry", "Cross-catalog queries", "SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT"},
-			Limitations: []string{"Requires a configured OpenLooKeng coordinator and catalogs", "Connector capabilities vary by catalog"},
-			Recommended: true,
-		},
-		"mariadb": {
-			Supported:   true,
-			Version:     "10.2+",
-			Features:    []string{"SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT"},
-			Limitations: []string{"No DML/DDL operations", "No stored procedures"},
-			Recommended: true,
-		},
-		"postgresql": {
-			Supported:   true,
-			Version:     "9.6+",
-			Features:    []string{"SELECT", "JOIN", "GROUP BY", "ORDER BY", "LIMIT", "Window functions"},
-			Limitations: []string{"No DML/DDL operations", "No stored procedures"},
-			Recommended: true,
-		},
-		"oracle": {
-			Supported:   true,
-			Version:     "12c+",
-			Features:    []string{"SELECT", "JOIN", "GROUP BY", "ORDER BY"},
-			Limitations: []string{"No DML/DDL operations", "No stored procedures", "Limited pagination support"},
-			Recommended: true,
-		},
-	}
-
+	compatibility := database.CompatibilityByType(dc.healthChecker.GetSupportCatalog())
 	c.JSON(http.StatusOK, response.SuccessResponse(compatibility, correlationID))
 }
 
@@ -470,14 +420,6 @@ type ConnectionPoolStatsResponse struct {
 	WaitDuration      time.Duration                       `json:"waitDuration"`
 	Pools             map[string]database.ConnectionStats `json:"pools"`
 	CheckedAt         time.Time                           `json:"checkedAt"`
-}
-
-type DatabaseCompatibility struct {
-	Supported   bool     `json:"supported"`
-	Version     string   `json:"version"`
-	Features    []string `json:"features"`
-	Limitations []string `json:"limitations"`
-	Recommended bool     `json:"recommended"`
 }
 
 // Helper methods

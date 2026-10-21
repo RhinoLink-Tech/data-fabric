@@ -77,19 +77,7 @@ flowchart LR
 
 ## 数据源范围
 
-代码库定义了下列类别的代表性数据源。具体操作和认证能力因数据源及其驱动而异。
-
-| 类别 | 示例 |
-| --- | --- |
-| 关系型数据库 | MySQL、MariaDB、PostgreSQL、Oracle、SQL Server |
-| 国产及兼容数据库 | OceanBase、TiDB、TDSQL、GaussDB、达梦、KingbaseES、GBase、神通、OpenGauss |
-| 分析型数据库 | ClickHouse、Doris、StarRocks、Druid、Hologres |
-| 云数仓与大数据平台 | Snowflake、Databricks、Redshift、BigQuery、Hive、MaxCompute |
-| 湖仓表格式 | Apache Iceberg、Delta Lake、Apache Hudi |
-| 对象存储与文件系统 | S3、MinIO、阿里云 OSS、腾讯云 COS、Azure Blob、HDFS |
-| 文件格式 | Parquet、ORC、Avro、CSV、JSON、XML、文本 |
-
-Apache Ozone 当前不作为受支持的数据源对外提供，因为对象操作尚未完成。驱动注册表会拒绝 Ozone 数据源配置，待操作实现并验证后再开放。详见[Ozone 支持状态](docs/ozone-support.md)。
+Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容性接口。目录区分“已注册实现”和“端到端验证”，分别记录声明的版本范围与精确测试版本，并列出协议兼容方式、驱动能力、版本策略和服务器版本探测结果。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已注册实现仍处于实验状态。Apache Ozone 因对象操作尚未完成而未注册。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
 
 ### 驱动打包与运行占用
 

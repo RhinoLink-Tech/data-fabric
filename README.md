@@ -77,19 +77,7 @@ Applications can use a gateway driver for an individual source or send SQL throu
 
 ## Data Sources
 
-The repository defines representative source types across these categories. Available operations and authentication options depend on the source and its driver.
-
-| Category | Examples |
-| --- | --- |
-| Relational databases | MySQL, MariaDB, PostgreSQL, Oracle, SQL Server |
-| Domestic and compatible databases | OceanBase, TiDB, TDSQL, GaussDB, DaMeng, KingbaseES, GBase, Oscar, OpenGauss |
-| Analytical databases | ClickHouse, Doris, StarRocks, Druid, Hologres |
-| Cloud warehouses and big-data platforms | Snowflake, Databricks, Redshift, BigQuery, Hive, MaxCompute |
-| Lakehouse table formats | Apache Iceberg, Delta Lake, Apache Hudi |
-| Object storage and file systems | S3, MinIO, Alibaba OSS, Tencent COS, Azure Blob, HDFS |
-| File formats | Parquet, ORC, Avro, CSV, JSON, XML, text |
-
-Apache Ozone is not currently advertised as a supported source because its object operations are incomplete. The registry rejects Ozone source configuration until those operations are implemented and verified. See the [Ozone support status](docs/ozone-support.md).
+Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. It distinguishes registered implementation code from end-to-end verified support, separates declared version ranges from exact versions tested, and reports compatible protocol families, driver capabilities, version policy, and detected server versions. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations are experimental. Apache Ozone is not registered because its object operations are incomplete. See the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
 
 ### Build and Runtime Footprint
 
