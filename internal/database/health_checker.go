@@ -100,12 +100,13 @@ func NewHealthChecker(connPool *ConnectionPool) *HealthChecker {
 
 // HealthCheckResult represents the result of a health check
 type HealthCheckResult struct {
-	DataSourceID string        `json:"dataSourceId"`
-	DatabaseType string        `json:"databaseType"`
-	Status       string        `json:"status"`
-	Message      string        `json:"message,omitempty"`
-	Latency      time.Duration `json:"latency"`
-	CheckedAt    time.Time     `json:"checkedAt"`
+	DataSourceID string              `json:"dataSourceId"`
+	DatabaseType string              `json:"databaseType"`
+	Status       string              `json:"status"`
+	Message      string              `json:"message,omitempty"`
+	Latency      time.Duration       `json:"latency"`
+	CheckedAt    time.Time           `json:"checkedAt"`
+	ServerInfo   *DetectedServerInfo `json:"serverInfo,omitempty"`
 	// ReadOnlyEnforced reports whether the enforced connection actually runs
 	// read-only (#20); nil when the type has no read-only session mode or
 	// enforcement is disabled.
@@ -300,6 +301,7 @@ func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config
 
 	result.Status = "healthy"
 	result.Message = "Connection successful"
+	result.ServerInfo = detectServerInfo(ctx, db, dbType, driver.GetCategory())
 	hc.verifyReadOnlySession(ctx, result, driver, dsn, config, dbType)
 	return result, nil
 }
@@ -536,26 +538,20 @@ func (hc *HealthChecker) validateFileSystemConfig(config *model.DataSourceConfig
 
 // GetDriverInfo returns information about available database drivers
 func (hc *HealthChecker) GetDriverInfo() map[string]DriverInfo {
-	supportedTypes := hc.registry.GetSupportedTypes()
 	info := make(map[string]DriverInfo)
-
-	for _, dbType := range supportedTypes {
-		driver, _ := hc.registry.GetDriver(dbType)
-		info[string(dbType)] = DriverInfo{
-			Type:        string(dbType),
-			DriverName:  driver.GetDriverName(),
-			DefaultPort: driver.GetDefaultPort(),
-			Supported:   true,
+	for _, profile := range hc.GetSupportCatalog() {
+		if !profile.Supported {
+			continue
 		}
+		info[profile.Type] = DriverInfo{ConnectorSupport: profile}
 	}
-
 	return info
 }
 
-// DriverInfo contains information about a database driver
-type DriverInfo struct {
-	Type        string `json:"type"`
-	DriverName  string `json:"driverName"`
-	DefaultPort int    `json:"defaultPort"`
-	Supported   bool   `json:"supported"`
+// GetSupportCatalog returns the same support profiles used by both database APIs.
+func (hc *HealthChecker) GetSupportCatalog() []ConnectorSupport {
+	if hc == nil || hc.registry == nil {
+		return nil
+	}
+	return SupportCatalog(hc.registry)
 }
