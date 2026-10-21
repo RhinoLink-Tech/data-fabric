@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -104,6 +105,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize infrastructure
 	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	// Registered before the streaming maintenance defers so it unwinds after
+	// them: cursors close first, then pooled connections and the metadata
+	// database (#32).
+	defer closeGatewayResources(db, connPool)
 	healthChecker := database.NewHealthChecker(connPool)
 
 	// Initialize security
@@ -195,6 +200,32 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 }
 
+// metadataDB is the handle shutdown needs from the metadata database; the
+// narrow interface keeps the helper testable without a live gorm instance.
+type metadataDB interface{ DB() (*sql.DB, error) }
+
+// closeGatewayResources releases the pooled data-source connections and the
+// metadata database during process shutdown, after in-flight requests have
+// drained. It is best-effort: failures are logged, never fatal, so one
+// stubborn connection cannot block the rest of the cleanup (#32).
+func closeGatewayResources(db metadataDB, pool *database.ConnectionPool) {
+	if pool != nil {
+		if err := pool.CloseAll(); err != nil {
+			log.Printf("failed to close data-source connection pools during shutdown: %v", err)
+		}
+	}
+	if db != nil {
+		sqlDB, err := db.DB()
+		if err != nil {
+			log.Printf("failed to resolve metadata database handle during shutdown: %v", err)
+			return
+		}
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("failed to close metadata database during shutdown: %v", err)
+		}
+	}
+}
+
 func startStreamingMaintenance(parent context.Context, streamingService service.StreamingService) func() {
 	ctx, cancel := context.WithCancel(parent)
 	done := make(chan struct{})
@@ -251,6 +282,9 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 
 	connPool := database.NewConnectionPool(security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	// Unwinds after the streaming maintenance defer below: cursors close
+	// first, then pooled connections and the metadata database (#32).
+	defer closeGatewayResources(db, connPool)
 	streamingService := service.NewStreamingService(datasourceRepo, connPool, translationManager)
 	paginationService := service.NewQueryService(datasourceRepo, connPool, cfg.Query.PreferStreaming, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
@@ -258,7 +292,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	mcpServer := mcp.NewMCPServer(queryService, datasourceRepo, metadataExtractor, translationManager)
 
 	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
-		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService)
+		return serveMCPHTTP(cfg, mcpServer.StreamableHTTPHandler(tokenValidator), streamingService, db, connPool)
 	}
 
 	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
@@ -287,7 +321,10 @@ func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPToken
 	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
-func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService) error {
+func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, db metadataDB, connPool *database.ConnectionPool) error {
+	// Unwinds after the streaming maintenance defer below: cursors close
+	// first, then pooled connections and the metadata database (#32).
+	defer closeGatewayResources(db, connPool)
 	server := &http.Server{
 		Addr:              cfg.MCP.Address,
 		Handler:           handler,

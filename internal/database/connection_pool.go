@@ -251,6 +251,27 @@ func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model
 	return driver.BuildDSN(config), nil
 }
 
+// defaultIdleTimeout is how long a pooled data-source connection may sit
+// unused before database/sql discards it, when the data source does not set
+// idle_timeout. It matches the documented default of the field (#116).
+const defaultIdleTimeout = 10 * time.Minute
+
+// idleConnectionTimeout derives the idle timeout for a data source's pool.
+// It is the data source's own idle_timeout knob, deliberately independent of
+// the connect timeout: mixing the two closed idle connections after seconds
+// (or kept them forever after a long dial timeout) depending on which value
+// the operator tuned (#116).
+func idleConnectionTimeout(config *model.DataSourceConfig) time.Duration {
+	if config == nil {
+		return defaultIdleTimeout
+	}
+	timeout := time.Duration(config.IdleTimeout) * time.Second
+	if timeout <= 0 {
+		return defaultIdleTimeout
+	}
+	return timeout
+}
+
 // configureConnectionPool configures the connection pool settings
 func (cp *ConnectionPool) configureConnectionPool(db *sql.DB, config *model.DataSourceConfig) error {
 	// Set connection pool size
@@ -274,15 +295,8 @@ func (cp *ConnectionPool) configureConnectionPool(db *sql.DB, config *model.Data
 	}
 	db.SetConnMaxLifetime(maxLifetime)
 
-	// Set connection timeout
-	timeout := time.Duration(config.Timeout) * time.Second
-	if timeout <= 0 {
-		timeout = 30 * time.Second // Default
-	}
-
-	// Note: SetConnMaxIdleTime is not available in all Go versions
-	// We'll handle it gracefully
-	db.SetConnMaxIdleTime(timeout)
+	// Close idle connections after the dedicated idle timeout (#116)
+	db.SetConnMaxIdleTime(idleConnectionTimeout(config))
 
 	return nil
 }

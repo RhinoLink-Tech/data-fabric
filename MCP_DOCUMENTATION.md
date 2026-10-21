@@ -59,7 +59,7 @@ mcp:
 
 - list_data_sources：列出数据源 ID、名称、类型、状态和连接位置摘要。
 - get_data_source_info：返回指定数据源的基本信息和连接位置摘要，不返回用户名或密码。
-- execute_sql_query：通过统一查询服务执行查询；可选 source_dialect 用于在执行前转换 SQL。
+- execute_sql_query：通过统一查询服务执行查询；可选 source_dialect 用于在执行前转换 SQL；可选 parameters 为有序绑定值数组（null/布尔/数字/字符串，最多 64 个），由驱动绑定到 `?` 或 `$1..$N` 占位符，绝不拼接进 SQL 文本，续批与计数复用同一组绑定值。注意：MCP SDK 以标准 JSON 解码参数，±2^53 之外的整数会先退化为浮点数（HTTP API 无此限制）。
 - fetch_next_batch：使用 execute_sql_query 返回的 query_id、slug 和 token 获取下一批结果。
 - validate_sql_query：对查询请求进行校验；可选 source_dialect。
 - list_tables：按数据源类型查询表名。

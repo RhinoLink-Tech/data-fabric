@@ -399,6 +399,31 @@ func TestGetConnectionRebuildsAfterPingFailure(t *testing.T) {
 	}
 }
 
+// The idle timeout is the data source's own idle_timeout, never the connect
+// timeout it also carries; before #116 the pool reused config.Timeout, so a
+// 30-second dial timeout evicted every idle connection every 30 seconds.
+func TestIdleConnectionTimeout(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *model.DataSourceConfig
+		want   time.Duration
+	}{
+		{"nil config uses the default", nil, defaultIdleTimeout},
+		{"zero falls back to the default", &model.DataSourceConfig{}, defaultIdleTimeout},
+		{"negative falls back to the default", &model.DataSourceConfig{IdleTimeout: -5}, defaultIdleTimeout},
+		{"seconds are honored", &model.DataSourceConfig{IdleTimeout: 300}, 5 * time.Minute},
+		{"distinct from the connect timeout", &model.DataSourceConfig{Timeout: 30, IdleTimeout: 600}, 10 * time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := idleConnectionTimeout(tt.config); got != tt.want {
+				t.Errorf("idleConnectionTimeout(%+v) = %s, want %s", tt.config, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConcurrentConnectionCloseIsIdempotent(t *testing.T) {
 	state := &recoveryPoolState{}
 	db := sql.OpenDB(recoveryPoolConnector{state: state, generation: 1})
