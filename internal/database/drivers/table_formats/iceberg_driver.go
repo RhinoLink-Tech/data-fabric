@@ -4,6 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
@@ -37,6 +41,7 @@ type IcebergDriver struct {
 	restClient *IcebergRESTClient
 	parser     *IcebergMetadataParser
 	config     *IcebergConfig
+	sqlConfig  *icebergSQLConfig
 }
 
 // NewIcebergDriver creates a new Iceberg driver
@@ -46,25 +51,62 @@ func NewIcebergDriver(config *IcebergConfig) (*IcebergDriver, error) {
 		return nil, err
 	}
 
+	settings := &icebergSQLConfig{
+		uri: strings.TrimRight(config.BaseURL, "/"), warehouse: config.Warehouse,
+		maxRows: icebergDefaultMaxRows,
+	}
+	if config.Auth != nil {
+		if config.Auth.Type == "bearer" {
+			settings.token = config.Auth.Credential
+		} else {
+			settings.credential = config.Auth.Credential
+		}
+	}
 	return &IcebergDriver{
 		restClient: restClient,
 		parser:     NewIcebergMetadataParser(),
 		config:     config,
+		sqlConfig:  settings,
 	}, nil
 }
 
 // Open opens a connection to Iceberg (returns error as Iceberg uses REST, not standard DB connections)
 func (d *IcebergDriver) Open(dsn string) (*sql.DB, error) {
-	// Iceberg uses REST API, not direct database connections
-	// For SQL queries, integrate with compute engines like Trino, Spark, etc.
-	return nil, fmt.Errorf("Iceberg does not support direct database connections - use a compute engine or REST client")
+	parsed, err := url.Parse(dsn)
+	if err != nil || parsed.Scheme != "iceberg" || parsed.Hostname() == "" {
+		return nil, fmt.Errorf("invalid Iceberg DSN; expected iceberg://host:port/warehouse")
+	}
+	port := 0
+	if parsed.Port() != "" {
+		port, err = strconv.Atoi(parsed.Port())
+		if err != nil {
+			return nil, fmt.Errorf("invalid Iceberg REST catalog port: %w", err)
+		}
+	}
+	config := &model.DataSourceConfig{
+		Host: parsed.Hostname(), Port: port, Database: strings.Trim(parsed.Path, "/"),
+		AdditionalProps: make(map[string]interface{}),
+	}
+	if token := parsed.Query().Get("token"); token != "" {
+		config.AdditionalProps["token"] = token
+	}
+	return d.OpenWithConfig(context.Background(), config)
 }
 
 // ValidateDSN validates the connection string
 func (d *IcebergDriver) ValidateDSN(dsn string) error {
-	// DSN format: iceberg://host:port/warehouse?auth=token
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	parsed, err := url.Parse(dsn)
+	if err != nil || parsed.Scheme != "iceberg" || parsed.Hostname() == "" {
+		return fmt.Errorf("invalid Iceberg DSN; expected iceberg://host:port/warehouse")
+	}
+	if strings.Trim(parsed.Path, "/") == "" {
+		return fmt.Errorf("Iceberg warehouse is required in the DSN path")
+	}
+	if parsed.Port() != "" {
+		port, err := strconv.Atoi(parsed.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("Iceberg REST catalog port must be between 1 and 65535")
+		}
 	}
 	return nil
 }
@@ -76,9 +118,24 @@ func (d *IcebergDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *IcebergDriver) BuildDSN(config *model.DataSourceConfig) string {
-	// For Iceberg, the "connection string" is the REST API endpoint
-	// Format: iceberg://host:port/warehouse
-	return fmt.Sprintf("iceberg://%s:%d/%s", config.Host, config.Port, config.Database)
+	if config == nil {
+		return ""
+	}
+	host := strings.TrimSpace(config.Host)
+	port := config.Port
+	if strings.Contains(host, "://") {
+		if parsed, err := url.Parse(host); err == nil {
+			host = parsed.Hostname()
+			if parsed.Port() != "" {
+				port, _ = strconv.Atoi(parsed.Port())
+			}
+		}
+	}
+	if port <= 0 {
+		port = d.GetDefaultPort()
+	}
+	warehouse := strings.Trim(config.Database, "/")
+	return fmt.Sprintf("iceberg://%s/%s", net.JoinHostPort(host, strconv.Itoa(port)), url.PathEscape(warehouse))
 }
 
 // GetDatabaseTypeName returns the database type name
@@ -93,9 +150,16 @@ func (d *IcebergDriver) TestConnection(db *sql.DB) error {
 
 // TestConnectionREST tests if the REST API is accessible
 func (d *IcebergDriver) TestConnectionREST(ctx context.Context) error {
-	// Try to list namespaces as a connectivity test
-	_, err := d.restClient.ListNamespaces(ctx)
-	return err
+	if d.sqlConfig == nil {
+		return fmt.Errorf("Iceberg REST catalog is not configured")
+	}
+	connector := &icebergSQLConnector{config: *d.sqlConfig}
+	conn, err := connector.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return conn.(*icebergSQLConn).Ping(ctx)
 }
 
 // GetDriverName returns the underlying driver name
@@ -111,10 +175,10 @@ func (d *IcebergDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *IcebergDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             true, // Via compute engine
+		SupportsSQL:             true, // Via the bounded read-only Iceberg SQL adapter
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
+		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
 		SupportsStreaming:       true,
 	}
@@ -156,10 +220,21 @@ func (d *IcebergDriver) GetTableSchema(ctx context.Context, namespace, table str
 	return parsedSchema.Tables[table], nil
 }
 
-// QueryTable executes a query (requires integration with compute engine)
+// QueryTable executes a bounded read-only SELECT against the current Iceberg snapshot.
 func (d *IcebergDriver) QueryTable(ctx context.Context, query string) (*sql.Rows, error) {
-	// This method should be implemented to execute queries using a compute engine
-	return nil, fmt.Errorf("QueryTable is not implemented for Iceberg")
+	if d.sqlConfig == nil {
+		return nil, fmt.Errorf("Iceberg REST catalog is not configured")
+	}
+	db := sql.OpenDB(&icebergSQLConnector{config: *d.sqlConfig})
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// database/sql keeps the active connection alive until Rows.Close, then the
+	// closed DB releases it instead of retaining an unowned pool.
+	_ = db.Close()
+	return rows, nil
 }
 
 // GetSnapshotAtTime retrieves snapshot ID for a specific timestamp
@@ -175,17 +250,4 @@ func (d *IcebergDriver) GetSnapshotAtTime(ctx context.Context, namespace, table 
 // GetSnapshotInfo retrieves detailed information about a snapshot
 func (d *IcebergDriver) GetSnapshotInfo(ctx context.Context, namespace, table string, snapshotID int64) (*IcebergSnapshot, error) {
 	return d.restClient.GetTableSnapshot(ctx, namespace, table, fmt.Sprintf("%d", snapshotID))
-}
-
-// ApplyBatchPagination applies pagination to a SQL query
-func (d *IcebergDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// Iceberg doesn't support direct pagination via SQL, but we can implement it using LIMIT and OFFSET
-	// when integrated with compute engines like Trino, Spark, etc.
-	if batchSize <= 0 {
-		batchSize = 1000 // Default batch size
-	}
-
-	// For Iceberg, we append LIMIT and OFFSET to the query
-	// Note: This assumes the query doesn't already have LIMIT clause
-	return fmt.Sprintf("%s LIMIT %d OFFSET %d", sql, batchSize, offset), nil
 }

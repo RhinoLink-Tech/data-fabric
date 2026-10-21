@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -139,11 +140,27 @@ func (c *IcebergRESTClient) LoadTable(ctx context.Context, namespace, table stri
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
 	}
 
-	var metadata IcebergTableMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+	var response map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-
+	payload, ok := response["metadata"]
+	if !ok {
+		// Some compatible catalogs return bare metadata instead of the standard
+		// Iceberg REST LoadTableResponse envelope.
+		var err error
+		payload, err = json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+	if len(payload) == 0 || string(payload) == "null" {
+		return nil, fmt.Errorf("Iceberg REST LoadTableResponse did not include table metadata")
+	}
+	var metadata IcebergTableMetadata
+	if err := json.Unmarshal(payload, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to decode table metadata: %w", err)
+	}
 	return &metadata, nil
 }
 
@@ -165,31 +182,20 @@ func (c *IcebergRESTClient) QueryTable(ctx context.Context, namespace, table, sq
 
 // GetTableSnapshot retrieves a specific snapshot for time travel
 func (c *IcebergRESTClient) GetTableSnapshot(ctx context.Context, namespace, table, snapshotID string) (*IcebergSnapshot, error) {
-	url := fmt.Sprintf("%s/v1/namespaces/%s/tables/%s/snapshots/%s", c.baseURL, namespace, table, snapshotID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	metadata, err := c.LoadTable(ctx, namespace, table)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
-
-	c.setAuthHeader(req)
-
-	resp, err := c.httpClient.Do(req)
+	requestedID, err := strconv.ParseInt(snapshotID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("invalid Iceberg snapshot ID %q: %w", snapshotID, err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	for i := range metadata.Snapshots {
+		if metadata.Snapshots[i].SnapshotID == requestedID {
+			return &metadata.Snapshots[i], nil
+		}
 	}
-
-	var snapshot IcebergSnapshot
-	if err := json.NewDecoder(resp.Body).Decode(&snapshot); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &snapshot, nil
+	return nil, fmt.Errorf("Iceberg snapshot %d was not found in table %s.%s", requestedID, namespace, table)
 }
 
 // CreateView creates a view in the catalog
@@ -290,14 +296,74 @@ type IcebergTableIdentifier struct {
 // IcebergTableMetadata represents table metadata
 type IcebergTableMetadata struct {
 	Format          string                  `json:"format"`
+	FormatVersion   int                     `json:"format-version,omitempty"`
 	Schema          IcebergSchema           `json:"schema"`
+	Schemas         []IcebergSchema         `json:"-"`
 	PartitionSpec   []IcebergPartitionField `json:"partition-spec"`
+	PartitionSpecs  []IcebergPartitionSpec  `json:"-"`
 	SpecID          int                     `json:"spec-id"`
+	DefaultSpecID   int                     `json:"-"`
 	Snapshots       []IcebergSnapshot       `json:"snapshots"`
 	CurrentSchemaID int                     `json:"current-schema-id"`
 	Properties      map[string]string       `json:"properties,omitempty"`
 	SnapshotLog     []IcebergSnapshotLog    `json:"snapshot-log"`
 	MetadataLog     []IcebergMetadataLog    `json:"metadata-log"`
+}
+
+// UnmarshalJSON accepts standard Iceberg table metadata and the legacy flat
+// shape used by older catalog integrations.
+func (m *IcebergTableMetadata) UnmarshalJSON(data []byte) error {
+	type metadataAlias IcebergTableMetadata
+	var decoded metadataAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var standard struct {
+		FormatVersion  int                    `json:"format-version"`
+		Schemas        []IcebergSchema        `json:"schemas"`
+		DefaultSpecID  int                    `json:"default-spec-id"`
+		PartitionSpecs []IcebergPartitionSpec `json:"partition-specs"`
+	}
+	if err := json.Unmarshal(data, &standard); err != nil {
+		return err
+	}
+	*m = IcebergTableMetadata(decoded)
+	m.FormatVersion = standard.FormatVersion
+	m.Schemas = standard.Schemas
+	m.PartitionSpecs = standard.PartitionSpecs
+	m.DefaultSpecID = standard.DefaultSpecID
+
+	if len(m.Schemas) != 0 {
+		found := false
+		for _, schema := range m.Schemas {
+			if schema.SchemaID == m.CurrentSchemaID {
+				m.Schema = schema
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Iceberg metadata current schema ID %d was not found", m.CurrentSchemaID)
+		}
+	}
+	if len(m.PartitionSpecs) != 0 {
+		found := false
+		for _, spec := range m.PartitionSpecs {
+			if spec.SpecID == m.DefaultSpecID {
+				m.SpecID = spec.SpecID
+				m.PartitionSpec = spec.Fields
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Iceberg metadata default partition spec ID %d was not found", m.DefaultSpecID)
+		}
+	}
+	if m.Format == "" && m.FormatVersion > 0 {
+		m.Format = fmt.Sprintf("iceberg-v%d", m.FormatVersion)
+	}
+	return nil
 }
 
 // IcebergSchema represents table schema
@@ -322,17 +388,26 @@ type IcebergType interface{}
 // IcebergPartitionField represents a partition field
 type IcebergPartitionField struct {
 	SourceID  int    `json:"source-id"`
+	FieldID   int    `json:"field-id,omitempty"`
 	Name      string `json:"name"`
 	Transform string `json:"transform"`
+}
+
+// IcebergPartitionSpec is a versioned partition definition in table metadata.
+type IcebergPartitionSpec struct {
+	SpecID int                     `json:"spec-id"`
+	Fields []IcebergPartitionField `json:"fields"`
 }
 
 // IcebergSnapshot represents a table snapshot
 type IcebergSnapshot struct {
 	SnapshotID       int64                  `json:"snapshot-id"`
 	SchemaID         int                    `json:"schema-id"`
+	SequenceNumber   int64                  `json:"sequence-number,omitempty"`
 	ParentSnapshotID *int64                 `json:"parent-snapshot-id,omitempty"`
 	TimestampMs      int64                  `json:"timestamp-ms"`
 	Summary          IcebergSnapshotSummary `json:"summary"`
+	ManifestList     string                 `json:"manifest-list,omitempty"`
 	Manifests        []string               `json:"manifests,omitempty"`
 }
 

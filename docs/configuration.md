@@ -200,6 +200,42 @@ concurrency, and size limits. Request cancellation and timeout terminate the
 translation subprocess. The subprocess receives only PATH, PYTHONPATH, PYTHONUNBUFFERED, and
 PYTHONNOUSERSITE; application secrets are not copied into its environment.
 
+## Iceberg REST table source
+
+The Iceberg connector uses the Iceberg REST catalog to load the current table
+snapshot and reads the referenced data files in the gateway. It is registered
+as experimental until a live, versioned catalog and storage contract test is
+recorded. Check [the support catalog](data-source-support.md) before relying on
+it in production.
+
+Configure a data source with these fields:
+
+| Data-source field | Iceberg meaning |
+| --- | --- |
+| `host` and `port` | REST catalog host and port; the default port is `8181`. |
+| `ssl` | Selects HTTPS when `host` is a hostname. |
+| `database` | REST warehouse identifier; `additionalProps.warehouse` overrides it. |
+| `schema` | Default namespace for unqualified table names; `additionalProps.namespace` overrides it. |
+| `username` and `password` | OAuth client ID and secret, sent as the REST credential when no explicit credential is configured. |
+
+`additionalProps` accepts `catalog_uri` to override the full HTTP(S) catalog
+URL, `token` for a static bearer token, `credential` for the REST OAuth
+credential, and `oauth2-server-uri` for a custom token endpoint. A configured
+`token` takes precedence over `credential`; otherwise `username:password` is
+used when both are present. Storage settings with `s3.*` and REST client
+settings with `rest.*` are forwarded to the Iceberg client. Keep tokens,
+credentials, and cloud secrets in the normal encrypted data-source credential
+flow.
+
+`additionalProps.max_rows` sets the maximum rows returned by one SQL scan. It
+defaults to `10000` and must be between `1` and `100000`. Queries must include
+`LIMIT` so scans remain bounded; `OFFSET + LIMIT` cannot exceed `100000`. The
+read-only SQL subset accepts one table, column projections, `AND`-combined
+scalar comparisons and `IS NULL` checks, `LIMIT`/`OFFSET`, and `COUNT(*)`.
+Joins, `OR`, `ORDER BY`, grouping, other aggregates, and writes are rejected
+with an explicit error. `COUNT(*)` streams rows and may scan the full filtered
+table when there is no inner limit.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.
