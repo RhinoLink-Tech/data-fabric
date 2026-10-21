@@ -107,9 +107,14 @@ func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
 			return
 		}
 
-		// Add rate limit headers
-		c.Header("X-RateLimit-Limit", string(rune(rl.config.RPM)))
-		c.Header("X-RateLimit-Remaining", string(rune(client.limiter.Tokens())))
+		// Add rate limit headers. Decimal strings only: rune-casting the
+		// numbers emitted control characters (#101).
+		remaining := int(client.limiter.Tokens())
+		if remaining < 0 {
+			remaining = 0
+		}
+		c.Header("X-RateLimit-Limit", strconv.Itoa(rl.config.RPM))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
 
 		c.Next()
 	}
@@ -169,7 +174,7 @@ func (rl *RateLimiter) rateLimitExceeded(c *gin.Context) {
 	c.JSON(http.StatusTooManyRequests, response.ErrorResponse(
 		"RATE_LIMIT_EXCEEDED",
 		"Rate limit exceeded. Please try again later.",
-		"Maximum "+string(rune(rl.config.RPM))+" requests per minute allowed",
+		"Maximum "+strconv.Itoa(rl.config.RPM)+" requests per minute allowed",
 		rl.getCorrelationID(c),
 	))
 	c.Abort()
