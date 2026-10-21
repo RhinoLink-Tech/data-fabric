@@ -13,6 +13,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 
@@ -37,6 +38,7 @@ type QuerySession struct {
 	CreatorID    string
 	DataSourceID string
 	SQL          string
+	Tables       []sqlanalysis.TableReference
 	// Parameters are the ordered bind values the statement was executed
 	// with (#21). They live in memory only and are re-bound for every
 	// continuation batch and count, exactly as the first batch bound them.
@@ -69,6 +71,7 @@ type queryService struct {
 	sessionManager  *SessionManager
 	preferStreaming bool
 	sqlTranslator   *sql_translator.SQLTranslationManager // Added SQL translator
+	tableAuthorizer *security.TableAuthorizer
 }
 
 type queryStats struct {
@@ -83,6 +86,12 @@ type queryStats struct {
 
 // NewQueryService creates a new instance of QueryService
 func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, translators ...*sql_translator.SQLTranslationManager) QueryService {
+	return NewQueryServiceWithTableAuthorizer(datasourceRepo, connPool, preferStreaming, nil, translators...)
+}
+
+// NewQueryServiceWithTableAuthorizer creates a query service with optional
+// per-table authorization. Existing callers retain the legacy constructor.
+func NewQueryServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, translators ...*sql_translator.SQLTranslationManager) QueryService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -100,6 +109,7 @@ func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *d
 		sessionManager:  NewSessionManager(),
 		preferStreaming: preferStreaming,
 		sqlTranslator:   translator,
+		tableAuthorizer: authorizer,
 	}
 }
 
@@ -154,12 +164,30 @@ func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Call
 		sqlToValidate = translatedSQL
 	}
 
-	// Validate SQL with data source-specific syntax checking
-	if err := qs.sqlValidator.ValidateDataSourceSyntaxContext(ctx, sqlToValidate, dataSource.Type); err != nil {
-		return err
-	}
+	// The same parsed table set is checked for both REST validation and query
+	// execution, so callers cannot validate a table they cannot read.
+	_, err = qs.validateAndAuthorizeSQL(ctx, caller, dataSource, sqlToValidate, security.TablePermissionRead)
+	return err
+}
 
-	return nil
+// validateAndAuthorizeSQL validates a query and, when enabled, authorizes every
+// AST-resolved physical table. It fails closed if table policies cannot be
+// checked by the dialect-aware analyzer.
+func (qs *queryService) validateAndAuthorizeSQL(ctx context.Context, caller *security.Caller, dataSource *model.DataSource, query string, permission security.TablePermission) ([]sqlanalysis.TableReference, error) {
+	if qs.tableAuthorizer == nil || !qs.tableAuthorizer.Enabled() {
+		return nil, qs.sqlValidator.ValidateDataSourceSyntaxContext(ctx, query, dataSource.Type)
+	}
+	if !qs.sqlValidator.SupportsASTAnalysis() {
+		return nil, security.ErrTableAuthorizationUnavailable
+	}
+	analysis, err := qs.sqlValidator.AnalyzeStatementForDataSourceContext(ctx, query, dataSource.Type)
+	if err != nil {
+		return nil, err
+	}
+	if err := qs.tableAuthorizer.AuthorizeAnalysis(ctx, caller, dataSource, analysis, permission); err != nil {
+		return nil, err
+	}
+	return analysis.Tables, nil
 }
 
 // translateSQLIfNeeded translates SQL if a source dialect is specified and differs from target
@@ -450,7 +478,8 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 
 	// Validate after dialect conversion so valid source-dialect SQL is not rejected
 	// by the validator before it is converted to the target dialect.
-	if err := qs.sqlValidator.ValidateStatementForDataSourceContext(ctx, sqlToExecute, datasource.Type); err != nil {
+	tables, err := qs.validateAndAuthorizeSQL(ctx, caller, datasource, sqlToExecute, security.TablePermissionRead)
+	if err != nil {
 		return nil, fmt.Errorf("SQL validation failed: %w", err)
 	}
 
@@ -468,6 +497,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		CreatorID:    caller.Key(),
 		DataSourceID: req.DataSourceID,
 		SQL:          sqlToExecute,
+		Tables:       tables,
 		Parameters:   parameters,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
@@ -560,6 +590,11 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	}
 	if err := requireActiveDataSource(datasource); err != nil {
 		return nil, err
+	}
+	if qs.tableAuthorizer != nil && qs.tableAuthorizer.Enabled() {
+		if err := qs.tableAuthorizer.AuthorizeReferences(ctx, caller, datasource, session.Tables, security.TablePermissionRead); err != nil {
+			return nil, err
+		}
 	}
 
 	conn, err := qs.connPool.GetConnection(ctx, datasource)

@@ -13,7 +13,9 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	queryservice "github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
@@ -24,11 +26,21 @@ type TableDescriber interface {
 	ExtractTableSchema(ctx context.Context, dataSourceID, tableName string) (*metadata.TableSchema, error)
 }
 
+// TableLister exposes schema/table identities for policy-filtered discovery.
+type TableLister interface {
+	ListTables(ctx context.Context, dataSourceID string) ([]metadata.TableIdentity, error)
+}
+
+type SchemaQualifiedTableDescriber interface {
+	ExtractTableSchemaInSchema(ctx context.Context, dataSourceID, schemaName, tableName string) (*metadata.TableSchema, error)
+}
+
 // MCPServer represents the MCP server that exposes Data Fabric functionality
 type MCPServer struct {
 	unifiedQueryService unifiedservice.UnifiedQueryService
 	datasourceRepo      repository.DataSourceRepository
 	tableDescriber      TableDescriber
+	tableAuthorizer     *security.TableAuthorizer
 	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
 	server              *server.MCPServer
 }
@@ -37,6 +49,12 @@ type MCPServer struct {
 // out the describe_table tool; callers without metadata extraction keep the
 // rest of the tool set.
 func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository, tableDescriber TableDescriber, translators ...*sql_translator.SQLTranslationManager) *MCPServer {
+	return NewMCPServerWithTableAuthorizer(unifiedQueryService, datasourceRepo, tableDescriber, nil, translators...)
+}
+
+// NewMCPServerWithTableAuthorizer applies the same table policy to MCP
+// metadata tools as the REST/query services.
+func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQueryService, datasourceRepo repository.DataSourceRepository, tableDescriber TableDescriber, authorizer *security.TableAuthorizer, translators ...*sql_translator.SQLTranslationManager) *MCPServer {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -50,6 +68,7 @@ func NewMCPServer(unifiedQueryService unifiedservice.UnifiedQueryService, dataso
 		unifiedQueryService: unifiedQueryService,
 		datasourceRepo:      datasourceRepo,
 		tableDescriber:      tableDescriber,
+		tableAuthorizer:     authorizer,
 		sqlTranslator:       translator,
 		server:              s,
 	}
@@ -120,9 +139,10 @@ func (m *MCPServer) registerTools() {
 	// column names and types before executing).
 	if m.tableDescriber != nil {
 		describeTableTool := mcp.NewTool("describe_table",
-			mcp.WithDescription("Get the schema of one table in a data source: column names, database types, nullability, primary key, and indexes. Use list_tables to enumerate tables first, then describe_table to inspect one table before writing SQL"),
+			mcp.WithDescription("Get one table's schema: columns, types, nullability, primary key, and indexes. Use list_tables first; pass schema when table names repeat across schemas."),
 			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source holding the table")),
-			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")))
+			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")),
+			mcp.WithString("schema", mcp.Description("Optional schema name when the data source contains tables with the same name in multiple schemas")))
 		m.server.AddTool(describeTableTool, m.handleDescribeTable)
 	}
 
@@ -375,6 +395,10 @@ func (m *MCPServer) handleValidateSQLQuery(ctx context.Context, request mcp.Call
 	}, nil
 }
 
+func isPrestoFamily(databaseType model.DatabaseType) bool {
+	return databaseType == model.DatabaseTypeTrino || databaseType == model.DatabaseTypePresto || databaseType == model.DatabaseTypeOpenLooKeng
+}
+
 // handleListTables handles the list_tables tool call
 func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Extract parameters from the request
@@ -385,6 +409,70 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	caller := callerFromContext(ctx)
 	if err != nil || !caller.CanRead(dataSource) {
 		return mcp.NewToolResultError("data source not found or access denied"), nil
+	}
+	if dataSource.Status != model.DataSourceStatusActive {
+		return mcp.NewToolResultError("data source is not active"), nil
+	}
+	if m.tableAuthorizer != nil && m.tableAuthorizer.Enabled() {
+		lister, ok := m.tableDescriber.(TableLister)
+		if !ok {
+			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
+		}
+		identities, err := lister.ListTables(ctx, datasourceID)
+		if err != nil {
+			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
+		}
+		references := make([]sqlanalysis.TableReference, 0, len(identities))
+		for _, identity := range identities {
+			if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
+				identity.Catalog = dataSource.Config.Database
+			}
+			references = append(references, sqlanalysis.TableReference{
+				Catalog: identity.Catalog, Schema: identity.Schema, Table: identity.Name, Unqualified: identity.Schema == "",
+			})
+		}
+		allowed, err := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, references, security.TablePermissionMetadata)
+		if err != nil {
+			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
+		}
+		allowedKeys := make(map[string]struct{}, len(allowed))
+		for _, reference := range allowed {
+			allowedKeys[reference.Catalog+"\x00"+reference.Schema+"\x00"+reference.Table] = struct{}{}
+		}
+		visible := make([]metadata.TableIdentity, 0, len(allowed))
+		for _, identity := range identities {
+			if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
+				identity.Catalog = dataSource.Config.Database
+			}
+			schemaName := identity.Schema
+			if schemaName == "" {
+				schemaName = dataSource.Config.Schema
+				if schemaName == "" {
+					switch dataSource.Type {
+					case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB, model.DatabaseTypeOceanBaseMySQL, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+						schemaName = dataSource.Config.Database
+					}
+				}
+			}
+			if _, ok := allowedKeys[identity.Catalog+"\x00"+schemaName+"\x00"+identity.Name]; ok {
+				visible = append(visible, identity)
+			}
+		}
+		entries := make([]*[]interface{}, 0, len(visible))
+		for _, identity := range visible {
+			row := []interface{}{identity.Name}
+			entries = append(entries, &row)
+		}
+		response := &model.FetchQueryResponse{
+			Columns:    []model.ColumnInfo{{Name: "table_name", Type: model.TypeString}},
+			Entries:    entries,
+			TotalCount: len(visible),
+		}
+		jsonResp, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response: %w", err)
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent(string(jsonResp))}}, nil
 	}
 
 	// For now, we'll execute a query to list tables based on the database type
@@ -439,6 +527,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	datasourceID := mcp.ParseString(request, "datasource_id", "")
 	tableName := mcp.ParseString(request, "table_name", "")
+	requestedSchema := mcp.ParseString(request, "schema", "")
 
 	if m.tableDescriber == nil {
 		return mcp.NewToolResultError("table metadata is not available on this server"), nil
@@ -461,7 +550,23 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("data source %s is not active", datasourceID)), nil
 	}
 
-	table, err := m.tableDescriber.ExtractTableSchema(ctx, datasourceID, tableName)
+	var table *metadata.TableSchema
+	if m.tableAuthorizer != nil && m.tableAuthorizer.Enabled() {
+		reference := sqlanalysis.TableReference{Schema: requestedSchema, Table: tableName, Unqualified: requestedSchema == ""}
+		references, authErr := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, []sqlanalysis.TableReference{reference}, security.TablePermissionMetadata)
+		if authErr != nil || len(references) != 1 {
+			return mcp.NewToolResultError("table not found or access denied"), nil
+		}
+		if qualified, ok := m.tableDescriber.(SchemaQualifiedTableDescriber); ok {
+			table, err = qualified.ExtractTableSchemaInSchema(ctx, datasourceID, references[0].Schema, tableName)
+		} else if references[0].Schema == "" {
+			table, err = m.tableDescriber.ExtractTableSchema(ctx, datasourceID, tableName)
+		} else {
+			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
+		}
+	} else {
+		table, err = m.tableDescriber.ExtractTableSchema(ctx, datasourceID, tableName)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, metadata.ErrSchemaDiscoveryUnsupported):

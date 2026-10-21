@@ -20,6 +20,7 @@ func TestQueryFailureStatusAndCodeAreStable(t *testing.T) {
 		{name: "timeout", err: context.DeadlineExceeded, wantStatus: 504, wantCode: "QUERY_TIMEOUT"},
 		{name: "invalid select", err: security.ErrNotSelectQuery, wantStatus: 400, wantCode: "INVALID_QUERY"},
 		{name: "syntax error", err: security.ErrSQLSyntaxError, wantStatus: 400, wantCode: "INVALID_QUERY"},
+		{name: "table access denied", err: security.ErrTableAccessDenied, wantStatus: 403, wantCode: "TABLE_ACCESS_DENIED"},
 		{name: "dangerous statement", err: security.ErrDangerousKeyword, wantStatus: 400, wantCode: "INVALID_QUERY"},
 		{name: "unavailable session", err: service.ErrQuerySessionUnavailable, wantStatus: 404, wantCode: "QUERY_SESSION_UNAVAILABLE"},
 		{name: "inactive data source", err: fmt.Errorf("wrapped: %w", service.ErrDataSourceInactive), wantStatus: 409, wantCode: "DATASOURCE_INACTIVE"},

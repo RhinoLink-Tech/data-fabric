@@ -49,6 +49,10 @@ func SafeQueryErrorMessage(err error) string {
 		return "The selected data source was not found."
 	case errors.Is(err, security.ErrDataSourceAccessDenied):
 		return "You do not have access to this data source"
+	case errors.Is(err, security.ErrTableAccessDenied):
+		return "You do not have permission to access one or more tables"
+	case errors.Is(err, security.ErrTableAuthorizationUnavailable):
+		return "Table authorization is enabled but SQL analysis is unavailable"
 	case errors.Is(err, ErrDataSourceInactive):
 		return "The selected data source is not active. Ask an administrator to re-enable it, then retry the query."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):

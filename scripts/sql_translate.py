@@ -5,6 +5,7 @@ import sys
 import json
 import sqlglot
 from sqlglot import exp, transpile
+from sqlglot.optimizer.scope import Scope, traverse_scope
 
 def translate_sql(sql, source_dialect, target_dialect):
     """
@@ -45,6 +46,8 @@ def analyze_sql(sql, dialect):
             "has_select_into": False,
             "has_locking": False,
             "functions": [],
+            "tables": [],
+            "unresolved_tables": False,
         }
         if root is None:
             return result
@@ -74,6 +77,33 @@ def analyze_sql(sql, dialect):
                     functions.add(str(name).upper())
 
         result["functions"] = sorted(functions)
+        tables = set()
+        unresolved_tables = False
+        for scope in traverse_scope(root):
+            for _, (node, source) in scope.selected_sources.items():
+                if isinstance(source, Scope):
+                    # CTEs and derived tables are resolved by their own scope,
+                    # but table-valued functions such as UNNEST remain unsafe.
+                    if isinstance(node, (exp.Func, exp.Unnest)):
+                        unresolved_tables = True
+                    continue
+                if not isinstance(source, exp.Table):
+                    # Table functions and parser-specific sources are not safe
+                    # to authorize from a table identifier alone.
+                    unresolved_tables = True
+                    continue
+                if not isinstance(source.this, exp.Identifier) or not source.name:
+                    unresolved_tables = True
+                    continue
+                catalog = source.catalog or ""
+                schema = source.db or ""
+                tables.add((catalog, schema, source.name, not catalog and not schema))
+
+        result["tables"] = [
+            {"catalog": catalog, "schema": schema, "table": table, "unqualified": unqualified}
+            for catalog, schema, table, unqualified in sorted(tables)
+        ]
+        result["unresolved_tables"] = unresolved_tables
         return result
     except Exception as e:
         return {"error": f"ERROR: {str(e)}"}

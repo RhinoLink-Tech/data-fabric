@@ -63,6 +63,12 @@ func (sv *SQLValidator) SetASTAnalyzer(analyzer SQLASTAnalyzer) {
 	sv.astAnalyzer = analyzer
 }
 
+// SupportsASTAnalysis reports whether this validator can return table
+// references from a dialect-aware parser.
+func (sv *SQLValidator) SupportsASTAnalysis() bool {
+	return sv != nil && sv.astAnalyzer != nil
+}
+
 // ValidateStatementForDataSourceContext validates one read-only query using the
 // target source dialect and respects request cancellation and parser timeouts.
 func (sv *SQLValidator) ValidateStatementForDataSourceContext(ctx context.Context, sql string, dbType model.DatabaseType) error {
@@ -73,29 +79,39 @@ func (sv *SQLValidator) ValidateStatementForDataSourceContext(ctx context.Contex
 }
 
 func (sv *SQLValidator) validateStatementWithAST(ctx context.Context, sql string, dbType model.DatabaseType) error {
+	_, err := sv.AnalyzeStatementForDataSourceContext(ctx, sql, dbType)
+	return err
+}
+
+// AnalyzeStatementForDataSourceContext validates a read-only statement and
+// returns the same dialect-aware AST facts used for table authorization.
+func (sv *SQLValidator) AnalyzeStatementForDataSourceContext(ctx context.Context, sql string, dbType model.DatabaseType) (sqlanalysis.Analysis, error) {
+	if sv.astAnalyzer == nil {
+		return sqlanalysis.Analysis{}, ErrUnsupportedSQLDialect
+	}
 	if err := sv.basicValidation(sql); err != nil {
-		return err
+		return sqlanalysis.Analysis{}, err
 	}
 	dialect, ok := SQLDialectForDataSource(dbType)
 	if !ok {
-		return ErrUnsupportedSQLDialect
+		return sqlanalysis.Analysis{}, ErrUnsupportedSQLDialect
 	}
 
 	analysis, err := sv.astAnalyzer.AnalyzeSQLContext(ctx, sv.normalizeSQL(sql), dialect)
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return sqlanalysis.Analysis{}, ctx.Err()
 		}
-		return ErrSQLSyntaxError
+		return sqlanalysis.Analysis{}, ErrSQLSyntaxError
 	}
 	if analysis.StatementCount != 1 {
-		return ErrSQLSyntaxError
+		return sqlanalysis.Analysis{}, ErrSQLSyntaxError
 	}
 	if !analysis.IsQuery || analysis.HasMutation {
-		return ErrNotSelectQuery
+		return sqlanalysis.Analysis{}, ErrNotSelectQuery
 	}
 	if analysis.HasSelectInto || analysis.HasLocking {
-		return ErrDangerousKeyword
+		return sqlanalysis.Analysis{}, ErrDangerousKeyword
 	}
 
 	dangerousFunctions := map[string]struct{}{
@@ -111,10 +127,10 @@ func (sv *SQLValidator) validateStatementWithAST(ctx context.Context, sql string
 	}
 	for _, function := range analysis.Functions {
 		if _, denied := dangerousFunctions[strings.ToUpper(function)]; denied {
-			return ErrDangerousKeyword
+			return sqlanalysis.Analysis{}, ErrDangerousKeyword
 		}
 	}
-	return nil
+	return analysis, nil
 }
 
 // SQLDialectForDataSource maps connector types to the SQLGlot grammar used for

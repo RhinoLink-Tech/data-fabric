@@ -30,6 +30,15 @@ type DataSourceSchema struct {
 }
 
 // TableSchema represents the schema of a single table
+// TableIdentity is the minimum metadata needed to authorize a table name
+// before returning it from a discovery API.
+type TableIdentity struct {
+	Catalog string `json:"catalog,omitempty"`
+	Name    string `json:"name"`
+	Schema  string `json:"schema,omitempty"`
+	Type    string `json:"type,omitempty"`
+}
+
 type TableSchema struct {
 	Name        string                 `json:"name"`
 	Schema      string                 `json:"schema,omitempty"` // Database/schema name
