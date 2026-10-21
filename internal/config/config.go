@@ -153,6 +153,7 @@ func setDefaults() {
 	viper.SetDefault("mcp.enabled", false)
 	viper.SetDefault("mcp.transport", "stdio")
 	viper.SetDefault("mcp.address", "127.0.0.1:8081")
+	viper.SetDefault("mcp.max_concurrent_requests", 64)
 	viper.SetDefault("mcp.tls_cert_file", "")
 	viper.SetDefault("mcp.tls_key_file", "")
 }
@@ -169,11 +170,14 @@ type SQLTranslationConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled                 bool          `mapstructure:"enabled"`
-	Transport               string        `mapstructure:"transport"`
-	Address                 string        `mapstructure:"address"`
-	TLSCertFile             string        `mapstructure:"tls_cert_file"`
-	TLSKeyFile              string        `mapstructure:"tls_key_file"`
+	Enabled     bool   `mapstructure:"enabled"`
+	Transport   string `mapstructure:"transport"`
+	Address     string `mapstructure:"address"`
+	TLSCertFile string `mapstructure:"tls_cert_file"`
+	TLSKeyFile  string `mapstructure:"tls_key_file"`
+	// MaxConcurrentRequests caps in-flight requests on the remote MCP
+	// entrance; 0 falls back to the code default.
+	MaxConcurrentRequests   int           `mapstructure:"max_concurrent_requests"`
 	AuthMode                string        `mapstructure:"auth_mode"`
 	OIDCIssuer              string        `mapstructure:"oidc_issuer"`
 	OIDCAudience            string        `mapstructure:"oidc_audience"`

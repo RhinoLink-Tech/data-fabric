@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"encoding/json"
+	"math"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -65,22 +69,38 @@ func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
 	return rl
 }
 
+// Allow reports whether one request from clientID fits the configured rate.
+// The client's bucket is created on first use and touched on every call. It
+// is the shared core behind both the gin middleware and the net/http
+// adapter, so every entrance enforces identical budgets.
+func (rl *RateLimiter) Allow(clientID string) bool {
+	return rl.getOrCreateClient(clientID).limiter.Allow()
+}
+
+// getOrCreateClient returns the client's bucket, creating it on first use
+// and refreshing lastSeen for the cleanup sweep.
+func (rl *RateLimiter) getOrCreateClient(clientID string) *ClientLimiter {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
+	client, exists := rl.clients[clientID]
+	if !exists {
+		client = &ClientLimiter{
+			limiter:  rate.NewLimiter(rate.Every(time.Minute/time.Duration(rl.config.RPM)), rl.config.Burst),
+			lastSeen: time.Now(),
+		}
+		rl.clients[clientID] = client
+	}
+	client.lastSeen = time.Now()
+
+	return client
+}
+
 // RateLimit creates a rate limiting middleware
 func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		clientID := rl.getClientID(c)
-
-		rl.mutex.Lock()
-		if _, exists := rl.clients[clientID]; !exists {
-			rl.clients[clientID] = &ClientLimiter{
-				limiter:  rate.NewLimiter(rate.Every(time.Minute/time.Duration(rl.config.RPM)), rl.config.Burst),
-				lastSeen: time.Now(),
-			}
-		}
-
-		client := rl.clients[clientID]
-		client.lastSeen = time.Now()
-		rl.mutex.Unlock()
+		client := rl.getOrCreateClient(clientID)
 
 		if !client.limiter.Allow() {
 			rl.rateLimitExceeded(c)
@@ -93,6 +113,36 @@ func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// RateLimitHTTP wraps a raw net/http handler with the same per-client token
+// buckets as the gin middleware. Entrances without an authenticated identity
+// before their token check (remote MCP) are keyed by the transport peer
+// address, mirroring the gin fallback.
+func (rl *RateLimiter) RateLimitHTTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.RemoteAddr
+		if splitHost, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			host = splitHost
+		}
+		if !rl.Allow("ip:" + host) {
+			// One bucket refills every 60/RPM seconds; ask the client to
+			// wait at least that long.
+			retryAfter := time.Duration(math.Ceil(float64(time.Minute)/float64(rl.config.RPM))) / time.Second
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter)))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "rate_limit_exceeded",
+				"message": "Rate limit exceeded. Please try again later.",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // getClientID extracts a client identifier for rate limiting.

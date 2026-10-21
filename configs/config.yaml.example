@@ -62,6 +62,9 @@ mcp:
   enabled: false
   transport: "stdio" # stdio or streamable-http
   address: "127.0.0.1:8081"
+  # Streamable-HTTP entrance budgets: in-flight request cap and request body
+  # size (body falls back to server.max_request_body_bytes when unset).
+  max_concurrent_requests: 64
   tls_cert_file: "" # configure with tls_key_file for direct HTTPS
   tls_key_file: ""
   auth_mode: "local-jwt" # local-jwt for development; oidc for protected remote MCP
