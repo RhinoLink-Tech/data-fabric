@@ -22,13 +22,13 @@ the stack runs one container per mode against the shared metadata database:
 MCP client ──HTTPS + IdP access token──▶ data-fabric-mcp :8081 (MCP, direct TLS)
 operator  ──HTTP, loopback────────▶ data-fabric-api :8080 (mgmt API)
                                        ├──▶ metadata-db   (MySQL, internal)
-                                       └──▶ sample-source (MySQL, internal)
+                                       └──▶ sample-source (MySQL or PostgreSQL, internal)
 ```
 
 | Service | Purpose |
 | --- | --- |
 | `metadata-db` | Stores the configured data sources; schema is migrated automatically at startup. Not published. |
-| `sample-source` | MySQL with a read-only user and three seeded `orders` rows for the first query. Not published. |
+| `sample-source` | MySQL by default, or PostgreSQL via [`docker-compose.postgres.yml`](../deploy/mcp/docker-compose.postgres.yml): a read-only user and three seeded `orders` rows for the first query. Not published. |
 | `data-fabric-api` | The gateway's HTTP management API on loopback: registration, health, readiness. |
 | `data-fabric-mcp` | The gateway's remote MCP endpoint: Streamable HTTP with direct TLS. Starts after `data-fabric-api` is healthy so schema initialization is serialized. |
 
@@ -200,6 +200,48 @@ The query returns the seeded rows. Write statements (`INSERT`, `UPDATE`,
 `DROP`, …) are rejected twice over: by the gateway's read-only validation and
 by the read-only session opened against MySQL — the sample source's user also
 holds only `SELECT` privileges.
+
+## PostgreSQL sample source variant
+
+The quickstart seeds MySQL by default. To try the stack against PostgreSQL
+instead, apply the override file when bringing the stack up (Compose 2.24+
+for the `!override` tags; the metadata database stays MySQL, only the
+queryable sample source changes flavor):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+```
+
+The variant reuses the same `.env` secrets and keeps its data in a separate
+named volume, so switching back to the MySQL variant later preserves both
+data sets. The container's `postgres` superuser initializes the database;
+`sample-source-init-postgres.sh` creates the same read-only `sample_reader`
+account and `orders` rows.
+
+Register it with the PostgreSQL connection parameters — note `type` and
+`port` differ from step 6:
+
+```bash
+curl -s http://127.0.0.1:8080/api/v1/datasources \
+  -H "Authorization: Bearer $AGENT_JWT" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"sample-postgres\",
+    \"type\": \"postgresql\",
+    \"config\": {
+      \"host\": \"sample-source\",
+      \"port\": 5432,
+      \"database\": \"sample\",
+      \"username\": \"sample_reader\",
+      \"password\": \"$SAMPLE_READER_PASSWORD\"
+    }
+  }"
+```
+
+Write statements are rejected twice over, exactly as with MySQL: by the
+gateway's read-only validation and by the read-only session opened against
+PostgreSQL (`default_transaction_read_only=on` on every connection) — the
+sample source's role also holds only `SELECT` privileges.
 
 ## Client configuration
 
