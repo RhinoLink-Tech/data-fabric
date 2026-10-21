@@ -69,5 +69,5 @@ func TestCloseGatewayResourcesReleasesMetadataDB(t *testing.T) {
 // existed still unwind through the same defer.
 func TestCloseGatewayResourcesToleratesNilHandles(t *testing.T) {
 	closeGatewayResources(nil, nil)
-	closeGatewayResources(nil, database.NewConnectionPool(nil, nil, false))
+	closeGatewayResources(nil, database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false))
 }

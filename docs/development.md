@@ -79,7 +79,7 @@ type Driver interface {
 
 #### Driver Registry
 
-- **Singleton Pattern**: Provides globally unique driver registry instance via `GetDriverRegistry()` function
+- **Registry Access**: The application obtains its registry through GetDriverRegistry() and injects it into connection pools; tests can inject isolated registries
 - **Factory Pattern**: Uses `map[model.DatabaseType]func() drivers.Driver` to store driver creation functions
 - **Thread Safe**: Uses `sync.RWMutex` to ensure concurrent safety
 

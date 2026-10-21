@@ -32,6 +32,7 @@ func GetDriverRegistry() *DriverRegistry {
 
 // ConnectionPool manages database connections for different data sources
 type ConnectionPool struct {
+	registry        *DriverRegistry
 	pools           map[string]*sql.DB
 	fingerprints    map[string]string // Config fingerprint per pooled connection (#117)
 	mutex           sync.RWMutex
@@ -43,11 +44,15 @@ type ConnectionPool struct {
 	enforceReadOnly bool
 }
 
-// NewConnectionPool creates a new ConnectionPool instance. When
-// enforceReadOnly is set, connections to engines with a read-only session
-// mode are opened read-only (#20).
-func NewConnectionPool(tokenManager *security.TokenManager, vault *security.CredentialVault, enforceReadOnly bool) *ConnectionPool {
+// NewConnectionPool creates a new ConnectionPool with an explicit driver registry.
+// A nil registry creates a fresh default registry. When enforceReadOnly is set,
+// connections to engines with a read-only session mode are opened read-only (#20).
+func NewConnectionPool(registry *DriverRegistry, tokenManager *security.TokenManager, vault *security.CredentialVault, enforceReadOnly bool) *ConnectionPool {
+	if registry == nil {
+		registry = NewDriverRegistry()
+	}
 	return &ConnectionPool{
+		registry:        registry,
 		pools:           make(map[string]*sql.DB),
 		fingerprints:    make(map[string]string),
 		health:          make(map[string]bool),
@@ -183,7 +188,7 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 }
 
 func (cp *ConnectionPool) openConfiguredDatabase(ctx context.Context, dbType model.DatabaseType, dsn string, config *model.DataSourceConfig, enforceReadOnly bool) (*sql.DB, error) {
-	driver, err := GetDriverRegistry().GetDriver(dbType)
+	driver, err := cp.registry.GetDriver(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +200,8 @@ func (cp *ConnectionPool) openConfiguredDatabase(ctx context.Context, dbType mod
 	return cp.openDatabase(dbType, dsn, enforceReadOnly)
 }
 
-func (d *ConnectionPool) ApplyBatchPagination(dbType model.DatabaseType, sql string, batchSize, offset int64) (string, error) {
-	driver, err := GetDriverRegistry().GetDriver(dbType)
+func (cp *ConnectionPool) ApplyBatchPagination(dbType model.DatabaseType, sql string, batchSize, offset int64) (string, error) {
+	driver, err := cp.registry.GetDriver(dbType)
 	if err != nil {
 		return "", err
 	}
@@ -208,7 +213,7 @@ func (d *ConnectionPool) ApplyBatchPagination(dbType model.DatabaseType, sql str
 // connection, the pool's driver.Open is replaced by the read-only connector
 // path so every pooled connection is covered (#20).
 func (cp *ConnectionPool) openDatabase(dbType model.DatabaseType, dsn string, enforceReadOnly bool) (*sql.DB, error) {
-	driver, err := GetDriverRegistry().GetDriver(dbType)
+	driver, err := cp.registry.GetDriver(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +249,7 @@ func (cp *ConnectionPool) readOnlyEnforced(config *model.DataSourceConfig) bool 
 
 // getConnectUrl builds the connection string for the specified database type and configuration
 func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
-	driver, err := GetDriverRegistry().GetDriver(dbType)
+	driver, err := cp.registry.GetDriver(dbType)
 	if err != nil {
 		return "", err
 	}
@@ -491,7 +496,7 @@ func (cp *ConnectionPool) getHealth(dataSourceID string) bool {
 
 // SetupTokenRotation registers token rotation for a data source if needed
 func (cp *ConnectionPool) SetupTokenRotation(ctx context.Context, dataSource *model.DataSource) error {
-	driver, err := GetDriverRegistry().GetDriver(dataSource.Type)
+	driver, err := cp.registry.GetDriver(dataSource.Type)
 	if err != nil {
 		return err
 	}
@@ -522,7 +527,7 @@ func (cp *ConnectionPool) SetupTokenRotation(ctx context.Context, dataSource *mo
 
 // rotateToken performs token rotation for a data source
 func (cp *ConnectionPool) rotateToken(ctx context.Context, dataSource *model.DataSource) (string, time.Time, error) {
-	_, err := GetDriverRegistry().GetDriver(dataSource.Type)
+	_, err := cp.registry.GetDriver(dataSource.Type)
 	if err != nil {
 		return "", time.Time{}, err
 	}

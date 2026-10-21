@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -133,7 +134,7 @@ func TestExecuteBatchQueryEncodesWireRepresentation(t *testing.T) {
 	}
 	db := sql.OpenDB(typedConnector{lookup: lookup})
 
-	qs := &queryService{}
+	qs := &queryService{connPool: database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)}
 	columns, entries, _, err := qs.executeBatchQuery(context.Background(), model.DatabaseTypeMySQL, db,
 		"SELECT note, avatar, price, count FROM mix", 2, 0, nil)
 	if err != nil {
