@@ -14,29 +14,39 @@ import (
 // Using common schema types from drivers/common package
 
 // HudiDriver implements the Driver interface for Apache Hudi tables
+type HudiMetadataReader interface {
+	TestConnection(context.Context) error
+	GetTableMetadata(context.Context, string) (*HudiTableMetadata, error)
+	ListPartitions(context.Context, string) ([]HudiPartition, error)
+	GetCommits(context.Context, string) ([]HudiCommit, error)
+	GetSavepoints(context.Context, string) ([]HudiSavepoint, error)
+}
+
+// HudiDriver exposes Hudi metadata and incremental-read contracts through
+// explicitly supplied storage and query-engine adapters.
 type HudiDriver struct {
-	restClient *HudiRESTClient
-	parser     *HudiMetadataParser
-	config     *HudiConfig
+	metadataReader      HudiMetadataReader
+	parser              *HudiMetadataParser
+	config              *HudiConfig
+	incrementalExecutor HudiIncrementalExecutor
 }
 
 // NewHudiDriver creates a new Hudi driver
 func NewHudiDriver(config *HudiConfig) (*HudiDriver, error) {
-	restClient, err := NewHudiRESTClient(config)
-	if err != nil {
-		return nil, err
+	if config == nil {
+		return nil, fmt.Errorf("Hudi configuration is required")
 	}
-
 	return &HudiDriver{
-		restClient: restClient,
-		parser:     NewHudiMetadataParser(),
-		config:     config,
+		metadataReader:      config.MetadataReader,
+		parser:              NewHudiMetadataParser(),
+		config:              config,
+		incrementalExecutor: config.IncrementalExecutor,
 	}, nil
 }
 
 // Open opens a connection (not applicable for Hudi which uses compute engines)
 func (d *HudiDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("Hudi does not support direct database connections - use Spark, Flink, or REST API")
+	return nil, fmt.Errorf("Hudi tables require a configured query-engine adapter; Apache Hudi has no generic SQL connection protocol")
 }
 
 // ValidateDSN validates the connection string
@@ -49,7 +59,7 @@ func (d *HudiDriver) ValidateDSN(dsn string) error {
 
 // GetDefaultPort returns the default port
 func (d *HudiDriver) GetDefaultPort() int {
-	return 8082 // Hudi REST service default port
+	return 0 // Hudi is a table format, not a network service with a standard port.
 }
 
 // BuildDSN builds a connection string from configuration
@@ -69,14 +79,18 @@ func (d *HudiDriver) TestConnection(db *sql.DB) error {
 
 // TestConnectionREST tests REST API connectivity
 func (d *HudiDriver) TestConnectionREST(ctx context.Context) error {
-	// Try to get metadata as a connectivity test
-	_, err := d.restClient.GetTableMetadata(ctx, "")
-	return err
+	if d.metadataReader != nil {
+		return d.metadataReader.TestConnection(ctx)
+	}
+	if d.incrementalExecutor != nil {
+		return nil
+	}
+	return fmt.Errorf("configure a Hudi metadata reader or query-engine adapter")
 }
 
 // GetDriverName returns the driver name
 func (d *HudiDriver) GetDriverName() string {
-	return "hudi-rest"
+	return "hudi-engine-adapter"
 }
 
 // GetCategory returns the driver category
@@ -87,12 +101,14 @@ func (d *HudiDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *HudiDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             true, // Via compute engine
-		SupportsTransaction:     true, // ACID support
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsSQL:               false,
+		SupportsTransaction:       false,
+		SupportsSchemaDiscovery:   d.metadataReader != nil,
+		SupportsTimeTravel:        false,
+		RequiresTokenRotation:     false,
+		SupportsStreaming:         false,
+		SupportsSnapshotDiscovery: d.metadataReader != nil,
+		SupportsIncrementalRead:   d.incrementalExecutor != nil,
 	}
 }
 
@@ -105,19 +121,69 @@ func (d *HudiDriver) ConfigureAuth(authConfig interface{}) error {
 // Apache Hudi-Specific Methods
 // =============================================================================
 
+func (d *HudiDriver) validateIncrementalFormat(ctx context.Context, options HudiIncrementalReadOptions) error {
+	if options.IncrementalFormat != "cdc" || d.metadataReader == nil {
+		// Without a storage reader, the query engine must validate table type and
+		// CDC enablement before it returns records.
+		return nil
+	}
+	metadata, err := d.metadataReader.GetTableMetadata(ctx, options.BasePath)
+	if err != nil {
+		return fmt.Errorf("validate Hudi CDC table metadata: %w", err)
+	}
+	if metadata == nil {
+		return fmt.Errorf("validate Hudi CDC table metadata: storage reader returned no metadata")
+	}
+	if ParseHudiTableType(metadata.TableType) != string(CopyOnWriteTableType) {
+		return fmt.Errorf("Hudi CDC reads require a Copy-on-Write table")
+	}
+	if !metadata.CDCEnabled {
+		return fmt.Errorf("Hudi CDC reads require hoodie.table.cdc.enabled=true")
+	}
+	return nil
+}
+
+func (d *HudiDriver) readTableMetadata(ctx context.Context, basePath string) (*HudiTableMetadata, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("Hudi metadata discovery requires a storage metadata reader")
+	}
+	return d.metadataReader.GetTableMetadata(ctx, basePath)
+}
+
+func (d *HudiDriver) listPartitions(ctx context.Context, basePath string) ([]HudiPartition, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("Hudi partition discovery requires a storage metadata reader")
+	}
+	return d.metadataReader.ListPartitions(ctx, basePath)
+}
+
+func (d *HudiDriver) readCommits(ctx context.Context, basePath string) ([]HudiCommit, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("Hudi timeline discovery requires a storage metadata reader")
+	}
+	return d.metadataReader.GetCommits(ctx, basePath)
+}
+
+func (d *HudiDriver) readSavepoints(ctx context.Context, basePath string) ([]HudiSavepoint, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("Hudi savepoint discovery requires a storage metadata reader")
+	}
+	return d.metadataReader.GetSavepoints(ctx, basePath)
+}
+
 // ListPartitions lists all partitions for a table
 func (d *HudiDriver) ListPartitions(ctx context.Context, basePath string) ([]HudiPartition, error) {
-	return d.restClient.ListPartitions(ctx, basePath)
+	return d.listPartitions(ctx, basePath)
 }
 
 // GetTableMetadata retrieves table metadata
 func (d *HudiDriver) GetTableMetadata(ctx context.Context, basePath string) (*HudiTableMetadata, error) {
-	return d.restClient.GetTableMetadata(ctx, basePath)
+	return d.readTableMetadata(ctx, basePath)
 }
 
 // GetTableSchema retrieves table schema in standard format
 func (d *HudiDriver) GetTableSchema(ctx context.Context, basePath, tableName string) (*common.TableSchema, error) {
-	metadata, err := d.restClient.GetTableMetadata(ctx, basePath)
+	metadata, err := d.readTableMetadata(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -137,36 +203,37 @@ func (d *HudiDriver) GetTableSchema(ctx context.Context, basePath, tableName str
 
 // QueryTable executes a SQL query
 func (d *HudiDriver) QueryTable(ctx context.Context, sql string) (*HudiQueryResult, error) {
-	return d.restClient.QueryTable(ctx, sql)
+	return nil, fmt.Errorf("Apache Hudi has no generic SQL REST endpoint; execute SQL through a configured query-engine adapter")
 }
 
 // GetCommits retrieves commit timeline
 func (d *HudiDriver) GetCommits(ctx context.Context, basePath string) ([]HudiCommit, error) {
-	return d.restClient.GetCommits(ctx, basePath)
+	return d.readCommits(ctx, basePath)
 }
 
 // GetSavepoints retrieves savepoints
 func (d *HudiDriver) GetSavepoints(ctx context.Context, basePath string) ([]HudiSavepoint, error) {
-	return d.restClient.GetSavepoints(ctx, basePath)
+	return d.readSavepoints(ctx, basePath)
 }
 
 // GetStatistics retrieves table statistics
 func (d *HudiDriver) GetStatistics(ctx context.Context, basePath string) (*HudiTableStatistics, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
 
-	partitions, err := d.restClient.ListPartitions(ctx, basePath)
+	partitions, err := d.listPartitions(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
 
-	recordStats := d.parser.CalculateRecordStats(commits)
+	// Timeline files identify completed instants but do not contain enough
+	// information to estimate row-level insert/update/delete counts.
 	partitionStats := d.parser.GetPartitionStats(partitions)
 
 	return &HudiTableStatistics{
-		RecordStats:    recordStats,
+		RecordStats:    nil,
 		PartitionStats: partitionStats,
 		CommitCount:    len(commits),
 	}, nil
@@ -181,7 +248,7 @@ type HudiTableStatistics struct {
 
 // GetTableType determines if table is COW or MOR
 func (d *HudiDriver) GetTableType(ctx context.Context, basePath string) (string, error) {
-	metadata, err := d.restClient.GetTableMetadata(ctx, basePath)
+	metadata, err := d.readTableMetadata(ctx, basePath)
 	if err != nil {
 		return "", err
 	}
@@ -191,7 +258,7 @@ func (d *HudiDriver) GetTableType(ctx context.Context, basePath string) (string,
 
 // GetCommitAtTime retrieves commit for a specific timestamp
 func (d *HudiDriver) GetCommitAtTime(ctx context.Context, basePath string, timestamp time.Time) (*HudiCommit, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +268,7 @@ func (d *HudiDriver) GetCommitAtTime(ctx context.Context, basePath string, times
 
 // GetLatestCommit retrieves the latest commit
 func (d *HudiDriver) GetLatestCommit(ctx context.Context, basePath string) (*HudiCommit, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +278,7 @@ func (d *HudiDriver) GetLatestCommit(ctx context.Context, basePath string) (*Hud
 
 // GetCommitTimeline retrieves commit timeline
 func (d *HudiDriver) GetCommitTimeline(ctx context.Context, basePath string) ([]CommitTimelineEntry, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +288,7 @@ func (d *HudiDriver) GetCommitTimeline(ctx context.Context, basePath string) ([]
 
 // SupportsIncrementalQuery checks if incremental queries are supported
 func (d *HudiDriver) SupportsIncrementalQuery(ctx context.Context, basePath string) (bool, error) {
-	metadata, err := d.restClient.GetTableMetadata(ctx, basePath)
+	metadata, err := d.readTableMetadata(ctx, basePath)
 	if err != nil {
 		return false, err
 	}
@@ -231,7 +298,7 @@ func (d *HudiDriver) SupportsIncrementalQuery(ctx context.Context, basePath stri
 
 // GetRecordStats calculates record statistics
 func (d *HudiDriver) GetRecordStats(ctx context.Context, basePath string) (*HudiRecordStats, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +308,7 @@ func (d *HudiDriver) GetRecordStats(ctx context.Context, basePath string) (*Hudi
 
 // GetPartitionSpec returns partition specification
 func (d *HudiDriver) GetPartitionSpec(ctx context.Context, basePath string) ([]string, error) {
-	metadata, err := d.restClient.GetTableMetadata(ctx, basePath)
+	metadata, err := d.readTableMetadata(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +318,7 @@ func (d *HudiDriver) GetPartitionSpec(ctx context.Context, basePath string) ([]s
 
 // GetOperationTimeline retrieves operation timeline
 func (d *HudiDriver) GetOperationTimeline(ctx context.Context, basePath string) ([]OperationEvent, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +357,7 @@ func (d *HudiDriver) ClusterTable(ctx context.Context, basePath string) error {
 
 // GetCommitInfo retrieves detailed commit information
 func (d *HudiDriver) GetCommitInfo(ctx context.Context, basePath, commitTime string) (*HudiCommit, error) {
-	commits, err := d.restClient.GetCommits(ctx, basePath)
+	commits, err := d.readCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +373,7 @@ func (d *HudiDriver) GetCommitInfo(ctx context.Context, basePath, commitTime str
 
 // GetSavepointInfo retrieves savepoint information
 func (d *HudiDriver) GetSavepointInfo(ctx context.Context, basePath, savepointTime string) (*HudiSavepoint, error) {
-	savepoints, err := d.restClient.GetSavepoints(ctx, basePath)
+	savepoints, err := d.readSavepoints(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +394,7 @@ func (d *HudiDriver) ValidateTableConfig(config map[string]string) error {
 
 // GetCompressionCodec returns the compression codec
 func (d *HudiDriver) GetCompressionCodec(ctx context.Context, basePath string) (string, error) {
-	metadata, err := d.restClient.GetTableMetadata(ctx, basePath)
+	metadata, err := d.readTableMetadata(ctx, basePath)
 	if err != nil {
 		return "", err
 	}

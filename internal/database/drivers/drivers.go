@@ -25,12 +25,14 @@ const (
 
 // DriverCapabilities defines what operations a driver supports
 type DriverCapabilities struct {
-	SupportsSQL             bool
-	SupportsTransaction     bool
-	SupportsSchemaDiscovery bool
-	SupportsTimeTravel      bool
-	RequiresTokenRotation   bool
-	SupportsStreaming       bool
+	SupportsSQL               bool
+	SupportsTransaction       bool
+	SupportsSchemaDiscovery   bool
+	SupportsTimeTravel        bool
+	RequiresTokenRotation     bool
+	SupportsStreaming         bool
+	SupportsSnapshotDiscovery bool
+	SupportsIncrementalRead   bool
 }
 
 // DriverBase provides common functionality for all drivers
