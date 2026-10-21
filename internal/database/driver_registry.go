@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/domestic"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/file_system"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/nosql"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/olap"
@@ -212,23 +211,6 @@ func (dr *DriverRegistry) registerDrivers() {
 	})
 	dr.register(model.DatabaseTypeMinIODelta, func() drivers.Driver {
 		return &object_storage.MinIODeltaDriver{}
-	})
-
-	// // Distributed File Systems (these are already handled by object_storage package)
-	dr.register(model.DatabaseTypeHDFSAvro, func() drivers.Driver {
-		return &file_system.HDFSAvroDriver{}
-	})
-	dr.register(model.DatabaseTypeHDFSParquet, func() drivers.Driver {
-		return &file_system.HDFSParquetDriver{}
-	})
-	dr.register(model.DatabaseTypeHDFSCSV, func() drivers.Driver {
-		return &file_system.HDFSCSVDriver{}
-	})
-	dr.register(model.DatabaseTypeHDFSText, func() drivers.Driver {
-		return &file_system.HDFSTextDriver{}
-	})
-	dr.register(model.DatabaseTypeHDFSParquetCompressed, func() drivers.Driver {
-		return &file_system.HDFSParquetCompressionDriver{}
 	})
 
 }

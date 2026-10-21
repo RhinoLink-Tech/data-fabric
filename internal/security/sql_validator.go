@@ -196,9 +196,7 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
 		model.DatabaseTypeMinIOCSV, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
-		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSCSV,
-		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro,
-		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
+		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return "mysql", true
 	default:
 		return "", false
@@ -857,8 +855,13 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 			TimeTravelSyntax:        "",
 		}
 
+	// HDFS types have no registered query path and must not inherit a SQL dialect.
+	case model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSCSV,
+		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
+		return DataSourceSQLConfig{}
+
 	// File Systems
-	case model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSCSV, model.DatabaseTypeOzoneParquet:
+	case model.DatabaseTypeOzoneParquet:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,
