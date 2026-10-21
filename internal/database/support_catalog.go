@@ -56,7 +56,7 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		return nil
 	}
 
-	catalog := make([]ConnectorSupport, 0, len(registry.ListDrivers())+3)
+	catalog := make([]ConnectorSupport, 0, len(registry.ListDrivers())+8)
 	for _, dbType := range registry.ListDrivers() {
 		driver, err := registry.GetDriver(dbType)
 		if err != nil || driver == nil {
@@ -91,6 +91,37 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		profile.Version = profile.SupportedVersionRange
 		profile.Features = append([]string(nil), profile.Operations...)
 		catalog = append(catalog, profile)
+	}
+
+	// HDFS file-format adapters are not registered until they have a
+	// functioning unified query path. Keep their legacy type names visible but
+	// explicitly unsupported so registry presence is not implied.
+	for _, dbType := range []model.DatabaseType{
+		model.DatabaseTypeHDFSAvro,
+		model.DatabaseTypeHDFSCSV,
+		model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSText,
+		model.DatabaseTypeHDFSParquetCompressed,
+	} {
+		catalog = append(catalog, ConnectorSupport{
+			Type:                         string(dbType),
+			Category:                     string(drivers.CategoryFileSystem),
+			Registered:                   false,
+			Supported:                    false,
+			Version:                      "",
+			Features:                     []string{},
+			Recommended:                  false,
+			Status:                       ConnectorStatusUnsupported,
+			VerifiedServerVersions:       []string{},
+			VersionPolicy:                "Unsupported; registration and connection attempts are rejected.",
+			VersionDependentCapabilities: []string{},
+			CompatibilityMode:            "filesystem_protocol",
+			ServerVersionDetection:       "not_applicable",
+			Operations:                   []string{},
+			AuthenticationMethods:        []string{},
+			AuthenticationDisclosure:     "Not applicable while unsupported.",
+			Limitations:                  []string{"No verified file read path is connected to the unified query service; legacy format parser methods are incomplete."},
+		})
 	}
 
 	// Ozone is intentionally not registered while its object operations remain
@@ -128,9 +159,7 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
-	case model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet,
-		model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSText,
-		model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeApacheIceberg,
+	case model.DatabaseTypeApacheIceberg,
 		model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,

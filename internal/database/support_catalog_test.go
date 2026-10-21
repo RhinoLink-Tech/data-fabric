@@ -93,8 +93,17 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			t.Errorf("unsupported type %q has incorrect profile: %+v", dbType, profile)
 		}
 	}
-	if profiles[string(model.DatabaseTypeHDFSCSV)].Status != ConnectorStatusExperimental {
-		t.Errorf("HDFS CSV status = %q, want experimental", profiles[string(model.DatabaseTypeHDFSCSV)].Status)
+	for _, dbType := range []model.DatabaseType{
+		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
+	} {
+		profile := profiles[string(dbType)]
+		if profile.Registered || profile.Supported || profile.Status != ConnectorStatusUnsupported {
+			t.Errorf("HDFS type %q must be explicitly unsupported until a query path exists: %+v", dbType, profile)
+		}
+		if _, err := registry.GetDriver(dbType); err == nil {
+			t.Errorf("HDFS type %q still resolves to a registered driver", dbType)
+		}
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || mongo.EndToEndVerified {

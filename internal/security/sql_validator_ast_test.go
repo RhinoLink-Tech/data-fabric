@@ -127,6 +127,20 @@ func TestMongoDBUsesMySQLCompatibleReadOnlySQLGrammar(t *testing.T) {
 	}
 }
 
+func TestUnsupportedHDFSTypesHaveNoSQLValidationDialect(t *testing.T) {
+	for _, dbType := range []model.DatabaseType{
+		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
+	} {
+		if dialect, ok := SQLDialectForDataSource(dbType); ok {
+			t.Errorf("SQLDialectForDataSource(%q) = %q, true; want no SQL dialect", dbType, dialect)
+		}
+		if config := GetDataSourceSQLConfig(dbType); config != (DataSourceSQLConfig{}) {
+			t.Errorf("GetDataSourceSQLConfig(%q) = %+v; want no SQL capabilities", dbType, config)
+		}
+	}
+}
+
 func TestValidateDataSourceSyntaxUsesASTInsteadOfSubstringHeuristics(t *testing.T) {
 	analyzer := &stubSQLASTAnalyzer{
 		analysis: sqlanalysis.Analysis{StatementCount: 1, IsQuery: true},
