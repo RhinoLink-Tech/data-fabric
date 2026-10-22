@@ -326,3 +326,19 @@ jobs:
 
       - name: Run Oracle driver contract
         run: go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v
+
+  s3-csv-contract:
+    name: S3 CSV driver contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run S3-compatible service contract
+        run: bash scripts/contracts/run_s3_csv_contract.sh
