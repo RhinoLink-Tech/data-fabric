@@ -247,3 +247,42 @@ jobs:
 
       - name: Run SQL Server driver contract
         run: go test ./internal/database/drivers/traditional -run '^TestSQLServerDriverContract$' -count=1 -v
+
+  mongodb-contract:
+    name: MongoDB driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_MONGODB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MONGODB_CONTRACT_PORT: "27017"
+      DATA_FABRIC_MONGODB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MONGODB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MONGODB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MONGODB_BOOTSTRAP_USERNAME: contract_admin
+      DATA_FABRIC_MONGODB_BOOTSTRAP_PASSWORD: root-contract-only
+      DATA_FABRIC_MONGODB_EXPECTED_VERSION: "8.0.34"
+    services:
+      mongodb:
+        image: mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b
+        env:
+          MONGO_INITDB_ROOT_USERNAME: contract_admin
+          MONGO_INITDB_ROOT_PASSWORD: root-contract-only
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --username contract_admin --password root-contract-only --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MongoDB driver contract
+        run: go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v
