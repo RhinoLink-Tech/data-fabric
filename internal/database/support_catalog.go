@@ -22,8 +22,8 @@ const (
 )
 
 // ConnectorSupport is shared by the database APIs and generated support docs.
-	// End-to-end evidence is version-specific and can coexist with an experimental
-	// status when a live contract validates only a deliberately restricted adapter.
+// End-to-end evidence is version-specific and can coexist with an experimental
+// status when a live contract validates only a deliberately restricted adapter.
 type ConnectorSupport struct {
 	Type        string `json:"type"`
 	DriverName  string `json:"driverName,omitempty"`
