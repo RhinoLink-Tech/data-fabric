@@ -195,6 +195,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
 			"TLS behavior and other MariaDB versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeTiDB:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "8.5.8 only"
+		profile.VerifiedServerVersions = []string{"8.0.11-TiDB-v8.5.8"}
+		profile.VersionPolicy = "Only TiDB v8.5.8, reporting 8.0.11-TiDB-v8.5.8, has a pinned contract result; no other TiDB version or MySQL-compatible product is implied."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the TiDB v8.5.8 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The TiDB contract test covers the MySQL-wire driver against one TiDB v8.5.8 server instance; it does not validate a multi-node TiKV cluster.",
+			"TiDB v8.5.8 does not implement SET SESSION TRANSACTION READ ONLY; the generic database-side read-only initializer is disabled for TiDB. Use a TiDB account with restricted privileges. TLS and other TiDB versions are not covered by this baseline.",
+		}
 	case model.DatabaseTypeClickHouse:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true

@@ -120,7 +120,6 @@ func TestModeFor(t *testing.T) {
 	}{
 		{"mysql", model.DatabaseTypeMySQL, ModeConnectorInit},
 		{"mariadb", model.DatabaseTypeMariaDB, ModeConnectorInit},
-		{"tidb", model.DatabaseTypeTiDB, ModeConnectorInit},
 		{"oceanbase_mysql", model.DatabaseTypeOceanBaseMySQL, ModeConnectorInit},
 		{"tdsql", model.DatabaseTypeTDSQL, ModeConnectorInit},
 		{"gbase_8s", model.DatabaseTypeGBase8s, ModeConnectorInit},
@@ -139,6 +138,7 @@ func TestModeFor(t *testing.T) {
 		{"starrocks", model.DatabaseTypeStarRocks, ModeUnsupported},
 		{"hologres", model.DatabaseTypeHologres, ModeUnsupported},
 		{"redshift", model.DatabaseTypeRedshift, ModeUnsupported},
+		{"tidb", model.DatabaseTypeTiDB, ModeUnsupported},
 		{"oracle", model.DatabaseTypeOracle, ModeUnsupported},
 		{"oceanbase_oracle", model.DatabaseTypeOceanBaseOracle, ModeUnsupported},
 		{"sqlserver", model.DatabaseTypeSQLServer, ModeUnsupported},
