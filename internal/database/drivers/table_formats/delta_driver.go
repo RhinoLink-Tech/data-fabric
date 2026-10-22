@@ -118,12 +118,14 @@ func (d *DeltaDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *DeltaDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             true, // Via Databricks SQL Warehouse
-		SupportsTransaction:     true, // ACID support
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsSQL:               d.config != nil && d.config.WarehouseID != "",
+		SupportsTransaction:       false,
+		SupportsSchemaDiscovery:   d.config != nil && d.config.BaseURL != "",
+		SupportsTimeTravel:        d.config != nil && d.config.WarehouseID != "",
+		RequiresTokenRotation:     false,
+		SupportsStreaming:         false,
+		SupportsSnapshotDiscovery: d.config != nil && d.config.WarehouseID != "",
+		SupportsIncrementalRead:   d.config != nil && d.config.WarehouseID != "",
 	}
 }
 
@@ -166,6 +168,11 @@ func (d *DeltaDriver) GetTableSchema(ctx context.Context, catalog, schema, table
 // QueryTable executes a SQL query via Databricks SQL Warehouse
 func (d *DeltaDriver) QueryTable(ctx context.Context, warehouseID, sql string) (*DeltaQueryResult, error) {
 	return d.restClient.QueryTable(ctx, warehouseID, sql)
+}
+
+// ReadChangeDataFeed reads Delta Change Data Feed for an inclusive version range.
+func (d *DeltaDriver) ReadChangeDataFeed(ctx context.Context, warehouseID, catalog, schema, table string, startVersion int64, endVersion *int64) (*DeltaQueryResult, error) {
+	return d.restClient.ReadChangeDataFeed(ctx, warehouseID, catalog, schema, table, startVersion, endVersion)
 }
 
 // GetVersionAtTime retrieves version for a specific timestamp

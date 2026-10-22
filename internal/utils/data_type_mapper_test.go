@@ -120,6 +120,53 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 	}
 }
 
+// TestStandardizeValueValidatesUUID verifies that values standardized as UUID
+// are validated: valid strings and byte slices are accepted (and returned as a
+// string), while malformed values and unsupported types return an error rather
+// than being passed through unchanged.
+func TestStandardizeValueValidatesUUID(t *testing.T) {
+	mapper := NewDataTypeMapper()
+	const validUUID = "123e4567-e89b-12d3-a456-426614174000"
+
+	t.Run("valid string", func(t *testing.T) {
+		got, err := mapper.StandardizeValue(validUUID, model.TypeUUID)
+		if err != nil {
+			t.Fatalf("StandardizeValue(%q, UUID) returned error: %v", validUUID, err)
+		}
+		if s, ok := got.(string); !ok || s != validUUID {
+			t.Errorf("StandardizeValue(%q, UUID) = %#v, want %q", validUUID, got, validUUID)
+		}
+	})
+
+	t.Run("valid byte slice", func(t *testing.T) {
+		got, err := mapper.StandardizeValue([]byte(validUUID), model.TypeUUID)
+		if err != nil {
+			t.Fatalf("StandardizeValue([]byte(%q), UUID) returned error: %v", validUUID, err)
+		}
+		if s, ok := got.(string); !ok || s != validUUID {
+			t.Errorf("StandardizeValue([]byte(%q), UUID) = %#v, want %q", validUUID, got, validUUID)
+		}
+	})
+
+	t.Run("malformed string is rejected", func(t *testing.T) {
+		if _, err := mapper.StandardizeValue("not-a-uuid", model.TypeUUID); err == nil {
+			t.Errorf("StandardizeValue(%q, UUID) = nil error, want an error for malformed UUID", "not-a-uuid")
+		}
+	})
+
+	t.Run("malformed byte slice is rejected", func(t *testing.T) {
+		if _, err := mapper.StandardizeValue([]byte("nope"), model.TypeUUID); err == nil {
+			t.Errorf("StandardizeValue([]byte(%q), UUID) = nil error, want an error for malformed UUID", "nope")
+		}
+	})
+
+	t.Run("unsupported type is rejected", func(t *testing.T) {
+		if _, err := mapper.StandardizeValue(42, model.TypeUUID); err == nil {
+			t.Errorf("StandardizeValue(int, UUID) = nil error, want an error for unsupported type")
+		}
+	})
+}
+
 func TestStandardizeValueConvertsNumericBooleans(t *testing.T) {
 	mapper := NewDataTypeMapper()
 	tests := []struct {

@@ -4,117 +4,141 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/table_formats"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// S3HudiDriver implements Driver interface for S3 Hudi tables
+// S3HudiDriver reads Hudi table metadata from standard S3 table files. It does
+// not execute row queries; callers need a configured Hudi query engine for that.
 type S3HudiDriver struct {
-	config *S3Config
-	client *S3Client
+	config         *S3Config
+	client         *S3Client
+	metadataReader *S3HudiMetadataReader
 }
 
-// NewS3HudiDriver creates a new S3 Hudi driver
+// NewS3HudiDriver creates an S3-backed Hudi metadata driver.
 func NewS3HudiDriver(ctx context.Context, config *S3Config) (*S3HudiDriver, error) {
+	if config == nil {
+		return nil, fmt.Errorf("S3 configuration is required")
+	}
 	client, err := NewS3Client(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
 	return &S3HudiDriver{
-		config: config,
-		client: client,
+		config:         config,
+		client:         client,
+		metadataReader: NewS3HudiMetadataReaderWithClient(client, config.Bucket),
 	}, nil
 }
 
-// Open opens a connection (not applicable for S3 Hudi)
-func (d *S3HudiDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("S3 Hudi driver does not support standard database connections")
+func (d *S3HudiDriver) Open(string) (*sql.DB, error) {
+	return nil, fmt.Errorf("S3 Hudi does not provide a standard database connection; configure a Hudi-capable query engine for row queries")
 }
 
-// ValidateDSN validates the connection string
 func (d *S3HudiDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
 	return nil
 }
 
-// GetDefaultPort returns the default S3 port
-func (d *S3HudiDriver) GetDefaultPort() int {
-	return 443 // HTTPS
-}
+func (d *S3HudiDriver) GetDefaultPort() int { return 443 }
 
-// BuildDSN builds a connection string from configuration
 func (d *S3HudiDriver) BuildDSN(config *model.DataSourceConfig) string {
 	return fmt.Sprintf("s3://%s", config.Database)
 }
 
-// GetDatabaseTypeName returns the database type name
-func (d *S3HudiDriver) GetDatabaseTypeName() string {
-	return "s3-hudi"
+func (d *S3HudiDriver) GetDatabaseTypeName() string { return "s3-hudi" }
+
+func (d *S3HudiDriver) TestConnection(*sql.DB) error {
+	return fmt.Errorf("use TestConnectionContext instead for S3 Hudi")
 }
 
-// TestConnection tests if the connection is working
-func (d *S3HudiDriver) TestConnection(db *sql.DB) error {
-	return fmt.Errorf("use TestConnectionContext instead")
-}
-
-// TestConnectionContext tests the S3 connection
 func (d *S3HudiDriver) TestConnectionContext(ctx context.Context) error {
-	_, err := d.client.ListObjects(ctx, "", 1)
-	if err != nil {
-		return fmt.Errorf("failed to list S3 objects: %w", err)
+	if d.metadataReader == nil {
+		return fmt.Errorf("S3 Hudi metadata reader is not configured")
 	}
-	return nil
+	return d.metadataReader.TestConnection(ctx)
 }
 
-// GetDriverName returns the driver name
-func (d *S3HudiDriver) GetDriverName() string {
-	return "s3-hudi"
-}
+func (d *S3HudiDriver) GetDriverName() string { return "s3-hudi" }
 
-// GetCategory returns the driver category
 func (d *S3HudiDriver) GetCategory() drivers.DriverCategory {
 	return drivers.CategoryObjectStorage
 }
 
-// GetCapabilities returns driver capabilities
 func (d *S3HudiDriver) GetCapabilities() drivers.DriverCapabilities {
+	metadataAvailable := d.metadataReader != nil
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsSQL:               false,
+		SupportsTransaction:       false,
+		SupportsSchemaDiscovery:   metadataAvailable,
+		SupportsTimeTravel:        false,
+		RequiresTokenRotation:     false,
+		SupportsStreaming:         false,
+		SupportsSnapshotDiscovery: metadataAvailable,
+		SupportsIncrementalRead:   false,
 	}
 }
 
-// ConfigureAuth configures authentication
-func (d *S3HudiDriver) ConfigureAuth(authConfig interface{}) error {
-	return nil
-}
+func (d *S3HudiDriver) ConfigureAuth(interface{}) error { return nil }
 
-// GetTableMetadata retrieves Hudi table metadata
+// GetTableMetadata retrieves Hudi metadata from hoodie.properties.
 func (d *S3HudiDriver) GetTableMetadata(ctx context.Context, tablePath string) (*HudiMetadata, error) {
-	// Hudi metadata is stored in .hoodie directory
-	hoodiePath := tablePath + "/.hoodie/"
-	_, err := d.client.GetObject(ctx, hoodiePath+"hoodie.properties")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read hoodie properties: %w", err)
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("S3 Hudi metadata reader is not configured")
 	}
-
-	// Parse Hudi properties (placeholder)
+	metadata, err := d.metadataReader.GetTableMetadata(ctx, tablePath)
+	if err != nil {
+		return nil, err
+	}
+	location := strings.TrimRight(tablePath, "/")
+	if !strings.HasPrefix(location, "s3://") {
+		location = "s3://" + d.config.Bucket + "/" + strings.TrimLeft(location, "/")
+	}
 	return &HudiMetadata{
-		TableLocation: "s3://" + d.config.Bucket + "/" + tablePath,
+		TableLocation: location,
 		Format:        "hudi",
-		TableType:     "COPY_ON_WRITE",
+		TableType:     metadata.TableType,
+		RecordKey:     metadata.KeyField,
+		PartitionPath: strings.Join(metadata.PartitionFields, ","),
 	}, nil
 }
 
-// HudiMetadata represents Hudi table metadata
+// QueryTable explicitly reports that this storage adapter cannot execute SQL.
+func (d *S3HudiDriver) QueryTable(context.Context, string, string) (*HudiQueryResult, error) {
+	return nil, fmt.Errorf("S3 Hudi metadata adapter does not execute row queries; configure a Hudi-capable query engine")
+}
+
+// ListPartitions returns partition paths and file statistics from S3 objects.
+func (d *S3HudiDriver) ListPartitions(ctx context.Context, tablePath string) ([]table_formats.HudiPartition, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("S3 Hudi metadata reader is not configured")
+	}
+	return d.metadataReader.ListPartitions(ctx, tablePath)
+}
+
+// GetCommits returns completed entries from the classic active Hudi timeline.
+func (d *S3HudiDriver) GetCommits(ctx context.Context, tablePath string) ([]table_formats.HudiCommit, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("S3 Hudi metadata reader is not configured")
+	}
+	return d.metadataReader.GetCommits(ctx, tablePath)
+}
+
+// GetSavepoints returns savepoint entries from the classic active Hudi timeline.
+func (d *S3HudiDriver) GetSavepoints(ctx context.Context, tablePath string) ([]table_formats.HudiSavepoint, error) {
+	if d.metadataReader == nil {
+		return nil, fmt.Errorf("S3 Hudi metadata reader is not configured")
+	}
+	return d.metadataReader.GetSavepoints(ctx, tablePath)
+}
+
+// HudiMetadata is the legacy metadata response used by the S3 driver API.
 type HudiMetadata struct {
 	TableLocation string
 	Format        string
@@ -123,27 +147,14 @@ type HudiMetadata struct {
 	PartitionPath string
 }
 
-// QueryTable queries a Hudi table at a specific instant
-func (d *S3HudiDriver) QueryTable(ctx context.Context, tablePath string, instantTime string) (*HudiQueryResult, error) {
-	// Query Hudi table (placeholder)
-	return &HudiQueryResult{
-		Rows:        []map[string]interface{}{},
-		NumRows:     0,
-		InstantTime: instantTime,
-	}, nil
-}
-
-// HudiQueryResult represents query result
+// HudiQueryResult is retained for API compatibility; queries now return an
+// explicit unsupported error until a query engine is configured.
 type HudiQueryResult struct {
 	Rows        []map[string]interface{}
 	NumRows     int64
 	InstantTime string
 }
 
-// ApplyBatchPagination adds pagination to SQL query
 func (d *S3HudiDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 Hudi files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Hudi files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
 	return sql, nil
 }

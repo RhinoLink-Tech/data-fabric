@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Validate values standardized as UUID and reject malformed strings and byte slices instead of passing them through unchanged (#144).
+
 ## [v2.0.0] - 2026-10-21
 
 ### Added

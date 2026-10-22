@@ -164,10 +164,18 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"SQL execution is read-only and limited to one table, projections, AND comparisons or NULL checks, LIMIT/OFFSET, and COUNT(*); joins, OR, grouping, ordering, and DML are rejected.",
 			"No live, versioned Iceberg REST catalog and data-file contract test is recorded; retain experimental status until that evidence exists.")
-	case model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi:
+	case model.DatabaseTypeDeltaLake:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
-			"Known parser, mock, or query-execution gaps prevent end-to-end support claims.")
+			"Metadata discovery uses Unity Catalog; SQL statements, table history, and Change Data Feed reads require a configured Databricks SQL Warehouse.",
+			"Change Data Feed must be enabled and its requested versions must remain within the table's retained history; start and end versions are inclusive.",
+			"Statement results use inline JSON_ARRAY responses; transactions and streaming are not supported by this connector.")
+	case model.DatabaseTypeApacheHudi:
+		profile.Status = ConnectorStatusExperimental
+		profile.Limitations = append(profile.Limitations,
+			"Apache Hudi has no generic REST query endpoint. Metadata discovery requires a configured storage reader; row-level incremental reads require an explicitly configured Hudi-capable query engine.",
+			"The S3 metadata reader supports classic active timeline files and table format versions below 8; archived history and Hudi 1.x LSM timelines are not discovered.",
+			"Incremental reads use a fixed end instant and engine-owned opaque page tokens; SQL execution, writes, time travel, and streaming are not provided by this adapter.")
 	case model.DatabaseTypeMongoDB:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
@@ -193,7 +201,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 }
 
 func supportedOperations(capabilities drivers.DriverCapabilities) []string {
-	operations := make([]string, 0, 5)
+	operations := make([]string, 0, 7)
 	if capabilities.SupportsSQL {
 		operations = append(operations, "sql_query")
 	}
@@ -208,6 +216,12 @@ func supportedOperations(capabilities drivers.DriverCapabilities) []string {
 	}
 	if capabilities.SupportsTimeTravel {
 		operations = append(operations, "time_travel")
+	}
+	if capabilities.SupportsSnapshotDiscovery {
+		operations = append(operations, "snapshot_discovery")
+	}
+	if capabilities.SupportsIncrementalRead {
+		operations = append(operations, "incremental_read")
 	}
 	return operations
 }
@@ -387,7 +401,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 			profile.ServerVersionDetection, operations, authentication, profile.AuthenticationDisclosure,
 			capabilitySummary(profile.Capabilities), versionCapabilities, limitations))
 	}
-	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For the contract-test plan, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
+	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For the contract-test plan, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35). For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
 	return out.String()
 }
 

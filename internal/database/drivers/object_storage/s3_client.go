@@ -142,6 +142,40 @@ func (c *S3Client) ListObjects(ctx context.Context, prefix string, maxKeys int32
 	return objects, nil
 }
 
+// ListObjectsAll follows every ListObjectsV2 continuation token and returns
+// all objects matching the prefix. Callers that need a stable view should pin
+// their own format version/cursor; S3 listing is not a table snapshot.
+func (c *S3Client) ListObjectsAll(ctx context.Context, prefix string) ([]S3Object, error) {
+	input := &s3.ListObjectsV2Input{Bucket: aws.String(c.config.Bucket)}
+	if prefix != "" {
+		input.Prefix = aws.String(prefix)
+	}
+	paginator := s3.NewListObjectsV2Paginator(c.client, input, func(options *s3.ListObjectsV2PaginatorOptions) {
+		options.Limit = 1000
+	})
+
+	objects := make([]S3Object, 0)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list S3 objects: %w", err)
+		}
+		for _, object := range page.Contents {
+			objects = append(objects, S3Object{
+				Key:          aws.ToString(object.Key),
+				Size:         aws.ToInt64(object.Size),
+				LastModified: aws.ToTime(object.LastModified),
+				ETag:         aws.ToString(object.ETag),
+				StorageClass: string(object.StorageClass),
+			})
+			if len(objects) > 1_000_000 {
+				return nil, fmt.Errorf("S3 object listing exceeded the 1000000 object safety limit")
+			}
+		}
+	}
+	return objects, nil
+}
+
 // ListObjectsWithDelimiter lists objects with delimiter for common prefixes
 func (c *S3Client) ListObjectsWithDelimiter(ctx context.Context, prefix, delimiter string) (*S3ListResult, error) {
 	input := &s3.ListObjectsV2Input{
