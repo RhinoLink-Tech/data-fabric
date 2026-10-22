@@ -258,6 +258,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
 			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. Production TLS certificate validation and other SQL Server versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeOracle:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "23.26.3.0.0 only"
+		profile.VerifiedServerVersions = []string{"23.26.3.0.0"}
+		profile.VersionPolicy = "Only Oracle AI Database 26ai Free 23.26.3.0.0 has a pinned contract result; other Oracle versions and editions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "The contract uses a dedicated application schema account for SQL operations and SYSTEM only to read the exact server version; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The Oracle contract test covers the go-ora SQL driver, connection and health checks, bind parameters, value and NULL scanning, DML, COUNT(*), Oracle OFFSET/FETCH pagination, and query errors against Oracle AI Database 26ai Free 23.26.3.0.0.",
+			"Gateway read-only session initialization is not supported for Oracle; use an Oracle account with restricted privileges. TLS behavior, other Oracle versions, and licensed editions are not covered by this baseline.",
+		}
 	default:
 		return
 	}

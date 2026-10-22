@@ -93,6 +93,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeOpenGauss:  {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
 			model.DatabaseTypeClickHouse: {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
 			model.DatabaseTypeSQLServer:  {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
+			model.DatabaseTypeOracle:     {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
@@ -204,6 +205,10 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	clickHouse, ok := info[string(model.DatabaseTypeClickHouse)]
 	if !ok || clickHouse.Status != ConnectorStatusEndToEndVerified || !clickHouse.EndToEndVerified || clickHouse.SupportedVersionRange != "26.8.20.9 only" || !reflect.DeepEqual(clickHouse.VerifiedServerVersions, []string{"26.8.20.9"}) || clickHouse.CompatibilityMode != "clickhouse_native_protocol" {
 		t.Fatalf("type endpoint has missing or overly broad ClickHouse verification evidence: %+v", clickHouse)
+	}
+	oracle, ok := info[string(model.DatabaseTypeOracle)]
+	if !ok || oracle.Status != ConnectorStatusEndToEndVerified || !oracle.EndToEndVerified || oracle.SupportedVersionRange != "23.26.3.0.0 only" || !reflect.DeepEqual(oracle.VerifiedServerVersions, []string{"23.26.3.0.0"}) {
+		t.Fatalf("type endpoint has missing or overly broad Oracle verification evidence: %+v", oracle)
 	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")
