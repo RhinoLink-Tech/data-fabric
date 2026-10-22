@@ -86,14 +86,15 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			productRange string
 			server       []string
 		}{
-			model.DatabaseTypePostgreSQL: {productRange: "17.11", server: []string{"17.11"}},
-			model.DatabaseTypeMySQL:      {productRange: "8.0.46", server: []string{"8.0.46"}},
-			model.DatabaseTypeMariaDB:    {productRange: "11.8.9", server: []string{"11.8.9"}},
-			model.DatabaseTypeTiDB:       {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
-			model.DatabaseTypeOpenGauss:  {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
-			model.DatabaseTypeClickHouse: {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
-			model.DatabaseTypeSQLServer:  {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
-			model.DatabaseTypeOracle:     {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
+			model.DatabaseTypePostgreSQL:  {productRange: "17.11", server: []string{"17.11"}},
+			model.DatabaseTypeMySQL:       {productRange: "8.0.46", server: []string{"8.0.46"}},
+			model.DatabaseTypeMariaDB:     {productRange: "11.8.9", server: []string{"11.8.9"}},
+			model.DatabaseTypeTiDB:        {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
+			model.DatabaseTypeOpenGauss:   {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
+			model.DatabaseTypeClickHouse:  {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
+			model.DatabaseTypeSQLServer:   {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
+			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
+			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
 		}
 		if dbType == model.DatabaseTypeS3CSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {

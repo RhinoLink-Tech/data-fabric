@@ -283,6 +283,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"This contract does not verify AWS S3, other S3-compatible providers, or other Garage versions.",
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.",
 		}
+	case model.DatabaseTypeApacheDoris:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Doris 4.1.3 only"
+		profile.VerifiedServerVersions = []string{"Apache Doris 4.1.3"}
+		profile.VersionPolicy = "Only the pinned Apache Doris 4.1.3 all-in-one image has a contract result; other Doris releases are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "A password-authenticated database user is covered against Apache Doris 4.1.3; TLS and other authentication modes are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Doris contract covers the MySQL-protocol driver, authenticated connection and health checks, FE version reporting, database selection, SQL values and counts, schema discovery, pagination, and query errors against the pinned 4.1.3 all-in-one image.",
+			"TLS, multi-node deployments, and other Doris releases are not covered by this baseline.",
+		}
 	default:
 		return
 	}
