@@ -250,7 +250,8 @@ jobs:
 
   mongodb-contract:
     name: MongoDB driver contract
-    runs-on: ubuntu-latest
+    # MongoDB 8.0.34 cannot start on Linux kernels 6.19+; keep this contract on the Ubuntu 22.04 runner.
+    runs-on: ubuntu-22.04
     env:
       DATA_FABRIC_MONGODB_CONTRACT_HOST: 127.0.0.1
       DATA_FABRIC_MONGODB_CONTRACT_PORT: "27017"
