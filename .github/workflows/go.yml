@@ -13,6 +13,23 @@ jobs:
   checks:
     name: Build and checks
     runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_POSTGRES_CONTRACT_DSN: postgres://data_fabric_contract:contract-test-only@localhost:5432/data_fabric_contract?sslmode=disable
+      DATA_FABRIC_POSTGRES_EXPECTED_VERSION: "17.11"
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: data_fabric_contract
+          POSTGRES_PASSWORD: contract-test-only
+          POSTGRES_DB: data_fabric_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U data_fabric_contract -d data_fabric_contract"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Check out source
         uses: actions/checkout@v7
