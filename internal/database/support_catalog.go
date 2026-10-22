@@ -231,6 +231,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
 			"Gateway read-only session initialization is not supported for ClickHouse; use a server account with restricted privileges. TLS behavior and other ClickHouse versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeSQLServer:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "16.0.4305.5 only"
+		profile.VerifiedServerVersions = []string{"16.0.4305.5"}
+		profile.VersionPolicy = "Only SQL Server 16.0.4305.5 has a pinned contract result; other SQL Server versions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "SQL authentication is covered by the SQL Server 16.0.4305.5 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
+			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. TLS behavior and other SQL Server versions are not covered by this baseline.",
+		}
 	default:
 		return
 	}

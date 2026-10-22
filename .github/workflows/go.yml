@@ -209,3 +209,41 @@ jobs:
           chmod 755 "$config_dir"
           touch "$config_dir"/mount-smoke
           docker run --rm --entrypoint /bin/sh -v "$config_dir:/app/configs:ro" data-fabric:ci -c "test -r /app/configs/mount-smoke"
+
+  sqlserver-contract:
+    name: SQL Server driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_SQLSERVER_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_SQLSERVER_CONTRACT_PORT: "1433"
+      DATA_FABRIC_SQLSERVER_CONTRACT_USERNAME: sa
+      DATA_FABRIC_SQLSERVER_CONTRACT_PASSWORD: "DataFabric_2026!"
+      DATA_FABRIC_SQLSERVER_CONTRACT_DATABASE: master
+      DATA_FABRIC_SQLSERVER_EXPECTED_VERSION: "16.0.4305.5"
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "DataFabric_2026!"
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1433'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 40
+          --health-start-period 60s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run SQL Server driver contract
+        run: go test ./internal/database/drivers/traditional -run '^TestSQLServerDriverContract$' -count=1 -v

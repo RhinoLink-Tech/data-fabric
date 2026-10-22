@@ -92,6 +92,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeTiDB:       {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
 			model.DatabaseTypeOpenGauss:  {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
 			model.DatabaseTypeClickHouse: {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
+			model.DatabaseTypeSQLServer:  {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
 		}
 		if expected, ok := verifiedVersions[dbType]; ok {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expected.productRange+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, expected.server) {
@@ -128,6 +129,10 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(mongo.Limitations, "restricted single-collection SELECT subset") {
 		t.Errorf("MongoDB catalog must describe its SQL mapping boundary: %+v", mongo.Limitations)
+	}
+	sqlServer := profiles[string(model.DatabaseTypeSQLServer)]
+	if !containsSupportLimitation(sqlServer.Limitations, "Database-side read-only session enforcement is not supported") {
+		t.Errorf("SQL Server catalog must disclose that database-side read-only enforcement is unavailable: %+v", sqlServer.Limitations)
 	}
 
 	s3CSV := profiles[string(model.DatabaseTypeS3CSV)]
