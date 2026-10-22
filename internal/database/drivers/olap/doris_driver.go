@@ -122,7 +122,7 @@ func (d *DorisDriver) ApplyBatchPagination(sql string, batchSize, offset int64) 
 
 // GetTableSchema retrieves table schema from Doris
 func (d *DorisDriver) GetTableSchema(ctx context.Context, db *sql.DB, tableName string) (*DorisTableSchema, error) {
-	sql := fmt.Sprintf("DESCRIBE TABLE %s", tableName)
+	sql := fmt.Sprintf("DESCRIBE %s", tableName)
 	rows, err := db.QueryContext(ctx, sql)
 	if err != nil {
 		return nil, err
