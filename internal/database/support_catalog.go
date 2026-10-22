@@ -158,20 +158,33 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 }
 
 func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
-	if dbType != model.DatabaseTypePostgreSQL {
+	switch dbType {
+	case model.DatabaseTypePostgreSQL:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "17.11 only"
+		profile.VerifiedServerVersions = []string{"17.11"}
+		profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 17.11 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
+			"TLS behavior and other PostgreSQL versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMySQL:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "8.0.46 only"
+		profile.VerifiedServerVersions = []string{"8.0.46"}
+		profile.VersionPolicy = "Only MySQL 8.0.46 has a pinned driver contract result; no other server version or MySQL-compatible product is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
+			"TLS behavior, MariaDB, and other MySQL versions are not covered by this baseline.",
+		}
+	default:
 		return
-	}
-
-	profile.Status = ConnectorStatusEndToEndVerified
-	profile.EndToEndVerified = true
-	profile.SupportedVersionRange = "17.11 only"
-	profile.VerifiedServerVersions = []string{"17.11"}
-	profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
-	profile.AuthenticationMethods = []string{"username/password"}
-	profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 17.11 contract test; TLS is not covered by this baseline."
-	profile.Limitations = []string{
-		"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
-		"TLS behavior and other PostgreSQL versions are not covered by this baseline.",
 	}
 }
 

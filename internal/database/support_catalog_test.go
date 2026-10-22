@@ -82,9 +82,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if !profile.Supported || profile.Status == "" {
 			t.Errorf("registered type %q has invalid support state: %+v", dbType, profile)
 		}
-		if dbType == model.DatabaseTypePostgreSQL {
-			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"17.11"}) {
-				t.Errorf("PostgreSQL version contract evidence is missing or too broad: %+v", profile)
+		verifiedVersions := map[model.DatabaseType]string{
+			model.DatabaseTypePostgreSQL: "17.11",
+			model.DatabaseTypeMySQL:      "8.0.46",
+		}
+		if expectedVersion, ok := verifiedVersions[dbType]; ok {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expectedVersion+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{expectedVersion}) {
+				t.Errorf("%s version contract evidence is missing or too broad: %+v", dbType, profile)
 			}
 			continue
 		}
@@ -159,6 +163,10 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	}
 	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"17.11"}) {
 		t.Fatalf("type endpoint has missing or overly broad PostgreSQL verification evidence: %+v", postgres)
+	}
+	mysql, ok := info[string(model.DatabaseTypeMySQL)]
+	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46"}) {
+		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
 	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")
