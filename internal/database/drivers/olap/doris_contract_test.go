@@ -62,7 +62,7 @@ func TestDorisDriverContract(t *testing.T) {
 	if _, err := adminDB.ExecContext(ctx, "CREATE USER '"+username+"' IDENTIFIED BY '"+password+"'"); err != nil {
 		t.Fatalf("create contract account: %v", err)
 	}
-	if _, err := adminDB.ExecContext(ctx, "GRANT ALL PRIVILEGES ON "+databaseName+".* TO '"+username+"'"); err != nil {
+	if _, err := adminDB.ExecContext(ctx, "GRANT ALL ON internal."+databaseName+".* TO '"+username+"'@'%'"); err != nil {
 		t.Fatalf("grant contract database privileges: %v", err)
 	}
 
