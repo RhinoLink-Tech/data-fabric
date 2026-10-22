@@ -88,6 +88,7 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 			},
 		}
 		applySupportStatus(&profile, dbType)
+		applyVersionVerificationEvidence(&profile, dbType)
 		profile.Version = profile.SupportedVersionRange
 		profile.Features = append([]string(nil), profile.Operations...)
 		catalog = append(catalog, profile)
@@ -154,6 +155,37 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 	sort.Slice(catalog, func(i, j int) bool { return catalog[i].Type < catalog[j].Type })
 	return catalog
+}
+
+func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
+	switch dbType {
+	case model.DatabaseTypePostgreSQL:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "17.11 only"
+		profile.VerifiedServerVersions = []string{"17.11"}
+		profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 17.11 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
+			"TLS behavior and other PostgreSQL versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMySQL:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "8.0.46 only"
+		profile.VerifiedServerVersions = []string{"8.0.46"}
+		profile.VersionPolicy = "Only MySQL 8.0.46 has a pinned driver contract result; no other server version or MySQL-compatible product is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
+			"TLS behavior, MariaDB, and other MySQL versions are not covered by this baseline.",
+		}
+	default:
+		return
+	}
 }
 
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
@@ -401,7 +433,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 			profile.ServerVersionDetection, operations, authentication, profile.AuthenticationDisclosure,
 			capabilitySummary(profile.Capabilities), versionCapabilities, limitations))
 	}
-	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For the contract-test plan, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35). For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
+	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); for the plan, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35). For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
 	return out.String()
 }
 

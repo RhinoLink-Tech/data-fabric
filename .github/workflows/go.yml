@@ -13,6 +13,43 @@ jobs:
   checks:
     name: Build and checks
     runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_POSTGRES_CONTRACT_DSN: postgres://data_fabric_contract:contract-test-only@localhost:5432/data_fabric_contract?sslmode=disable
+      DATA_FABRIC_POSTGRES_EXPECTED_VERSION: "17.11"
+      DATA_FABRIC_MYSQL_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MYSQL_CONTRACT_PORT: "3306"
+      DATA_FABRIC_MYSQL_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.0.46"
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: data_fabric_contract
+          POSTGRES_PASSWORD: contract-test-only
+          POSTGRES_DB: data_fabric_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U data_fabric_contract -d data_fabric_contract"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+        env:
+          MYSQL_ROOT_PASSWORD: root-contract-only
+          MYSQL_USER: data_fabric_contract
+          MYSQL_PASSWORD: contract-test-only
+          MYSQL_DATABASE: data_fabric_contract
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - name: Check out source
         uses: actions/checkout@v7

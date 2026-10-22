@@ -3,10 +3,11 @@ package traditional
 import (
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	_ "github.com/lib/pq"
 )
 
 // PostgreSQLDriver implements Driver for PostgreSQL
