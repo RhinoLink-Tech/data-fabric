@@ -181,7 +181,19 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 contract test; TLS is not covered by this baseline."
 		profile.Limitations = []string{
 			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
-			"TLS behavior, MariaDB, and other MySQL versions are not covered by this baseline.",
+			"TLS behavior and other MySQL versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMariaDB:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "11.8.9 only"
+		profile.VerifiedServerVersions = []string{"11.8.9"}
+		profile.VersionPolicy = "Only MariaDB 11.8.9 has a pinned contract result; other MariaDB versions and MySQL are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 11.8.9 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
+			"TLS behavior and other MariaDB versions are not covered by this baseline.",
 		}
 	default:
 		return
