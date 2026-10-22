@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -486,9 +488,16 @@ func (dtm *DataTypeMapper) convertToBinary(value interface{}) (interface{}, erro
 func (dtm *DataTypeMapper) convertToUUID(value interface{}) (interface{}, error) {
 	switch v := value.(type) {
 	case string:
+		if _, err := uuid.Parse(v); err != nil {
+			return nil, fmt.Errorf("invalid UUID %q: %w", v, err)
+		}
 		return v, nil
 	case []byte:
-		return string(v), nil
+		s := string(v)
+		if _, err := uuid.Parse(s); err != nil {
+			return nil, fmt.Errorf("invalid UUID %q: %w", s, err)
+		}
+		return s, nil
 	default:
 		return nil, fmt.Errorf("cannot convert %T to UUID", value)
 	}
