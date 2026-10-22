@@ -370,3 +370,42 @@ jobs:
 
       - name: Run Apache Doris driver contract
         run: go test ./internal/database/drivers/olap -run '^TestDorisDriverContract$' -count=1 -v
+
+      - name: Run Apache Doris metadata contract
+        run: go test ./internal/database/metadata -run '^TestDorisMetadataExtractorContract$' -count=1 -v
+
+  starrocks-contract:
+    name: StarRocks driver and metadata contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_STARROCKS_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_STARROCKS_CONTRACT_PORT: "9030"
+      DATA_FABRIC_STARROCKS_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_STARROCKS_CONTRACT_PASSWORD: "Contract2026Test!"
+      DATA_FABRIC_STARROCKS_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_STARROCKS_EXPECTED_VERSION: "4.1.6"
+    services:
+      starrocks:
+        image: starrocks/allin1-ubuntu:4.1.6@sha256:88d1192620d03cf7ae8d5ece0b02da1024372d33bc411e5a51e2d3b003c551b3
+        ports:
+          - 9030:9030
+        options: >-
+          --health-interval 10s
+          --health-timeout 15s
+          --health-retries 30
+          --health-start-period 90s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run StarRocks driver contract
+        run: go test ./internal/database/drivers/olap -run '^TestStarRocksDriverContract$' -count=1 -v
+
+      - name: Run StarRocks metadata contract
+        run: go test ./internal/database/metadata -run '^TestStarRocksMetadataExtractorContract$' -count=1 -v

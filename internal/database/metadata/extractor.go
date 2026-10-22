@@ -403,7 +403,7 @@ func postgresRegclassLiteral(schemaName, tableName string) string {
 
 func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	switch dbType {
-	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
 		// information_schema instead of SHOW TABLE STATUS: the result aligns
 		// with the three-column scan and reports the real schema and type
 		// (SHOW TABLE STATUS would feed the row count into the schema column).
@@ -425,7 +425,7 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 
 func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
-	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
 		return fmt.Sprintf("SHOW COLUMNS FROM %s", tableName)
 	case model.DatabaseTypePostgreSQL:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", tableName, schemaName)
@@ -474,7 +474,7 @@ func (e *MetadataExtractor) scanTableRow(rows *sql.Rows, tableName, tableType *s
 
 func (e *MetadataExtractor) scanColumnRow(rows *sql.Rows, dbType model.DatabaseType, colName, colType *string, isNullable *bool, colDefault, colComment *sql.NullString) error {
 	switch dbType {
-	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
 		var field, typ, null, key, extra string
 		// SHOW COLUMNS reports NULL for columns without a default; scanning
 		// that into a plain string fails and dropped the whole row (#201

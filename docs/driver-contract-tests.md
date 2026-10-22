@@ -2,7 +2,7 @@
 
 ## Verified baselines
 
-The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, and Oracle drivers have repeatable versioned contract tests against exact, pinned server images.
+The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, and StarRocks drivers have repeatable versioned contract tests against exact, pinned server images.
 
 | Driver | Exact server version | Pinned image | Authentication |
 | --- | --- | --- | --- |
@@ -15,12 +15,14 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication |
 | MongoDB | 8.0.34 | mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b | database-scoped username and password |
 | Oracle | 23.26.3.0.0 | ghcr.io/gvenzl/oracle-free:23.26.3-slim@sha256:366fe85702d764d81a0272b72e94e629290c27aa72a47825fcc45701a0633dac | application schema user; SYSTEM for version probe |
+| Apache Doris | 4.1.3 | apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a | root for fixture setup; database-scoped username and password for the driver |
+| StarRocks | 4.1.6 | starrocks/allin1-ubuntu:4.1.6@sha256:88d1192620d03cf7ae8d5ece0b02da1024372d33bc411e5a51e2d3b003c551b3 | root for fixture setup; table-scoped username and password for the driver |
 
-The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. Each suite checks the exact server product and version before exercising its adapter.
+The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. Each suite checks the exact server product and version before exercising its adapter.
 
 These test containers use test-only accounts and databases. They contain no production credentials. Production TLS certificate validation and other server versions are not covered by these baselines.
 
-The support catalog records PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, and Oracle AI Database 26ai Free 23.26.3.0.0 as versioned contract evidence. MongoDB remains experimental because this evidence applies only to its restricted single-collection SQL adapter. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog records PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, and StarRocks 4.1.6 as versioned contract evidence. MongoDB remains experimental because this evidence applies only to its restricted single-collection SQL adapter. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Run the PostgreSQL contract locally
 
@@ -271,7 +273,7 @@ Stop the test service when finished:
 docker stop data-fabric-mongodb-contract
 ~~~~
 
-MongoDB does not speak SQL. The contract verifies only the gateway's currently implemented single-collection SQL subset; joins, OR predicates, grouping, schema discovery, and transactions remain outside this adapter. CI runs nine pinned database contracts across four jobs. For the exact support boundary, see [the generated data source support catalog](data-source-support.md).
+MongoDB does not speak SQL. The contract verifies only the gateway's currently implemented single-collection SQL subset; joins, OR predicates, grouping, schema discovery, and transactions remain outside this adapter. CI runs eleven pinned database contracts across six jobs. For the exact support boundary, see [the generated data source support catalog](data-source-support.md).
 
 For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
@@ -309,3 +311,64 @@ docker stop data-fabric-oracle-contract
 ~~~~
 
 The Oracle baseline verifies Oracle AI Database 26ai Free 23.26.3.0.0 only. It does not imply compatibility with licensed editions or other Oracle releases. TLS certificate behavior and database-side read-only session enforcement are not covered.
+
+
+## Run the Apache Doris contract locally
+
+Start the pinned single-container service:
+
+~~~~sh
+docker run --rm --detach --name data-fabric-doris-contract \
+  --publish 9030:9030 \
+  apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a
+~~~~
+
+Wait for Doris to accept connections, then run the driver and application metadata contracts:
+
+~~~~sh
+export DATA_FABRIC_DORIS_CONTRACT_HOST='127.0.0.1'
+export DATA_FABRIC_DORIS_CONTRACT_PORT='9030'
+export DATA_FABRIC_DORIS_CONTRACT_USERNAME='data_fabric_contract'
+export DATA_FABRIC_DORIS_CONTRACT_PASSWORD='Contract2026Test!'
+export DATA_FABRIC_DORIS_CONTRACT_DATABASE='data_fabric_contract'
+export DATA_FABRIC_DORIS_EXPECTED_VERSION='doris-4.1.3'
+go test ./internal/database/drivers/olap -run '^TestDorisDriverContract$' -count=1 -v
+go test ./internal/database/metadata -run '^TestDorisMetadataExtractorContract$' -count=1 -v
+~~~~
+
+Stop the test service when finished:
+
+~~~~sh
+docker stop data-fabric-doris-contract
+~~~~
+
+## Run the StarRocks contract locally
+
+The contract uses the official StarRocks 4.1.6 single-container image. It creates a disposable database, fixture table, and password-authenticated user with SELECT permission on that table.
+
+~~~~sh
+docker run --rm --detach --name data-fabric-starrocks-contract \
+  --publish 9030:9030 \
+  starrocks/allin1-ubuntu:4.1.6@sha256:88d1192620d03cf7ae8d5ece0b02da1024372d33bc411e5a51e2d3b003c551b3
+~~~~
+
+Wait until the service health check reports ready, then run:
+
+~~~~sh
+export DATA_FABRIC_STARROCKS_CONTRACT_HOST='127.0.0.1'
+export DATA_FABRIC_STARROCKS_CONTRACT_PORT='9030'
+export DATA_FABRIC_STARROCKS_CONTRACT_USERNAME='data_fabric_contract'
+export DATA_FABRIC_STARROCKS_CONTRACT_PASSWORD='Contract2026Test!'
+export DATA_FABRIC_STARROCKS_CONTRACT_DATABASE='data_fabric_contract'
+export DATA_FABRIC_STARROCKS_EXPECTED_VERSION='4.1.6'
+go test ./internal/database/drivers/olap -run '^TestStarRocksDriverContract$' -count=1 -v
+go test ./internal/database/metadata -run '^TestStarRocksMetadataExtractorContract$' -count=1 -v
+~~~~
+
+Stop the test service when finished:
+
+~~~~sh
+docker stop data-fabric-starrocks-contract
+~~~~
+
+The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
