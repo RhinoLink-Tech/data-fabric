@@ -40,6 +40,12 @@ jobs:
       DATA_FABRIC_TIDB_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_TIDB_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_TIDB_EXPECTED_VERSION: "8.0.11-TiDB-v8.5.8"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_OPENGAUSS_CONTRACT_PORT: "5433"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_USERNAME: gaussdb
+      DATA_FABRIC_OPENGAUSS_CONTRACT_PASSWORD: "DataFabric_2026!"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_DATABASE: postgres
+      DATA_FABRIC_OPENGAUSS_EXPECTED_VERSION: "openGauss 6.0.0 build aee4abd5"
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -107,6 +113,19 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20
+      opengauss:
+        image: enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5
+        env:
+          GS_PASSWORD: "DataFabric_2026!"
+        ports:
+          - 5433:5432
+        options: >-
+          --privileged=true
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/5432'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
     steps:
       - name: Check out source
         uses: actions/checkout@v7
