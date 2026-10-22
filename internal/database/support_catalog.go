@@ -207,6 +207,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The TiDB contract test covers the MySQL-wire driver against one TiDB v8.5.8 server instance; it does not validate a multi-node TiKV cluster.",
 			"TiDB v8.5.8 does not implement SET SESSION TRANSACTION READ ONLY; the generic database-side read-only initializer is disabled for TiDB. Use a TiDB account with restricted privileges. TLS and other TiDB versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeOpenGauss:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "6.0.0 only"
+		profile.VerifiedServerVersions = []string{"openGauss 6.0.0 build aee4abd5"}
+		profile.VersionPolicy = "Only openGauss 6.0.0 build aee4abd5 has a pinned contract result; no other openGauss or PostgreSQL version is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the openGauss 6.0.0 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The openGauss contract test covers the PostgreSQL-wire driver against one openGauss 6.0.0 server instance.",
+			"Database-side read-only session enforcement, SQL execution, schema metadata, pagination, cancellation, and query errors are verified. TLS, other openGauss versions, and other PostgreSQL-compatible products are not covered.",
+		}
 	case model.DatabaseTypeClickHouse:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true

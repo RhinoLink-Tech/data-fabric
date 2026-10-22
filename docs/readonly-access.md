@@ -38,7 +38,8 @@ of what the application sends.
 | OceanBase (MySQL mode), TDSQL, GBase 8s/8t | Enabled; verify on your engine version | Same MySQL-protocol init statement |
 | TiDB (tested v8.5.8; other versions unverified) | No — verified server reports the generic read-only statement as unimplemented/no-op | SQL validation + least-privilege TiDB account; do not treat the shared MySQL protocol as proof of session enforcement |
 | PostgreSQL | Yes — standard behavior | `default_transaction_read_only=on` connection parameter |
-| GaussDB, KingbaseES, openGauss, Oscar | Enabled; verify on your engine version | Same PostgreSQL-protocol parameter |
+| openGauss 6.0.0 | Yes — verified for this pinned release; other versions unverified | `default_transaction_read_only=on` connection parameter |
+| GaussDB, KingbaseES, Oscar | Enabled; verify on your engine version | Same PostgreSQL-protocol parameter |
 | Doris, StarRocks, Hologres, Redshift | No — excluded pending live verification | Same wire protocol, but read-only behavior is not documented for these engines; SQL validation + least-privilege account only |
 | Oracle, SQL Server, Snowflake, Hive, MongoDB | No — no session-level read-only mode | SQL validation + least-privilege account only |
 | ClickHouse | No — the native protocol has no gateway read-only session initializer | SQL validation + least-privilege ClickHouse account |
