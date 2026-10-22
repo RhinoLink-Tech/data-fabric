@@ -15,15 +15,38 @@ import (
 )
 
 const (
-	mysqlContractHostEnv     = "DATA_FABRIC_MYSQL_CONTRACT_HOST"
-	mysqlContractPortEnv     = "DATA_FABRIC_MYSQL_CONTRACT_PORT"
-	mysqlContractUserEnv     = "DATA_FABRIC_MYSQL_CONTRACT_USERNAME"
-	mysqlContractPasswordEnv = "DATA_FABRIC_MYSQL_CONTRACT_PASSWORD"
-	mysqlContractDatabaseEnv = "DATA_FABRIC_MYSQL_CONTRACT_DATABASE"
-	mysqlExpectedVersionEnv  = "DATA_FABRIC_MYSQL_EXPECTED_VERSION"
+	mysqlContractHostEnv       = "DATA_FABRIC_MYSQL_CONTRACT_HOST"
+	mysqlContractPortEnv       = "DATA_FABRIC_MYSQL_CONTRACT_PORT"
+	mysqlContractUserEnv       = "DATA_FABRIC_MYSQL_CONTRACT_USERNAME"
+	mysqlContractPasswordEnv   = "DATA_FABRIC_MYSQL_CONTRACT_PASSWORD"
+	mysqlContractDatabaseEnv   = "DATA_FABRIC_MYSQL_CONTRACT_DATABASE"
+	mysqlExpectedVersionEnv    = "DATA_FABRIC_MYSQL_EXPECTED_VERSION"
+	mariaDBContractHostEnv     = "DATA_FABRIC_MARIADB_CONTRACT_HOST"
+	mariaDBContractPortEnv     = "DATA_FABRIC_MARIADB_CONTRACT_PORT"
+	mariaDBContractUserEnv     = "DATA_FABRIC_MARIADB_CONTRACT_USERNAME"
+	mariaDBContractPasswordEnv = "DATA_FABRIC_MARIADB_CONTRACT_PASSWORD"
+	mariaDBContractDatabaseEnv = "DATA_FABRIC_MARIADB_CONTRACT_DATABASE"
+	mariaDBExpectedVersionEnv  = "DATA_FABRIC_MARIADB_EXPECTED_VERSION"
 )
 
 func TestMySQLDriverContract(t *testing.T) {
+	runMySQLProtocolContract(t, model.DatabaseTypeMySQL)
+}
+
+func TestMariaDBDriverContract(t *testing.T) {
+	if os.Getenv(mariaDBContractHostEnv) == "" {
+		t.Skipf("set %s to run the MariaDB server contract", mariaDBContractHostEnv)
+	}
+	t.Setenv(mysqlContractHostEnv, os.Getenv(mariaDBContractHostEnv))
+	t.Setenv(mysqlContractPortEnv, os.Getenv(mariaDBContractPortEnv))
+	t.Setenv(mysqlContractUserEnv, os.Getenv(mariaDBContractUserEnv))
+	t.Setenv(mysqlContractPasswordEnv, os.Getenv(mariaDBContractPasswordEnv))
+	t.Setenv(mysqlContractDatabaseEnv, os.Getenv(mariaDBContractDatabaseEnv))
+	t.Setenv(mysqlExpectedVersionEnv, os.Getenv(mariaDBExpectedVersionEnv))
+	runMySQLProtocolContract(t, model.DatabaseTypeMariaDB)
+}
+
+func runMySQLProtocolContract(t *testing.T, dbType model.DatabaseType) {
 	host := os.Getenv(mysqlContractHostEnv)
 	if host == "" {
 		t.Skipf("set %s to run the MySQL server contract", mysqlContractHostEnv)
@@ -73,8 +96,15 @@ func TestMySQLDriverContract(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&serverVersion); err != nil {
 		t.Fatalf("read server version: %v", err)
 	}
-	if serverVersion != expectedVersion {
-		t.Fatalf("server version = %q, want exact contract version %q", serverVersion, expectedVersion)
+	observedVersion := serverVersion
+	if dbType == model.DatabaseTypeMariaDB {
+		if !strings.Contains(strings.ToLower(serverVersion), "mariadb") {
+			t.Fatalf("server version %q does not identify MariaDB", serverVersion)
+		}
+		observedVersion = strings.SplitN(serverVersion, "-", 2)[0]
+	}
+	if observedVersion != expectedVersion {
+		t.Fatalf("%s server version = %q, want exact contract version %q", dbType, observedVersion, expectedVersion)
 	}
 
 	t.Run("query schema and standard SQL values", func(t *testing.T) {
@@ -145,7 +175,7 @@ func TestMySQLDriverContract(t *testing.T) {
 		}
 		defer db.ExecContext(context.Background(), "DROP TABLE "+table)
 
-		readOnlyDB, handled, err := readonly.OpenDB(model.DatabaseTypeMySQL, dsn)
+		readOnlyDB, handled, err := readonly.OpenDB(dbType, dsn)
 		if err != nil {
 			t.Fatalf("open read-only connection: %v", err)
 		}

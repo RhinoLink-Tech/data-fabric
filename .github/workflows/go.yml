@@ -22,6 +22,12 @@ jobs:
       DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.0.46"
+      DATA_FABRIC_MARIADB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MARIADB_CONTRACT_PORT: "3307"
+      DATA_FABRIC_MARIADB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MARIADB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MARIADB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MARIADB_EXPECTED_VERSION: "11.8.9"
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -47,6 +53,20 @@ jobs:
           - 3306:3306
         options: >-
           --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      mariadb:
+        image: mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
+        env:
+          MARIADB_ROOT_PASSWORD: root-contract-only
+          MARIADB_USER: data_fabric_contract
+          MARIADB_PASSWORD: contract-test-only
+          MARIADB_DATABASE: data_fabric_contract
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20

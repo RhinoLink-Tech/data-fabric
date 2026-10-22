@@ -85,6 +85,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		verifiedVersions := map[model.DatabaseType]string{
 			model.DatabaseTypePostgreSQL: "17.11",
 			model.DatabaseTypeMySQL:      "8.0.46",
+			model.DatabaseTypeMariaDB:    "11.8.9",
 		}
 		if expectedVersion, ok := verifiedVersions[dbType]; ok {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expectedVersion+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{expectedVersion}) {
@@ -167,6 +168,10 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	mysql, ok := info[string(model.DatabaseTypeMySQL)]
 	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46"}) {
 		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
+	}
+	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
+	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"11.8.9"}) {
+		t.Fatalf("type endpoint has missing or overly broad MariaDB verification evidence: %+v", mariaDB)
 	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")
