@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/readonly"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/denisenkom/go-mssqldb/msdsn"
 )
 
 const (
@@ -52,8 +54,24 @@ func TestSQLServerDriverContract(t *testing.T) {
 	if err := driver.ValidateDSN(dsn); err != nil {
 		t.Fatalf("ValidateDSN: %v", err)
 	}
+	parsedDSN, _, err := msdsn.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse built SQL Server DSN: %v", err)
+	}
+	if parsedDSN.Host != host || parsedDSN.Port != uint64(port) || parsedDSN.Database != databaseName || parsedDSN.User != username || parsedDSN.Password != password {
+		t.Fatalf("built SQL Server DSN did not preserve the configured endpoint and credentials")
+	}
 	if driver.GetDefaultPort() != 1433 {
 		t.Fatalf("default port = %d, want 1433", driver.GetDefaultPort())
+	}
+
+	endpoint := net.JoinHostPort(host, strconv.Itoa(port))
+	tcpConn, err := net.DialTimeout("tcp", endpoint, 3*time.Second)
+	if err != nil {
+		t.Fatalf("open TCP connection to SQL Server at %s: %v", endpoint, err)
+	}
+	if err := tcpConn.Close(); err != nil {
+		t.Fatalf("close TCP probe connection: %v", err)
 	}
 
 	db, err := driver.Open(dsn)
@@ -65,12 +83,17 @@ func TestSQLServerDriverContract(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	var pingErr error
-	for pingErr = db.PingContext(ctx); pingErr != nil && ctx.Err() == nil; pingErr = db.PingContext(ctx) {
+	var lastPingErr error
+	for {
+		pingErr := db.PingContext(ctx)
+		if pingErr == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("wait for SQL Server at %s: %v (last ping error: %v)", endpoint, ctx.Err(), lastPingErr)
+		}
+		lastPingErr = pingErr
 		time.Sleep(250 * time.Millisecond)
-	}
-	if pingErr != nil {
-		t.Fatalf("wait for SQL Server: %v", pingErr)
 	}
 	if err := driver.TestConnection(db); err != nil {
 		t.Fatalf("TestConnection: %v", err)
