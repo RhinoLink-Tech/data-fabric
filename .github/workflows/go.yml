@@ -342,3 +342,31 @@ jobs:
 
       - name: Run S3-compatible service contract
         run: bash scripts/contracts/run_s3_csv_contract.sh
+
+  doris-contract:
+    name: Apache Doris driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_DORIS_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_DORIS_CONTRACT_PORT: "9030"
+      DATA_FABRIC_DORIS_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_DORIS_CONTRACT_PASSWORD: "Contract2026Test!"
+      DATA_FABRIC_DORIS_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_DORIS_EXPECTED_VERSION: doris-4.1.3
+    services:
+      doris:
+        image: apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a
+        ports:
+          - 9030:9030
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Apache Doris driver contract
+        run: go test ./internal/database/drivers/olap -run '^TestDorisDriverContract$' -count=1 -v
