@@ -238,10 +238,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"16.0.4305.5"}
 		profile.VersionPolicy = "Only SQL Server 16.0.4305.5 has a pinned contract result; other SQL Server versions are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "SQL authentication is covered by the SQL Server 16.0.4305.5 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "SQL authentication is covered by the SQL Server 16.0.4305.5 contract test; the test trusts the container's self-signed TLS certificate, so production certificate validation is not covered."
 		profile.Limitations = []string{
 			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
-			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. TLS behavior and other SQL Server versions are not covered by this baseline.",
+			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. Production TLS certificate validation and other SQL Server versions are not covered by this baseline.",
 		}
 	default:
 		return

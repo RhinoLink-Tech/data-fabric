@@ -49,6 +49,10 @@ func TestSQLServerDriverContract(t *testing.T) {
 		Database: databaseName,
 		Username: username,
 		Password: password,
+		SSL:      true,
+		AdditionalProps: map[string]interface{}{
+			"trustservercertificate": true,
+		},
 	}
 	dsn := driver.BuildDSN(config)
 	if err := driver.ValidateDSN(dsn); err != nil {

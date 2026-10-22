@@ -16,7 +16,7 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, and SQL Server driv
 
 All seven suites cover connection and health checks, SQL value and NULL scanning, batch pagination, query cancellation, and server error propagation. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites check that database-side read-only initialization is reported as unsupported for the tested version. The ClickHouse suite uses the native protocol and verifies that the SQL driver is registered before connecting. Each suite verifies the exact server product and version before exercising the driver.
 
-These test containers use test-only accounts and databases. They contain no production credentials. TLS and other server versions are not covered by these baselines.
+These test containers use test-only accounts and databases. They contain no production credentials. Production TLS certificate validation and other server versions are not covered by these baselines.
 
 The support catalog reports only PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, and SQL Server 16.0.4305.5 as verified. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
@@ -233,6 +233,6 @@ Stop the test service when finished:
 docker stop data-fabric-sqlserver-contract
 ~~~~
 
-Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. TLS behavior and other SQL Server versions are not covered by this baseline.
+Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test trusts the container's self-signed TLS certificate; production certificate validation and other SQL Server versions are not covered by this baseline.
 
 TiDB 8.5.8 does not implement the generic session read-only statement; configure server-side permissions for read-only accounts. ClickHouse uses the native protocol and also does not use the gateway read-only session initializer. CI runs seven pinned database contracts in two jobs to keep the SQL Server service isolated from the other database containers. For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
