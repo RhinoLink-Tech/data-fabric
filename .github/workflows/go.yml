@@ -286,3 +286,59 @@ jobs:
 
       - name: Run MongoDB driver contract
         run: go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v
+
+  oracle-contract:
+    name: Oracle driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_ORACLE_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_ORACLE_CONTRACT_PORT: "1521"
+      DATA_FABRIC_ORACLE_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_ORACLE_CONTRACT_PASSWORD: Contract2026Test
+      DATA_FABRIC_ORACLE_CONTRACT_SERVICE: FREEPDB1
+      DATA_FABRIC_ORACLE_ADMIN_USERNAME: system
+      DATA_FABRIC_ORACLE_ADMIN_PASSWORD: Contract2026Admin
+      DATA_FABRIC_ORACLE_EXPECTED_VERSION: "23.26.3.0.0"
+    services:
+      oracle:
+        image: ghcr.io/gvenzl/oracle-free:23.26.3-slim@sha256:366fe85702d764d81a0272b72e94e629290c27aa72a47825fcc45701a0633dac
+        env:
+          ORACLE_PASSWORD: Contract2026Admin
+          APP_USER: data_fabric_contract
+          APP_USER_PASSWORD: Contract2026Test
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 40
+          --health-start-period 60s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Oracle driver contract
+        run: go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v
+
+  s3-csv-contract:
+    name: S3 CSV driver contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run S3-compatible service contract
+        run: bash scripts/contracts/run_s3_csv_contract.sh

@@ -258,6 +258,31 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
 			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. Production TLS certificate validation and other SQL Server versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeOracle:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "23.26.3.0.0 only"
+		profile.VerifiedServerVersions = []string{"23.26.3.0.0"}
+		profile.VersionPolicy = "Only Oracle AI Database 26ai Free 23.26.3.0.0 has a pinned contract result; other Oracle versions and editions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "The contract uses a dedicated application schema account for SQL operations and SYSTEM only to read the exact server version; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The Oracle contract test covers the go-ora SQL driver, connection and health checks, bind parameters, value and NULL scanning, DML, COUNT(*), Oracle OFFSET/FETCH pagination, and query errors against Oracle AI Database 26ai Free 23.26.3.0.0.",
+			"Gateway read-only session initialization is not supported for Oracle; use an Oracle account with restricted privileges. TLS behavior, other Oracle versions, and licensed editions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeS3CSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Garage v2.4.1 only"
+		profile.VerifiedServerVersions = []string{"Garage v2.4.1"}
+		profile.VersionPolicy = "The S3 CSV adapter has a pinned live contract against Garage v2.4.1 only; AWS S3 and other S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed S3 requests using an access key and secret key are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authentication are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Garage v2.4.1 contract covers signed object upload, listing, metadata lookup, object retrieval, health checks, a restricted read-only SQL query, and rejection of writes.",
+			"This contract does not verify AWS S3, other S3-compatible providers, or other Garage versions.",
+			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.",
+		}
 	default:
 		return
 	}
@@ -293,8 +318,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	case model.DatabaseTypeS3CSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
-			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.",
-			"The end-to-end test uses an S3-compatible HTTP fixture; no AWS S3 or provider-version contract test is recorded.")
+			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
 		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet,
 		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
