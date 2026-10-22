@@ -9,15 +9,16 @@
 //     default_transaction_read_only GUC as a connection parameter; lib/pq
 //     forwards parameters it does not recognize to the server in the
 //     startup packet.
-//   - ModeConnectorInit: MySQL-protocol engines get MySQLInitSQL executed
-//     on every new physical connection through a driver.Connector wrapper,
-//     so connection-pool recycling cannot bypass it.
+//   - ModeConnectorInit: MySQL-protocol engines verified to support the
+//     read-only statement get MySQLInitSQL executed on every new physical
+//     connection through a driver.Connector wrapper, so connection-pool
+//     recycling cannot bypass it.
 //
 // Engines whose read-only behavior on these wire protocols is not verified
-// (Doris, StarRocks, Hologres, Redshift, Oracle, SQL Server, ...) stay
-// ModeUnsupported: they keep application-layer validation only and are
-// documented in docs/readonly-access.md. This mode table is the single
-// source of truth for which types get database-side enforcement.
+// or is a no-op (TiDB, Doris, StarRocks, Hologres, Redshift, Oracle, SQL
+// Server, ...) stay ModeUnsupported: they keep application-layer validation
+// only and are documented in docs/readonly-access.md. This mode table is the
+// single source of truth for which types get database-side enforcement.
 package readonly
 
 import (
@@ -67,14 +68,14 @@ var ErrReadOnlyInitFailed = errors.New("read-only session initialization failed"
 // sessionModes is the single source of truth for database-side read-only
 // enforcement (#20). Included types are MySQL/PostgreSQL-lineage relational
 // engines where the session read-only behavior is part of the documented
-// protocol. Engines on the same wire protocol but with unverified behavior
-// (doris, starrocks, hologres, redshift) are deliberately excluded: a
-// rejected init statement or GUC would make the data source unusable.
+// protocol. Engines on the same wire protocol but with unverified or no-op
+// behavior (TiDB, Doris, StarRocks, Hologres, Redshift) are deliberately
+// excluded: a rejected init statement makes the data source unusable, while
+// a no-op would create false read-only assurance.
 var sessionModes = map[model.DatabaseType]Mode{
 	// MySQL protocol (go-sql-driver): per-connection init statement.
 	model.DatabaseTypeMySQL:          ModeConnectorInit,
 	model.DatabaseTypeMariaDB:        ModeConnectorInit,
-	model.DatabaseTypeTiDB:           ModeConnectorInit,
 	model.DatabaseTypeOceanBaseMySQL: ModeConnectorInit,
 	model.DatabaseTypeTDSQL:          ModeConnectorInit,
 	model.DatabaseTypeGBase8s:        ModeConnectorInit,

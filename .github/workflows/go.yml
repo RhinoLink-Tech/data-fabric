@@ -34,6 +34,12 @@ jobs:
       DATA_FABRIC_CLICKHOUSE_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_CLICKHOUSE_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_CLICKHOUSE_EXPECTED_VERSION: "26.8.20.9"
+      DATA_FABRIC_TIDB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_TIDB_CONTRACT_PORT: "4000"
+      DATA_FABRIC_TIDB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_TIDB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_TIDB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_TIDB_EXPECTED_VERSION: "8.0.11-TiDB-v8.5.8"
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -88,6 +94,16 @@ jobs:
         options: >-
           --ulimit nofile=262144:262144
           --health-cmd "clickhouse-client --host 127.0.0.1 --user data_fabric_contract --password contract-test-only --database data_fabric_contract --query 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      tidb:
+        image: pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5
+        ports:
+          - 4000:4000
+          - 10080:10080
+        options: >-
+          --health-cmd "curl --fail --silent --output /dev/null http://127.0.0.1:10080/status"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20

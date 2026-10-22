@@ -27,6 +27,10 @@ in a single strategy table (`internal/database/readonly`):
   new physical connection through a `driver.Connector` wrapper
   (`mysql.NewConnector` + `sql.OpenDB`), so pool refills and recycling are
   covered.
+- TiDB is excluded from this MySQL-protocol list. The pinned TiDB 8.5.8
+  contract returns error 1235 for the generic read-only statement and reports
+  that it is not implemented; the shared MySQL wire protocol is not sufficient
+  evidence of enforcement.
 - PostgreSQL-protocol types: `default_transaction_read_only=on` appended to
   the DSN (lib/pq forwards unknown parameters to the server); works for both
   URL-form and keyword-form DSNs.
