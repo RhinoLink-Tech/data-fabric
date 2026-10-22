@@ -181,7 +181,55 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 contract test; TLS is not covered by this baseline."
 		profile.Limitations = []string{
 			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
-			"TLS behavior, MariaDB, and other MySQL versions are not covered by this baseline.",
+			"TLS behavior and other MySQL versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMariaDB:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "11.8.9 only"
+		profile.VerifiedServerVersions = []string{"11.8.9"}
+		profile.VersionPolicy = "Only MariaDB 11.8.9 has a pinned contract result; other MariaDB versions and MySQL are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 11.8.9 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
+			"TLS behavior and other MariaDB versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeTiDB:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "8.5.8 only"
+		profile.VerifiedServerVersions = []string{"8.0.11-TiDB-v8.5.8"}
+		profile.VersionPolicy = "Only TiDB v8.5.8, reporting 8.0.11-TiDB-v8.5.8, has a pinned contract result; no other TiDB version or MySQL-compatible product is implied."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the TiDB v8.5.8 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The TiDB contract test covers the MySQL-wire driver against one TiDB v8.5.8 server instance; it does not validate a multi-node TiKV cluster.",
+			"TiDB v8.5.8 does not implement SET SESSION TRANSACTION READ ONLY; the generic database-side read-only initializer is disabled for TiDB. Use a TiDB account with restricted privileges. TLS and other TiDB versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeOpenGauss:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "6.0.0 only"
+		profile.VerifiedServerVersions = []string{"openGauss 6.0.0 build aee4abd5"}
+		profile.VersionPolicy = "Only openGauss 6.0.0 build aee4abd5 has a pinned contract result; no other openGauss or PostgreSQL version is implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the openGauss 6.0.0 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The openGauss contract test covers the PostgreSQL-wire driver against one openGauss 6.0.0 server instance.",
+			"Database-side read-only session enforcement, SQL execution, schema metadata, pagination, cancellation, and query errors are verified. TLS, other openGauss versions, and other PostgreSQL-compatible products are not covered.",
+		}
+	case model.DatabaseTypeClickHouse:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "26.8.20.9 only"
+		profile.VerifiedServerVersions = []string{"26.8.20.9"}
+		profile.VersionPolicy = "Only ClickHouse 26.8.20.9 has a pinned native-protocol contract result; other ClickHouse versions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the ClickHouse 26.8.20.9 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
+			"Gateway read-only session initialization is not supported for ClickHouse; use a server account with restricted privileges. TLS behavior and other ClickHouse versions are not covered by this baseline.",
 		}
 	default:
 		return
@@ -270,6 +318,8 @@ func compatibilityMode(dbType model.DatabaseType, category drivers.DriverCategor
 		return "postgresql_compatible"
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng:
 		return "trino_http_protocol_family"
+	case model.DatabaseTypeClickHouse:
+		return "clickhouse_native_protocol"
 	case model.DatabaseTypeOceanBaseOracle:
 		return "oracle_compatible"
 	}

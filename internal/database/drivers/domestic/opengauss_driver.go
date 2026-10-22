@@ -74,9 +74,12 @@ func (d *OpenGaussDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *OpenGaussDriver) BuildDSN(config *model.DataSourceConfig) string {
-	sslMode := d.config.SSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+	sslMode := "disable"
+	if config.SSL {
+		sslMode = "require"
+	}
+	if d != nil && d.config != nil && d.config.SSLMode != "" {
+		sslMode = d.config.SSLMode
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",

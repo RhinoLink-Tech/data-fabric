@@ -22,6 +22,30 @@ jobs:
       DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.0.46"
+      DATA_FABRIC_MARIADB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MARIADB_CONTRACT_PORT: "3307"
+      DATA_FABRIC_MARIADB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MARIADB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MARIADB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MARIADB_EXPECTED_VERSION: "11.8.9"
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_PORT: "9000"
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_CLICKHOUSE_EXPECTED_VERSION: "26.8.20.9"
+      DATA_FABRIC_TIDB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_TIDB_CONTRACT_PORT: "4000"
+      DATA_FABRIC_TIDB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_TIDB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_TIDB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_TIDB_EXPECTED_VERSION: "8.0.11-TiDB-v8.5.8"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_OPENGAUSS_CONTRACT_PORT: "5433"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_USERNAME: gaussdb
+      DATA_FABRIC_OPENGAUSS_CONTRACT_PASSWORD: "DataFabric_2026!"
+      DATA_FABRIC_OPENGAUSS_CONTRACT_DATABASE: postgres
+      DATA_FABRIC_OPENGAUSS_EXPECTED_VERSION: "openGauss 6.0.0 build aee4abd5"
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -50,6 +74,58 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20
+      mariadb:
+        image: mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
+        env:
+          MARIADB_ROOT_PASSWORD: root-contract-only
+          MARIADB_USER: data_fabric_contract
+          MARIADB_PASSWORD: contract-test-only
+          MARIADB_DATABASE: data_fabric_contract
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      clickhouse:
+        image: clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688
+        env:
+          CLICKHOUSE_DB: data_fabric_contract
+          CLICKHOUSE_USER: data_fabric_contract
+          CLICKHOUSE_PASSWORD: contract-test-only
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+        ports:
+          - 9000:9000
+        options: >-
+          --ulimit nofile=262144:262144
+          --health-cmd "clickhouse-client --host 127.0.0.1 --user data_fabric_contract --password contract-test-only --database data_fabric_contract --query 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      tidb:
+        image: pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5
+        ports:
+          - 4000:4000
+          - 10080:10080
+        options: >-
+          --health-cmd "curl --fail --silent --output /dev/null http://127.0.0.1:10080/status"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      opengauss:
+        image: enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5
+        env:
+          GS_PASSWORD: "DataFabric_2026!"
+        ports:
+          - 5433:5432
+        options: >-
+          --privileged=true
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/5432'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
     steps:
       - name: Check out source
         uses: actions/checkout@v7

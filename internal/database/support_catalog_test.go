@@ -82,12 +82,19 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if !profile.Supported || profile.Status == "" {
 			t.Errorf("registered type %q has invalid support state: %+v", dbType, profile)
 		}
-		verifiedVersions := map[model.DatabaseType]string{
-			model.DatabaseTypePostgreSQL: "17.11",
-			model.DatabaseTypeMySQL:      "8.0.46",
+		verifiedVersions := map[model.DatabaseType]struct {
+			productRange string
+			server       []string
+		}{
+			model.DatabaseTypePostgreSQL: {productRange: "17.11", server: []string{"17.11"}},
+			model.DatabaseTypeMySQL:      {productRange: "8.0.46", server: []string{"8.0.46"}},
+			model.DatabaseTypeMariaDB:    {productRange: "11.8.9", server: []string{"11.8.9"}},
+			model.DatabaseTypeTiDB:       {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
+			model.DatabaseTypeOpenGauss:  {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
+			model.DatabaseTypeClickHouse: {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
 		}
-		if expectedVersion, ok := verifiedVersions[dbType]; ok {
-			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expectedVersion+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{expectedVersion}) {
+		if expected, ok := verifiedVersions[dbType]; ok {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expected.productRange+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, expected.server) {
 				t.Errorf("%s version contract evidence is missing or too broad: %+v", dbType, profile)
 			}
 			continue
@@ -168,6 +175,22 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46"}) {
 		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
 	}
+	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
+	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"11.8.9"}) {
+		t.Fatalf("type endpoint has missing or overly broad MariaDB verification evidence: %+v", mariaDB)
+	}
+	tiDB, ok := info[string(model.DatabaseTypeTiDB)]
+	if !ok || tiDB.Status != ConnectorStatusEndToEndVerified || !tiDB.EndToEndVerified || tiDB.SupportedVersionRange != "8.5.8 only" || !reflect.DeepEqual(tiDB.VerifiedServerVersions, []string{"8.0.11-TiDB-v8.5.8"}) || tiDB.CompatibilityMode != "mysql_compatible" {
+		t.Fatalf("type endpoint has missing or overly broad TiDB verification evidence: %+v", tiDB)
+	}
+	openGauss, ok := info[string(model.DatabaseTypeOpenGauss)]
+	if !ok || openGauss.Status != ConnectorStatusEndToEndVerified || !openGauss.EndToEndVerified || openGauss.SupportedVersionRange != "6.0.0 only" || !reflect.DeepEqual(openGauss.VerifiedServerVersions, []string{"openGauss 6.0.0 build aee4abd5"}) || openGauss.CompatibilityMode != "postgresql_compatible" {
+		t.Fatalf("type endpoint has missing or overly broad openGauss verification evidence: %+v", openGauss)
+	}
+	clickHouse, ok := info[string(model.DatabaseTypeClickHouse)]
+	if !ok || clickHouse.Status != ConnectorStatusEndToEndVerified || !clickHouse.EndToEndVerified || clickHouse.SupportedVersionRange != "26.8.20.9 only" || !reflect.DeepEqual(clickHouse.VerifiedServerVersions, []string{"26.8.20.9"}) || clickHouse.CompatibilityMode != "clickhouse_native_protocol" {
+		t.Fatalf("type endpoint has missing or overly broad ClickHouse verification evidence: %+v", clickHouse)
+	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")
 	}
@@ -181,7 +204,8 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 
 func TestServerVersionProbeAndProductRecognition(t *testing.T) {
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL, model.DatabaseTypeOracle,
+		model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB,
+		model.DatabaseTypePostgreSQL, model.DatabaseTypeOpenGauss, model.DatabaseTypeOracle,
 		model.DatabaseTypeSQLServer, model.DatabaseTypeTrino,
 	} {
 		if _, ok := serverVersionProbe(dbType); !ok {
@@ -193,6 +217,7 @@ func TestServerVersionProbeAndProductRecognition(t *testing.T) {
 	}
 	tests := []struct{ version, product string }{
 		{"8.0.37-TiDB-v8.1.0", "TiDB"},
+		{"(openGauss 6.0.0 build aee4abd5) compiled on x86_64", "openGauss"},
 		{"PostgreSQL 16.2 on x86_64", "PostgreSQL"},
 		{"KingbaseES V008R006", "KingbaseES"},
 		{"19.0.0.0.0", "unknown"},
@@ -207,9 +232,17 @@ func TestServerVersionProbeAndProductRecognition(t *testing.T) {
 func TestDetectServerInfoReportsVerifiedSignatureOrUnknown(t *testing.T) {
 	db := sql.OpenDB(versionProbeConnector{query: "SELECT VERSION()", version: "8.0.37-TiDB-v8.1.0"})
 	defer db.Close()
-	info := detectServerInfo(context.Background(), db, model.DatabaseTypeMySQL, drivers.CategoryRelational)
+	info := detectServerInfo(context.Background(), db, model.DatabaseTypeTiDB, drivers.CategoryRelational)
 	if info.Status != "detected" || info.Product != "TiDB" || info.Version != "8.0.37-TiDB-v8.1.0" {
 		t.Fatalf("detected server info = %+v", info)
+	}
+
+	openGaussVersion := "(openGauss 6.0.0 build aee4abd5) compiled on x86_64"
+	openGaussDB := sql.OpenDB(versionProbeConnector{query: "SELECT version()", version: openGaussVersion})
+	defer openGaussDB.Close()
+	openGaussInfo := detectServerInfo(context.Background(), openGaussDB, model.DatabaseTypeOpenGauss, drivers.CategoryRelational)
+	if openGaussInfo.Status != "detected" || openGaussInfo.Product != "openGauss" || openGaussInfo.Version != openGaussVersion {
+		t.Fatalf("detected openGauss server info = %+v", openGaussInfo)
 	}
 
 	plainVersionDB := sql.OpenDB(versionProbeConnector{query: "SELECT VERSION()", version: "8.0.37"})
