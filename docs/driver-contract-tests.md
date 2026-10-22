@@ -2,7 +2,7 @@
 
 ## Verified baselines
 
-The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, and SQL Server drivers have repeatable end-to-end contract tests against exact, pinned server images.
+The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, and MongoDB drivers have repeatable versioned contract tests against exact, pinned server images.
 
 | Driver | Exact server version | Pinned image | Authentication |
 | --- | --- | --- | --- |
@@ -13,12 +13,13 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, and SQL Server driv
 | TiDB | 8.5.8 (server reports 8.0.11-TiDB-v8.5.8) | pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5 | username and password |
 | ClickHouse | 26.8.20.9 | clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688 | username and password |
 | SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication |
+| MongoDB | 8.0.34 | mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b | database-scoped username and password |
 
-All seven suites cover connection and health checks, SQL value and NULL scanning, batch pagination, query cancellation, and server error propagation. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites check that database-side read-only initialization is reported as unsupported for the tested version. The ClickHouse suite uses the native protocol and verifies that the SQL driver is registered before connecting. Each suite verifies the exact server product and version before exercising the driver.
+The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. Each suite checks the exact server product and version before exercising its adapter.
 
 These test containers use test-only accounts and databases. They contain no production credentials. Production TLS certificate validation and other server versions are not covered by these baselines.
 
-The support catalog reports only PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, and SQL Server 16.0.4305.5 as verified. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog records PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, and MongoDB 8.0.34 as versioned contract evidence. MongoDB remains experimental because this evidence applies only to its restricted single-collection SQL adapter. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Run the PostgreSQL contract locally
 
@@ -235,4 +236,40 @@ docker stop data-fabric-sqlserver-contract
 
 Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test trusts the container's self-signed TLS certificate; production certificate validation and other SQL Server versions are not covered by this baseline.
 
-TiDB 8.5.8 does not implement the generic session read-only statement; configure server-side permissions for read-only accounts. ClickHouse uses the native protocol and also does not use the gateway read-only session initializer. CI runs seven pinned database contracts in two jobs to keep the SQL Server service isolated from the other database containers. For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
+TiDB 8.5.8 does not implement the generic session read-only statement; configure server-side permissions for read-only accounts. ClickHouse uses the native protocol and also does not use the gateway read-only session initializer.
+
+## Run the MongoDB contract locally
+
+Start the pinned MongoDB 8.0.34 image on local port 27018:
+
+~~~~sh
+docker run --rm --detach --name data-fabric-mongodb-contract \
+  --publish 27018:27017 \
+  --env MONGO_INITDB_ROOT_USERNAME=contract_admin \
+  --env MONGO_INITDB_ROOT_PASSWORD=root-contract-only \
+  mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b
+~~~~
+
+The contract provisions a temporary database-scoped account with read/write access, then connects through the gateway using that account. Run:
+
+~~~~sh
+export DATA_FABRIC_MONGODB_CONTRACT_HOST='127.0.0.1'
+export DATA_FABRIC_MONGODB_CONTRACT_PORT='27018'
+export DATA_FABRIC_MONGODB_CONTRACT_USERNAME='data_fabric_contract'
+export DATA_FABRIC_MONGODB_CONTRACT_PASSWORD='contract-test-only'
+export DATA_FABRIC_MONGODB_CONTRACT_DATABASE='data_fabric_contract'
+export DATA_FABRIC_MONGODB_BOOTSTRAP_USERNAME='contract_admin'
+export DATA_FABRIC_MONGODB_BOOTSTRAP_PASSWORD='root-contract-only'
+export DATA_FABRIC_MONGODB_EXPECTED_VERSION='8.0.34'
+go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v
+~~~~
+
+Stop the test service when finished:
+
+~~~~sh
+docker stop data-fabric-mongodb-contract
+~~~~
+
+MongoDB does not speak SQL. The contract verifies only the gateway's currently implemented single-collection SQL subset; joins, OR predicates, grouping, schema discovery, and transactions remain outside this adapter. CI runs eight pinned database contracts across three jobs. For the exact support boundary, see [the generated data source support catalog](data-source-support.md).
+
+For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).

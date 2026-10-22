@@ -22,7 +22,8 @@ const (
 )
 
 // ConnectorSupport is shared by the database APIs and generated support docs.
-// Empty version fields mean no compatibility evidence has been recorded.
+// End-to-end evidence is version-specific and can coexist with an experimental
+// status when a live contract validates only a deliberately restricted adapter.
 type ConnectorSupport struct {
 	Type        string `json:"type"`
 	DriverName  string `json:"driverName,omitempty"`
@@ -230,6 +231,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.Limitations = []string{
 			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
 			"Gateway read-only session initialization is not supported for ClickHouse; use a server account with restricted privileges. TLS behavior and other ClickHouse versions are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMongoDB:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "8.0.34 only"
+		profile.VerifiedServerVersions = []string{"8.0.34"}
+		profile.VersionPolicy = "Only MongoDB 8.0.34 has a pinned contract result for the restricted SQL adapter; other MongoDB versions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Database-scoped username/password authentication is covered by the MongoDB 8.0.34 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The MongoDB 8.0.34 contract covers authentication, health checks, the restricted single-collection SELECT subset with projection/filter/order/pagination, COUNT(*), NULL scanning, and rejection of writes and unsupported SQL. The connector remains experimental because this is a restricted SQL mapping over a document database.",
+			"Joins, OR predicates, grouping, schema discovery, and transactions are not supported by this adapter.",
+			"SELECT * infers result columns and types from the first document; an empty result has no inferred columns and heterogeneous document shapes may not fit one SQL row schema.",
+			"TLS behavior, replica-set and sharded deployments, and other MongoDB versions are not covered by this baseline.",
 		}
 	case model.DatabaseTypeSQLServer:
 		profile.Status = ConnectorStatusEndToEndVerified

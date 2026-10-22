@@ -94,6 +94,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeClickHouse: {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
 			model.DatabaseTypeSQLServer:  {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
 		}
+		if dbType == model.DatabaseTypeMongoDB {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
+				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if expected, ok := verifiedVersions[dbType]; ok {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expected.productRange+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, expected.server) {
 				t.Errorf("%s version contract evidence is missing or too broad: %+v", dbType, profile)
@@ -124,11 +130,14 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
-	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || mongo.EndToEndVerified {
-		t.Errorf("MongoDB must expose the restricted adapter as experimental: %+v", mongo)
+	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {
+		t.Errorf("MongoDB must expose versioned contract evidence while remaining experimental: %+v", mongo)
 	}
 	if !containsSupportLimitation(mongo.Limitations, "restricted single-collection SELECT subset") {
 		t.Errorf("MongoDB catalog must describe its SQL mapping boundary: %+v", mongo.Limitations)
+	}
+	if !containsSupportLimitation(mongo.Limitations, "MongoDB 8.0.34 contract") {
+		t.Errorf("MongoDB catalog must record the pinned live contract scope: %+v", mongo.Limitations)
 	}
 	sqlServer := profiles[string(model.DatabaseTypeSQLServer)]
 	if !containsSupportLimitation(sqlServer.Limitations, "Database-side read-only session enforcement is not supported") {
