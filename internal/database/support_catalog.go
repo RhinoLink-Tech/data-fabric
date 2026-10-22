@@ -195,6 +195,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
 			"TLS behavior and other MariaDB versions are not covered by this baseline.",
 		}
+	case model.DatabaseTypeClickHouse:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "26.8.20.9 only"
+		profile.VerifiedServerVersions = []string{"26.8.20.9"}
+		profile.VersionPolicy = "Only ClickHouse 26.8.20.9 has a pinned native-protocol contract result; other ClickHouse versions are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "Password authentication is covered by the ClickHouse 26.8.20.9 contract test; TLS is not covered by this baseline."
+		profile.Limitations = []string{
+			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
+			"Gateway read-only session initialization is not supported for ClickHouse; use a server account with restricted privileges. TLS behavior and other ClickHouse versions are not covered by this baseline.",
+		}
 	default:
 		return
 	}
@@ -282,6 +294,8 @@ func compatibilityMode(dbType model.DatabaseType, category drivers.DriverCategor
 		return "postgresql_compatible"
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng:
 		return "trino_http_protocol_family"
+	case model.DatabaseTypeClickHouse:
+		return "clickhouse_native_protocol"
 	case model.DatabaseTypeOceanBaseOracle:
 		return "oracle_compatible"
 	}
