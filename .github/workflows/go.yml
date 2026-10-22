@@ -28,6 +28,12 @@ jobs:
       DATA_FABRIC_MARIADB_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_MARIADB_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_MARIADB_EXPECTED_VERSION: "11.8.9"
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_PORT: "9000"
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_CLICKHOUSE_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_CLICKHOUSE_EXPECTED_VERSION: "26.8.20.9"
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -67,6 +73,21 @@ jobs:
           - 3307:3306
         options: >-
           --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      clickhouse:
+        image: clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688
+        env:
+          CLICKHOUSE_DB: data_fabric_contract
+          CLICKHOUSE_USER: data_fabric_contract
+          CLICKHOUSE_PASSWORD: contract-test-only
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+        ports:
+          - 9000:9000
+        options: >-
+          --ulimit nofile=262144:262144
+          --health-cmd "clickhouse-client --host 127.0.0.1 --user data_fabric_contract --password contract-test-only --database data_fabric_contract --query 'SELECT 1'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20

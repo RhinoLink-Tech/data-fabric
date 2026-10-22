@@ -86,6 +86,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypePostgreSQL: "17.11",
 			model.DatabaseTypeMySQL:      "8.0.46",
 			model.DatabaseTypeMariaDB:    "11.8.9",
+			model.DatabaseTypeClickHouse: "26.8.20.9",
 		}
 		if expectedVersion, ok := verifiedVersions[dbType]; ok {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != expectedVersion+" only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{expectedVersion}) {
@@ -172,6 +173,10 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
 	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"11.8.9"}) {
 		t.Fatalf("type endpoint has missing or overly broad MariaDB verification evidence: %+v", mariaDB)
+	}
+	clickHouse, ok := info[string(model.DatabaseTypeClickHouse)]
+	if !ok || clickHouse.Status != ConnectorStatusEndToEndVerified || !clickHouse.EndToEndVerified || clickHouse.SupportedVersionRange != "26.8.20.9 only" || !reflect.DeepEqual(clickHouse.VerifiedServerVersions, []string{"26.8.20.9"}) || clickHouse.CompatibilityMode != "clickhouse_native_protocol" {
+		t.Fatalf("type endpoint has missing or overly broad ClickHouse verification evidence: %+v", clickHouse)
 	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")

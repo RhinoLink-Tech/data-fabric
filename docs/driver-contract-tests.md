@@ -2,19 +2,20 @@
 
 ## Verified baselines
 
-The PostgreSQL, MySQL, and MariaDB drivers have repeatable end-to-end contract tests against exact, pinned server images.
+The PostgreSQL, MySQL, MariaDB, and ClickHouse drivers have repeatable end-to-end contract tests against exact, pinned server images.
 
 | Driver | Exact server version | Pinned image | Authentication |
 | --- | --- | --- | --- |
 | PostgreSQL | 17.11 | postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 | username and password |
 | MySQL | 8.0.46 | mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b | username and password |
 | MariaDB | 11.8.9 | mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68 | username and password |
+| ClickHouse | 26.8.20.9 | clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688 | username and password |
 
-All three suites cover connection and health checks, schema lookup, SQL value and NULL scanning, batch pagination, database-side read-only session enforcement, query cancellation, and server error propagation. Each suite verifies the exact server product and version before exercising the driver.
+All four suites cover connection and health checks, schema lookup, SQL value and NULL scanning, batch pagination, query cancellation, and server error propagation. The PostgreSQL, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The ClickHouse suite uses the native protocol and verifies that the SQL driver is registered before connecting. Each suite verifies the exact server product and version before exercising the driver.
 
 These test containers use test-only accounts and databases. They contain no production credentials. TLS and other server versions are not covered by these baselines.
 
-The support catalog reports only PostgreSQL 17.11, MySQL 8.0.46, and MariaDB 11.8.9 as verified. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog reports only PostgreSQL 17.11, MySQL 8.0.46, MariaDB 11.8.9, and ClickHouse 26.8.20.9 as verified. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Run the PostgreSQL contract locally
 
@@ -107,4 +108,37 @@ Stop the test service when finished:
 docker stop data-fabric-mariadb-contract
 ~~~~
 
-CI runs all three pinned services as part of the Go checks. For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
+## Run the ClickHouse contract locally
+
+Start the pinned test service:
+
+~~~~sh
+docker run --rm --detach --name data-fabric-clickhouse-contract \
+  --ulimit nofile=262144:262144 \
+  --publish 9000:9000 \
+  --env CLICKHOUSE_DB=data_fabric_contract \
+  --env CLICKHOUSE_USER=data_fabric_contract \
+  --env CLICKHOUSE_PASSWORD=contract-test-only \
+  --env CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+  clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688
+~~~~
+
+Wait for ClickHouse to accept connections, then run:
+
+~~~~sh
+export DATA_FABRIC_CLICKHOUSE_CONTRACT_HOST='127.0.0.1'
+export DATA_FABRIC_CLICKHOUSE_CONTRACT_PORT='9000'
+export DATA_FABRIC_CLICKHOUSE_CONTRACT_USERNAME='data_fabric_contract'
+export DATA_FABRIC_CLICKHOUSE_CONTRACT_PASSWORD='contract-test-only'
+export DATA_FABRIC_CLICKHOUSE_CONTRACT_DATABASE='data_fabric_contract'
+export DATA_FABRIC_CLICKHOUSE_EXPECTED_VERSION='26.8.20.9'
+go test ./internal/database/drivers/olap -run '^TestClickHouseDriverContract$' -count=1 -v
+~~~~
+
+Stop the test service when finished:
+
+~~~~sh
+docker stop data-fabric-clickhouse-contract
+~~~~
+
+The ClickHouse connector uses the native protocol and does not currently use the gateway read-only session initializer; configure server-side permissions for read-only accounts. CI runs all four pinned services as part of the Go checks. For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
