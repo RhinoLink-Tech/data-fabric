@@ -82,6 +82,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if !profile.Supported || profile.Status == "" {
 			t.Errorf("registered type %q has invalid support state: %+v", dbType, profile)
 		}
+		if dbType == model.DatabaseTypePostgreSQL {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusEndToEndVerified || profile.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"17.11"}) {
+				t.Errorf("PostgreSQL version contract evidence is missing or too broad: %+v", profile)
+			}
+			continue
+		}
 		if profile.EndToEndVerified || len(profile.VerifiedServerVersions) != 0 || profile.SupportedVersionRange != "" {
 			t.Errorf("type %q claims unrecorded version verification: %+v", dbType, profile)
 		}
@@ -148,11 +154,11 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	compatibility := CompatibilityByType(catalog)
 
 	postgres, ok := info[string(model.DatabaseTypePostgreSQL)]
-	if !ok || postgres.Status != ConnectorStatusImplementationPresent {
-		t.Fatalf("type endpoint did not expose the PostgreSQL catalog profile: %+v", postgres)
+	if !ok || postgres.Status != ConnectorStatusEndToEndVerified {
+		t.Fatalf("type endpoint did not expose the verified PostgreSQL catalog profile: %+v", postgres)
 	}
-	if postgres.EndToEndVerified || postgres.SupportedVersionRange != "" {
-		t.Fatalf("type endpoint claims unsupported verification: %+v", postgres)
+	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"17.11"}) {
+		t.Fatalf("type endpoint has missing or overly broad PostgreSQL verification evidence: %+v", postgres)
 	}
 	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
 		t.Fatal("type endpoint must not advertise unsupported Ozone")
