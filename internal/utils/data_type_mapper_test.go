@@ -110,6 +110,12 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 		{columnType: "uuid", want: model.TypeUUID},
 		{columnType: "json", want: model.TypeJSON},
 		{columnType: "jsonb", want: model.TypeJSON},
+		// normalizeColumnType uppercases before mapPostgreSQLType lowers
+		// again, so uppercase spellings must map the same as lowercase
+		// ones (#137).
+		{columnType: "INTEGER", want: model.TypeInteger},
+		{columnType: "NUMERIC(10,2)", want: model.TypeDecimal},
+		{columnType: "unknown_type", want: model.TypeUnknown},
 	}
 
 	for _, tt := range tests {
