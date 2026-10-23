@@ -68,21 +68,11 @@ type queryService struct {
 	connPool        *database.ConnectionPool
 	sqlValidator    *security.SQLValidator
 	typeMapper      *utils.DataTypeMapper
-	stats           *queryStats
+	stats           *QueryStatsTracker
 	sessionManager  *SessionManager
 	preferStreaming bool
 	sqlTranslator   *sql_translator.SQLTranslationManager // Added SQL translator
 	tableAuthorizer *security.TableAuthorizer
-}
-
-type queryStats struct {
-	totalQueries       int64
-	successfulQueries  int64
-	failedQueries      int64
-	totalExecutionTime int64 // in nanoseconds
-	lastQueryTime      time.Time
-	queriesByType      map[string]int64
-	mutex              sync.RWMutex
 }
 
 // NewQueryService creates a new instance of QueryService
@@ -93,6 +83,12 @@ func NewQueryService(datasourceRepo repository.DataSourceRepository, connPool *d
 // NewQueryServiceWithTableAuthorizer creates a query service with optional
 // per-table authorization. Existing callers retain the legacy constructor.
 func NewQueryServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, translators ...*sql_translator.SQLTranslationManager) QueryService {
+	return NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, preferStreaming, authorizer, nil, translators...)
+}
+
+// NewQueryServiceWithTableAuthorizerAndStats creates a pagination service that
+// contributes to the supplied gateway-wide statistics tracker.
+func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) QueryService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -101,12 +97,15 @@ func NewQueryServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepo
 	if translator.SupportsASTAnalysis() {
 		validator.SetASTAnalyzer(translator)
 	}
+	if stats == nil {
+		stats = NewQueryStatsTracker()
+	}
 	return &queryService{
 		datasourceRepo:  datasourceRepo,
 		connPool:        connPool,
 		sqlValidator:    validator,
 		typeMapper:      utils.NewDataTypeMapper(),
-		stats:           newQueryStats(),
+		stats:           stats,
 		sessionManager:  NewSessionManager(),
 		preferStreaming: preferStreaming,
 		sqlTranslator:   translator,
@@ -125,12 +124,6 @@ func NewSessionManager() *SessionManager {
 	go sm.cleanupSessions()
 
 	return sm
-}
-
-func newQueryStats() *queryStats {
-	return &queryStats{
-		queriesByType: make(map[string]int64),
-	}
 }
 
 func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) error {
@@ -221,26 +214,12 @@ func (qs *queryService) translateSQLIfNeeded(ctx context.Context, sql, sourceDia
 }
 
 func (qs *queryService) GetQueryStats(ctx context.Context) (*model.QueryStats, error) {
-	qs.stats.mutex.RLock()
-	defer qs.stats.mutex.RUnlock()
-
-	avgExecutionTime := 0.0
-	if qs.stats.totalQueries > 0 {
-		avgExecutionTime = float64(qs.stats.totalExecutionTime) / float64(qs.stats.totalQueries) / 1e9 // Convert to seconds
-	}
-
-	return &model.QueryStats{
-		TotalQueries:      qs.stats.totalQueries,
-		SuccessfulQueries: qs.stats.successfulQueries,
-		FailedQueries:     qs.stats.failedQueries,
-		AvgExecutionTime:  avgExecutionTime,
-		LastQueryTime:     qs.stats.lastQueryTime,
-		QueriesByType:     qs.stats.queriesByType,
-	}, nil
+	return qs.stats.Snapshot(), nil
 }
 
 // executeQueryWithConnection executes a query using the provided database connection
 func (qs *queryService) executeQueryWithConnection(ctx context.Context, db *sql.DB, req *model.QueryRequest, dbType model.DatabaseType) (*model.QueryResponse, error) {
+	started := time.Now()
 	// Translate SQL if needed
 	sqlToExecute := req.SQL
 	if req.SourceDialect != "" {
@@ -309,7 +288,7 @@ func (qs *queryService) executeQueryWithConnection(ctx context.Context, db *sql.
 		Rows:    results,
 		Metadata: model.QueryMetadata{
 			RowCount:        rowCount,
-			ExecutionTimeMs: time.Since(time.Now()).Milliseconds(),
+			ExecutionTimeMs: time.Since(started).Milliseconds(),
 			DataSourceID:    req.DataSourceID,
 			DatabaseType:    string(dbType),
 			HasMore:         hasMore,
@@ -427,27 +406,20 @@ func (qs *queryService) createErrorResponse(err error, _ string) *model.QueryRes
 	}
 }
 
-// recordQueryStats records query execution statistics
-func (qs *queryService) recordQueryStats(dataSourceID string, success bool, duration time.Duration) {
-	qs.stats.mutex.Lock()
-	defer qs.stats.mutex.Unlock()
-
-	qs.stats.totalQueries++
-	qs.stats.lastQueryTime = time.Now()
-	qs.stats.totalExecutionTime += duration.Nanoseconds()
-
-	if success {
-		qs.stats.successfulQueries++
-	} else {
-		qs.stats.failedQueries++
-	}
-
-	// Count queries by data source type (would need to look up the data source)
-	qs.stats.queriesByType[dataSourceID]++
-}
-
 // FetchQuery executes a fetch query and returns the first batch of data
-func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (response *model.FetchQueryResponse, err error) {
+	started := time.Now()
+	dataSourceID := ""
+	if req != nil {
+		dataSourceID = req.DataSourceID
+	}
+	var databaseType model.DatabaseType
+	defer func() {
+		qs.stats.Record(dataSourceID, databaseType, err == nil, time.Since(started))
+	}()
+	if req == nil {
+		return nil, fmt.Errorf("query request is required")
+	}
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
@@ -464,6 +436,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
+	databaseType = datasource.Type
 	if !caller.CanRead(datasource) {
 		return nil, security.ErrDataSourceAccessDenied
 	}
@@ -521,7 +494,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	}
 
 	// Prepare response
-	response := &model.FetchQueryResponse{
+	response = &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
 		Slug:       session.Slug,
 		Token:      session.Token,
