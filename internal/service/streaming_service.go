@@ -234,6 +234,7 @@ type streamingService struct {
 	sqlValidator            *security.SQLValidator
 	sqlTranslator           *sql_translator.SQLTranslationManager
 	tableAuthorizer         *security.TableAuthorizer
+	stats                   *QueryStatsTracker
 }
 
 // ActiveStream represents an active streaming query
@@ -310,6 +311,12 @@ func NewStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 // NewStreamingServiceWithTableAuthorizer creates a streaming service with
 // optional per-table authorization. Existing callers retain the legacy constructor.
 func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, authorizer, nil, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizerAndStats creates a streaming service
+// that contributes to the supplied gateway-wide statistics tracker.
+func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -317,6 +324,9 @@ func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSource
 	validator := security.NewSQLValidator(10000)
 	if translator.SupportsASTAnalysis() {
 		validator.SetASTAnalyzer(translator)
+	}
+	if stats == nil {
+		stats = NewQueryStatsTracker()
 	}
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
@@ -328,6 +338,7 @@ func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSource
 		sqlValidator:            validator,
 		sqlTranslator:           translator,
 		tableAuthorizer:         authorizer,
+		stats:                   stats,
 	}
 	return ss
 }
@@ -906,7 +917,24 @@ func (ss *streamingService) writeCSVRows(writer io.Writer, rows [][]interface{})
 }
 
 // fetchWithStreaming executes a fetch query using the streaming approach
-func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (response *model.FetchQueryResponse, err error) {
+	started := time.Now()
+	dataSourceID := ""
+	if req != nil {
+		dataSourceID = req.DataSourceID
+	}
+	var databaseType model.DatabaseType
+	if req != nil && ss.datasourceRepo != nil {
+		if dataSource, lookupErr := ss.datasourceRepo.GetByID(ctx, req.DataSourceID); lookupErr == nil {
+			databaseType = dataSource.Type
+		}
+	}
+	defer func() {
+		ss.stats.Record(dataSourceID, databaseType, err == nil, time.Since(started))
+	}()
+	if req == nil {
+		return nil, fmt.Errorf("query request is required")
+	}
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
 
@@ -980,7 +1008,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	}
 
 	// Create a response similar to pagination service
-	response := &model.FetchQueryResponse{
+	response = &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
 		Slug:       session.Slug,
 		Token:      session.Token,

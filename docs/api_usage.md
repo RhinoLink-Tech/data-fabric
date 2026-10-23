@@ -217,7 +217,7 @@ curl http://localhost:8080/api/v1/query/stats \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-The response `data` includes `totalQueries`, `successfulQueries`, `failedQueries`, `avgExecutionTime` (seconds), `lastQueryTime`, and `queriesByType`.
+The response `data` includes `totalQueries`, `successfulQueries`, `failedQueries`, `avgExecutionTime` (seconds), `lastQueryTime`, `queriesByType` (database type), and `queriesByDataSource` (registered data-source ID). It covers initial pagination and streaming queries; continuation batches are part of their original query and are not counted again.
 
 ### Read query history
 

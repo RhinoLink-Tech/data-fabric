@@ -179,12 +179,13 @@ type ForeignKeySchema struct {
 
 // QueryStats represents query execution statistics
 type QueryStats struct {
-	TotalQueries      int64            `json:"totalQueries"`
-	SuccessfulQueries int64            `json:"successfulQueries"`
-	FailedQueries     int64            `json:"failedQueries"`
-	AvgExecutionTime  float64          `json:"avgExecutionTime"`
-	LastQueryTime     time.Time        `json:"lastQueryTime"`
-	QueriesByType     map[string]int64 `json:"queriesByType"`
+	TotalQueries        int64            `json:"totalQueries"`
+	SuccessfulQueries   int64            `json:"successfulQueries"`
+	FailedQueries       int64            `json:"failedQueries"`
+	AvgExecutionTime    float64          `json:"avgExecutionTime"`
+	LastQueryTime       time.Time        `json:"lastQueryTime"`
+	QueriesByType       map[string]int64 `json:"queriesByType"`
+	QueriesByDataSource map[string]int64 `json:"queriesByDataSource"`
 }
 
 // IsValid checks if the QueryRequest is valid

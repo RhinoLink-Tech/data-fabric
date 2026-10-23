@@ -63,7 +63,7 @@ func TestFetchQueryRoutesDruidSQLThroughUnifiedGateway(t *testing.T) {
 	}
 	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer func() { _ = pool.CloseAll() }()
-	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager())
+	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager()).(*queryService)
 
 	response, err := queryService.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 		DataSourceID: source.ID,
@@ -85,5 +85,27 @@ func TestFetchQueryRoutesDruidSQLThroughUnifiedGateway(t *testing.T) {
 	}
 	if !strings.Contains(receivedQuery, "SELECT id, name FROM events") || !strings.Contains(receivedQuery, "LIMIT 10 OFFSET 0") {
 		t.Fatalf("Druid query = %q, want paginated gateway query", receivedQuery)
+	}
+
+	if _, err := queryService.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
+		DataSourceID: source.ID,
+		SQL:          "DELETE FROM events",
+		BatchSize:    10,
+		Type:         1,
+	}); err == nil {
+		t.Fatal("FetchQuery() accepted a write query")
+	}
+	stats, err := queryService.GetQueryStats(context.Background())
+	if err != nil {
+		t.Fatalf("GetQueryStats() error = %v", err)
+	}
+	if stats.TotalQueries != 2 || stats.SuccessfulQueries != 1 || stats.FailedQueries != 1 {
+		t.Fatalf("unexpected query counters: %+v", stats)
+	}
+	if stats.QueriesByType[string(model.DatabaseTypeApacheDruid)] != 2 {
+		t.Fatalf("database-type aggregation = %#v, want two Druid queries", stats.QueriesByType)
+	}
+	if stats.QueriesByDataSource[source.ID] != 2 {
+		t.Fatalf("data-source aggregation = %#v, want two source queries", stats.QueriesByDataSource)
 	}
 }

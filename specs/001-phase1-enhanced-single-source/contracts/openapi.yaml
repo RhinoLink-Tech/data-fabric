@@ -1138,6 +1138,7 @@ components:
         - avgExecutionTime
         - lastQueryTime
         - queriesByType
+        - queriesByDataSource
       properties:
         totalQueries:
           type: integer
@@ -1157,6 +1158,13 @@ components:
           format: date-time
         queriesByType:
           type: object
+          description: Initial query count grouped by registered database type
+          additionalProperties:
+            type: integer
+            format: int64
+        queriesByDataSource:
+          type: object
+          description: Initial query count grouped by registered data-source ID
           additionalProperties:
             type: integer
             format: int64
