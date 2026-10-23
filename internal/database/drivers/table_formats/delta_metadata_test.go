@@ -11,9 +11,9 @@ import (
 func TestDeltaGetLatestVersionDescendingHistory(t *testing.T) {
 	parser := &DeltaLogParser{}
 	commits := []DeltaCommitInfo{
-		{Version: 9,  Timestamp: time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)},
-		{Version: 4,  Timestamp: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
-		{Version: 1,  Timestamp: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
+		{Version: 9, Timestamp: time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)},
+		{Version: 4, Timestamp: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
+		{Version: 1, Timestamp: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
 	}
 
 	latest, err := parser.GetLatestVersion(commits)
