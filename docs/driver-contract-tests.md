@@ -24,6 +24,20 @@ These test containers use test-only accounts and databases. They contain no prod
 
 The support catalog records PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, and StarRocks 4.1.6 as versioned contract evidence. MongoDB remains experimental because this evidence applies only to its restricted single-collection SQL adapter. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
+## Apache Druid protocol fixture
+
+Apache Druid has a unified, read-only SQL gateway path but is not part of the
+versioned baseline table. The protocol fixture and query-service test exercise
+the Router/Broker status endpoint, optional HTTP basic authentication, the
+`/druid/v2/sql` request shape, dynamic parameters, array responses with column
+and SQL type headers, type normalization, pagination, and write rejection.
+
+This is not evidence for a Druid server version. TLS behavior, asynchronous
+statements, propagation of gateway cancellation to Druid's cancel endpoint,
+native JSON queries, and coordinator metadata are outside this fixture. The
+adapter remains experimental until a pinned live Druid contract is added under
+[issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
+
 ## Run the PostgreSQL contract locally
 
 Start the pinned test service:

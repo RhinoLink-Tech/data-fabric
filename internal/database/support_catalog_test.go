@@ -148,6 +148,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(mongo.Limitations, "MongoDB 8.0.34 contract") {
 		t.Errorf("MongoDB catalog must record the pinned live contract scope: %+v", mongo.Limitations)
 	}
+	druid := profiles[string(model.DatabaseTypeApacheDruid)]
+	if druid.Status != ConnectorStatusExperimental || druid.EndToEndVerified || !druid.Capabilities.SupportsSQL || druid.Capabilities.SupportsTimeTravel {
+		t.Errorf("Druid must disclose its read-only HTTP adapter as experimental without a live version contract: %+v", druid)
+	}
+	if !containsSupportLimitation(druid.Limitations, "accepts only top-level SELECT or EXPLAIN") || !containsSupportLimitation(druid.Limitations, "no live Druid cluster") {
+		t.Errorf("Druid catalog must state the unified query boundary and lack of a live contract: %+v", druid.Limitations)
+	}
 	sqlServer := profiles[string(model.DatabaseTypeSQLServer)]
 	if !containsSupportLimitation(sqlServer.Limitations, "Database-side read-only session enforcement is not supported") {
 		t.Errorf("SQL Server catalog must disclose that database-side read-only enforcement is unavailable: %+v", sqlServer.Limitations)
