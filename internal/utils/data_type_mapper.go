@@ -70,7 +70,8 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 	case model.DatabaseTypePostgreSQL:
 		return dtm.mapPostgreSQLType(normalizedType, nullable)
 	case model.DatabaseTypeOracle:
-		return dtm.mapOracleType(normalizedType, nullable)
+		// Oracle NUMBER needs its scale before size constraints are removed.
+		return dtm.mapOracleType(dbColumnType, nullable)
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng,
 		model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid:
 		return dtm.mapPrestoCompatibleType(normalizedType)
@@ -227,10 +228,13 @@ func (dtm *DataTypeMapper) mapPostgreSQLType(columnType string, nullable bool) m
 
 // mapOracleType maps Oracle types to standard types
 func (dtm *DataTypeMapper) mapOracleType(columnType string, nullable bool) model.StandardizedType {
+	hasScale := strings.Contains(columnType, ",")
+	columnType = dtm.normalizeColumnType(columnType)
+
 	switch {
 	case strings.HasPrefix(columnType, "NUMBER"):
 		// Check if it has precision and scale
-		if strings.Contains(columnType, ",") {
+		if hasScale {
 			return model.TypeDecimal
 		}
 		return model.TypeInteger
