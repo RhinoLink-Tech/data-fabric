@@ -95,6 +95,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeSQLServer:   {productRange: "16.0.4305.5", server: []string{"16.0.4305.5"}},
 			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
+			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
 		}
 		if dbType == model.DatabaseTypeS3CSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
@@ -146,6 +147,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(mongo.Limitations, "MongoDB 8.0.34 contract") {
 		t.Errorf("MongoDB catalog must record the pinned live contract scope: %+v", mongo.Limitations)
+	}
+	druid := profiles[string(model.DatabaseTypeApacheDruid)]
+	if druid.Status != ConnectorStatusExperimental || druid.EndToEndVerified || !druid.Capabilities.SupportsSQL || druid.Capabilities.SupportsTimeTravel {
+		t.Errorf("Druid must disclose its read-only HTTP adapter as experimental without a live version contract: %+v", druid)
+	}
+	if !containsSupportLimitation(druid.Limitations, "accepts only top-level SELECT or EXPLAIN") || !containsSupportLimitation(druid.Limitations, "no live Druid cluster") {
+		t.Errorf("Druid catalog must state the unified query boundary and lack of a live contract: %+v", druid.Limitations)
 	}
 	sqlServer := profiles[string(model.DatabaseTypeSQLServer)]
 	if !containsSupportLimitation(sqlServer.Limitations, "Database-side read-only session enforcement is not supported") {

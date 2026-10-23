@@ -295,6 +295,18 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The Doris contract covers the MySQL-protocol driver, authenticated connection and health checks, FE version reporting, database selection, SQL values and counts, schema discovery, pagination, and query errors against the pinned 4.1.3 all-in-one image.",
 			"TLS, multi-node deployments, and other Doris releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeStarRocks:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "StarRocks 4.1.6 only"
+		profile.VerifiedServerVersions = []string{"4.1.6"}
+		profile.VersionPolicy = "Only the pinned StarRocks 4.1.6 all-in-one image has a contract result; other StarRocks releases are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"username/password"}
+		profile.AuthenticationDisclosure = "A password-authenticated user with table-scoped SELECT permission is covered against StarRocks 4.1.6; TLS and other authentication modes are not covered by this baseline."
+		profile.Limitations = []string{
+			"The StarRocks 4.1.6 contract covers the MySQL-protocol driver, password authentication, version and database reporting, value scanning, counts, pagination, schema metadata, query errors, and the application's table metadata extractor.",
+			"TLS, multi-node deployments, write operations through the application account, and other StarRocks releases are not covered by this baseline.",
+		}
 	default:
 		return
 	}
@@ -327,6 +339,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Joins, OR predicates, grouping, schema discovery, and transactions are not supported by this adapter.",
 			"SELECT * infers result columns and types from the first document; an empty result has no inferred columns and heterogeneous document shapes may not fit one SQL row schema.",
 			"No live MongoDB server-version contract test is recorded.")
+	case model.DatabaseTypeApacheDruid:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"optional HTTP basic authentication"}
+		profile.AuthenticationDisclosure = "The protocol fixture covers optional HTTP basic authentication. No live Druid authentication mode or TLS configuration has a versioned contract result."
+		profile.Limitations = append(profile.Limitations,
+			"The unified query path sends Druid SQL over HTTP and accepts only top-level SELECT or EXPLAIN statements; transactions, DML, native JSON queries, and streaming are not available through this adapter.",
+			"The adapter has deterministic HTTP protocol and query-service tests, but no live Druid cluster or versioned server contract is recorded; retain experimental status until issue #35 has that evidence.",
+			"TLS behavior, asynchronous statements, propagation of gateway cancellation to Druid's cancel endpoint, and coordinator metadata behavior are not covered by this adapter baseline.")
 	case model.DatabaseTypeS3CSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
