@@ -310,7 +310,7 @@ func (r *maxComputeRows) Close() error {
 func (r *maxComputeRows) Next(dest []driver.Value) error {
 	// This is a simplified implementation
 	// In a real implementation, we'd fetch data from MaxCompute result
-	if r.pos >= 0 {
+	if r.pos >= 1 {
 		// We've already returned one row
 		return fmt.Errorf("EOF")
 	}
