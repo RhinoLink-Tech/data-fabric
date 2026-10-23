@@ -236,6 +236,27 @@ Joins, `OR`, `ORDER BY`, grouping, other aggregates, and writes are rejected
 with an explicit error. `COUNT(*)` streams rows and may scan the full filtered
 table when there is no inner limit.
 
+## Apache Druid SQL source
+
+The Druid adapter sends read-only SQL to the configured Druid Router or Broker
+through the Druid SQL HTTP API. It is experimental because its gateway contract
+uses an in-process protocol fixture rather than a pinned live Druid cluster;
+see the [support catalog](data-source-support.md) for the current boundary.
+
+| Data-source field | Druid meaning |
+| --- | --- |
+| `host` and `port` | Router or Broker hostname and HTTP port; the default port is `8082`. A host may also include an explicit port. |
+| `ssl` | Uses HTTPS instead of HTTP when `host` is a hostname. |
+| `username` and `password` | Optional HTTP basic authentication credentials. |
+| `database` and `schema` | Accepted by the common data-source model but not sent to Druid; qualify Druid datasources in SQL where needed. |
+
+`additionalProps.scheme` can explicitly select `http` or `https`. The adapter
+accepts one top-level `SELECT` or `EXPLAIN` statement and uses Druid dynamic
+parameters for bound values. DML, transactions, native JSON queries, async
+statements, and streaming are unavailable on this path. Use a Druid account
+with only the datasource permissions required by the gateway; application
+validation and adapter-level rejection complement those source permissions.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

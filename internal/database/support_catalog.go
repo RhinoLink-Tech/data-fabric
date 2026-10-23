@@ -339,6 +339,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Joins, OR predicates, grouping, schema discovery, and transactions are not supported by this adapter.",
 			"SELECT * infers result columns and types from the first document; an empty result has no inferred columns and heterogeneous document shapes may not fit one SQL row schema.",
 			"No live MongoDB server-version contract test is recorded.")
+	case model.DatabaseTypeApacheDruid:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"optional HTTP basic authentication"}
+		profile.AuthenticationDisclosure = "The protocol fixture covers optional HTTP basic authentication. No live Druid authentication mode or TLS configuration has a versioned contract result."
+		profile.Limitations = append(profile.Limitations,
+			"The unified query path sends Druid SQL over HTTP and accepts only top-level SELECT or EXPLAIN statements; transactions, DML, native JSON queries, and streaming are not available through this adapter.",
+			"The adapter has deterministic HTTP protocol and query-service tests, but no live Druid cluster or versioned server contract is recorded; retain experimental status until issue #35 has that evidence.",
+			"TLS behavior, asynchronous statements, propagation of gateway cancellation to Druid's cancel endpoint, and coordinator metadata behavior are not covered by this adapter baseline.")
 	case model.DatabaseTypeS3CSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,

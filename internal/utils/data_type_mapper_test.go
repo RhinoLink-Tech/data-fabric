@@ -28,6 +28,7 @@ func TestMapQueryEngineTypes(t *testing.T) {
 		model.DatabaseTypeTrino,
 		model.DatabaseTypePresto,
 		model.DatabaseTypeOpenLooKeng,
+		model.DatabaseTypeApacheDruid,
 	} {
 		for _, tt := range tests {
 			t.Run(string(dbType)+"/"+tt.columnType, func(t *testing.T) {
