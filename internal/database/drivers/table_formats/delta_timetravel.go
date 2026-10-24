@@ -249,7 +249,8 @@ func (tt *DeltaTimeTravel) GetEarliestVersion(ctx context.Context, tablePath str
 		return nil, fmt.Errorf("no versions available")
 	}
 
-	return &commits[0], nil
+	// Commits come from DESCRIBE HISTORY (newest-first); the earliest is last.
+	return &commits[len(commits)-1], nil
 }
 
 // GetVersionCount returns the total number of versions
