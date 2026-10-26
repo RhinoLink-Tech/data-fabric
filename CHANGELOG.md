@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
+
 ### Fixed
 - Validate values standardized as UUID and reject malformed strings and byte slices instead of passing them through unchanged (#144).
 
