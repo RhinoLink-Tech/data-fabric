@@ -103,6 +103,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOCSV {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO CSV contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -170,9 +176,16 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(s3CSV.Limitations, "does not verify AWS S3") {
 		t.Errorf("S3 CSV catalog must bound Garage evidence to the tested provider: %+v", s3CSV.Limitations)
 	}
+	minioCSV := profiles[string(model.DatabaseTypeMinIOCSV)]
+	if minioCSV.Status != ConnectorStatusExperimental || !minioCSV.EndToEndVerified || minioCSV.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioCSV.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) || !minioCSV.Capabilities.SupportsSQL {
+		t.Errorf("MinIO CSV must expose its SQL adapter with its pinned live contract scope: %+v", minioCSV)
+	}
+	if !containsSupportLimitation(minioCSV.Limitations, "same config-aware, read-only S3 CSV SQL adapter") {
+		t.Errorf("MinIO CSV catalog must describe the shared gateway query path: %+v", minioCSV.Limitations)
+	}
 	for _, dbType := range []model.DatabaseType{
 		model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet,
+		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
 	} {
 		profile := profiles[string(dbType)]

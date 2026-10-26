@@ -390,7 +390,7 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 	// Validate based on category
 	switch category {
 	case drivers.CategoryObjectStorage:
-		if dbType == model.DatabaseTypeS3CSV {
+		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
 		}
 		// Object storage (S3, etc.) requires bucket and region
