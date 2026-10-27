@@ -163,6 +163,7 @@ See the [API usage guide](docs/api_usage.md) for request fields, response struct
 ## Documentation
 
 - [API Usage Guide](docs/api_usage.md)
+- [Data Fabric Agent Skill](docs/agent-skill.md)
 - [Architecture Guide](docs/architecture.md)
 - [Configuration Guide](docs/configuration.md)
 - [Development Guide](docs/development.md)
