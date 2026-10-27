@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 )
@@ -56,7 +57,16 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 	}
 
 	// Extract tables
-	tables, err := e.extractTables(ctx, db, dataSource.Type)
+	var tables map[string]*TableSchema
+	if isCSVObjectSource(dataSource.Type) {
+		var table *TableSchema
+		table, err = extractCSVTable(ctx, db, &dataSource.Config)
+		if err == nil {
+			tables = map[string]*TableSchema{table.Name: table}
+		}
+	} else {
+		tables, err = e.extractTables(ctx, db, dataSource.Type)
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to extract tables: %w", err)
 	}
@@ -84,6 +94,16 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 	dataSource, db, err := e.resolveConnection(ctx, dataSourceID)
 	if err != nil {
 		return nil, err
+	}
+	if isCSVObjectSource(dataSource.Type) {
+		name, err := object_storage.CSVTableName(&dataSource.Config)
+		if err != nil {
+			return nil, err
+		}
+		if requestedSchema != "" || tableName != name {
+			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
+		}
+		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
 
 	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
@@ -192,6 +212,13 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 	if err != nil {
 		return nil, err
 	}
+	if isCSVObjectSource(dataSource.Type) {
+		name, err := object_storage.CSVTableName(&dataSource.Config)
+		if err != nil {
+			return nil, err
+		}
+		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
+	}
 	rows, err := db.QueryContext(ctx, e.getTableQuery(dataSource.Type))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query table identities: %w", err)
@@ -214,6 +241,40 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		return nil, fmt.Errorf("failed to read table identities: %w", err)
 	}
 	return tables, nil
+}
+
+func isCSVObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV
+}
+
+// extractCSVTable asks the configured adapter for column metadata. CSV has no
+// declared schema, so the reported types are inferred from the object using
+// the same parser and rules as SELECT queries; no row values are returned.
+func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig) (*TableSchema, error) {
+	name, err := object_storage.CSVTableName(config)
+	if err != nil {
+		return nil, err
+	}
+	// Quote the configured identifier, including embedded quote characters.
+	query := "SELECT * FROM `" + strings.ReplaceAll(name, "`", "``") + "`"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect CSV table %q: %w", name, err)
+	}
+	defer rows.Close()
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect CSV columns: %w", err)
+	}
+	columns := make([]ColumnSchema, len(types))
+	for i, col := range types {
+		nullable, known := col.Nullable()
+		if !known {
+			nullable = true
+		}
+		columns[i] = ColumnSchema{Name: col.Name(), Type: col.DatabaseTypeName(), Nullable: nullable}
+	}
+	return &TableSchema{Name: name, Type: "TABLE", Columns: columns}, nil
 }
 
 // ValidateSchema validates that the cached schema is still valid

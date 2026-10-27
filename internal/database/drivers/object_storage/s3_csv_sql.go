@@ -148,14 +148,34 @@ func (d *S3CSVDriver) OpenWithConfig(ctx context.Context, config *model.DataSour
 		return nil, err
 	}
 	configuredDriver.objectKey = objectKey
-	configuredDriver.tableName = configString(props, "table_name")
-	if configuredDriver.tableName == "" {
-		configuredDriver.tableName = strings.TrimSuffix(path.Base(objectKey), path.Ext(objectKey))
-	}
-	if configuredDriver.tableName == "" || configuredDriver.tableName == "." {
-		return nil, errors.New("s3-csv table name could not be inferred; set additionalProps.table_name")
+	configuredDriver.tableName, err = CSVTableName(config)
+	if err != nil {
+		return nil, err
 	}
 	return sql.OpenDB(&s3CSVConnector{driver: configuredDriver}), nil
+}
+
+// CSVTableName returns the single table identity used by the SQL adapter.
+// Metadata discovery uses the same rules as connection setup so names cannot drift.
+func CSVTableName(config *model.DataSourceConfig) (string, error) {
+	if config == nil {
+		return "", errors.New("s3-csv data source config is required")
+	}
+	name := configString(config.AdditionalProps, "table_name")
+	if name == "" {
+		key := configString(config.AdditionalProps, "object_key")
+		if key == "" {
+			key = strings.TrimSpace(config.Host)
+		}
+		if key == "" {
+			return "", errors.New("s3-csv object_key is required in additionalProps or host")
+		}
+		name = strings.TrimSuffix(path.Base(key), path.Ext(key))
+	}
+	if name == "" || name == "." {
+		return "", errors.New("s3-csv table name could not be inferred; set additionalProps.table_name")
+	}
+	return name, nil
 }
 
 func configString(props map[string]interface{}, key string) string {

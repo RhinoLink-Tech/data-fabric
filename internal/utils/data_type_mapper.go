@@ -75,7 +75,7 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng,
 		model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid:
 		return dtm.mapPrestoCompatibleType(normalizedType)
-	case model.DatabaseTypeS3CSV:
+	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV:
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	default:
 		return model.TypeUnknown

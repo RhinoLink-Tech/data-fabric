@@ -62,6 +62,9 @@ func TestFetchQueryRoutesMinIOCSVThroughGateway(t *testing.T) {
 	if response.TotalCount != 2 || len(response.Entries) != 2 {
 		t.Fatalf("response total=%d entries=%d, want two rows", response.TotalCount, len(response.Entries))
 	}
+	if len(response.Columns) != 2 || response.Columns[0].Name != "id" || response.Columns[0].Type != model.TypeBigInt || response.Columns[1].Name != "name" || response.Columns[1].Type != model.TypeString {
+		t.Fatalf("response columns = %+v, want id BIGINT and name STRING", response.Columns)
+	}
 	assertS3CSVServiceRows(t, response.Entries, []int64{3, 1}, []string{"Grace", "Ada"})
 
 	beforeWrite := getCalls
