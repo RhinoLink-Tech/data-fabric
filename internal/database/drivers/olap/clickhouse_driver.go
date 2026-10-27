@@ -172,9 +172,14 @@ func (d *ClickHouseDriver) GetTableSchema(ctx context.Context, tableName string)
 	}
 
 	for _, row := range result.Rows {
+		name, okName := row["name"].(string)
+		colType, okType := row["type"].(string)
+		if !okName || !okType {
+			continue
+		}
 		col := ClickHouseColumn{
-			Name:     row["name"].(string),
-			Type:     row["type"].(string),
+			Name:     name,
+			Type:     colType,
 			Nullable: row["default_kind"] != nil,
 		}
 		schema.Columns = append(schema.Columns, col)

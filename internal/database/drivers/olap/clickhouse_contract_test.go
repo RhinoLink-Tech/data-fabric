@@ -168,16 +168,22 @@ func TestClickHouseDriverContract(t *testing.T) {
 	t.Run("query cancellation", func(t *testing.T) {
 		queryCtx, stop := context.WithTimeout(ctx, 250*time.Millisecond)
 		defer stop()
+		deadline, _ := queryCtx.Deadline()
 		started := time.Now()
 		var result uint8
 		err := db.QueryRowContext(queryCtx, "SELECT sleep(2)").Scan(&result)
+		returnedAt := time.Now()
 		if err == nil {
 			t.Fatal("canceled query unexpectedly succeeded")
 		}
-		if !errors.Is(queryCtx.Err(), context.DeadlineExceeded) {
-			t.Fatalf("query failed before the context deadline: query error = %v, context error = %v", err, queryCtx.Err())
+		if returnedAt.Before(deadline) {
+			t.Fatalf("query failed before the context deadline: %v", err)
 		}
-		if elapsed := time.Since(started); elapsed > 3*time.Second {
+		// The socket deadline can fire before the context's cancellation callback.
+		if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("query returned an unrelated error: %v", err)
+		}
+		if elapsed := returnedAt.Sub(started); elapsed > 3*time.Second {
 			t.Fatalf("query cancellation took %s, want under 3s", elapsed)
 		}
 	})

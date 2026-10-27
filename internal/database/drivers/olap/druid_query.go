@@ -91,6 +91,9 @@ func (h *DruidQueryHandler) ExecuteTimeBoundaryQuery(ctx context.Context, dataso
 	if err != nil {
 		return nil, err
 	}
+	if len(result.Rows) == 0 {
+		return nil, fmt.Errorf("no rows returned for datasource %q", datasource)
+	}
 
 	return &DruidTimeBoundaryResult{
 		MinTime: result.Rows[0]["min_time"],
@@ -114,6 +117,9 @@ func (h *DruidQueryHandler) ExecuteSegmentMetadataQuery(ctx context.Context, dat
 	result, err := h.client.ExecuteSQLQuery(ctx, sql)
 	if err != nil {
 		return nil, err
+	}
+	if len(result.Rows) == 0 {
+		return nil, fmt.Errorf("no rows returned for datasource %q", datasource)
 	}
 
 	return &DruidSegmentMetadata{
