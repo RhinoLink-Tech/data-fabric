@@ -714,8 +714,14 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 		} else {
 			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 		}
-	} else {
+	} else if requestedSchema == "" {
 		table, err = m.tableDescriber.ExtractTableSchema(ctx, datasourceID, tableName)
+	} else if qualified, ok := m.tableDescriber.(SchemaQualifiedTableDescriber); ok {
+		// The same identity the enabled path enforces: an explicit schema
+		// resolves the table there, never through unique-name fallback (#258).
+		table, err = qualified.ExtractTableSchemaInSchema(ctx, datasourceID, requestedSchema, tableName)
+	} else {
+		return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 	}
 	if err != nil {
 		switch {
