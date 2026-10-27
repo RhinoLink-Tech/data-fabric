@@ -362,8 +362,18 @@ func (d *S3CSVDriver) evaluateSelect(ctx context.Context, stmt *sqlparser.Select
 func (d *S3CSVDriver) readSQLSource(ctx context.Context, expr sqlparser.SimpleTableExpr, args []driver.NamedValue, argIndex *int) ([]map[string]interface{}, []string, error) {
 	switch table := expr.(type) {
 	case sqlparser.TableName:
+		// Table authorization matches references exactly as written —
+		// qualifier and case included. Execution must use the same
+		// identity: accepting a qualified or case-variant spelling here
+		// would let a query authorized for one identity (public.records,
+		// RECORDS) read the single configured table under another. CSV
+		// sources have no schemas, so only the exact configured name is
+		// addressable.
+		if qualifier := table.Qualifier.String(); qualifier != "" {
+			return nil, nil, fmt.Errorf("s3-csv table %q must be referenced without a qualifier", qualifier+"."+table.Name.String())
+		}
 		name := table.Name.String()
-		if name == "" || !strings.EqualFold(name, d.tableName) {
+		if name == "" || name != d.tableName {
 			return nil, nil, fmt.Errorf("s3-csv table %q does not match configured table %q", name, d.tableName)
 		}
 		result, err := d.Query(ctx, &S3CSVQuery{Key: d.objectKey})

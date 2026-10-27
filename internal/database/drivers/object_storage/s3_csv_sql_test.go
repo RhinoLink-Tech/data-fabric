@@ -179,3 +179,86 @@ func TestS3CSVQueryHonorsCancellation(t *testing.T) {
 		t.Fatal("expected in-flight object download to stop after cancellation")
 	}
 }
+
+// TestS3CSVTableIdentityMustMatchConfiguredNameExactly pins the execution
+// side of table authorization: the adapter accepts only the exact
+// configured table name, unqualified. Qualified or case-variant spellings
+// (public.records, RECORDS) can be granted in table policies — reading the
+// configured object through them would authorize one identity and execute
+// against another, so the adapter must reject them without downloading.
+func TestS3CSVTableIdentityMustMatchConfiguredNameExactly(t *testing.T) {
+	var downloads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/demo-bucket/data.csv" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodHead:
+			w.Header().Set("Content-Length", fmt.Sprint(len(s3CSVFixture)))
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			downloads++
+			_, _ = io.WriteString(w, s3CSVFixture)
+		default:
+			http.Error(w, "unsupported method", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	ds := &model.DataSource{
+		ID:   "s3-csv-table-identity-test",
+		Type: model.DatabaseTypeS3CSV,
+		Config: model.DataSourceConfig{
+			Host: "data.csv", Port: 443, Database: "demo-bucket", Username: "test", Password: "secret",
+			AdditionalProps: map[string]interface{}{
+				"endpoint_url": server.URL, "force_path_style": true,
+				"object_key": "data.csv", "table_name": "records", "has_header": true,
+			},
+		},
+	}
+	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
+	defer pool.CloseAll()
+	db, err := pool.GetConnection(context.Background(), ds)
+	if err != nil {
+		t.Fatalf("open configured S3 CSV source: %v", err)
+	}
+
+	accepted := map[string]bool{
+		"SELECT id FROM records":   true,
+		"SELECT id FROM `records`": true,
+	}
+	rejected := map[string]string{
+		"SELECT id FROM public.records": "qualifier",
+		"SELECT id FROM demo.records":   "qualifier",
+		"SELECT id FROM RECORDS":        "does not match",
+	}
+	for query := range accepted {
+		rows, err := db.QueryContext(context.Background(), query)
+		if err != nil {
+			t.Errorf("query %q failed: %v", query, err)
+			continue
+		}
+		for rows.Next() {
+		}
+		rows.Close()
+	}
+	for query, wantFragment := range rejected {
+		before := downloads
+		rows, err := db.QueryContext(context.Background(), query)
+		if err == nil {
+			rows.Close()
+			t.Errorf("query %q was accepted, want rejection", query)
+			continue
+		}
+		if !strings.Contains(err.Error(), wantFragment) {
+			t.Errorf("query %q error = %q, want it to mention %q", query, err, wantFragment)
+		}
+		if downloads != before {
+			t.Errorf("rejected query %q downloaded the object (%d→%d downloads)", query, before, downloads)
+		}
+	}
+	if downloads != len(accepted) {
+		t.Fatalf("accepted queries downloaded the object %d times, want %d", downloads, len(accepted))
+	}
+}
