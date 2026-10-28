@@ -92,20 +92,20 @@ exercised. SQL translation is disabled (runtime manager off).
 Per-run evidence lines live in the dated logs under
 [results/](results/).
 
-## Findings (behavior gaps, reported not fixed here)
+## Findings (behavior gaps and resolutions)
 
-The matrix records cross-path behavior differences it hits. None break
-the checks — they are pinned as current behavior — but they are candidate
-follow-ups:
+The matrix records cross-path behavior differences the runs hit. None
+broke the checks — they were pinned as current behavior and fixed as
+follow-ups; each entry notes the resolving issue.
 
-1. **Standardized column types diverge between execution modes.** The
-   pagination path maps types with `utils.DataTypeMapper`; the streaming
-   path uses the streaming service's own generic matcher, and the two
-   disagree on several common types (the generic matcher tests `INT`
-   before `BIGINT`, `DATE` before `DATETIME`, and `TIME` before
-   `TIMESTAMP`, and maps TEXT to `string` not `text`):
+1. **Standardized column types diverge between execution modes** —
+   resolved by #260. Both paths now map covered database families
+   through the shared `utils.DataTypeMapper`; the streaming service's
+   generic matcher remains only as the fallback for families the shared
+   mapper does not cover. The rows below record what the 2026-10-21 run
+   measured before the fix:
 
-   | Column | Pagination reports | Streaming reports |
+   | Column | Pagination reports | Streaming reports (pre-fix) |
    | --- | --- | --- |
    | MySQL `BIGINT` | `bigint` | `integer` |
    | MySQL `TEXT` | `text` | `string` |
@@ -113,20 +113,21 @@ follow-ups:
    | PostgreSQL `TEXT` | `text` | `string` |
    | PostgreSQL `TIMESTAMP` | `timestamp` | `time` |
 
-   Clients that branch on `columns[].type` see different types for the
-   same query depending on the execution mode. A single shared mapper
-   would remove the divergence.
+2. **Canceled queries map unevenly** — resolved by #261. The stable
+   cancellation message now also covers the server-side cancellation
+   error (SQLSTATE 57014) lib/pq returns for a cancelled PostgreSQL
+   statement. The original 2026-10-21 observation: a context-cancelled
+   pagination query surfaced as "The query was cancelled before
+   completion." on MySQL (both modes) and on PostgreSQL in streaming
+   mode, but as the generic data-source failure message for PostgreSQL
+   pagination.
 
-2. **Canceled queries map unevenly.** A context-cancelled pagination
-   query surfaces as "The query was cancelled before completion." on
-   MySQL (both modes) and on PostgreSQL in streaming mode, but as the
-   generic data-source failure message for PostgreSQL pagination — the
-   cancellation signal is lost in the lib/pq error chain.
-
-3. **Canceled stream cleanup logs an error.** After a cancelled streaming
-   query, the stream cleanup logs
-   `stream session cleanup failed … context canceled`. Cosmetic, but it
-   pollutes logs with an expected condition.
+3. **Canceled stream cleanup logs an error** — resolved by #262.
+   `Rows.Close` cancellation is now treated as the expected outcome of
+   client cancellation: the stream is deregistered without logging.
+   The original 2026-10-21 observation: cleanup logged
+   `stream session cleanup failed … context canceled` after every
+   cancelled streaming query.
 
 4. **Type 1 is single-shot by contract.** A synchronous (Type 1) fetch
    returns the first batch and opens no continuation session —
