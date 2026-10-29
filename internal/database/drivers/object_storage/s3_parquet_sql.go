@@ -82,5 +82,5 @@ func (d *S3ParquetDriver) OpenWithConfig(ctx context.Context, config *model.Data
 
 // S3ParquetTableName returns the SQL table identity exposed for a configured object.
 func S3ParquetTableName(config *model.DataSourceConfig) (string, error) {
-	return parquetObjectTableName(config, "s3-parquet")
+	return objectSQLTableName(config, "s3-parquet")
 }

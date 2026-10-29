@@ -64,7 +64,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
+	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractFlatObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
@@ -111,7 +111,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
 		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -235,7 +235,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
 		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -278,6 +278,10 @@ func isORCObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeS3ORC
 }
 
+func isAvroObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeS3Avro
+}
+
 func flatObjectTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
 	case model.DatabaseTypeMinIOParquet:
@@ -286,6 +290,8 @@ func flatObjectTableName(dbType model.DatabaseType, config *model.DataSourceConf
 		return object_storage.S3ParquetTableName(config)
 	case model.DatabaseTypeS3ORC:
 		return object_storage.S3ORCTableName(config)
+	case model.DatabaseTypeS3Avro:
+		return object_storage.S3AvroTableName(config)
 	default:
 		return "", fmt.Errorf("flat object metadata is not supported for %s", dbType)
 	}

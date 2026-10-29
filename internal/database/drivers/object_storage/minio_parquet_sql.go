@@ -89,10 +89,10 @@ func minIOEndpointFromConfig(config *model.DataSourceConfig) (string, bool, erro
 
 // MinIOParquetTableName returns the SQL table identity exposed for a configured object.
 func MinIOParquetTableName(config *model.DataSourceConfig) (string, error) {
-	return parquetObjectTableName(config, "minio-parquet")
+	return objectSQLTableName(config, "minio-parquet")
 }
 
-func parquetObjectTableName(config *model.DataSourceConfig, sourceName string) (string, error) {
+func objectSQLTableName(config *model.DataSourceConfig, sourceName string) (string, error) {
 	if config == nil {
 		return "", errors.New(sourceName + " data source config is required")
 	}

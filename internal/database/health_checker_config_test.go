@@ -43,6 +43,24 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 		t.Errorf("S3 default port = %d, want 443", s3Config.Port)
 	}
 
+	s3AvroConfig := &model.DataSourceConfig{
+		Host: "records.avro", Database: "analytics",
+		Username: "access", Password: "secret",
+	}
+	if err := checker.ValidateDataSourceConfiguration(s3AvroConfig, model.DatabaseTypeS3Avro); err != nil {
+		t.Fatalf("S3 Avro config should validate through its registered driver: %v", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Database: "analytics",
+	}, model.DatabaseTypeS3Avro); err == nil || !strings.Contains(err.Error(), "object_key") {
+		t.Fatalf("S3 Avro config without an object key error = %v, want object_key validation error", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "records.avro", Database: "analytics", Username: "access",
+	}, model.DatabaseTypeS3Avro); err == nil || !strings.Contains(err.Error(), "configured together") {
+		t.Fatalf("S3 Avro partial credentials error = %v, want paired credential error", err)
+	}
+
 	s3ORCConfig := &model.DataSourceConfig{
 		Host: "records.orc", Database: "analytics",
 		Username: "access", Password: "secret",

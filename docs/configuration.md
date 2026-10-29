@@ -229,6 +229,36 @@ supported. The S3-compatible contract is pinned to Garage v2.4.1; that result
 does not establish compatibility with every S3 provider or release. See the
 support catalog and driver contract report for the current evidence.
 
+## S3 Avro OCF object source
+
+The S3 Avro connector exposes one Avro Object Container File (OCF) as one
+read-only SQL table. It reads the writer schema from the OCF header and accepts
+flat records whose fields are primitive values or nullable unions containing
+null and one primitive value. Nested records, arrays, maps, named unions,
+schema registries, raw Avro datum streams, and scans across multiple objects
+are outside this adapter's boundary. Each query downloads the configured
+object into gateway memory before decoding and applying filters or pagination.
+
+| Data-source field or property | S3 Avro meaning |
+| --- | --- |
+| database | Bucket name. |
+| host or additionalProps.object_key | Object key; object_key takes precedence. |
+| username and password | Optional S3 access key and secret key; configure both or neither. |
+| additionalProps.region | AWS region; defaults to us-east-1. |
+| additionalProps.endpoint_url | Optional S3-compatible endpoint. |
+| additionalProps.force_path_style | Enable path-style addressing for compatible services such as Garage. |
+| additionalProps.table_name | SQL table name; defaults from the object key. |
+| additionalProps.session_token | Optional temporary credential session token. |
+| additionalProps.role_arn and external_id | Optional AWS role assumption settings. |
+
+The read-only SQL subset supports column projection, scalar filters joined by
+AND, IS NULL, ORDER BY, LIMIT/OFFSET, and COUNT(*). Writes, joins, grouping,
+nested Avro values, multi-object scans, and partition discovery are not
+supported. LIMIT 0 reads the OCF header to return schema without decoding
+records. The S3-compatible contract is pinned to Garage v2.4.1; it does not
+establish compatibility with every S3 provider or release. See the support
+catalog and driver contract report for the current evidence.
+
 ## Iceberg REST table source
 
 The Iceberg connector uses the Iceberg REST catalog to load the current table

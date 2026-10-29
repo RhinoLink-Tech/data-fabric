@@ -296,6 +296,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The adapter exposes one configured flat-schema Parquet object as one SQL table. It reads object ranges, but currently decodes all rows before applying SQL filters and pagination.",
 			"This contract does not verify AWS S3, other S3-compatible providers, S3 Select execution, nested or repeated fields, partition scans, or multiple objects.",
 		}
+	case model.DatabaseTypeS3Avro:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Garage v2.4.1 only"
+		profile.VerifiedServerVersions = []string{"Garage v2.4.1"}
+		profile.VersionPolicy = "The S3 Avro adapter has a pinned live contract against Garage v2.4.1 only; AWS S3 and other S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed S3 requests using an access key and secret key are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authentication are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Garage v2.4.1 contract covers signed OCF upload, flat-record schema discovery, read-only SQL, LIMIT 0 schema discovery, COUNT(*), and rejection of writes.",
+			"The adapter exposes one configured Avro OCF object as one SQL table and downloads the full object into gateway memory before decoding records and applying filters or pagination.",
+			"Only flat records with primitive fields or nullable unions of null and one primitive type are supported. Nested records, arrays, maps, named unions, schema registries, multiple objects, and partition scans are not supported.",
+			"Only null, deflate, and Snappy OCF codecs are supported by the current decoder; other codecs and provider versions are not verified.",
+		}
 	case model.DatabaseTypeS3ORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true
@@ -404,7 +418,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
-	case model.DatabaseTypeS3Avro, model.DatabaseTypeS3JSON,
+	case model.DatabaseTypeS3JSON,
 		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,

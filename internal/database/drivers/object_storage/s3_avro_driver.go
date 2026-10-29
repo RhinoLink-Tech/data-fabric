@@ -24,6 +24,9 @@ type S3AvroDriverConfig struct {
 
 // NewS3AvroDriver creates a new S3 Avro driver
 func NewS3AvroDriver(ctx context.Context, config *S3AvroDriverConfig) (*S3AvroDriver, error) {
+	if config == nil || config.S3Config == nil {
+		return nil, fmt.Errorf("S3 Avro configuration is required")
+	}
 	s3Client, err := NewS3Client(ctx, config.S3Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
@@ -103,12 +106,12 @@ func (d *S3AvroDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *S3AvroDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
@@ -119,6 +122,9 @@ func (d *S3AvroDriver) ConfigureAuth(authConfig interface{}) error {
 
 // Query executes a query against Avro files
 func (d *S3AvroDriver) Query(ctx context.Context, key string) (*S3AvroResult, error) {
+	if d == nil || d.avroReader == nil {
+		return nil, fmt.Errorf("S3 Avro driver is not initialized")
+	}
 	reader, err := d.avroReader.Read(ctx, key)
 	if err != nil {
 		return nil, err
@@ -129,17 +135,18 @@ func (d *S3AvroDriver) Query(ctx context.Context, key string) (*S3AvroResult, er
 	if err != nil {
 		return nil, err
 	}
-
-	return &S3AvroResult{
-		Rows:    rows,
-		NumRows: int64(len(rows)),
-	}, nil
+	schema, err := reader.GetSchema()
+	if err != nil {
+		return nil, err
+	}
+	return &S3AvroResult{Rows: rows, NumRows: int64(len(rows)), Schema: schema}, nil
 }
 
 // S3AvroResult represents query results
 type S3AvroResult struct {
 	Rows    []map[string]interface{}
 	NumRows int64
+	Schema  *AvroSchema
 }
 
 // GetSchema retrieves schema for an Avro file
@@ -160,8 +167,5 @@ func (d *S3AvroDriver) ListAvroFiles(ctx context.Context, prefix string) ([]S3Ob
 
 // ApplyBatchPagination adds pagination to SQL query
 func (d *S3AvroDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 Avro files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Avro files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+	return applyObjectBatchPagination(sql, batchSize, offset)
 }

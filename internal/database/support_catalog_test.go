@@ -109,6 +109,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeS3Avro {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) || !profile.Capabilities.SupportsSQL {
+				t.Errorf("S3 Avro contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeS3ORC {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) || !profile.Capabilities.SupportsSQL {
 				t.Errorf("S3 ORC contract evidence must remain provider-specific and experimental: %+v", profile)
@@ -215,6 +221,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(s3Parquet.Limitations, "one configured flat-schema Parquet object") || !containsSupportLimitation(s3Parquet.Limitations, "does not verify AWS S3") {
 		t.Errorf("S3 Parquet catalog must disclose its adapter and provider boundary: %+v", s3Parquet.Limitations)
 	}
+	s3Avro := profiles[string(model.DatabaseTypeS3Avro)]
+	if s3Avro.Status != ConnectorStatusExperimental || !s3Avro.EndToEndVerified || !s3Avro.Capabilities.SupportsSQL {
+		t.Errorf("S3 Avro must expose its SQL path with pinned Garage contract evidence: %+v", s3Avro)
+	}
+	if !containsSupportLimitation(s3Avro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(s3Avro.Limitations, "Nested records") {
+		t.Errorf("S3 Avro catalog must disclose its format and object boundary: %+v", s3Avro.Limitations)
+	}
 	s3ORC := profiles[string(model.DatabaseTypeS3ORC)]
 	if s3ORC.Status != ConnectorStatusExperimental || !s3ORC.EndToEndVerified || !s3ORC.Capabilities.SupportsSQL {
 		t.Errorf("S3 ORC must expose its SQL path with pinned Garage contract evidence: %+v", s3ORC)
@@ -223,7 +236,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeS3Avro, model.DatabaseTypeS3JSON,
+		model.DatabaseTypeS3JSON,
 		model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
 	} {

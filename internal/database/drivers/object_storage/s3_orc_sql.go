@@ -96,5 +96,5 @@ func objectSQLSchemaFromORC(schema *ORCSchema) (*objectSQLSchema, error) {
 
 // S3ORCTableName returns the SQL table identity for one configured ORC object.
 func S3ORCTableName(config *model.DataSourceConfig) (string, error) {
-	return parquetObjectTableName(config, "s3-orc")
+	return objectSQLTableName(config, "s3-orc")
 }
