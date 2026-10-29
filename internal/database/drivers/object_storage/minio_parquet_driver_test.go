@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/reader"
 	"github.com/xitongsys/parquet-go/schema"
@@ -52,7 +53,7 @@ func createMinIOParquetTestData(t *testing.T) []byte {
 	return append([]byte(nil), output.Bytes()...)
 }
 
-func newMinIOParquetTestClient(t *testing.T, data []byte) (*MinIOClient, *atomic.Int64) {
+func newMinIOParquetTestClient(t *testing.T, data []byte) (*MinIOClient, *atomic.Int64, string) {
 	t.Helper()
 	var rangeRequests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,12 +105,12 @@ func newMinIOParquetTestClient(t *testing.T, data []byte) (*MinIOClient, *atomic
 	if err != nil {
 		t.Fatalf("create MinIO client: %v", err)
 	}
-	return client, &rangeRequests
+	return client, &rangeRequests, server.URL
 }
 
 func TestMinIOParquetQueryReadsRealRowsAndNulls(t *testing.T) {
 	data := createMinIOParquetTestData(t)
-	client, rangeRequests := newMinIOParquetTestClient(t, data)
+	client, rangeRequests, _ := newMinIOParquetTestClient(t, data)
 	driver := &MinIOParquetDriver{minioClient: client}
 
 	result, err := driver.Query(context.Background(), &MinIOParquetQuery{Key: "events.parquet"})
@@ -146,7 +147,7 @@ func TestMinIOParquetQueryReadsRealRowsAndNulls(t *testing.T) {
 }
 
 func TestMinIOParquetReaderMapsSchemaAndRemainingRows(t *testing.T) {
-	client, _ := newMinIOParquetTestClient(t, createMinIOParquetTestData(t))
+	client, _, _ := newMinIOParquetTestClient(t, createMinIOParquetTestData(t))
 	minioReader := NewMinIOParquetReader(client, "events.parquet")
 	fileReader, err := minioReader.Read(context.Background())
 	if err != nil {
@@ -189,7 +190,7 @@ func TestMinIOParquetReaderMapsSchemaAndRemainingRows(t *testing.T) {
 }
 
 func TestMinIOParquetReaderReportsInvalidAndUnsupportedSchemas(t *testing.T) {
-	client, _ := newMinIOParquetTestClient(t, []byte("not a Parquet file"))
+	client, _, _ := newMinIOParquetTestClient(t, []byte("not a Parquet file"))
 	if _, err := NewMinIOParquetReader(client, "events.parquet").Read(context.Background()); err == nil {
 		t.Fatal("expected invalid Parquet data to return an error")
 	}
@@ -215,7 +216,7 @@ func TestMinIOParquetReaderReportsInvalidAndUnsupportedSchemas(t *testing.T) {
 func int32Ptr(value int32) *int32 { return &value }
 
 func TestMinIOParquetQueryProjectsColumns(t *testing.T) {
-	client, _ := newMinIOParquetTestClient(t, createMinIOParquetTestData(t))
+	client, _, _ := newMinIOParquetTestClient(t, createMinIOParquetTestData(t))
 	driver := &MinIOParquetDriver{minioClient: client}
 	result, err := driver.Query(context.Background(), &MinIOParquetQuery{
 		Key:     "events.parquet",
@@ -256,6 +257,93 @@ func TestMinIOParquetQueryProjectsColumns(t *testing.T) {
 	}
 	if len(filtered.Rows) != 1 || filtered.Rows[0]["name"] != "second" {
 		t.Errorf("filtered rows = %#v, want only second row", filtered.Rows)
+	}
+}
+
+func TestMinIOParquetConfigOpensReadOnlySQLAdapter(t *testing.T) {
+	_, _, endpoint := newMinIOParquetTestClient(t, createMinIOParquetTestData(t))
+	config := &model.DataSourceConfig{
+		Host: "events.parquet", Database: "test-bucket", Username: "test-access", Password: "test-secret",
+		AdditionalProps: map[string]interface{}{
+			"endpoint_url": endpoint, "object_key": "events.parquet", "table_name": "events", "region": "us-east-1",
+		},
+	}
+	if err := (&MinIOParquetDriver{}).ValidateDSN("minio://test-bucket/events.parquet"); err != nil {
+		t.Fatalf("validate MinIO Parquet DSN: %v", err)
+	}
+	for _, invalidEndpoint := range []string{"ftp://minio.internal:9000", "http://minio.internal:9000/path", "http://user:secret@minio.internal:9000"} {
+		invalidConfig := *config
+		invalidConfig.AdditionalProps = map[string]interface{}{
+			"endpoint_url": invalidEndpoint, "object_key": "events.parquet", "table_name": "events",
+		}
+		if _, err := (&MinIOParquetDriver{}).OpenWithConfig(context.Background(), &invalidConfig); err == nil {
+			t.Errorf("OpenWithConfig() accepted invalid endpoint %q", invalidEndpoint)
+		}
+	}
+	db, err := (&MinIOParquetDriver{}).OpenWithConfig(context.Background(), config)
+	if err != nil {
+		t.Fatalf("open MinIO Parquet SQL adapter: %v", err)
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(context.Background(), "SELECT name AS person, count FROM events WHERE count >= ? ORDER BY count DESC LIMIT 1 OFFSET 1", int32(3))
+	if err != nil {
+		t.Fatalf("query configured Parquet table: %v", err)
+	}
+	columns, err := rows.Columns()
+	if err != nil || !reflect.DeepEqual(columns, []string{"person", "count"}) {
+		t.Fatalf("query columns = %v, error = %v", columns, err)
+	}
+	if !rows.Next() {
+		t.Fatalf("expected one paginated row, rows error: %v", rows.Err())
+	}
+	var name string
+	var count int64
+	if err := rows.Scan(&name, &count); err != nil {
+		t.Fatalf("scan configured Parquet result: %v", err)
+	}
+	if name != "first" || count != 3 {
+		t.Fatalf("row = (%q, %d), want (first, 3)", name, count)
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatalf("unexpected extra row or iteration error: %v", rows.Err())
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("close query rows: %v", err)
+	}
+
+	var total int64
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM events WHERE enabled = true").Scan(&total); err != nil || total != 1 {
+		t.Fatalf("count result = %d, error = %v; want 1", total, err)
+	}
+
+	schemaRows, err := db.QueryContext(context.Background(), "SELECT * FROM events LIMIT 0")
+	if err != nil {
+		t.Fatalf("inspect configured Parquet schema: %v", err)
+	}
+	types, err := schemaRows.ColumnTypes()
+	if err != nil || len(types) != 6 || types[0].DatabaseTypeName() != "VARCHAR" || types[1].DatabaseTypeName() != "INTEGER" {
+		t.Fatalf("Parquet column types = %v, error = %v", types, err)
+	}
+	if schemaRows.Next() || schemaRows.Err() != nil {
+		t.Fatalf("LIMIT 0 returned data or failed: %v", schemaRows.Err())
+	}
+	_ = schemaRows.Close()
+
+	if _, err := db.ExecContext(context.Background(), "DELETE FROM events"); err == nil || !strings.Contains(err.Error(), "read-only SELECT") {
+		t.Fatalf("ExecContext() error = %v, want read-only rejection", err)
+	}
+	if _, err := db.QueryContext(context.Background(), "DELETE FROM events"); err == nil {
+		t.Fatal("QueryContext() accepted a write statement")
+	}
+	for _, query := range []string{
+		"SELECT events.name FROM events",
+		"SELECT name FROM events AS e",
+		"SELECT name FROM other_table",
+	} {
+		if _, err := db.QueryContext(context.Background(), query); err == nil {
+			t.Errorf("QueryContext() accepted unsupported table identity in %q", query)
+		}
 	}
 }
 

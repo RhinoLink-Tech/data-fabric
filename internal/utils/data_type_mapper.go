@@ -68,7 +68,7 @@ func (dtm *DataTypeMapper) CoversStandardTypeMapping(dbType model.DatabaseType) 
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypePostgreSQL,
 		model.DatabaseTypeOracle, model.DatabaseTypeTrino, model.DatabaseTypePresto,
 		model.DatabaseTypeOpenLooKeng, model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV:
+		model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet:
 		return true
 	default:
 		return false
@@ -95,11 +95,11 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng,
 		model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid:
 		return dtm.mapPrestoCompatibleType(normalizedType)
-	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV:
+	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet:
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	default:
-		// Trino/Presto/OpenLooKeng, MongoDB, Apache Druid, and S3 CSV all
-		// share the Presto-compatible mapping.
+		// Trino/Presto/OpenLooKeng, MongoDB, Apache Druid, and object-storage
+		// query adapters share the Presto-compatible mapping.
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	}
 }

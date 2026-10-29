@@ -70,7 +70,7 @@ DATA_FABRIC_MINIO_CONTRACT_SECRET_KEY="$secret_key" \
 DATA_FABRIC_MINIO_CONTRACT_BUCKET="$bucket" \
 DATA_FABRIC_MINIO_CONTRACT_VERSION="$minio_version" \
 DATA_FABRIC_MINIO_CONTRACT_COMMIT="$minio_commit" \
-	go test ./internal/database/drivers/object_storage -run '^TestMinIOCSVContract$' -count=1 -v || {
+	go test ./internal/database/drivers/object_storage -run '^TestMinIO(CSV|Parquet)Contract$' -count=1 -v || {
 		cat "$work_dir/minio.log" >&2
 		exit 1
 	}

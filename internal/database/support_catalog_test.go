@@ -109,6 +109,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOParquet {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Parquet contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -183,9 +189,16 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioCSV.Limitations, "same config-aware, read-only S3 CSV SQL adapter") {
 		t.Errorf("MinIO CSV catalog must describe the shared gateway query path: %+v", minioCSV.Limitations)
 	}
+	minioParquet := profiles[string(model.DatabaseTypeMinIOParquet)]
+	if minioParquet.Status != ConnectorStatusExperimental || !minioParquet.EndToEndVerified || !minioParquet.Capabilities.SupportsSQL {
+		t.Errorf("MinIO Parquet must expose its SQL path with pinned live contract evidence: %+v", minioParquet)
+	}
+	if !containsSupportLimitation(minioParquet.Limitations, "one configured flat-schema Parquet object") || !containsSupportLimitation(minioParquet.Limitations, "Nested or repeated fields") {
+		t.Errorf("MinIO Parquet catalog must describe the adapter boundary: %+v", minioParquet.Limitations)
+	}
 	for _, dbType := range []model.DatabaseType{
 		model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet,
+		model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
 	} {
 		profile := profiles[string(dbType)]

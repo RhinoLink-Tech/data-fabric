@@ -66,7 +66,7 @@ func TestMapMongoDBSQLAdapterTypes(t *testing.T) {
 	}
 }
 
-func TestMapCSVObjectStorageInferredTypes(t *testing.T) {
+func TestMapObjectStorageQueryColumnTypes(t *testing.T) {
 	mapper := NewDataTypeMapper()
 	tests := []struct {
 		columnType string
@@ -77,7 +77,7 @@ func TestMapCSVObjectStorageInferredTypes(t *testing.T) {
 		{columnType: "BOOLEAN", want: model.TypeBoolean},
 		{columnType: "VARCHAR", want: model.TypeString},
 	}
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOParquet} {
 		for _, tt := range tests {
 			t.Run(string(dbType)+"/"+tt.columnType, func(t *testing.T) {
 				if got := mapper.MapToStandardType(dbType, tt.columnType, true); got != tt.want {

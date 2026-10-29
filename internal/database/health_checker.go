@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/readonly"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
@@ -393,6 +394,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
 		}
+		if dbType == model.DatabaseTypeMinIOParquet {
+			return hc.validateMinIOParquetConfig(config)
+		}
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
@@ -514,6 +518,26 @@ func (hc *HealthChecker) validateS3CSVConfig(config *model.DataSourceConfig) err
 	}
 	if objectKey == "" {
 		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateMinIOParquetConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	if _, err := object_storage.MinIOParquetTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" || strings.TrimSpace(config.Password) == "" {
+		return fmt.Errorf("MinIO access key and secret key are required")
+	}
+	endpoint, _ := config.AdditionalProps["endpoint_url"].(string)
+	if strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("endpoint_url is required in additionalProps")
 	}
 	return nil
 }

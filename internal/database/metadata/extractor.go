@@ -64,6 +64,12 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
+	} else if dataSource.Type == model.DatabaseTypeMinIOParquet {
+		var table *TableSchema
+		table, err = extractMinIOParquetTable(ctx, db, &dataSource.Config)
+		if err == nil {
+			tables = map[string]*TableSchema{table.Name: table}
+		}
 	} else {
 		tables, err = e.extractTables(ctx, db, dataSource.Type)
 	}
@@ -104,6 +110,16 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
+	}
+	if dataSource.Type == model.DatabaseTypeMinIOParquet {
+		name, err := object_storage.MinIOParquetTableName(&dataSource.Config)
+		if err != nil {
+			return nil, err
+		}
+		if requestedSchema != "" || tableName != name {
+			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
+		}
+		return extractMinIOParquetTable(ctx, db, &dataSource.Config)
 	}
 
 	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
@@ -219,6 +235,13 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
+	if dataSource.Type == model.DatabaseTypeMinIOParquet {
+		name, err := object_storage.MinIOParquetTableName(&dataSource.Config)
+		if err != nil {
+			return nil, err
+		}
+		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
+	}
 	rows, err := db.QueryContext(ctx, e.getTableQuery(dataSource.Type))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query table identities: %w", err)
@@ -265,6 +288,34 @@ func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceCo
 	types, err := rows.ColumnTypes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect CSV columns: %w", err)
+	}
+	columns := make([]ColumnSchema, len(types))
+	for i, col := range types {
+		nullable, known := col.Nullable()
+		if !known {
+			nullable = true
+		}
+		columns[i] = ColumnSchema{Name: col.Name(), Type: col.DatabaseTypeName(), Nullable: nullable}
+	}
+	return &TableSchema{Name: name, Type: "TABLE", Columns: columns}, nil
+}
+
+// extractMinIOParquetTable obtains the schema from the configured object's
+// footer through LIMIT 0, without decoding data rows.
+func extractMinIOParquetTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig) (*TableSchema, error) {
+	name, err := object_storage.MinIOParquetTableName(config)
+	if err != nil {
+		return nil, err
+	}
+	query := "SELECT * FROM `" + strings.ReplaceAll(name, "`", "``") + "` LIMIT 0"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect Parquet table %q: %w", name, err)
+	}
+	defer rows.Close()
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect Parquet columns: %w", err)
 	}
 	columns := make([]ColumnSchema, len(types))
 	for i, col := range types {

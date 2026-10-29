@@ -296,6 +296,19 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"MinIO CSV uses the same config-aware, read-only S3 CSV SQL adapter as S3-compatible sources. It supports one configured CSV object and a limited SELECT subset, and downloads the full object into gateway memory.",
 			"Set additionalProps.endpoint_url to the MinIO endpoint and force_path_style to true. TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIOParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has a contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "MinIO root access key and secret key authentication are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers bucket creation, Parquet upload, metadata and health checks, schema discovery, a restricted read-only SQL query, filtering, ordering, pagination, COUNT(*), and write rejection.",
+			"The adapter exposes one configured flat-schema Parquet object as one SQL table; it uses ranged object reads but currently decodes the object's rows before applying the supported SQL filters and page.",
+			"Nested or repeated fields, partition scans, multiple objects, schema evolution, TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
+		}
 	case model.DatabaseTypeApacheDoris:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
@@ -365,7 +378,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
+		model.DatabaseTypeS3JSON,
 		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,

@@ -285,6 +285,35 @@ authentication. TLS, STS, distributed MinIO deployments, and other releases
 remain outside that baseline; consult the [support catalog](data-source-support.md)
 before production use.
 
+## MinIO Parquet source
+
+Register a `minio_parquet` source to expose one configured Parquet object as a
+read-only SQL table. It uses the common query and metadata paths and supports
+flat primitive schemas with projection, `WHERE` comparisons joined by `AND`,
+`IS NULL`, `IN`, `LIKE`, `ORDER BY`, `LIMIT`, `OFFSET`, and `COUNT(*)`.
+Use the configured table name directly without a schema qualifier or table
+alias. Nested/repeated fields, partitions, and queries spanning multiple
+objects are not supported. The reader uses ranged object requests to inspect the Parquet
+footer, but currently decodes the configured object's rows before applying SQL
+filters and pagination; query limits therefore do not cap all object data
+reads.
+
+| Data-source field or property | MinIO Parquet meaning |
+| --- | --- |
+| `database` | MinIO bucket name. |
+| `username` and `password` | MinIO access key and secret key. |
+| `additionalProps.endpoint_url` | HTTP(S) MinIO endpoint origin, such as `http://minio.internal:9000`; do not include a path or credentials. |
+| `additionalProps.object_key` | Parquet object key. `host` is accepted as a legacy fallback. |
+| `additionalProps.table_name` | SQL table name; defaults to the object filename without its extension. |
+| `additionalProps.region` | S3 signing region; defaults to `us-east-1`. |
+| `additionalProps.session_token` | Optional MinIO/S3 session token. |
+
+The adapter has deterministic unified-query coverage and a pinned contract
+against MinIO `RELEASE.2025-04-22T22-12-26Z`. This contract does not imply
+compatibility with other MinIO releases, S3-compatible providers, TLS, STS, or
+distributed deployments; consult the [support catalog](data-source-support.md)
+before production use.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
@@ -18,6 +19,8 @@ type MinIOParquetDriver struct {
 	parquetReader   *ParquetReader
 	s3ParquetDriver *S3ParquetDriver // Reuse S3 driver logic
 	config          *MinIOParquetDriverConfig
+	objectKey       string
+	tableName       string
 }
 
 // MinIOParquetDriverConfig holds MinIO Parquet driver configuration
@@ -53,8 +56,12 @@ func (d *MinIOParquetDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *MinIOParquetDriver) ValidateDSN(dsn string) error {
-	// Parse MinIO URI
-	bucket, _, err := ParseS3URI(dsn) // Reuse S3 URI parser
+	// The shared parser accepts the S3 scheme; translate MinIO's public DSN
+	// scheme before applying its bucket/key validation.
+	if strings.HasPrefix(dsn, "minio://") {
+		dsn = "s3://" + strings.TrimPrefix(dsn, "minio://")
+	}
+	bucket, _, err := ParseS3URI(dsn)
 	if err != nil {
 		return fmt.Errorf("invalid MinIO URI: %w", err)
 	}
@@ -112,7 +119,7 @@ func (d *MinIOParquetDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *MinIOParquetDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
@@ -483,12 +490,4 @@ func (f *MemoryFile) Close() error {
 // GetSize returns the file size
 func (f *MemoryFile) GetSize() int64 {
 	return int64(len(f.data))
-}
-
-// ApplyBatchPagination adds pagination to SQL query
-func (d *MinIOParquetDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For MinIO Parquet files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Parquet files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
 }

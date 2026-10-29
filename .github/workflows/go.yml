@@ -363,8 +363,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run MinIO CSV contract
-        run: bash scripts/contracts/run_minio_csv_contract.sh
+      - name: Run MinIO CSV and Parquet contracts
+        run: bash scripts/contracts/run_minio_object_storage_contract.sh
 
   doris-contract:
     name: Apache Doris driver contract
