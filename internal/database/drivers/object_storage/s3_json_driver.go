@@ -29,6 +29,9 @@ type S3JSONDriverConfig struct {
 
 // NewS3JSONDriver creates a new S3 JSON driver
 func NewS3JSONDriver(ctx context.Context, config *S3JSONDriverConfig) (*S3JSONDriver, error) {
+	if config == nil || config.S3Config == nil {
+		return nil, fmt.Errorf("S3 JSON configuration is required")
+	}
 	s3Client, err := NewS3Client(ctx, config.S3Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
@@ -112,12 +115,12 @@ func (d *S3JSONDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *S3JSONDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
@@ -149,7 +152,10 @@ func (d *S3JSONDriver) ApplyBatchPagination(sql string, batchSize, offset int64)
 
 // Query executes a query against JSON files
 func (d *S3JSONDriver) Query(ctx context.Context, query *S3JSONQuery) (*S3JSONResult, error) {
-	if query.Key == "" {
+	if d == nil || d.s3Client == nil || d.jsonParser == nil {
+		return nil, fmt.Errorf("S3 JSON driver is not initialized")
+	}
+	if query == nil || strings.TrimSpace(query.Key) == "" {
 		return nil, fmt.Errorf("JSON file key is required")
 	}
 
@@ -229,27 +235,9 @@ func (d *S3JSONDriver) queryWithParser(ctx context.Context, query *S3JSONQuery) 
 	}
 
 	// Detect JSON format
-	jsonType, err := d.jsonParser.GetJSONType(data)
+	parsed, _, err := d.jsonParser.ParseJSONDataContext(ctx, data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to detect JSON format: %w", err)
-	}
-
-	// Parse based on type
-	var parsed *ParsedJSON
-
-	switch jsonType {
-	case "array":
-		parsed, err = d.jsonParser.ParseJSONArray(data)
-	case "jsonlines":
-		parsed, err = d.jsonParser.ParseJSONLines(data)
-	case "object":
-		parsed, err = d.jsonParser.ParseJSONDocument(data)
-	default:
-		return nil, fmt.Errorf("unsupported JSON format: %s", jsonType)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+		return nil, fmt.Errorf("failed to detect or parse JSON format: %w", err)
 	}
 
 	// Apply field selection
@@ -325,7 +313,7 @@ func (d *S3JSONDriver) DetectSchema(ctx context.Context, key string) (*JSONSchem
 		return nil, fmt.Errorf("failed to get JSON file: %w", err)
 	}
 
-	return d.jsonParser.DetectSchema(data)
+	return d.jsonParser.DetectSchemaContext(ctx, data)
 }
 
 // ListJSONFiles lists JSON files in a prefix
@@ -347,20 +335,14 @@ func (d *S3JSONDriver) GetFileMetadata(ctx context.Context, key string) (*JSONFi
 		return nil, fmt.Errorf("failed to get JSON file: %w", err)
 	}
 
-	schema, err := d.jsonParser.DetectSchema(data)
+	parsed, jsonType, err := d.jsonParser.ParseJSONDataContext(ctx, data)
 	if err != nil {
 		return nil, err
 	}
-
-	jsonType, _ := d.jsonParser.GetJSONType(data)
-
 	return &JSONFileMetadata{
-		Key:        key,
-		Size:       objMetadata.ContentLength,
-		Format:     jsonType,
-		IsArray:    schema.IsArray,
-		FieldCount: len(schema.Fields),
-		Fields:     schema.Fields,
+		Key: key, Size: objMetadata.ContentLength, Format: jsonType,
+		IsArray: parsed.Schema.IsArray, FieldCount: len(parsed.Schema.Fields),
+		Fields: parsed.Schema.Fields,
 	}, nil
 }
 
@@ -520,7 +502,7 @@ func mapJSONTypeToStandard(jsonType string) model.StandardizedType {
 		return model.StandardizedTypeBoolean
 	case "integer":
 		return model.StandardizedTypeInt64
-	case "float":
+	case "float", "double":
 		return model.StandardizedTypeFloat64
 	case "string":
 		return model.StandardizedTypeString

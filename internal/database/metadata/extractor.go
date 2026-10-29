@@ -64,9 +64,9 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
+	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) {
 		var table *TableSchema
-		table, err = extractFlatObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
+		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
@@ -111,15 +111,15 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
-		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) {
+		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		if requestedSchema != "" || tableName != name {
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
-		return extractFlatObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
+		return extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
 
 	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
@@ -235,8 +235,8 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) {
-		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) {
+		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -282,7 +282,11 @@ func isAvroObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeS3Avro
 }
 
-func flatObjectTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+func isS3JSONObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeS3JSON
+}
+
+func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
 	case model.DatabaseTypeMinIOParquet:
 		return object_storage.MinIOParquetTableName(config)
@@ -292,8 +296,10 @@ func flatObjectTableName(dbType model.DatabaseType, config *model.DataSourceConf
 		return object_storage.S3ORCTableName(config)
 	case model.DatabaseTypeS3Avro:
 		return object_storage.S3AvroTableName(config)
+	case model.DatabaseTypeS3JSON:
+		return object_storage.S3JSONTableName(config)
 	default:
-		return "", fmt.Errorf("flat object metadata is not supported for %s", dbType)
+		return "", fmt.Errorf("object SQL metadata is not supported for %s", dbType)
 	}
 }
 
@@ -327,10 +333,10 @@ func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceCo
 	return &TableSchema{Name: name, Type: "TABLE", Columns: columns}, nil
 }
 
-// extractFlatObjectTable obtains the configured object's schema through
-// LIMIT 0, without decoding data rows.
-func extractFlatObjectTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
-	name, err := flatObjectTableName(dbType, config)
+// extractObjectSQLTable obtains the configured object's schema through
+// LIMIT 0. Format adapters may decode records when schema inference requires it.
+func extractObjectSQLTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
+	name, err := objectSQLTableNameForSource(dbType, config)
 	if err != nil {
 		return nil, err
 	}

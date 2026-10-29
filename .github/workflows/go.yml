@@ -347,7 +347,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run S3 CSV, Parquet, and ORC contracts
+      - name: Run S3 CSV, Parquet, ORC, Avro, and JSON contracts
         run: bash scripts/contracts/run_s3_csv_contract.sh
 
   minio-csv-contract:

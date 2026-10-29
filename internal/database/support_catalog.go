@@ -296,6 +296,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The adapter exposes one configured flat-schema Parquet object as one SQL table. It reads object ranges, but currently decodes all rows before applying SQL filters and pagination.",
 			"This contract does not verify AWS S3, other S3-compatible providers, S3 Select execution, nested or repeated fields, partition scans, or multiple objects.",
 		}
+	case model.DatabaseTypeS3JSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Garage v2.4.1 only"
+		profile.VerifiedServerVersions = []string{"Garage v2.4.1"}
+		profile.VersionPolicy = "The S3 JSON adapter has a pinned live contract against Garage v2.4.1 only; AWS S3 and other S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed S3 requests using an access key and secret key are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authentication are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Garage v2.4.1 contract covers signed upload, object and JSON Lines formats, schema discovery, read-only SQL, pagination, COUNT(*), and rejection of writes.",
+			"The adapter exposes one configured JSON object as one SQL table. It downloads the full object into gateway memory before parsing and applying filters or pagination.",
+			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are rejected or outside this adapter boundary.",
+			"S3 Select execution is disabled; compatibility with AWS S3, other S3-compatible providers, and other Garage versions is not established by this contract.",
+		}
 	case model.DatabaseTypeS3Avro:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true
@@ -418,8 +432,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
-	case model.DatabaseTypeS3JSON,
-		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+	case model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
 		model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:

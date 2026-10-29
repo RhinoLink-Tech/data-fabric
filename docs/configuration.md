@@ -229,6 +229,38 @@ supported. The S3-compatible contract is pinned to Garage v2.4.1; that result
 does not establish compatibility with every S3 provider or release. See the
 support catalog and driver contract report for the current evidence.
 
+## S3 JSON object source
+
+The S3 JSON connector exposes one configured object as one read-only SQL
+table. It accepts a single JSON object, an array of JSON objects, or JSON Lines
+and NDJSON. Schema inference examines every record: fields missing from some
+records and explicit nulls are nullable; integer and floating-point values
+promote to a floating-point column. Incompatible types are rejected instead
+of silently coercing values.
+
+| Data-source field or property | S3 JSON meaning |
+| --- | --- |
+| database | Bucket name. |
+| host or additionalProps.object_key | Object key; object_key takes precedence. |
+| username and password | Optional S3 access key and secret key; configure both or neither. |
+| additionalProps.region | AWS region; defaults to us-east-1. |
+| additionalProps.endpoint_url | Optional S3-compatible endpoint. |
+| additionalProps.force_path_style | Enable path-style addressing for compatible services such as Garage. |
+| additionalProps.table_name | SQL table name; defaults from the object key. |
+| additionalProps.flatten_nested | Flatten nested object fields into underscore-separated columns; name collisions are rejected. Arrays remain unsupported. |
+| additionalProps.session_token | Optional temporary credential session token. |
+| additionalProps.role_arn and external_id | Optional AWS role assumption settings. |
+
+The read-only SQL subset supports top-level scalar projections, scalar filters
+joined by AND, IS NULL, ORDER BY, LIMIT/OFFSET, and COUNT(*). Nested objects
+require flatten_nested; arrays, heterogeneous values, writes, joins, grouping,
+multi-object scans, partition discovery, and S3 Select execution are not
+supported. Each query downloads the full configured object into gateway
+memory before parsing and applying filters or pagination. The S3-compatible
+contract is pinned to Garage v2.4.1; it does not establish compatibility with
+every S3 provider or release. See the support catalog and driver contract
+report for current evidence.
+
 ## S3 Avro OCF object source
 
 The S3 Avro connector exposes one Avro Object Container File (OCF) as one
