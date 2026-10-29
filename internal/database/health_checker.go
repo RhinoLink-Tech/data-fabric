@@ -412,6 +412,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeTencentCOSParquet {
+			return hc.validateCOSParquetConfig(config)
+		}
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
@@ -590,6 +593,40 @@ func (hc *HealthChecker) validateOSSParquetConfig(config *model.DataSourceConfig
 	}
 	if strings.TrimSpace(endpoint) == "" {
 		return fmt.Errorf("endpoint_url is required in additionalProps")
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateCOSParquetConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	objectKey := dataSourcePropString(config.AdditionalProps, "object_key")
+	if objectKey == "" {
+		objectKey = strings.TrimSpace(config.Host)
+	}
+	if objectKey == "" {
+		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	if _, err := object_storage.COSParquetTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" || strings.TrimSpace(config.Password) == "" {
+		return fmt.Errorf("COS SecretId and SecretKey are required")
+	}
+	if dataSourcePropString(config.AdditionalProps, "region") == "" {
+		return fmt.Errorf("region is required in additionalProps")
+	}
+	endpoint := dataSourcePropString(config.AdditionalProps, "endpoint_url")
+	if endpoint != "" {
+		parsed, err := url.Parse(endpoint)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			(parsed.Path != "" && parsed.Path != "/") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("endpoint_url must be an HTTP(S) origin without credentials, path, query, or fragment")
+		}
 	}
 	return nil
 }

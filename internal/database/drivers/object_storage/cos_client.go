@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"bytes"
-	"net/http"
 
 	"github.com/tencentyun/cos-go-sdk-v5"
 )
@@ -21,34 +23,60 @@ type COSClient struct {
 
 // COSConfig holds Tencent Cloud COS configuration
 type COSConfig struct {
-	SecretID   string
-	SecretKey  string
-	Region     string // e.g., ap-guangzhou
-	BucketName string
-	HTTPS      bool
+	SecretID    string
+	SecretKey   string
+	Region      string // e.g., ap-guangzhou
+	BucketName  string
+	HTTPS       bool
+	EndpointURL string // Optional HTTP(S) endpoint override, primarily for compatible gateways.
 }
 
 // NewCOSClient creates a new Tencent Cloud COS client
 func NewCOSClient(ctx context.Context, config *COSConfig) (*COSClient, error) {
-	if config.SecretID == "" {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, fmt.Errorf("COS configuration is required")
+	}
+	if strings.TrimSpace(config.SecretID) == "" {
 		return nil, fmt.Errorf("secret ID is required")
 	}
-	if config.SecretKey == "" {
+	if strings.TrimSpace(config.SecretKey) == "" {
 		return nil, fmt.Errorf("secret key is required")
 	}
-	if config.Region == "" {
+	if strings.TrimSpace(config.Region) == "" {
 		return nil, fmt.Errorf("region is required")
 	}
-
-	// Build COS bucket URL
-	bucketURL, err := cos.NewBucketURL(config.BucketName, config.Region, config.HTTPS)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bucket URL: %w", err)
+	if strings.TrimSpace(config.BucketName) == "" {
+		return nil, fmt.Errorf("bucket name is required")
 	}
 
-	// Create COS client
+	var bucketURL *url.URL
+	var err error
+	if strings.TrimSpace(config.EndpointURL) != "" {
+		bucketURL, err = url.Parse(strings.TrimSpace(config.EndpointURL))
+		if err != nil || bucketURL.Host == "" || (bucketURL.Scheme != "http" && bucketURL.Scheme != "https") ||
+			(bucketURL.Path != "" && bucketURL.Path != "/") || bucketURL.User != nil ||
+			bucketURL.RawQuery != "" || bucketURL.Fragment != "" {
+			return nil, fmt.Errorf("COS endpoint URL must be an HTTP(S) origin without credentials, path, query, or fragment")
+		}
+	} else {
+		bucketURL, err = cos.NewBucketURL(config.BucketName, config.Region, config.HTTPS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bucket URL: %w", err)
+		}
+	}
+
+	// The SDK needs the AuthorizationTransport to sign each COS request.
 	client := cos.NewClient(&cos.BaseURL{BucketURL: bucketURL}, &http.Client{
 		Timeout: 30 * time.Second,
+		Transport: &cos.AuthorizationTransport{
+			SecretID: config.SecretID, SecretKey: config.SecretKey,
+		},
 	})
 
 	return &COSClient{
@@ -60,6 +88,15 @@ func NewCOSClient(ctx context.Context, config *COSConfig) (*COSClient, error) {
 
 // ListObjects lists objects in a bucket
 func (c *COSClient) ListObjects(ctx context.Context, prefix string, maxKeys int) ([]COSObject, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("COS client is not initialized")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	listOpts := &cos.BucketGetOptions{
 		Prefix:  prefix,
 		MaxKeys: maxKeys,
@@ -86,6 +123,18 @@ func (c *COSClient) ListObjects(ctx context.Context, prefix string, maxKeys int)
 
 // GetObject retrieves an object from COS
 func (c *COSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("COS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("COS object key is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	resp, err := c.client.Object.Get(ctx, key, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object: %w", err)
@@ -96,15 +145,33 @@ func (c *COSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object data: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	return data, nil
 }
 
 // GetObjectMetadata retrieves object metadata
 func (c *COSClient) GetObjectMetadata(ctx context.Context, key string) (*COSObjectMetadata, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("COS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("COS object key is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	resp, err := c.client.Object.Head(ctx, key, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to head object: %w", err)
+	}
+	if resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	metadata := &COSObjectMetadata{
@@ -231,15 +298,18 @@ func (c *COSClient) ListFilesByExtension(ctx context.Context, prefix, extension 
 
 // GetBucketInfo returns bucket information
 func (c *COSClient) GetBucketInfo(ctx context.Context) *COSBucketInfo {
-	protocol := "https"
-	if c.config.HTTPS {
-		protocol = "https"
+	endpoint := strings.TrimSpace(c.config.EndpointURL)
+	if endpoint == "" {
+		protocol := "http"
+		if c.config.HTTPS {
+			protocol = "https"
+		}
+		endpoint = fmt.Sprintf("%s://%s.cos.%s.myqcloud.com", protocol, c.bucket, c.config.Region)
 	}
-
 	return &COSBucketInfo{
 		Name:   c.bucket,
 		Region: c.config.Region,
-		URL:    fmt.Sprintf("%s://%s.cos.ap-%s.myqcloud.com", protocol, c.bucket, c.config.Region),
+		URL:    endpoint,
 	}
 }
 

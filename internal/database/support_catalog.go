@@ -440,10 +440,17 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"Deterministic protocol-fixture coverage does not establish compatibility with a particular Alibaba OSS service release; no live OSS version contract is recorded.")
-	case model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
-		model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta,
-		model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
-		model.DatabaseTypeMinIODelta:
+	case model.DatabaseTypeTencentCOSParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release or temporary credential contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
+			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
+			"The deterministic SDK protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
+		model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"No end-to-end query-service execution path is recorded for this connector; registry presence alone does not mean SQL queries are available.")

@@ -59,12 +59,20 @@ func TestFetchQueryRoutesOSSParquetThroughGateway(t *testing.T) {
 	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeAlibabaOSSParquet)
 }
 
+func TestFetchQueryRoutesCOSParquetThroughGateway(t *testing.T) {
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeTencentCOSParquet)
+}
+
 func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.DatabaseType) {
 	t.Helper()
 	data := parquetObjectQueryTestData(t)
 	var getCalls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/demo-bucket/data.parquet" {
+		expectedPath := "/demo-bucket/data.parquet"
+		if sourceType == model.DatabaseTypeTencentCOSParquet {
+			expectedPath = "/data.parquet"
+		}
+		if r.URL.Path != expectedPath {
 			http.NotFound(w, r)
 			return
 		}

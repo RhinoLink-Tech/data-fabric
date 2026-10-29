@@ -435,6 +435,31 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Tencent COS Parquet source
+
+The cos_parquet connector exposes one configured Parquet object as a read-only
+SQL table. It supports flat primitive columns and the shared object SQL subset:
+projection, comparisons joined by AND, IS NULL, IN, LIKE, ORDER BY, LIMIT,
+OFFSET, and COUNT(*). Nested or repeated fields, partition scans, and queries
+across multiple objects are not supported.
+
+| Data-source field or property | Tencent COS Parquet meaning |
+| --- | --- |
+| database | COS bucket name. |
+| username and password | Required SecretId and SecretKey. |
+| additionalProps.region | Required COS region, such as ap-guangzhou. |
+| additionalProps.endpoint_url | Optional HTTP(S) endpoint origin for compatible COS gateways; omit it to use the region-specific Tencent endpoint. |
+| additionalProps.https | Whether to use HTTPS for the default endpoint; defaults to true. |
+| additionalProps.object_key | Parquet object key. host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the object filename without its extension. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000. |
+
+The current adapter downloads the complete object into gateway memory before
+decoding rows and applying SQL filters or pagination. Keep configured objects
+within the gateway memory budget. Local SDK protocol-fixture coverage does not
+establish compatibility with a live Tencent COS service release; see the
+support catalog (data-source-support.md).
+
 ## Alibaba OSS Parquet source
 
 The oss_parquet connector exposes one configured Parquet object as a

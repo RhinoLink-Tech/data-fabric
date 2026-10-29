@@ -64,6 +64,22 @@ native JSON queries, and coordinator metadata are outside this fixture. The
 adapter remains experimental until a pinned live Druid contract is added under
 [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
+## Tencent COS Parquet protocol fixture
+
+The COS Parquet adapter has deterministic protocol-fixture coverage using the
+Tencent COS SDK and its request signing transport against a local HTTP server.
+The fixture exercises signed object reads, metadata and health checks, schema
+discovery, read-only SQL filtering/order/pagination/count behavior, request
+cancellation, and write rejection. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSParquetProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture does not run against Tencent Cloud and does not establish
+compatibility with a live COS release or temporary credentials. The connector
+remains experimental pending a version-pinned live contract.
+
 ## Alibaba OSS Parquet protocol fixture
 
 The OSS Parquet adapter has deterministic protocol-fixture coverage using the
