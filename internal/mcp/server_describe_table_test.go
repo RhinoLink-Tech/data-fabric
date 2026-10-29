@@ -32,6 +32,9 @@ type stubTableDescriber struct {
 	calls       int
 	gotSourceID string
 	gotTable    string
+
+	inSchemaCalls int
+	gotSchema     string
 }
 
 func (s *stubTableDescriber) ExtractTableSchema(_ context.Context, dataSourceID, tableName string) (*metadata.TableSchema, error) {
@@ -41,19 +44,31 @@ func (s *stubTableDescriber) ExtractTableSchema(_ context.Context, dataSourceID,
 	return s.table, s.err
 }
 
+func (s *stubTableDescriber) ExtractTableSchemaInSchema(_ context.Context, dataSourceID, schemaName, tableName string) (*metadata.TableSchema, error) {
+	s.inSchemaCalls++
+	s.gotSourceID = dataSourceID
+	s.gotSchema = schemaName
+	s.gotTable = tableName
+	return s.table, s.err
+}
+
 func describeTableServer(source *model.DataSource, describer TableDescriber) *MCPServer {
 	return NewMCPServer(nil, describeTableRepo{source: source}, describer)
 }
 
-func describeTableRequest(t *testing.T, caller *security.Caller, dataSourceID, tableName string) (context.Context, mcp.CallToolRequest) {
+func describeTableRequest(t *testing.T, caller *security.Caller, dataSourceID, tableName string, schema ...string) (context.Context, mcp.CallToolRequest) {
 	t.Helper()
 
-	request := mcp.CallToolRequest{}
-	request.Params.Name = "describe_table"
-	request.Params.Arguments = map[string]any{
+	arguments := map[string]any{
 		"datasource_id": dataSourceID,
 		"table_name":    tableName,
 	}
+	if len(schema) > 0 {
+		arguments["schema"] = schema[0]
+	}
+	request := mcp.CallToolRequest{}
+	request.Params.Name = "describe_table"
+	request.Params.Arguments = arguments
 	return context.WithValue(context.Background(), callerContextKey{}, caller), request
 }
 
@@ -247,5 +262,98 @@ func TestDescribeTableWithoutDescriber(t *testing.T) {
 	}
 	if text := describeTableText(t, result); !strings.Contains(text, "not available") {
 		t.Fatalf("error text = %q, want a capability message", text)
+	}
+}
+
+// An explicit schema resolves the table in that schema even when table
+// authorization is disabled — the same identity the enabled path enforces,
+// never unique-name fallback (#258).
+func TestDescribeTableHonorsRequestedSchemaWithoutTableAuthorization(t *testing.T) {
+	describer := &stubTableDescriber{table: &metadata.TableSchema{
+		Name: "orders", Schema: "sales", Type: "TABLE",
+		Columns: []metadata.ColumnSchema{{Name: "id", Type: "integer"}},
+	}}
+	server := describeTableServer(activeOwnedSource(), describer)
+
+	ctx, request := describeTableRequest(t, &security.Caller{UserID: "alice"}, "ds-1", "orders", "sales")
+	result, err := server.handleDescribeTable(ctx, request)
+	if err != nil {
+		t.Fatalf("handleDescribeTable() error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %s", describeTableText(t, result))
+	}
+	if describer.inSchemaCalls != 1 || describer.gotSchema != "sales" || describer.gotTable != "orders" {
+		t.Fatalf("schema-qualified extraction called %d times with %s/%s, want once with sales/orders",
+			describer.inSchemaCalls, describer.gotSchema, describer.gotTable)
+	}
+	if describer.calls != 0 {
+		t.Fatalf("unqualified extraction called %d times despite an explicit schema", describer.calls)
+	}
+}
+
+// Without a schema argument the unqualified resolution is unchanged (#258).
+func TestDescribeTableWithoutSchemaKeepsUniqueNameResolution(t *testing.T) {
+	describer := &stubTableDescriber{table: &metadata.TableSchema{Name: "orders", Schema: "public"}}
+	server := describeTableServer(activeOwnedSource(), describer)
+
+	ctx, request := describeTableRequest(t, &security.Caller{UserID: "alice"}, "ds-1", "orders")
+	result, err := server.handleDescribeTable(ctx, request)
+	if err != nil {
+		t.Fatalf("handleDescribeTable() error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %s", describeTableText(t, result))
+	}
+	if describer.calls != 1 || describer.gotSourceID != "ds-1" || describer.gotTable != "orders" {
+		t.Fatalf("unqualified extraction called %d times with %s/%s", describer.calls, describer.gotSourceID, describer.gotTable)
+	}
+	if describer.inSchemaCalls != 0 {
+		t.Fatalf("schema-qualified extraction called %d times without a schema argument", describer.inSchemaCalls)
+	}
+}
+
+// A schema mismatch surfaces the same not-found message the enabled path
+// returns, instead of silently describing a same-named table elsewhere (#258).
+func TestDescribeTableReportsMissingTableInRequestedSchema(t *testing.T) {
+	describer := &stubTableDescriber{err: fmt.Errorf("%w: %q in data source %s", metadata.ErrTableNotFound, "orders", "ds-1")}
+	server := describeTableServer(activeOwnedSource(), describer)
+
+	ctx, request := describeTableRequest(t, &security.Caller{UserID: "alice"}, "ds-1", "orders", "sales")
+	result, err := server.handleDescribeTable(ctx, request)
+	if err != nil {
+		t.Fatalf("handleDescribeTable() error = %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("schema mismatch must be a tool error")
+	}
+	if text := describeTableText(t, result); !strings.Contains(text, "not found") {
+		t.Fatalf("error text = %q, want a not-found message", text)
+	}
+}
+
+// Describers without schema-qualified extraction refuse explicit schemas
+// instead of guessing through unique-name fallback (#258).
+type schemaUnawareDescriber struct{ calls int }
+
+func (s *schemaUnawareDescriber) ExtractTableSchema(context.Context, string, string) (*metadata.TableSchema, error) {
+	s.calls++
+	return &metadata.TableSchema{Name: "orders", Schema: "public"}, nil
+}
+
+func TestDescribeTableDeniesExplicitSchemaOnSchemaUnawareDescriber(t *testing.T) {
+	describer := &schemaUnawareDescriber{}
+	server := describeTableServer(activeOwnedSource(), describer)
+
+	ctx, request := describeTableRequest(t, &security.Caller{UserID: "alice"}, "ds-1", "orders", "sales")
+	result, err := server.handleDescribeTable(ctx, request)
+	if err != nil {
+		t.Fatalf("handleDescribeTable() error = %v", err)
+	}
+	if !result.IsError || describeTableText(t, result) != "table metadata is unavailable or access is denied" {
+		t.Fatalf("result = %+v, want the capability-denied message", result)
+	}
+	if describer.calls != 0 {
+		t.Fatalf("unqualified extraction called %d times for an explicit schema", describer.calls)
 	}
 }
