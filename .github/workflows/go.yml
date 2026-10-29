@@ -350,6 +350,22 @@ jobs:
       - name: Run S3-compatible service contract
         run: bash scripts/contracts/run_s3_csv_contract.sh
 
+  minio-csv-contract:
+    name: MinIO CSV driver contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MinIO CSV contract
+        run: bash scripts/contracts/run_minio_csv_contract.sh
+
   doris-contract:
     name: Apache Doris driver contract
     runs-on: ubuntu-latest

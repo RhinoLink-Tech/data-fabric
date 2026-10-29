@@ -257,6 +257,34 @@ statements, and streaming are unavailable on this path. Use a Druid account
 with only the datasource permissions required by the gateway; application
 validation and adapter-level rejection complement those source permissions.
 
+## MinIO CSV source
+
+MinIO CSV uses the same read-only SQL adapter as S3-compatible CSV sources.
+Register the source with type `minio_csv`; the gateway treats `database` as the
+bucket and reads one configured object. It supports the documented restricted
+SELECT subset, pagination, bound parameters, and write rejection. The complete
+object is downloaded into gateway memory for each query, so set source-side
+object sizes and gateway memory limits accordingly. Table discovery reports the
+single configured table. Describing it reads the object and infers column types
+from its contents; columns with no non-null values default to `VARCHAR`.
+
+| Data-source field or property | MinIO CSV meaning |
+| --- | --- |
+| `database` | MinIO bucket name. |
+| `username` and `password` | MinIO access key and secret key. |
+| `additionalProps.endpoint_url` | Full MinIO endpoint, such as `http://minio.internal:9000`. |
+| `additionalProps.force_path_style` | Set to `true` for MinIO. |
+| `additionalProps.object_key` | Required CSV object key. `host` is accepted only as a legacy fallback. |
+| `additionalProps.table_name` | SQL table name; defaults to the object filename without `.csv`. |
+| `additionalProps.region` | S3 signing region; defaults to `us-east-1`. |
+| `additionalProps.has_header`, `delimiter`, `skip_header_rows`, `null_values` | Optional CSV parsing controls shared with S3 CSV. |
+
+The adapter has deterministic connection-pool and unified-query coverage plus a
+pinned MinIO `RELEASE.2025-04-22T22-12-26Z` contract for access-key
+authentication. TLS, STS, distributed MinIO deployments, and other releases
+remain outside that baseline; consult the [support catalog](data-source-support.md)
+before production use.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

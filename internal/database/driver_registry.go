@@ -186,7 +186,10 @@ func (dr *DriverRegistry) registerDrivers() {
 		return &object_storage.MinIOParquetDriver{}
 	})
 	dr.register(model.DatabaseTypeMinIOCSV, func() drivers.Driver {
-		return &object_storage.MinIOCSVDriver{}
+		// MinIO exposes an S3-compatible API. Reusing the S3 CSV SQL adapter
+		// gives MinIO sources the same config-aware database/sql path used by
+		// the unified query service instead of a disconnected custom API.
+		return &object_storage.S3CSVDriver{}
 	})
 	dr.register(model.DatabaseTypeAlibabaOSSParquet, func() drivers.Driver {
 		return &object_storage.OSSParquetDriver{}

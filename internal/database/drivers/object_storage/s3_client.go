@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -107,6 +108,23 @@ func NewS3Client(ctx context.Context, s3Config *S3Config) (*S3Client, error) {
 		region:        s3Config.Region,
 		config:        s3Config,
 	}, nil
+}
+
+// EnsureBucket creates the configured bucket when it does not already exist.
+// It is intended for isolated S3-compatible test fixtures; normal gateway
+// reads require an existing bucket and never call this helper.
+func (c *S3Client) EnsureBucket(ctx context.Context) error {
+	if strings.TrimSpace(c.config.Bucket) == "" {
+		return fmt.Errorf("bucket is required")
+	}
+	_, err := c.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(c.config.Bucket)})
+	if err == nil {
+		return nil
+	}
+	if _, createErr := c.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(c.config.Bucket)}); createErr != nil {
+		return fmt.Errorf("create bucket %q: %w", c.config.Bucket, createErr)
+	}
+	return nil
 }
 
 // ListObjects lists objects in a bucket with optional prefix
