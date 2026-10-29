@@ -3,8 +3,11 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/lib/pq"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
@@ -44,5 +47,23 @@ func TestLegacyQueryErrorResponseOmitsSQLAndDriverDetails(t *testing.T) {
 	}
 	if !strings.Contains(body, "The data-source query failed") {
 		t.Errorf("response lacks the safe query message: %s", body)
+	}
+}
+
+// A cancelled PostgreSQL statement surfaces as the server's own 57014 error,
+// not context.Canceled; it must still map to the stable cancellation message
+// instead of the generic data-source failure text (#261).
+func TestSafeQueryErrorMessageClassifiesServerSideCancellation(t *testing.T) {
+	cancelled := &pq.Error{Code: "57014", Message: "canceling statement due to user request"}
+	if got := SafeQueryErrorMessage(cancelled); got != "The query was cancelled before completion." {
+		t.Fatalf("cancelled statement message = %q", got)
+	}
+	wrapped := fmt.Errorf("execute query: %w", cancelled)
+	if got := SafeQueryErrorMessage(wrapped); got != "The query was cancelled before completion." {
+		t.Fatalf("wrapped cancelled statement message = %q", got)
+	}
+	other := &pq.Error{Code: "42601", Message: "syntax error at or near \"FROM\""}
+	if got := SafeQueryErrorMessage(other); got != "The data-source query failed. Check the SQL dialect, catalog and schema, permissions, and query-engine availability." {
+		t.Fatalf("other server error message = %q", got)
 	}
 }
