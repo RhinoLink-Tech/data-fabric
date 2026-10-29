@@ -412,6 +412,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeOSSDelta {
+			return hc.validateOSSDeltaConfig(config)
+		}
 		if dbType == model.DatabaseTypeTencentCOSParquet {
 			return hc.validateCOSParquetConfig(config)
 		}
@@ -596,6 +599,32 @@ func (hc *HealthChecker) validateOSSParquetConfig(config *model.DataSourceConfig
 	}
 	if strings.TrimSpace(endpoint) == "" {
 		return fmt.Errorf("endpoint_url is required in additionalProps")
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateOSSDeltaConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	tablePath := dataSourcePropString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = config.Host
+	}
+	if strings.Trim(strings.TrimSpace(tablePath), "/") == "" {
+		return fmt.Errorf("table_path is required in additionalProps or host")
+	}
+	if _, err := object_storage.OSSDeltaTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" || strings.TrimSpace(config.Password) == "" {
+		return fmt.Errorf("OSS access key ID and secret are required")
+	}
+	if _, err := object_storage.OSSDeltaEndpointFromConfig(config); err != nil {
+		return err
 	}
 	return nil
 }

@@ -4,65 +4,81 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// OSSDeltaDriver implements Driver interface for Alibaba OSS Delta Lake tables
+// OSSDeltaDriver reads bounded, unpartitioned Delta snapshots stored in OSS.
 type OSSDeltaDriver struct {
-	config *OSSConfig
-	client *OSSClient
+	config    *OSSConfig
+	client    *OSSClient
+	tablePath string
+	tableName string
+	batchSize int
 }
 
-// NewOSSDeltaDriver creates a new OSS Delta Lake driver
+// NewOSSDeltaDriver creates a new OSS Delta Lake driver.
 func NewOSSDeltaDriver(ctx context.Context, config *OSSConfig) (*OSSDeltaDriver, error) {
 	client, err := NewOSSClient(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &OSSDeltaDriver{
-		config: config,
-		client: client,
-	}, nil
+	return &OSSDeltaDriver{config: config, client: client, batchSize: 1000}, nil
 }
 
-// Open opens a connection (not applicable for OSS Delta Lake)
+// Open opens a connection (not applicable for OSS Delta Lake).
 func (d *OSSDeltaDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("OSS Delta Lake driver does not support standard database connections")
+	return nil, fmt.Errorf("OSS Delta Lake driver requires a configured read-only SQL adapter")
 }
 
-// ValidateDSN validates the connection string
+// ValidateDSN validates the connection string.
 func (d *OSSDeltaDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	if !strings.HasPrefix(dsn, "oss://") {
+		return fmt.Errorf("invalid OSS URI: %s", dsn)
+	}
+	bucket, tablePath, found := strings.Cut(strings.TrimPrefix(dsn, "oss://"), "/")
+	if !found || strings.TrimSpace(bucket) == "" {
+		return fmt.Errorf("OSS Delta URI must include a bucket and table path")
+	}
+	if _, err := cleanObjectDeltaTablePath(tablePath); err != nil {
+		return err
 	}
 	return nil
 }
 
-// GetDefaultPort returns the default OSS port
-func (d *OSSDeltaDriver) GetDefaultPort() int {
-	return 443 // HTTPS
-}
+// GetDefaultPort returns the default OSS port.
+func (d *OSSDeltaDriver) GetDefaultPort() int { return 443 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
 func (d *OSSDeltaDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("oss://%s", config.Database)
+	if config == nil {
+		return "oss://"
+	}
+	tablePath := configString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = config.Host
+	}
+	return fmt.Sprintf("oss://%s/%s", config.Database, tablePath)
 }
 
-// GetDatabaseTypeName returns the database type name
-func (d *OSSDeltaDriver) GetDatabaseTypeName() string {
-	return "oss-delta"
+func (d *OSSDeltaDriver) GetDatabaseTypeName() string { return "oss-delta" }
+func (d *OSSDeltaDriver) GetDriverName() string       { return "oss-delta" }
+func (d *OSSDeltaDriver) GetCategory() drivers.DriverCategory {
+	return drivers.CategoryObjectStorage
 }
 
-// TestConnection tests if the connection is working
+// TestConnection tests if the connection is working.
 func (d *OSSDeltaDriver) TestConnection(db *sql.DB) error {
 	return fmt.Errorf("use TestConnectionContext instead")
 }
 
-// TestConnectionContext tests the OSS connection
+// TestConnectionContext tests OSS connectivity.
 func (d *OSSDeltaDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.client == nil {
+		return fmt.Errorf("OSS Delta driver is not initialized")
+	}
 	_, err := d.client.ListObjects(ctx, "", 1)
 	if err != nil {
 		return fmt.Errorf("failed to test OSS connection: %w", err)
@@ -70,37 +86,21 @@ func (d *OSSDeltaDriver) TestConnectionContext(ctx context.Context) error {
 	return nil
 }
 
-// GetDriverName returns the driver name
-func (d *OSSDeltaDriver) GetDriverName() string {
-	return "oss-delta"
-}
-
-// GetCategory returns the driver category
-func (d *OSSDeltaDriver) GetCategory() drivers.DriverCategory {
-	return drivers.CategoryObjectStorage
-}
-
-// GetCapabilities returns driver capabilities
+// GetCapabilities describes the supported read-only adapter.
 func (d *OSSDeltaDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
+		SupportsSQL:             true,
+		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
+		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
-// ConfigureAuth configures authentication
-func (d *OSSDeltaDriver) ConfigureAuth(authConfig interface{}) error {
-	return nil
-}
+func (d *OSSDeltaDriver) ConfigureAuth(interface{}) error { return nil }
 
-// ApplyBatchPagination adds pagination to SQL query
-func (d *OSSDeltaDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For OSS Delta files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Delta files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+// ApplyBatchPagination adds pagination to a SQL query.
+func (d *OSSDeltaDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return applyObjectBatchPagination(query, batchSize, offset)
 }

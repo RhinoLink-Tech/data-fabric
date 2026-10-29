@@ -486,6 +486,34 @@ within the gateway memory budget. Local SDK protocol-fixture coverage does not
 establish compatibility with a live Tencent COS service release; see the
 support catalog (data-source-support.md).
 
+## Alibaba OSS Delta source
+
+The oss_delta source exposes one configured Delta table as a read-only SQL
+table. The initial reader resolves the latest snapshot by replaying consecutive
+JSON transaction-log commits from version zero and reads active Parquet files.
+It accepts unpartitioned tables with flat primitive columns and the shared
+object SQL subset: projection, simple comparisons joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*).
+
+| Data-source field or property | Alibaba OSS Delta meaning |
+| --- | --- |
+| database | OSS bucket name. |
+| username and password | Required access key ID and access key secret. |
+| additionalProps.endpoint_url | Required OSS endpoint origin, with or without an HTTP(S) scheme. |
+| additionalProps.table_path | Delta table root within the bucket; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the final path component. |
+| additionalProps.session_token | Optional STS session token; security_token is also accepted. |
+| additionalProps.force_path_style | Use path-style requests for compatible gateways and local test servers. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000. |
+
+The adapter rejects checkpoints, partitioned tables, deletion vectors, empty
+tables, unknown transaction-log actions, and reader features beyond protocol
+version 1. It also rejects snapshots with more than 256 active data files,
+more than 64 MiB of active Parquet data, or more than 100,000 decoded rows.
+Active files are downloaded into gateway memory before SQL filtering and
+pagination; decoded rows add memory use beyond the compressed object sizes. Local SDK protocol fixtures
+do not establish compatibility with a live Alibaba OSS service release.
+
 ## Alibaba OSS Parquet source
 
 The oss_parquet connector exposes one configured Parquet object as a

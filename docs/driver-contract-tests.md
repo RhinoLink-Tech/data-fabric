@@ -96,6 +96,21 @@ This fixture does not run against Tencent Cloud and does not establish
 compatibility with a live COS release or temporary credentials. The connector
 remains experimental pending a version-pinned live contract.
 
+## Alibaba OSS Delta protocol fixture
+
+The OSS Delta fixture exercises the SDK against a local HTTP object-store
+server. It covers transaction-log listing and replay, active Parquet reads,
+health checks, table metadata, read-only SQL filtering/order/pagination/count,
+cancellation, and write rejection. The query-service fixture also exercises
+batch pagination. Run the focused fixtures directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage ./internal/service -run 'OSSDelta' -count=1 -v
+~~~~
+
+These fixtures do not run against Alibaba Cloud and do not establish a live OSS
+release contract. The adapter remains experimental.
+
 ## Alibaba OSS Parquet protocol fixture
 
 The OSS Parquet adapter has deterministic protocol-fixture coverage using the

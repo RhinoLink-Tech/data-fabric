@@ -64,7 +64,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) {
+	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
@@ -111,7 +111,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) {
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -286,6 +286,10 @@ func isS3JSONObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeS3JSON
 }
 
+func isDeltaObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeOSSDelta
+}
+
 func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
 	case model.DatabaseTypeMinIOParquet:
@@ -304,6 +308,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.S3AvroTableName(config)
 	case model.DatabaseTypeS3JSON:
 		return object_storage.S3JSONTableName(config)
+	case model.DatabaseTypeOSSDelta:
+		return object_storage.OSSDeltaTableName(config)
 	default:
 		return "", fmt.Errorf("object SQL metadata is not supported for %s", dbType)
 	}

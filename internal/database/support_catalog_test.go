@@ -256,9 +256,16 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if profile.Status != ConnectorStatusExperimental || !profile.Capabilities.SupportsSQL {
 			t.Errorf("%s must expose its experimental read-only SQL adapter: %+v", dbType, profile)
 		}
-		if !containsSupportLimitation(profile.Limitations, "one configured object") || !containsSupportLimitation(profile.Limitations, "complete object is downloaded into gateway memory") {
+		if !containsSupportLimitation(profile.Limitations, "one configured") || !containsSupportLimitation(profile.Limitations, "complete object is downloaded into gateway memory") {
 			t.Errorf("%s must disclose its object scope and buffering boundary: %+v", dbType, profile.Limitations)
 		}
+	}
+	ossDelta := profiles[string(model.DatabaseTypeOSSDelta)]
+	if ossDelta.Status != ConnectorStatusExperimental || !ossDelta.Capabilities.SupportsSQL || ossDelta.EndToEndVerified {
+		t.Errorf("OSS Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", ossDelta)
+	}
+	if !containsSupportLimitation(ossDelta.Limitations, "checkpoints") || !containsSupportLimitation(ossDelta.Limitations, "64 MiB") {
+		t.Errorf("OSS Delta catalog must disclose its snapshot and memory boundaries: %+v", ossDelta.Limitations)
 	}
 }
 
