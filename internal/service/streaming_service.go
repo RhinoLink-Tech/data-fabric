@@ -17,6 +17,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
+	"github.com/RhinoLink-Tech/data-fabric/internal/utils"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 	"github.com/google/uuid"
 )
@@ -41,47 +42,6 @@ func (ss *streamingService) translateSQLIfNeeded(ctx context.Context, sql, sourc
 		return "", fmt.Errorf("SQL translator is not configured")
 	}
 	return ss.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
-}
-
-func (ss *streamingService) mapQueryEngineTypeToStandard(dbTypeName string) model.StandardizedType {
-	upperTypeName := strings.ToUpper(dbTypeName)
-	switch {
-	case strings.Contains(upperTypeName, "BIGINT"):
-		return model.TypeBigInt
-	case strings.Contains(upperTypeName, "TINYINT"), strings.Contains(upperTypeName, "SMALLINT"), strings.Contains(upperTypeName, "INTEGER"):
-		return model.TypeInteger
-	case strings.Contains(upperTypeName, "DOUBLE"):
-		return model.TypeDouble
-	case strings.Contains(upperTypeName, "REAL"):
-		return model.TypeFloat
-	case strings.Contains(upperTypeName, "DECIMAL"), strings.Contains(upperTypeName, "NUMERIC"):
-		return model.TypeDecimal
-	case strings.Contains(upperTypeName, "ARRAY"):
-		return model.TypeArray
-	case strings.Contains(upperTypeName, "ROW"):
-		return model.TypeStruct
-	case strings.Contains(upperTypeName, "MAP"), strings.Contains(upperTypeName, "JSON"),
-		strings.Contains(upperTypeName, "BINGTILE"), strings.Contains(upperTypeName, "KDBTREE"):
-		return model.TypeJSON
-	case strings.Contains(upperTypeName, "VARBINARY"):
-		return model.TypeBinary
-	case strings.Contains(upperTypeName, "DATE"):
-		return model.TypeDate
-	case strings.Contains(upperTypeName, "TIMESTAMP"):
-		return model.TypeTimestamp
-	case strings.Contains(upperTypeName, "TIME"):
-		return model.TypeTime
-	case strings.Contains(upperTypeName, "BOOLEAN"):
-		return model.TypeBoolean
-	case strings.Contains(upperTypeName, "UUID"):
-		return model.TypeUUID
-	case strings.Contains(upperTypeName, "VARCHAR"), strings.Contains(upperTypeName, "CHAR"),
-		strings.Contains(upperTypeName, "IPADDRESS"), strings.Contains(upperTypeName, "GEOMETRY"),
-		strings.Contains(upperTypeName, "SPHERICALGEOGRAPHY"), strings.Contains(upperTypeName, "INTERVAL"):
-		return model.TypeString
-	default:
-		return model.TypeUnknown
-	}
 }
 
 // StreamingSession represents a streaming query session for batch fetching
@@ -652,7 +612,10 @@ func (ss *streamingService) closeStreamLocked(streamID string, stream *ActiveStr
 		stream.CancelFunc()
 	}
 	if stream.Rows != nil {
-		if err := stream.Rows.Close(); err != nil {
+		// A cancelled stream reports the cancellation from Rows.Close; that
+		// is the expected outcome of client cancellation, so the stream is
+		// still deregistered instead of leaking and logging an error (#262).
+		if err := stream.Rows.Close(); err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("close stream %s rows: %w", streamID, err)
 		}
 	}
@@ -1191,30 +1154,20 @@ func (ss *streamingService) getRowCount(ctx context.Context, db *sql.DB, sql str
 	return countRowsInQuery(ctx, db, sql, args...)
 }
 
-// mapDatabaseTypeToStandard maps database-specific type to standardized type
+// sharedTypeMapper is the same mapper the pagination path uses, so both
+// execution paths report identical standardized column types for the same
+// query (#260).
+var sharedTypeMapper = utils.NewDataTypeMapper()
+
+// mapDatabaseTypeToStandard maps a database column type to the standardized
+// type. Families the shared DataTypeMapper covers go through it so pagination
+// and streaming agree exactly; the remaining families keep the generic
+// matcher below (#260).
 func (ss *streamingService) mapDatabaseTypeToStandard(dbTypeName string, dbType model.DatabaseType, nullable bool) model.StandardizedType {
-	// Use the DataTypeMapper from utils package or implement basic mapping
-	switch dbType {
-	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return ss.mapMySQLTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypePostgreSQL:
-		return ss.mapPostgreSQLTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeOracle:
-		return ss.mapOracleTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeSnowflake:
-		return ss.mapSnowflakeTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeBigQuery:
-		return ss.mapBigQueryTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeDatabricks:
-		return ss.mapDatabricksTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeRedshift:
-		return ss.mapRedshiftTypeToStandard(dbTypeName, nullable)
-	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng:
-		return ss.mapQueryEngineTypeToStandard(dbTypeName)
-	default:
-		// Default mapping for unknown database types
-		return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
+	if sharedTypeMapper.CoversStandardTypeMapping(dbType) {
+		return sharedTypeMapper.MapToStandardType(dbType, dbTypeName, nullable)
 	}
+	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
 }
 
 // mapGenericDatabaseTypeToStandard provides generic type mapping
@@ -1249,39 +1202,4 @@ func (ss *streamingService) mapGenericDatabaseTypeToStandard(dbTypeName string, 
 	default:
 		return model.StandardizedTypeString
 	}
-}
-
-// mapMySQLTypeToStandard maps MySQL types to standard types
-func (ss *streamingService) mapMySQLTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapPostgreSQLTypeToStandard maps PostgreSQL types to standard types
-func (ss *streamingService) mapPostgreSQLTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapOracleTypeToStandard maps Oracle types to standard types
-func (ss *streamingService) mapOracleTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapSnowflakeTypeToStandard maps Snowflake types to standard types
-func (ss *streamingService) mapSnowflakeTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapBigQueryTypeToStandard maps BigQuery types to standard types
-func (ss *streamingService) mapBigQueryTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapDatabricksTypeToStandard maps Databricks types to standard types
-func (ss *streamingService) mapDatabricksTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
-}
-
-// mapRedshiftTypeToStandard maps Redshift types to standard types
-func (ss *streamingService) mapRedshiftTypeToStandard(dbTypeName string, nullable bool) model.StandardizedType {
-	return ss.mapGenericDatabaseTypeToStandard(dbTypeName, nullable)
 }

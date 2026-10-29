@@ -283,12 +283,9 @@ func (d *DeltaDriver) DescribeHistory(ctx context.Context, tablePath string, lim
 		return nil, err
 	}
 
+	// Commits come from DESCRIBE HISTORY (newest-first); keep the most recent `limit`.
 	if limit > 0 && len(commits) > limit {
-		start := len(commits) - limit
-		if start < 0 {
-			start = 0
-		}
-		commits = commits[start:]
+		commits = commits[:limit]
 	}
 
 	return commits, nil

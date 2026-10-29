@@ -224,9 +224,11 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 	case DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery, DatabaseTypeApacheHive, DatabaseTypeMaxCompute:
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
-		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeAlibabaOSSParquet, DatabaseTypeTencentCOSParquet, DatabaseTypeAzureBlobParquet:
+		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeAlibabaOSSParquet, DatabaseTypeTencentCOSParquet, DatabaseTypeAzureBlobParquet,
+		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta:
 		return "object_storage"
-	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV, DatabaseTypeOzoneParquet:
+	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV, DatabaseTypeOzoneParquet,
+		DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
 		return "filesystems"
 	case DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid, DatabaseTypeHologres:
 		return "olap"
@@ -241,7 +243,9 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 	}
 }
 
-// RequiresSQLProtocol checks if a database type uses standard SQL protocol (MySQL/PostgreSQL compatible)
+// RequiresSQLProtocol reports whether a domestic database type belongs to the
+// legacy MySQL/PostgreSQL compatibility set. Native databases and other driver
+// families are outside this helper's scope; use driver capabilities for SQL support.
 func RequiresSQLProtocol(dbType DatabaseType) bool {
 	switch dbType {
 	case DatabaseTypeOceanBaseMySQL, DatabaseTypeTiDB, DatabaseTypeTDSQL,

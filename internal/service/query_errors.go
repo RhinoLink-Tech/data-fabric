@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lib/pq"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -36,6 +38,17 @@ func requireActiveDataSource(dataSource *model.DataSource) error {
 	return nil
 }
 
+// isServerSideCancellation reports err as the engine's own cancellation of
+// the statement (SQLSTATE 57014, query_canceled). lib/pq surfaces the
+// server's error instead of the caller's context.Canceled when a PostgreSQL
+// statement is cancelled mid-flight, so without this check the stable
+// cancellation message degrades to the generic data-source failure text
+// (#261).
+func isServerSideCancellation(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "57014"
+}
+
 // SafeQueryErrorMessage maps internal failures to stable, user-actionable text.
 func SafeQueryErrorMessage(err error) string {
 	switch {
@@ -43,7 +56,7 @@ func SafeQueryErrorMessage(err error) string {
 		return ""
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The query timed out. Reduce the query scope or increase the request timeout."
-	case errors.Is(err, context.Canceled):
+	case errors.Is(err, context.Canceled), isServerSideCancellation(err):
 		return "The query was cancelled before completion."
 	case errors.Is(err, repository.ErrDataSourceNotFound):
 		return "The selected data source was not found."

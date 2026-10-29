@@ -92,8 +92,8 @@ func (p *DeltaLogParser) GetLatestVersion(commits []DeltaCommitInfo) (int64, err
 		return 0, fmt.Errorf("no commits available")
 	}
 
-	// Commits are typically ordered by version
-	latest := commits[len(commits)-1]
+	// Commits come from DESCRIBE HISTORY, which is newest-first.
+	latest := commits[0]
 	return latest.Version, nil
 }
 
