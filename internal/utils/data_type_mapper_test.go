@@ -66,7 +66,7 @@ func TestMapMongoDBSQLAdapterTypes(t *testing.T) {
 	}
 }
 
-func TestMapS3CSVInferredTypes(t *testing.T) {
+func TestMapCSVObjectStorageInferredTypes(t *testing.T) {
 	mapper := NewDataTypeMapper()
 	tests := []struct {
 		columnType string
@@ -77,12 +77,14 @@ func TestMapS3CSVInferredTypes(t *testing.T) {
 		{columnType: "BOOLEAN", want: model.TypeBoolean},
 		{columnType: "VARCHAR", want: model.TypeString},
 	}
-	for _, tt := range tests {
-		t.Run(tt.columnType, func(t *testing.T) {
-			if got := mapper.MapToStandardType(model.DatabaseTypeS3CSV, tt.columnType, true); got != tt.want {
-				t.Errorf("MapToStandardType(s3_csv, %q) = %q, want %q", tt.columnType, got, tt.want)
-			}
-		})
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV} {
+		for _, tt := range tests {
+			t.Run(string(dbType)+"/"+tt.columnType, func(t *testing.T) {
+				if got := mapper.MapToStandardType(dbType, tt.columnType, true); got != tt.want {
+					t.Errorf("MapToStandardType(%s, %q) = %q, want %q", dbType, tt.columnType, got, tt.want)
+				}
+			})
+		}
 	}
 }
 

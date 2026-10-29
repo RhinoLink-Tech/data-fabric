@@ -9,11 +9,22 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 )
 
 const minioContractVersion = "RELEASE.2025-04-22T22-12-26Z"
 const minioContractCommit = "0d7408fc9969caf07de6a8c3a84f9fbb10a6739e"
+
+type minioContractSourceRepo struct {
+	repository.DataSourceRepository
+	source *model.DataSource
+}
+
+func (r minioContractSourceRepo) GetByID(_ context.Context, _ string) (*model.DataSource, error) {
+	return r.source, nil
+}
 
 func TestMinIOCSVContract(t *testing.T) {
 	endpoint := os.Getenv("DATA_FABRIC_MINIO_CONTRACT_ENDPOINT")
@@ -77,6 +88,20 @@ func TestMinIOCSVContract(t *testing.T) {
 	}
 	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	t.Cleanup(func() { _ = pool.CloseAll() })
+	extractor := metadata.NewMetadataExtractor(pool, minioContractSourceRepo{source: ds})
+	tables, err := extractor.ListTables(ctx, ds.ID)
+	if err != nil || len(tables) != 1 || tables[0].Name != "records" {
+		t.Fatalf("list MinIO tables = %+v, error = %v", tables, err)
+	}
+	table, err := extractor.ExtractTableSchema(ctx, ds.ID, "records")
+	if err != nil {
+		t.Fatalf("describe MinIO CSV table: %v", err)
+	}
+	if len(table.Columns) != 3 || table.Columns[0].Name != "id" || table.Columns[0].Type != "BIGINT" ||
+		table.Columns[1].Name != "name" || table.Columns[1].Type != "VARCHAR" ||
+		table.Columns[2].Name != "active" || table.Columns[2].Type != "BOOLEAN" {
+		t.Fatalf("MinIO CSV columns = %+v", table.Columns)
+	}
 	checker := database.NewHealthChecker(pool)
 	if err := checker.ValidateDataSourceConfiguration(&ds.Config, ds.Type); err != nil {
 		t.Fatalf("validate MinIO CSV source config: %v", err)

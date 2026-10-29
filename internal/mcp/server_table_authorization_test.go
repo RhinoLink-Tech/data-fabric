@@ -83,6 +83,47 @@ func TestListTablesHidesUnauthorizedNames(t *testing.T) {
 	}
 }
 
+func TestListObjectCSVTablesWithAndWithoutTablePolicy(t *testing.T) {
+	source := activeOwnedSource()
+	source.Type = model.DatabaseTypeMinIOCSV
+	metadataSource := &policyTableMetadataStub{identities: []metadata.TableIdentity{{Name: "records", Type: "TABLE"}}}
+	for _, tc := range []struct {
+		name      string
+		policy    *security.TableAuthorizer
+		wantCount int
+	}{
+		{name: "policy disabled", wantCount: 1},
+		{name: "metadata allowed", policy: security.NewTableAuthorizer(security.TableAuthorizationConfig{
+			Enabled: true, DataSources: map[string]security.DataSourceTablePolicy{
+				source.ID: {Rules: []security.TableAccessRule{{UserID: "alice", Metadata: []security.TableScope{{Schema: "*", Table: "records"}}}}},
+			},
+		}), wantCount: 1},
+		{name: "metadata denied", policy: security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true}), wantCount: 0},
+	} {
+		for _, dbType := range []model.DatabaseType{model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3CSV} {
+			t.Run(string(dbType)+"/"+tc.name, func(t *testing.T) {
+				source.Type = dbType
+				server := NewMCPServerWithTableAuthorizer(nil, describeTableRepo{source: source}, metadataSource, tc.policy)
+				ctx, request := tablePolicyRequest(&security.Caller{UserID: "alice"}, "list_tables", map[string]any{"datasource_id": source.ID})
+				result, err := server.handleListTables(ctx, request)
+				if err != nil || result.IsError {
+					t.Fatalf("list tables result=%+v, error=%v", result, err)
+				}
+				var payload model.FetchQueryResponse
+				if err := json.Unmarshal([]byte(describeTableText(t, result)), &payload); err != nil {
+					t.Fatalf("decode list tables: %v", err)
+				}
+				if payload.TotalCount != tc.wantCount || len(payload.Entries) != tc.wantCount {
+					t.Fatalf("list tables = %+v, want %d entries", payload, tc.wantCount)
+				}
+				if tc.wantCount > 0 && (*payload.Entries[0])[0] != "records" {
+					t.Fatalf("unexpected table name: %+v", payload.Entries)
+				}
+			})
+		}
+	}
+}
+
 func TestDescribeTableAuthorizesBeforeReadingSchema(t *testing.T) {
 	source := activeOwnedSource()
 	metadataSource := &policyTableMetadataStub{}

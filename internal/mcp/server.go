@@ -563,7 +563,9 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	if dataSource.Status != model.DataSourceStatusActive {
 		return mcp.NewToolResultError("data source is not active"), nil
 	}
-	if m.tableAuthorizer != nil && m.tableAuthorizer.Enabled() {
+	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
+	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV
+	if tablePolicyEnabled || csvObjectSource {
 		lister, ok := m.tableDescriber.(TableLister)
 		if !ok {
 			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
@@ -572,40 +574,43 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		if err != nil {
 			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 		}
-		references := make([]sqlanalysis.TableReference, 0, len(identities))
-		for _, identity := range identities {
-			if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
-				identity.Catalog = dataSource.Config.Database
+		visible := identities
+		if tablePolicyEnabled {
+			references := make([]sqlanalysis.TableReference, 0, len(identities))
+			for _, identity := range identities {
+				if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
+					identity.Catalog = dataSource.Config.Database
+				}
+				references = append(references, sqlanalysis.TableReference{
+					Catalog: identity.Catalog, Schema: identity.Schema, Table: identity.Name, Unqualified: identity.Schema == "",
+				})
 			}
-			references = append(references, sqlanalysis.TableReference{
-				Catalog: identity.Catalog, Schema: identity.Schema, Table: identity.Name, Unqualified: identity.Schema == "",
-			})
-		}
-		allowed, err := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, references, security.TablePermissionMetadata)
-		if err != nil {
-			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
-		}
-		allowedKeys := make(map[string]struct{}, len(allowed))
-		for _, reference := range allowed {
-			allowedKeys[reference.Catalog+"\x00"+reference.Schema+"\x00"+reference.Table] = struct{}{}
-		}
-		visible := make([]metadata.TableIdentity, 0, len(allowed))
-		for _, identity := range identities {
-			if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
-				identity.Catalog = dataSource.Config.Database
+			allowed, err := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, references, security.TablePermissionMetadata)
+			if err != nil {
+				return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 			}
-			schemaName := identity.Schema
-			if schemaName == "" {
-				schemaName = dataSource.Config.Schema
-				if schemaName == "" {
-					switch dataSource.Type {
-					case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB, model.DatabaseTypeOceanBaseMySQL, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
-						schemaName = dataSource.Config.Database
+			allowedKeys := make(map[string]struct{}, len(allowed))
+			for _, reference := range allowed {
+				allowedKeys[reference.Catalog+"\x00"+reference.Schema+"\x00"+reference.Table] = struct{}{}
+			}
+			visible = make([]metadata.TableIdentity, 0, len(allowed))
+			for _, identity := range identities {
+				if identity.Catalog == "" && isPrestoFamily(dataSource.Type) {
+					identity.Catalog = dataSource.Config.Database
+				}
+				schemaName := identity.Schema
+				if schemaName == "" && !csvObjectSource {
+					schemaName = dataSource.Config.Schema
+					if schemaName == "" {
+						switch dataSource.Type {
+						case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeTiDB, model.DatabaseTypeOceanBaseMySQL, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+							schemaName = dataSource.Config.Database
+						}
 					}
 				}
-			}
-			if _, ok := allowedKeys[identity.Catalog+"\x00"+schemaName+"\x00"+identity.Name]; ok {
-				visible = append(visible, identity)
+				if _, ok := allowedKeys[identity.Catalog+"\x00"+schemaName+"\x00"+identity.Name]; ok {
+					visible = append(visible, identity)
+				}
 			}
 		}
 		entries := make([]*[]interface{}, 0, len(visible))

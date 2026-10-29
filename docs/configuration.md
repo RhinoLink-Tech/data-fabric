@@ -264,7 +264,9 @@ Register the source with type `minio_csv`; the gateway treats `database` as the
 bucket and reads one configured object. It supports the documented restricted
 SELECT subset, pagination, bound parameters, and write rejection. The complete
 object is downloaded into gateway memory for each query, so set source-side
-object sizes and gateway memory limits accordingly.
+object sizes and gateway memory limits accordingly. Table discovery reports the
+single configured table. Describing it reads the object and infers column types
+from its contents; columns with no non-null values default to `VARCHAR`.
 
 | Data-source field or property | MinIO CSV meaning |
 | --- | --- |
