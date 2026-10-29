@@ -200,6 +200,35 @@ concurrency, and size limits. Request cancellation and timeout terminate the
 translation subprocess. The subprocess receives only PATH, PYTHONPATH, PYTHONUNBUFFERED, and
 PYTHONNOUSERSITE; application secrets are not copied into its environment.
 
+## S3 ORC object source
+
+The S3 ORC connector exposes one configured object as one read-only SQL table.
+It accepts a flat ORC struct with primitive fields. The current reader supports
+uncompressed, ZLIB, and Snappy ORC stripes; nested/repeated fields and other
+compression codecs are rejected. Object bytes are fetched with ranged S3
+requests, while a query currently decodes the full object into gateway memory
+before applying filters, ordering, and pagination. Keep this path for bounded
+files; it is not a distributed scan engine.
+
+| Data-source field | S3 ORC meaning |
+| --- | --- |
+| database | Bucket name. |
+| host or additionalProps.object_key | Object key; object_key takes precedence. |
+| username and password | Optional S3 access key and secret key; configure both or neither. |
+| additionalProps.region | AWS region; defaults to us-east-1. |
+| additionalProps.endpoint_url | Optional S3-compatible endpoint. |
+| additionalProps.force_path_style | Enable path-style addressing for compatible services such as Garage. |
+| additionalProps.table_name | SQL table name; defaults from the object key. |
+| additionalProps.session_token | Optional temporary credential session token. |
+| additionalProps.role_arn and external_id | Optional AWS role assumption settings. |
+
+The read-only query subset supports column projection, scalar filters joined by
+AND, IS NULL, ORDER BY, LIMIT/OFFSET, and COUNT(*). Writes, joins, grouping,
+nested ORC values, multi-object scans, and partition discovery are not
+supported. The S3-compatible contract is pinned to Garage v2.4.1; that result
+does not establish compatibility with every S3 provider or release. See the
+support catalog and driver contract report for the current evidence.
+
 ## Iceberg REST table source
 
 The Iceberg connector uses the Iceberg REST catalog to load the current table

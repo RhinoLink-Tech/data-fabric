@@ -50,7 +50,7 @@ func (d *MinIOParquetDriver) OpenWithConfig(ctx context.Context, config *model.D
 	if err != nil {
 		return nil, err
 	}
-	return newParquetSQLDB(&parquetSQLAdapter{
+	return newObjectSQLDB(&objectSQLAdapter{
 		driverName: "minio-parquet",
 		objectKey:  objectKey,
 		tableName:  configured.tableName,
@@ -58,13 +58,19 @@ func (d *MinIOParquetDriver) OpenWithConfig(ctx context.Context, config *model.D
 			_, err := configured.minioClient.GetObjectMetadata(ctx, key)
 			return err
 		},
-		getSchema: configured.GetSchema,
-		readRows: func(ctx context.Context, key string) (*ParquetSchema, []map[string]interface{}, error) {
+		getSchema: func(ctx context.Context, key string) (*objectSQLSchema, error) {
+			schema, err := configured.GetSchema(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			return objectSQLSchemaFromParquet(schema), nil
+		},
+		readRows: func(ctx context.Context, key string) (*objectSQLSchema, []map[string]interface{}, error) {
 			result, err := configured.Query(ctx, &MinIOParquetQuery{Key: key})
 			if err != nil {
 				return nil, nil, err
 			}
-			return result.Schema, result.Rows, nil
+			return objectSQLSchemaFromParquet(result.Schema), result.Rows, nil
 		},
 	}), nil
 }
@@ -108,5 +114,5 @@ func parquetObjectTableName(config *model.DataSourceConfig, sourceName string) (
 }
 
 func (d *MinIOParquetDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
-	return applyParquetBatchPagination(query, batchSize, offset)
+	return applyObjectBatchPagination(query, batchSize, offset)
 }

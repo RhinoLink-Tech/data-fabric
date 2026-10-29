@@ -13,44 +13,44 @@ import (
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-type parquetSQLAdapter struct {
+type objectSQLAdapter struct {
 	driverName string
 	objectKey  string
 	tableName  string
 	ping       func(context.Context, string) error
-	getSchema  func(context.Context, string) (*ParquetSchema, error)
-	readRows   func(context.Context, string) (*ParquetSchema, []map[string]interface{}, error)
+	getSchema  func(context.Context, string) (*objectSQLSchema, error)
+	readRows   func(context.Context, string) (*objectSQLSchema, []map[string]interface{}, error)
 }
 
-func newParquetSQLDB(adapter *parquetSQLAdapter) *sql.DB {
-	return sql.OpenDB(&parquetSQLConnector{adapter: adapter})
+func newObjectSQLDB(adapter *objectSQLAdapter) *sql.DB {
+	return sql.OpenDB(&objectSQLConnector{adapter: adapter})
 }
 
-type parquetSQLConnector struct{ adapter *parquetSQLAdapter }
+type objectSQLConnector struct{ adapter *objectSQLAdapter }
 
-func (c *parquetSQLConnector) Connect(context.Context) (driver.Conn, error) {
-	return &parquetSQLConn{adapter: c.adapter}, nil
+func (c *objectSQLConnector) Connect(context.Context) (driver.Conn, error) {
+	return &objectSQLConn{adapter: c.adapter}, nil
 }
-func (c *parquetSQLConnector) Driver() driver.Driver {
-	return parquetSQLDatabaseDriver{connector: c}
+func (c *objectSQLConnector) Driver() driver.Driver {
+	return objectSQLDatabaseDriver{connector: c}
 }
 
-type parquetSQLDatabaseDriver struct{ connector *parquetSQLConnector }
+type objectSQLDatabaseDriver struct{ connector *objectSQLConnector }
 
-func (d parquetSQLDatabaseDriver) Open(string) (driver.Conn, error) {
+func (d objectSQLDatabaseDriver) Open(string) (driver.Conn, error) {
 	return d.connector.Connect(context.Background())
 }
 
-type parquetSQLConn struct{ adapter *parquetSQLAdapter }
+type objectSQLConn struct{ adapter *objectSQLAdapter }
 
-func (c *parquetSQLConn) Prepare(string) (driver.Stmt, error) {
+func (c *objectSQLConn) Prepare(string) (driver.Stmt, error) {
 	return nil, fmt.Errorf("%s does not support prepared statements", c.adapter.driverName)
 }
-func (c *parquetSQLConn) Close() error { return nil }
-func (c *parquetSQLConn) Begin() (driver.Tx, error) {
+func (c *objectSQLConn) Close() error { return nil }
+func (c *objectSQLConn) Begin() (driver.Tx, error) {
 	return nil, fmt.Errorf("%s supports read-only SELECT queries", c.adapter.driverName)
 }
-func (c *parquetSQLConn) Ping(ctx context.Context) error {
+func (c *objectSQLConn) Ping(ctx context.Context) error {
 	if c.adapter.objectKey == "" {
 		return fmt.Errorf("%s object_key is required", c.adapter.driverName)
 	}
@@ -62,25 +62,25 @@ func (c *parquetSQLConn) Ping(ctx context.Context) error {
 	}
 	return nil
 }
-func (c *parquetSQLConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+func (c *objectSQLConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	result, err := c.adapter.executeSQL(ctx, query, args)
 	if err != nil {
 		return nil, err
 	}
-	return &parquetSQLRows{ctx: ctx, columns: result.columns, types: result.types, nullable: result.nullable, rows: result.rows}, nil
+	return &objectSQLRows{ctx: ctx, columns: result.columns, types: result.types, nullable: result.nullable, rows: result.rows}, nil
 }
-func (c *parquetSQLConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+func (c *objectSQLConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
 	return nil, fmt.Errorf("%s supports read-only SELECT queries", c.adapter.driverName)
 }
 
-type parquetSQLResult struct {
+type objectSQLResult struct {
 	columns  []string
 	types    []string
 	nullable []bool
 	rows     [][]driver.Value
 }
 
-type parquetSQLRows struct {
+type objectSQLRows struct {
 	ctx      context.Context
 	columns  []string
 	types    []string
@@ -89,9 +89,9 @@ type parquetSQLRows struct {
 	next     int
 }
 
-func (r *parquetSQLRows) Columns() []string { return r.columns }
-func (r *parquetSQLRows) Close() error      { return nil }
-func (r *parquetSQLRows) Next(dest []driver.Value) error {
+func (r *objectSQLRows) Columns() []string { return r.columns }
+func (r *objectSQLRows) Close() error      { return nil }
+func (r *objectSQLRows) Next(dest []driver.Value) error {
 	if err := r.ctx.Err(); err != nil {
 		return err
 	}
@@ -102,20 +102,20 @@ func (r *parquetSQLRows) Next(dest []driver.Value) error {
 	r.next++
 	return nil
 }
-func (r *parquetSQLRows) ColumnTypeDatabaseTypeName(index int) string {
+func (r *objectSQLRows) ColumnTypeDatabaseTypeName(index int) string {
 	if index < 0 || index >= len(r.types) {
 		return "VARCHAR"
 	}
 	return r.types[index]
 }
-func (r *parquetSQLRows) ColumnTypeNullable(index int) (nullable, ok bool) {
+func (r *objectSQLRows) ColumnTypeNullable(index int) (nullable, ok bool) {
 	if index < 0 || index >= len(r.nullable) {
 		return true, false
 	}
 	return r.nullable[index], true
 }
 
-func applyParquetBatchPagination(query string, batchSize, offset int64) (string, error) {
+func applyObjectBatchPagination(query string, batchSize, offset int64) (string, error) {
 	if batchSize <= 0 {
 		return "", errors.New("batch size must be positive")
 	}
@@ -126,7 +126,7 @@ func applyParquetBatchPagination(query string, batchSize, offset int64) (string,
 	return fmt.Sprintf("SELECT * FROM (%s) AS __data_fabric_page LIMIT %d OFFSET %d", query, batchSize, maxInt64(offset, 0)), nil
 }
 
-func (d *parquetSQLAdapter) executeSQL(ctx context.Context, query string, args []driver.NamedValue) (*parquetSQLResult, error) {
+func (d *objectSQLAdapter) executeSQL(ctx context.Context, query string, args []driver.NamedValue) (*objectSQLResult, error) {
 	stmt, err := sqlparser.NewTestParser().Parse(strings.TrimSpace(query))
 	if err != nil {
 		return nil, fmt.Errorf("%s SQL parse failed: %w", d.driverName, err)
@@ -146,14 +146,14 @@ func (d *parquetSQLAdapter) executeSQL(ctx context.Context, query string, args [
 	return result, nil
 }
 
-func (d *parquetSQLAdapter) evaluateSelect(ctx context.Context, stmt *sqlparser.Select, args []driver.NamedValue, argIndex *int) (*parquetSQLResult, error) {
+func (d *objectSQLAdapter) evaluateSelect(ctx context.Context, stmt *sqlparser.Select, args []driver.NamedValue, argIndex *int) (*objectSQLResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if stmt == nil || stmt.With != nil || stmt.Distinct || stmt.GroupBy != nil || stmt.Having != nil || stmt.Lock != sqlparser.NoLock || len(stmt.From) != 1 {
 		return nil, fmt.Errorf("%s supports one-object SELECT with WHERE, ORDER BY, LIMIT and OFFSET only", d.driverName)
 	}
-	if err := validateParquetSQLColumnQualifiers(stmt, d.driverName); err != nil {
+	if err := validateObjectSQLColumnQualifiers(stmt, d.driverName); err != nil {
 		return nil, err
 	}
 	from, ok := stmt.From[0].(*sqlparser.AliasedTableExpr)
@@ -161,7 +161,7 @@ func (d *parquetSQLAdapter) evaluateSelect(ctx context.Context, stmt *sqlparser.
 		return nil, fmt.Errorf("%s supports one configured table or a derived SELECT", d.driverName)
 	}
 	var rows []map[string]interface{}
-	var schema *ParquetSchema
+	var schema *objectSQLSchema
 	switch table := from.Expr.(type) {
 	case sqlparser.TableName:
 		if from.As.String() != "" {
@@ -216,13 +216,13 @@ func (d *parquetSQLAdapter) evaluateSelect(ctx context.Context, stmt *sqlparser.
 		if err != nil {
 			return nil, err
 		}
-		return d.finishSelect(ctx, plan, parquetSchemaFromSQLResult(innerResult), rows, columns)
+		return d.finishSelect(ctx, plan, objectSQLSchemaFromResult(innerResult), rows, columns)
 	default:
 		return nil, fmt.Errorf("%s supports a configured table or derived SELECT only", d.driverName)
 	}
 }
 
-func validateParquetSQLColumnQualifiers(stmt sqlparser.SQLNode, driverName string) error {
+func validateObjectSQLColumnQualifiers(stmt sqlparser.SQLNode, driverName string) error {
 	return sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
 		column, ok := node.(*sqlparser.ColName)
 		if ok && (column.Qualifier.Name.String() != "" || column.Qualifier.Qualifier.String() != "") {
@@ -232,25 +232,56 @@ func validateParquetSQLColumnQualifiers(stmt sqlparser.SQLNode, driverName strin
 	}, stmt)
 }
 
-func parquetSchemaFromSQLResult(result *parquetSQLResult) *ParquetSchema {
-	schema := &ParquetSchema{Columns: make([]ParquetColumn, len(result.columns))}
+func objectSQLSchemaFromResult(result *objectSQLResult) *objectSQLSchema {
+	if result == nil {
+		return nil
+	}
+	schema := &objectSQLSchema{Columns: make([]objectSQLColumn, len(result.columns))}
 	for i, name := range result.columns {
-		schema.Columns[i] = ParquetColumn{Name: name, StandardType: strings.ToLower(strings.TrimSpace(result.types[i]))}
+		nullable := true
+		if i < len(result.nullable) {
+			nullable = result.nullable[i]
+		}
+		schema.Columns[i] = objectSQLColumn{Name: name, StandardType: strings.ToLower(strings.TrimSpace(result.types[i])), Nullable: nullable}
 	}
 	return schema
 }
 
-func (d *parquetSQLAdapter) finishSelect(ctx context.Context, plan *s3CSVSelectPlan, schema *ParquetSchema, rows []map[string]interface{}, sourceColumnOverride ...[]string) (*parquetSQLResult, error) {
+type objectSQLSchema struct {
+	Columns []objectSQLColumn
+}
+
+type objectSQLColumn struct {
+	Name         string
+	StandardType string
+	Nullable     bool
+}
+
+func objectSQLSchemaFromParquet(schema *ParquetSchema) *objectSQLSchema {
 	if schema == nil {
-		return nil, fmt.Errorf("%s returned an empty Parquet schema", d.driverName)
+		return nil
+	}
+	result := &objectSQLSchema{Columns: make([]objectSQLColumn, len(schema.Columns))}
+	for i, column := range schema.Columns {
+		result.Columns[i] = objectSQLColumn{
+			Name: column.Name, StandardType: column.StandardType,
+			Nullable: column.RepetitionType != "REQUIRED",
+		}
+	}
+	return result
+}
+
+func (d *objectSQLAdapter) finishSelect(ctx context.Context, plan *s3CSVSelectPlan, schema *objectSQLSchema, rows []map[string]interface{}, sourceColumnOverride ...[]string) (*objectSQLResult, error) {
+	if schema == nil {
+		return nil, fmt.Errorf("%s returned an empty object schema", d.driverName)
 	}
 	sourceColumns := make([]string, 0, len(schema.Columns))
 	typesByName := make(map[string]string, len(schema.Columns))
 	nullableByName := make(map[string]bool, len(schema.Columns))
 	for _, column := range schema.Columns {
 		sourceColumns = append(sourceColumns, column.Name)
-		typesByName[column.Name] = parquetSQLType(column.StandardType)
-		nullableByName[column.Name] = column.RepetitionType != "REQUIRED"
+		typesByName[column.Name] = objectSQLType(column.StandardType)
+		nullableByName[column.Name] = column.Nullable
 	}
 	if len(sourceColumnOverride) > 0 {
 		sourceColumns = sourceColumnOverride[0]
@@ -278,7 +309,7 @@ func (d *parquetSQLAdapter) finishSelect(ctx context.Context, plan *s3CSVSelectP
 			name = "count(*)"
 		}
 		countRows := applyCSVPage([]map[string]interface{}{{name: int64(len(filtered))}}, plan.offset, plan.limit, plan.hasLimit)
-		result := &parquetSQLResult{columns: []string{name}, types: []string{"BIGINT"}, nullable: []bool{false}}
+		result := &objectSQLResult{columns: []string{name}, types: []string{"BIGINT"}, nullable: []bool{false}}
 		if len(countRows) > 0 {
 			result.rows = [][]driver.Value{{int64(len(filtered))}}
 		}
@@ -297,25 +328,25 @@ func (d *parquetSQLAdapter) finishSelect(ctx context.Context, plan *s3CSVSelectP
 		nullable[i] = nullableByName[projection.name]
 	}
 	filtered = applyCSVPage(filtered, plan.offset, plan.limit, plan.hasLimit)
-	result := &parquetSQLResult{columns: columns, types: types, nullable: nullable, rows: make([][]driver.Value, 0, len(filtered))}
+	result := &objectSQLResult{columns: columns, types: types, nullable: nullable, rows: make([][]driver.Value, 0, len(filtered))}
 	for _, row := range filtered {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		values := make([]driver.Value, len(projections))
 		for i, projection := range projections {
-			values[i] = parquetDriverValue(csvMapValue(row, projection.name))
+			values[i] = objectSQLDriverValue(csvMapValue(row, projection.name))
 		}
 		result.rows = append(result.rows, values)
 	}
 	return result, nil
 }
 
-func parquetSQLType(standardType string) string {
+func objectSQLType(standardType string) string {
 	switch strings.ToLower(strings.TrimSpace(standardType)) {
 	case "boolean":
 		return "BOOLEAN"
-	case "integer":
+	case "integer", "int", "smallint", "tinyint":
 		return "INTEGER"
 	case "bigint":
 		return "BIGINT"
@@ -342,7 +373,7 @@ func parquetSQLType(standardType string) string {
 	}
 }
 
-func parquetDriverValue(value interface{}) driver.Value {
+func objectSQLDriverValue(value interface{}) driver.Value {
 	switch v := value.(type) {
 	case nil, int64, float64, bool, string, []byte, time.Time:
 		return v

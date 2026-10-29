@@ -109,6 +109,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeS3ORC {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) || !profile.Capabilities.SupportsSQL {
+				t.Errorf("S3 ORC contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMinIOCSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
 				t.Errorf("MinIO CSV contract evidence must remain provider-specific and experimental: %+v", profile)
@@ -209,9 +215,16 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(s3Parquet.Limitations, "one configured flat-schema Parquet object") || !containsSupportLimitation(s3Parquet.Limitations, "does not verify AWS S3") {
 		t.Errorf("S3 Parquet catalog must disclose its adapter and provider boundary: %+v", s3Parquet.Limitations)
 	}
+	s3ORC := profiles[string(model.DatabaseTypeS3ORC)]
+	if s3ORC.Status != ConnectorStatusExperimental || !s3ORC.EndToEndVerified || !s3ORC.Capabilities.SupportsSQL {
+		t.Errorf("S3 ORC must expose its SQL path with pinned Garage contract evidence: %+v", s3ORC)
+	}
+	if !containsSupportLimitation(s3ORC.Limitations, "one configured flat-schema ORC object") || !containsSupportLimitation(s3ORC.Limitations, "Nested/repeated types") {
+		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
+	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSParquet,
+		model.DatabaseTypeS3Avro, model.DatabaseTypeS3JSON,
+		model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
 	} {
 		profile := profiles[string(dbType)]

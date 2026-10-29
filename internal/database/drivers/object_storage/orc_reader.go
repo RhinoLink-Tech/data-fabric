@@ -3,99 +3,354 @@ package object_storage
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
+	"github.com/scritchley/orc"
+	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-// ORCReader reads ORC files from object storage
+// ORCReader reads flat-schema ORC files from S3-compatible object storage.
 type ORCReader struct {
 	s3Client *S3Client
 	config   *ORCReaderConfig
 }
 
-// ORCReaderConfig holds ORC reader configuration
+// ORCReaderConfig holds ORC reader configuration.
 type ORCReaderConfig struct {
 	BatchSize       int
-	EnablePredicate bool     // Enable predicate pushdown
-	Columns         []string // Specific columns to read
+	EnablePredicate bool
+	Columns         []string
 }
 
-// NewORCReader creates a new ORC reader
 func NewORCReader(s3Client *S3Client, config *ORCReaderConfig) *ORCReader {
 	if config == nil {
-		config = &ORCReaderConfig{
-			BatchSize:       1000,
-			EnablePredicate: true,
-		}
+		config = &ORCReaderConfig{BatchSize: 1000}
 	}
-
-	return &ORCReader{
-		s3Client: s3Client,
-		config:   config,
+	if config.BatchSize <= 0 {
+		config.BatchSize = 1000
 	}
+	return &ORCReader{s3Client: s3Client, config: config}
 }
 
-// ORCFileReader wraps ORC file reader with S3 integration
+// ORCFileReader wraps the ORC decoder and its ranged S3 object reader.
 type ORCFileReader struct {
-	s3Client *S3Client
-	key      string
+	reader *orc.Reader
+	file   *S3File
+	ctx    context.Context
+	key    string
+	schema *ORCSchema
 }
 
-// Read reads ORC file from S3
 func (r *ORCReader) Read(ctx context.Context, key string) (*ORCFileReader, error) {
-	// Download file or use S3 seekable reader
-	_, err := NewS3File(r.s3Client, key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 file: %w", err)
+	if r == nil || r.s3Client == nil {
+		return nil, fmt.Errorf("S3 client is required")
 	}
-
-	// Create ORC reader using Apache Arrow
-	// Note: This is a simplified implementation
-	// Full implementation would use orc-go or similar library
-
-	return &ORCFileReader{
-		s3Client: r.s3Client,
-		key:      key,
-	}, nil
+	if strings.TrimSpace(key) == "" {
+		return nil, fmt.Errorf("ORC object key is required")
+	}
+	file, err := NewS3FileWithContext(ctx, r.s3Client, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ranged S3 file: %w", err)
+	}
+	decoder, err := orc.NewReader(file)
+	if err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("failed to open ORC object: %w", err)
+	}
+	schema, err := orcSchemaFromReader(decoder)
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &ORCFileReader{reader: decoder, file: file, ctx: ctx, key: key, schema: schema}, nil
 }
 
-// ReadNumRows reads a specific number of rows from ORC file
-func (r *ORCFileReader) ReadNumRows(num int) ([]map[string]interface{}, error) {
-	// Placeholder implementation
-	// Full implementation would use ORC reader API
-	return []map[string]interface{}{}, nil
-}
-
-// ReadAll reads all rows from ORC file
-func (r *ORCFileReader) ReadAll() ([]map[string]interface{}, error) {
-	// Placeholder implementation
-	return []map[string]interface{}{}, nil
-}
-
-// GetSchema returns ORC file schema
-func (r *ORCFileReader) GetSchema() (*ORCSchema, error) {
-	// Schema information from ORC file
-	schema := &ORCSchema{
-		Columns: make([]ORCColumn, 0),
+func orcSchemaFromReader(reader *orc.Reader) (*ORCSchema, error) {
+	if reader == nil || reader.Schema() == nil {
+		return nil, fmt.Errorf("ORC file has no schema")
+	}
+	root := reader.Schema()
+	if root.Type().GetKind().String() != "STRUCT" {
+		return nil, fmt.Errorf("ORC root type %s is not a struct", root.Type().GetKind())
+	}
+	fields := root.Columns()
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("ORC file has no top-level columns")
+	}
+	schema := &ORCSchema{Columns: make([]ORCColumn, 0, len(fields))}
+	for _, name := range fields {
+		field, err := root.GetField(name)
+		if err != nil {
+			return nil, fmt.Errorf("read ORC field %q: %w", name, err)
+		}
+		typ := field.Type()
+		kind := typ.GetKind().String()
+		standardType, err := orcStandardType(kind)
+		if err != nil {
+			return nil, fmt.Errorf("ORC field %q: %w", name, err)
+		}
+		schema.Columns = append(schema.Columns, ORCColumn{
+			Name: name, Type: standardType, Precision: int(typ.GetPrecision()), Scale: int(typ.GetScale()), Nullable: true,
+		})
 	}
 	return schema, nil
 }
 
-// GetNumRows returns the number of rows in the file
+func orcStandardType(kind string) (string, error) {
+	switch kind {
+	case "BOOLEAN":
+		return "boolean", nil
+	case "BYTE", "SHORT", "INT":
+		return "integer", nil
+	case "LONG":
+		return "bigint", nil
+	case "FLOAT":
+		return "float", nil
+	case "DOUBLE":
+		return "double", nil
+	case "STRING", "CHAR", "VARCHAR":
+		return "string", nil
+	case "DECIMAL":
+		return "decimal", nil
+	case "DATE":
+		return "date", nil
+	case "TIMESTAMP":
+		return "timestamp", nil
+	case "BINARY":
+		return "binary", nil
+	default:
+		return "", fmt.Errorf("nested or unsupported ORC type %q is outside the flat primitive query subset", strings.ToLower(kind))
+	}
+}
+
+func (r *ORCFileReader) ReadNumRows(num int) ([]map[string]interface{}, error) {
+	if num <= 0 {
+		return []map[string]interface{}{}, nil
+	}
+	return r.readRows(num)
+}
+
+func (r *ORCFileReader) ReadAll() ([]map[string]interface{}, error) {
+	return r.readRows(0)
+}
+
+func (r *ORCFileReader) readRows(maxRows int) ([]map[string]interface{}, error) {
+	if r == nil || r.reader == nil || r.schema == nil {
+		return nil, fmt.Errorf("ORC reader is not initialized")
+	}
+	columns := make([]string, len(r.schema.Columns))
+	for i, column := range r.schema.Columns {
+		columns[i] = column.Name
+	}
+	cursor := r.reader.Select(columns...)
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("select ORC columns: %w", err)
+	}
+	capacity := r.reader.NumRows()
+	if capacity > 4096 {
+		capacity = 4096
+	}
+	rows := make([]map[string]interface{}, 0, capacity)
+	for cursor.Stripes() {
+		for cursor.Next() {
+			if err := r.ctx.Err(); err != nil {
+				return nil, err
+			}
+			values := cursor.Row()
+			if len(values) != len(columns) {
+				return nil, fmt.Errorf("ORC row has %d values for %d columns", len(values), len(columns))
+			}
+			row := make(map[string]interface{}, len(columns))
+			for i, name := range columns {
+				row[name] = normalizeORCValue(values[i])
+			}
+			rows = append(rows, row)
+			if maxRows > 0 && len(rows) >= maxRows {
+				return rows, nil
+			}
+		}
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("read ORC rows: %w", err)
+	}
+	return rows, nil
+}
+
+func normalizeORCValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case nil, bool, int64, float64, string, []byte, time.Time:
+		return v
+	case int8:
+		return int64(v)
+	case int16:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case int:
+		return int64(v)
+	case uint8:
+		return int64(v)
+	case uint16:
+		return int64(v)
+	case uint32:
+		return int64(v)
+	case float32:
+		return float64(v)
+	case orc.Date:
+		return v.Time
+	case orc.Decimal:
+		return v.String()
+	default:
+		return v
+	}
+}
+
+func (r *ORCFileReader) GetSchema() (*ORCSchema, error) {
+	if r == nil || r.schema == nil {
+		return nil, fmt.Errorf("ORC reader is not initialized")
+	}
+	return r.schema, nil
+}
+
 func (r *ORCFileReader) GetNumRows() int {
-	// Placeholder
-	return 0
+	if r == nil || r.reader == nil {
+		return 0
+	}
+	return r.reader.NumRows()
 }
 
-// Close closes the ORC reader
 func (r *ORCFileReader) Close() error {
-	return nil
+	if r == nil || r.file == nil {
+		return nil
+	}
+	return r.file.Close()
 }
 
-// ORCSchema represents ORC file schema
+// GetStripeStatistics reports the stripe count only. This reader does not
+// expose ORC stripe offsets or column statistics for pruning.
+func (r *ORCFileReader) GetStripeStatistics() ([]ORCStripeStatistics, error) {
+	if r == nil || r.reader == nil {
+		return nil, fmt.Errorf("ORC reader is not initialized")
+	}
+	stripes, err := r.reader.NumStripes()
+	if err != nil {
+		return nil, err
+	}
+	stats := make([]ORCStripeStatistics, stripes)
+	for i := range stats {
+		stats[i].StripeNumber = i
+	}
+	return stats, nil
+}
+
+// ApplyPredicatePushdown returns every stripe because this reader does not
+// expose statistics for safe stripe pruning. Predicates are applied after
+// decoding by FilterORCFile or the shared SQL adapter.
+func (r *ORCReader) ApplyPredicatePushdown(ctx context.Context, key string, predicates []ORCPredicate) ([]int, error) {
+	file, err := r.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	stripes, err := file.reader.NumStripes()
+	if err != nil {
+		return nil, err
+	}
+	indexes := make([]int, stripes)
+	for i := range indexes {
+		indexes[i] = i
+	}
+	return indexes, nil
+}
+
+func (r *ORCReader) stripeMatchesPredicates(ORCStripeStatistics, []ORCPredicate) bool {
+	return true
+}
+
+func (r *ORCReader) columnMatchesPredicate(ORCStatistics, ORCPredicate) bool {
+	return true
+}
+
+type ORCPredicate struct {
+	ColumnName string
+	Operator   string
+	Value      interface{}
+	Values     []interface{}
+}
+
+func (r *ORCReader) FilterORCFile(ctx context.Context, key string, predicates []ORCPredicate) ([]map[string]interface{}, error) {
+	file, err := r.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	rows, err := file.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	conditions := make([]s3CSVCondition, 0, len(predicates))
+	for _, predicate := range predicates {
+		condition := s3CSVCondition{column: predicate.ColumnName, value: predicate.Value}
+		switch strings.ToUpper(predicate.Operator) {
+		case "EQ":
+			condition.op = sqlparser.EqualOp
+		case "NEQ":
+			condition.op = sqlparser.NotEqualOp
+		case "LT":
+			condition.op = sqlparser.LessThanOp
+		case "LTE":
+			condition.op = sqlparser.LessEqualOp
+		case "GT":
+			condition.op = sqlparser.GreaterThanOp
+		case "GTE":
+			condition.op = sqlparser.GreaterEqualOp
+		case "IN":
+			condition.op = sqlparser.InOp
+			condition.values = predicate.Values
+		case "IS_NULL":
+			condition.isNull = 1
+		default:
+			return nil, fmt.Errorf("unsupported ORC predicate operator %q", predicate.Operator)
+		}
+		conditions = append(conditions, condition)
+	}
+	return applyCSVConditions(ctx, rows, conditions)
+}
+
+func (r *ORCReader) GetMetadata(ctx context.Context, key string) (*ORCFileMetadata, error) {
+	file, err := r.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	objectMetadata, err := r.s3Client.GetObjectMetadata(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &ORCFileMetadata{NumberOfRows: int64(file.GetNumRows()), FileSize: objectMetadata.ContentLength}, nil
+}
+
+func (r *ORCReader) GetSchemaFromKey(ctx context.Context, key string) (*ORCSchema, error) {
+	file, err := r.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file.GetSchema()
+}
+
+func (r *ORCReader) EstimateCompressionRatio(context.Context, string) (float64, error) {
+	return 0, fmt.Errorf("ORC compression ratio metadata is not available")
+}
+
 type ORCSchema struct {
 	Columns []ORCColumn
 }
 
-// ORCColumn represents an ORC column definition
 type ORCColumn struct {
 	Name      string
 	Type      string
@@ -105,7 +360,6 @@ type ORCColumn struct {
 	Comment   string
 }
 
-// ORCStatistics represents ORC column statistics for predicate pushdown
 type ORCStatistics struct {
 	HasNull       bool
 	MinValue      interface{}
@@ -115,13 +369,6 @@ type ORCStatistics struct {
 	FractionNulls float64
 }
 
-// GetStripeStatistics returns statistics for each stripe (for pushdown)
-func (r *ORCFileReader) GetStripeStatistics() ([]ORCStripeStatistics, error) {
-	// Placeholder - would return actual stripe statistics
-	return []ORCStripeStatistics{}, nil
-}
-
-// ORCStripeStatistics represents statistics for a single stripe
 type ORCStripeStatistics struct {
 	StripeNumber int
 	Offset       int64
@@ -132,125 +379,10 @@ type ORCStripeStatistics struct {
 	ColumnStats  []ORCStatistics
 }
 
-// ApplyPredicatePushdown applies predicate filters using ORC statistics
-func (r *ORCReader) ApplyPredicatePushdown(ctx context.Context, key string, predicates []ORCPredicate) ([]int, error) {
-	// Read file to get stripe statistics
-	fileReader, err := r.Read(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	defer fileReader.Close()
-
-	stripeStats, err := fileReader.GetStripeStatistics()
-	if err != nil {
-		return nil, err
-	}
-
-	// Determine which stripes to read based on predicates
-	stripesToRead := make([]int, 0)
-
-	for i, stripe := range stripeStats {
-		if r.stripeMatchesPredicates(stripe, predicates) {
-			stripesToRead = append(stripesToRead, i)
-		}
-	}
-
-	return stripesToRead, nil
-}
-
-// stripeMatchesPredicates checks if stripe matches predicates
-func (r *ORCReader) stripeMatchesPredicates(stripe ORCStripeStatistics, predicates []ORCPredicate) bool {
-	// For each predicate, check if stripe could contain matching rows
-	for _, pred := range predicates {
-		for _, colStat := range stripe.ColumnStats {
-			if r.columnMatchesPredicate(colStat, pred) {
-				return true
-			}
-		}
-	}
-	return true // Default to reading if uncertain
-}
-
-// columnMatchesPredicate checks if column statistics match predicate
-func (r *ORCReader) columnMatchesPredicate(stat ORCStatistics, pred ORCPredicate) bool {
-	// Simplified implementation
-	return true
-}
-
-// ORCPredicate represents a predicate for pushdown
-type ORCPredicate struct {
-	ColumnName string
-	Operator   string // EQ, NEQ, LT, LTE, GT, GTE, IN, IS_NULL
-	Value      interface{}
-	Values     []interface{} // For IN operator
-}
-
-// FilterORCFile reads ORC file with predicate pushdown
-func (r *ORCReader) FilterORCFile(ctx context.Context, key string, predicates []ORCPredicate) ([]map[string]interface{}, error) {
-	if !r.config.EnablePredicate {
-		// Fall back to full read
-		fileReader, err := r.Read(ctx, key)
-		if err != nil {
-			return nil, err
-		}
-		defer fileReader.Close()
-		return fileReader.ReadAll()
-	}
-
-	// Apply predicate pushdown
-	_, err := r.ApplyPredicatePushdown(ctx, key, predicates)
-	if err != nil {
-		return nil, err
-	}
-
-	// Read only relevant stripes
-	fileReader, err := r.Read(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	defer fileReader.Close()
-
-	return fileReader.ReadAll()
-}
-
-// GetMetadata retrieves ORC file metadata
-func (r *ORCReader) GetMetadata(ctx context.Context, key string) (*ORCFileMetadata, error) {
-	// Read ORC file metadata
-	fileReader, err := r.Read(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	defer fileReader.Close()
-
-	metadata := &ORCFileMetadata{
-		NumberOfRows: int64(fileReader.GetNumRows()),
-	}
-
-	return metadata, nil
-}
-
-// ORCFileMetadata represents ORC file metadata
 type ORCFileMetadata struct {
 	NumberOfRows    int64
 	FileSize        int64
 	Compression     string
 	WriterVersion   string
 	SoftwareVersion string
-}
-
-// GetSchemaFromKey retrieves schema from ORC file
-func (r *ORCReader) GetSchemaFromKey(ctx context.Context, key string) (*ORCSchema, error) {
-	fileReader, err := r.Read(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	defer fileReader.Close()
-
-	return fileReader.GetSchema()
-}
-
-// EstimateCompressionRatio estimates compression ratio
-func (r *ORCReader) EstimateCompressionRatio(ctx context.Context, key string) (float64, error) {
-	// Placeholder implementation
-	return 1.0, nil
 }

@@ -64,9 +64,9 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isParquetObjectSource(dataSource.Type) {
+	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
 		var table *TableSchema
-		table, err = extractParquetObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
+		table, err = extractFlatObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
@@ -111,15 +111,15 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
-	if isParquetObjectSource(dataSource.Type) {
-		name, err := parquetObjectTableName(dataSource.Type, &dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
+		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		if requestedSchema != "" || tableName != name {
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
-		return extractParquetObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
+		return extractFlatObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
 
 	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
@@ -235,8 +235,8 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isParquetObjectSource(dataSource.Type) {
-		name, err := parquetObjectTableName(dataSource.Type, &dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) {
+		name, err := flatObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -274,14 +274,20 @@ func isParquetObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeMinIOParquet || dbType == model.DatabaseTypeS3Parquet
 }
 
-func parquetObjectTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+func isORCObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeS3ORC
+}
+
+func flatObjectTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
 	case model.DatabaseTypeMinIOParquet:
 		return object_storage.MinIOParquetTableName(config)
 	case model.DatabaseTypeS3Parquet:
 		return object_storage.S3ParquetTableName(config)
+	case model.DatabaseTypeS3ORC:
+		return object_storage.S3ORCTableName(config)
 	default:
-		return "", fmt.Errorf("Parquet object metadata is not supported for %s", dbType)
+		return "", fmt.Errorf("flat object metadata is not supported for %s", dbType)
 	}
 }
 
@@ -315,22 +321,22 @@ func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceCo
 	return &TableSchema{Name: name, Type: "TABLE", Columns: columns}, nil
 }
 
-// extractParquetObjectTable obtains the configured object's schema through
+// extractFlatObjectTable obtains the configured object's schema through
 // LIMIT 0, without decoding data rows.
-func extractParquetObjectTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
-	name, err := parquetObjectTableName(dbType, config)
+func extractFlatObjectTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
+	name, err := flatObjectTableName(dbType, config)
 	if err != nil {
 		return nil, err
 	}
 	query := "SELECT * FROM `" + strings.ReplaceAll(name, "`", "``") + "` LIMIT 0"
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to inspect Parquet table %q: %w", name, err)
+		return nil, fmt.Errorf("failed to inspect flat object table %q: %w", name, err)
 	}
 	defer rows.Close()
 	types, err := rows.ColumnTypes()
 	if err != nil {
-		return nil, fmt.Errorf("failed to inspect Parquet columns: %w", err)
+		return nil, fmt.Errorf("failed to inspect object columns: %w", err)
 	}
 	columns := make([]ColumnSchema, len(types))
 	for i, col := range types {

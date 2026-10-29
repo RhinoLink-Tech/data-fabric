@@ -25,6 +25,9 @@ type S3ORCDriverConfig struct {
 
 // NewS3ORCDriver creates a new S3 ORC driver
 func NewS3ORCDriver(ctx context.Context, config *S3ORCDriverConfig) (*S3ORCDriver, error) {
+	if config == nil || config.S3Config == nil {
+		return nil, fmt.Errorf("S3 ORC configuration is required")
+	}
 	s3Client, err := NewS3Client(ctx, config.S3Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
@@ -105,12 +108,12 @@ func (d *S3ORCDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *S3ORCDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
@@ -131,8 +134,32 @@ func (d *S3ORCDriver) GetSchema(ctx context.Context, key string) (*ORCSchema, er
 
 // ApplyBatchPagination adds pagination to SQL query
 func (d *S3ORCDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 ORC files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since ORC files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+	return applyObjectBatchPagination(sql, batchSize, offset)
+}
+
+// S3ORCResult contains rows and schema from one configured ORC object.
+type S3ORCResult struct {
+	Rows   []map[string]interface{}
+	Schema *ORCSchema
+}
+
+// Query reads one configured ORC object and returns its decoded rows and schema.
+func (d *S3ORCDriver) Query(ctx context.Context, key string) (*S3ORCResult, error) {
+	if d == nil || d.orcReader == nil {
+		return nil, fmt.Errorf("S3 ORC driver is not initialized")
+	}
+	file, err := d.orcReader.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	rows, err := file.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	schema, err := file.GetSchema()
+	if err != nil {
+		return nil, err
+	}
+	return &S3ORCResult{Rows: rows, Schema: schema}, nil
 }

@@ -275,7 +275,7 @@ func (d *S3ParquetDriver) matchesFilters(row map[string]interface{}, filters map
 
 // ApplyBatchPagination applies pagination to a SQL query
 func (d *S3ParquetDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	return applyParquetBatchPagination(sql, batchSize, offset)
+	return applyObjectBatchPagination(sql, batchSize, offset)
 }
 
 // GetSchema reads the configured object's footer without decoding its rows.

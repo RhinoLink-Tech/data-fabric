@@ -397,6 +397,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3Parquet {
 			return hc.validateS3ParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeS3ORC {
+			return hc.validateS3ORCConfig(config)
+		}
 		if dbType == model.DatabaseTypeMinIOParquet {
 			return hc.validateMinIOParquetConfig(config)
 		}
@@ -568,7 +571,32 @@ func (hc *HealthChecker) validateS3ParquetConfig(config *model.DataSourceConfig)
 	return nil
 }
 
-// validateFileSystemConfig validates file system configurations
+// validateS3ORCConfig validates the bucket and object identity before opening
+// a read-only ORC source.
+func (hc *HealthChecker) validateS3ORCConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	objectKey, _ := config.AdditionalProps["object_key"].(string)
+	if strings.TrimSpace(objectKey) == "" {
+		objectKey = config.Host
+	}
+	if strings.TrimSpace(objectKey) == "" {
+		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	if _, err := object_storage.S3ORCTableName(config); err != nil {
+		return err
+	}
+	if (strings.TrimSpace(config.Username) == "") != (strings.TrimSpace(config.Password) == "") {
+		return fmt.Errorf("S3 access key and secret key must be configured together")
+	}
+	return nil
+}
+
+// validateFileSystemConfig validates file system configurations.
 func (hc *HealthChecker) validateFileSystemConfig(config *model.DataSourceConfig, driver drivers.Driver) error {
 	// HDFS/Ozone require namenode/ozonename address
 	if strings.TrimSpace(config.Host) == "" {

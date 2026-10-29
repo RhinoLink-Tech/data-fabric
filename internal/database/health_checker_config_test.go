@@ -43,6 +43,24 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 		t.Errorf("S3 default port = %d, want 443", s3Config.Port)
 	}
 
+	s3ORCConfig := &model.DataSourceConfig{
+		Host: "records.orc", Database: "analytics",
+		Username: "access", Password: "secret",
+	}
+	if err := checker.ValidateDataSourceConfiguration(s3ORCConfig, model.DatabaseTypeS3ORC); err != nil {
+		t.Fatalf("S3 ORC config should validate through its registered driver: %v", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Database: "analytics",
+	}, model.DatabaseTypeS3ORC); err == nil || !strings.Contains(err.Error(), "object_key") {
+		t.Fatalf("S3 ORC config without an object key error = %v, want object_key validation error", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "records.orc", Database: "analytics", Username: "access",
+	}, model.DatabaseTypeS3ORC); err == nil || !strings.Contains(err.Error(), "configured together") {
+		t.Fatalf("S3 ORC partial credentials error = %v, want paired credential error", err)
+	}
+
 	if checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneParquet) {
 		t.Fatal("Ozone must stay unregistered until its object operations are implemented")
 	}

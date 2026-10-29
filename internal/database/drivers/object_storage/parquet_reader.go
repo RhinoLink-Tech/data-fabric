@@ -373,6 +373,41 @@ func (f *S3File) GetSize() int64 {
 	return f.size
 }
 
+// Size implements the SizedReaderAt contract used by format readers that need
+// random access to an object.
+func (f *S3File) Size() int64 {
+	return f.size
+}
+
+// ReadAt reads a byte range without changing the sequential reader position.
+func (f *S3File) ReadAt(p []byte, off int64) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if off < 0 {
+		return 0, fmt.Errorf("negative S3 object read offset: %d", off)
+	}
+	if f == nil || f.s3Client == nil {
+		return 0, fmt.Errorf("S3 file is not initialized")
+	}
+	if off >= f.size {
+		return 0, io.EOF
+	}
+	readLength := int64(len(p))
+	if off+readLength > f.size {
+		readLength = f.size - off
+	}
+	data, err := f.s3Client.GetObjectRange(f.ctx, f.key, off, off+readLength-1)
+	if err != nil {
+		return 0, err
+	}
+	n := copy(p, data)
+	if n != len(p) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
 // GetPosition returns current position
 func (f *S3File) GetPosition() int64 {
 	return f.position

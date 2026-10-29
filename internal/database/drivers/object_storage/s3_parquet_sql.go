@@ -55,7 +55,7 @@ func (d *S3ParquetDriver) OpenWithConfig(ctx context.Context, config *model.Data
 	if err != nil {
 		return nil, err
 	}
-	return newParquetSQLDB(&parquetSQLAdapter{
+	return newObjectSQLDB(&objectSQLAdapter{
 		driverName: "s3-parquet",
 		objectKey:  objectKey,
 		tableName:  configured.tableName,
@@ -63,13 +63,19 @@ func (d *S3ParquetDriver) OpenWithConfig(ctx context.Context, config *model.Data
 			_, err := configured.s3Client.GetObjectMetadata(ctx, key)
 			return err
 		},
-		getSchema: configured.GetSchema,
-		readRows: func(ctx context.Context, key string) (*ParquetSchema, []map[string]interface{}, error) {
+		getSchema: func(ctx context.Context, key string) (*objectSQLSchema, error) {
+			schema, err := configured.GetSchema(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			return objectSQLSchemaFromParquet(schema), nil
+		},
+		readRows: func(ctx context.Context, key string) (*objectSQLSchema, []map[string]interface{}, error) {
 			result, err := configured.Query(ctx, &S3ParquetQuery{Key: key})
 			if err != nil {
 				return nil, nil, err
 			}
-			return result.Schema, result.Rows, nil
+			return objectSQLSchemaFromParquet(result.Schema), result.Rows, nil
 		},
 	}), nil
 }
