@@ -64,6 +64,23 @@ native JSON queries, and coordinator metadata are outside this fixture. The
 adapter remains experimental until a pinned live Druid contract is added under
 [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
+## Alibaba OSS Parquet protocol fixture
+
+The OSS Parquet adapter has deterministic protocol-fixture coverage using the
+Alibaba OSS SDK against a local HTTP server. The fixture checks access-key
+request construction, object metadata and health checks, schema discovery,
+read-only SQL filtering/order/pagination/count behavior, and write rejection.
+It is included in the normal Go test suite and can be run directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestOSSParquetProtocolFixture$' -count=1 -v
+~~~~
+
+The fixture does not run against Alibaba Cloud and is not evidence for any OSS
+service version, deployment mode, TLS configuration, or STS credential flow.
+The connector remains experimental until a live, version-pinned contract is
+available.
+
 ## Run the PostgreSQL contract locally
 
 Start the pinned test service:

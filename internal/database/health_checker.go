@@ -409,6 +409,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeMinIOParquet {
 			return hc.validateMinIOParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeAlibabaOSSParquet {
+			return hc.validateOSSParquetConfig(config)
+		}
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
@@ -554,6 +557,43 @@ func (hc *HealthChecker) validateMinIOParquetConfig(config *model.DataSourceConf
 	return nil
 }
 
+func dataSourcePropString(props map[string]interface{}, key string) string {
+	if props == nil || props[key] == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(props[key]))
+}
+
+func (hc *HealthChecker) validateOSSParquetConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	objectKey := dataSourcePropString(config.AdditionalProps, "object_key")
+	if strings.TrimSpace(objectKey) == "" {
+		objectKey = config.Host
+	}
+	if strings.TrimSpace(objectKey) == "" {
+		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	if _, err := object_storage.OSSParquetTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" || strings.TrimSpace(config.Password) == "" {
+		return fmt.Errorf("OSS access key ID and secret are required")
+	}
+	endpoint := dataSourcePropString(config.AdditionalProps, "endpoint_url")
+	if endpoint == "" {
+		endpoint = dataSourcePropString(config.AdditionalProps, "endpoint")
+	}
+	if strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("endpoint_url is required in additionalProps")
+	}
+	return nil
+}
+
 func (hc *HealthChecker) validateS3JSONConfig(config *model.DataSourceConfig) error {
 	if config == nil {
 		return fmt.Errorf("data source config is required")
@@ -561,7 +601,7 @@ func (hc *HealthChecker) validateS3JSONConfig(config *model.DataSourceConfig) er
 	if strings.TrimSpace(config.Database) == "" {
 		return fmt.Errorf("bucket name is required in database")
 	}
-	objectKey := configString(config.AdditionalProps, "object_key")
+	objectKey := dataSourcePropString(config.AdditionalProps, "object_key")
 	if strings.TrimSpace(objectKey) == "" {
 		objectKey = config.Host
 	}
@@ -584,7 +624,7 @@ func (hc *HealthChecker) validateS3AvroConfig(config *model.DataSourceConfig) er
 	if strings.TrimSpace(config.Database) == "" {
 		return fmt.Errorf("bucket name is required in database")
 	}
-	objectKey := configString(config.AdditionalProps, "object_key")
+	objectKey := dataSourcePropString(config.AdditionalProps, "object_key")
 	if strings.TrimSpace(objectKey) == "" {
 		objectKey = config.Host
 	}

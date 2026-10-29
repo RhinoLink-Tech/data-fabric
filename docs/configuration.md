@@ -435,6 +435,32 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Alibaba OSS Parquet source
+
+The oss_parquet connector exposes one configured Parquet object as a
+read-only SQL table. It supports flat primitive columns and the shared object
+SQL subset: projection, comparisons joined by AND, IS NULL, IN, LIKE,
+ORDER BY, LIMIT, OFFSET, and COUNT(*). Nested or repeated fields,
+partition scans, and queries across multiple objects are not supported.
+
+| Data-source field or property | Alibaba OSS Parquet meaning |
+| --- | --- |
+| database | OSS bucket name. |
+| username and password | Required access key ID and access key secret. |
+| additionalProps.endpoint_url | Required HTTP(S) OSS endpoint origin, such as https://oss-cn-hangzhou.aliyuncs.com; paths, credentials, query strings, and fragments are not accepted. additionalProps.endpoint is a compatibility alias. |
+| additionalProps.object_key | Parquet object key. host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the object filename without its extension. |
+| additionalProps.session_token | Optional STS session token; security_token is accepted as an alias. |
+| additionalProps.force_path_style | Optional path-style addressing for compatible endpoints that require it. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000. |
+
+The current adapter downloads the complete object into gateway memory before
+decoding rows and applying SQL filters or pagination. Keep configured objects
+within the memory budget of the gateway. The deterministic OSS SDK protocol
+fixture is not a live Alibaba OSS contract and does not establish compatibility
+with a particular service release; consult the support catalog
+(data-source-support.md) for the current compatibility evidence.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

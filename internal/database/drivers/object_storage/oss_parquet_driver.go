@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 	"time"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
@@ -14,6 +16,8 @@ import (
 type OSSParquetDriver struct {
 	ossClient *OSSClient
 	config    *OSSParquetDriverConfig
+	objectKey string
+	tableName string
 }
 
 // OSSParquetDriverConfig holds OSS Parquet driver configuration
@@ -25,6 +29,14 @@ type OSSParquetDriverConfig struct {
 
 // NewOSSParquetDriver creates a new OSS Parquet driver
 func NewOSSParquetDriver(ctx context.Context, config *OSSParquetDriverConfig) (*OSSParquetDriver, error) {
+	if config == nil || config.OSSConfig == nil {
+		return nil, fmt.Errorf("OSS Parquet configuration is required")
+	}
+	configCopy := *config
+	if configCopy.BatchSize <= 0 {
+		configCopy.BatchSize = 1000
+	}
+	config = &configCopy
 	ossClient, err := NewOSSClient(ctx, config.OSSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OSS client: %w", err)
@@ -43,24 +55,13 @@ func (d *OSSParquetDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *OSSParquetDriver) ValidateDSN(dsn string) error {
-	// Parse OSS URI: oss://bucket/key/path
-	if len(dsn) < 6 || dsn[:6] != "oss://" {
+	if !strings.HasPrefix(dsn, "oss://") {
 		return fmt.Errorf("invalid OSS URI: %s", dsn)
 	}
-
-	bucketPart := dsn[6:]
-	slashIdx := -1
-	for i, c := range bucketPart {
-		if c == '/' {
-			slashIdx = i
-			break
-		}
+	bucket, objectKey, found := strings.Cut(strings.TrimPrefix(dsn, "oss://"), "/")
+	if !found || strings.TrimSpace(bucket) == "" || strings.TrimSpace(objectKey) == "" {
+		return fmt.Errorf("OSS URI must include a bucket and object key")
 	}
-
-	if slashIdx == -1 {
-		return fmt.Errorf("bucket name required in OSS URI")
-	}
-
 	return nil
 }
 
@@ -71,7 +72,14 @@ func (d *OSSParquetDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *OSSParquetDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("oss://%s/%s", config.Database, config.Host)
+	if config == nil {
+		return "oss://"
+	}
+	objectKey := configString(config.AdditionalProps, "object_key")
+	if objectKey == "" {
+		objectKey = config.Host
+	}
+	return fmt.Sprintf("oss://%s/%s", config.Database, objectKey)
 }
 
 // GetDatabaseTypeName returns the database type name
@@ -86,6 +94,9 @@ func (d *OSSParquetDriver) TestConnection(db *sql.DB) error {
 
 // TestConnectionContext tests the OSS connection
 func (d *OSSParquetDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.ossClient == nil {
+		return fmt.Errorf("OSS Parquet driver is not initialized")
+	}
 	_, err := d.ossClient.ListObjects(ctx, "", 1)
 	if err != nil {
 		return fmt.Errorf("failed to list OSS objects: %w", err)
@@ -106,12 +117,12 @@ func (d *OSSParquetDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *OSSParquetDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
@@ -122,25 +133,82 @@ func (d *OSSParquetDriver) ConfigureAuth(authConfig interface{}) error {
 
 // Query executes a query against Parquet files on OSS
 func (d *OSSParquetDriver) Query(ctx context.Context, key string) (*OSSParquetResult, error) {
-	// Download Parquet file
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if d == nil || d.ossClient == nil || d.config == nil {
+		return nil, fmt.Errorf("OSS Parquet driver is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("Parquet object key is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	data, err := d.ossClient.GetObject(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Parquet file: %w", err)
 	}
+	fileReader, err := newParquetFileReader(newParquetMemoryFile(key, data), int64(d.config.BatchSize))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
+	}
+	defer fileReader.Close()
 
-	// Parse Parquet file (placeholder)
-	// Full implementation would use Parquet reader
+	schema, err := fileReader.GetSchema()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]interface{}, 0, fileReader.GetNumRows())
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		batch, err := fileReader.ReadNumRows(d.config.BatchSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode Parquet rows: %w", err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		rows = append(rows, batch...)
+	}
 
 	return &OSSParquetResult{
-		Rows:      []map[string]interface{}{},
-		NumRows:   0,
+		Rows:      rows,
+		Schema:    schema,
+		NumRows:   int64(len(rows)),
 		BytesRead: int64(len(data)),
 	}, nil
+}
+
+// GetSchema reads the configured OSS Parquet object and returns its flat schema.
+func (d *OSSParquetDriver) GetSchema(ctx context.Context, key string) (*ParquetSchema, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if d == nil || d.ossClient == nil {
+		return nil, fmt.Errorf("OSS Parquet driver is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("Parquet object key is required")
+	}
+	data, err := d.ossClient.GetObject(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Parquet file: %w", err)
+	}
+	fileReader, err := newParquetFileReader(newParquetMemoryFile(key, data), 1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
+	}
+	defer fileReader.Close()
+	return fileReader.GetSchema()
 }
 
 // OSSParquetResult represents query results
 type OSSParquetResult struct {
 	Rows      []map[string]interface{}
+	Schema    *ParquetSchema
 	NumRows   int64
 	BytesRead int64
 }

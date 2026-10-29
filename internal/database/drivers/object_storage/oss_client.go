@@ -20,15 +20,25 @@ type OSSClient struct {
 
 // OSSConfig holds Alibaba Cloud OSS configuration
 type OSSConfig struct {
-	Endpoint        string // OSS endpoint (e.g., oss-cn-hangzhou.aliyuncs.com)
+	Endpoint        string // OSS endpoint (e.g., https://oss-cn-hangzhou.aliyuncs.com)
 	AccessKeyID     string
 	AccessKeySecret string
 	BucketName      string
 	SecurityToken   string // For STS token
+	ForcePathStyle  bool   // Use path-style addressing for compatible test endpoints.
 }
 
 // NewOSSClient creates a new Alibaba Cloud OSS client
 func NewOSSClient(ctx context.Context, config *OSSConfig) (*OSSClient, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, fmt.Errorf("OSS configuration is required")
+	}
 	if config.Endpoint == "" {
 		return nil, fmt.Errorf("endpoint is required")
 	}
@@ -38,17 +48,20 @@ func NewOSSClient(ctx context.Context, config *OSSConfig) (*OSSClient, error) {
 	if config.AccessKeySecret == "" {
 		return nil, fmt.Errorf("access key secret is required")
 	}
+	if config.BucketName == "" {
+		return nil, fmt.Errorf("bucket name is required")
+	}
 
 	// Create OSS client
+	clientOptions := []oss.ClientOption{oss.ForcePathStyle(config.ForcePathStyle)}
 	var client *oss.Client
 	var err error
 
 	if config.SecurityToken != "" {
 		// Use STS token
-		client, err = oss.New(config.Endpoint, config.AccessKeyID, config.AccessKeySecret, oss.SecurityToken(config.SecurityToken))
-	} else {
-		client, err = oss.New(config.Endpoint, config.AccessKeyID, config.AccessKeySecret)
+		clientOptions = append(clientOptions, oss.SecurityToken(config.SecurityToken))
 	}
+	client, err = oss.New(config.Endpoint, config.AccessKeyID, config.AccessKeySecret, clientOptions...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OSS client: %w", err)
@@ -69,9 +82,16 @@ func NewOSSClient(ctx context.Context, config *OSSConfig) (*OSSClient, error) {
 
 // ListObjects lists objects in a bucket with optional prefix
 func (c *OSSClient) ListObjects(ctx context.Context, prefix string, maxKeys int) ([]OSSObject, error) {
+	if c == nil || c.bucket == nil {
+		return nil, fmt.Errorf("OSS client is not initialized")
+	}
+	if err := ossContextError(ctx); err != nil {
+		return nil, err
+	}
 	options := []oss.Option{
 		oss.Prefix(prefix),
 		oss.MaxKeys(maxKeys),
+		oss.WithContext(ctx),
 	}
 
 	lor, err := c.bucket.ListObjects(options...)
@@ -95,7 +115,16 @@ func (c *OSSClient) ListObjects(ctx context.Context, prefix string, maxKeys int)
 
 // GetObject retrieves an object from OSS
 func (c *OSSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
-	reader, err := c.bucket.GetObject(key)
+	if c == nil || c.bucket == nil {
+		return nil, fmt.Errorf("OSS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("OSS object key is required")
+	}
+	if err := ossContextError(ctx); err != nil {
+		return nil, err
+	}
+	reader, err := c.bucket.GetObject(key, oss.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object: %w", err)
 	}
@@ -105,13 +134,25 @@ func (c *OSSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object data: %w", err)
 	}
+	if err := ossContextError(ctx); err != nil {
+		return nil, err
+	}
 
 	return data, nil
 }
 
 // GetObjectMetadata retrieves object metadata without downloading the content
 func (c *OSSClient) GetObjectMetadata(ctx context.Context, key string) (*OSSObjectMetadata, error) {
-	meta, err := c.bucket.GetObjectMeta(key)
+	if c == nil || c.bucket == nil {
+		return nil, fmt.Errorf("OSS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("OSS object key is required")
+	}
+	if err := ossContextError(ctx); err != nil {
+		return nil, err
+	}
+	meta, err := c.bucket.GetObjectMeta(key, oss.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object metadata: %w", err)
 	}
@@ -153,6 +194,13 @@ func (c *OSSClient) GetObjectMetadata(ctx context.Context, key string) (*OSSObje
 	}
 
 	return metadata, nil
+}
+
+func ossContextError(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("context is required")
+	}
+	return ctx.Err()
 }
 
 // PutObject uploads an object to OSS

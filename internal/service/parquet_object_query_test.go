@@ -55,6 +55,10 @@ func TestFetchQueryRoutesS3ParquetThroughGateway(t *testing.T) {
 	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeS3Parquet)
 }
 
+func TestFetchQueryRoutesOSSParquetThroughGateway(t *testing.T) {
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeAlibabaOSSParquet)
+}
+
 func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.DatabaseType) {
 	t.Helper()
 	data := parquetObjectQueryTestData(t)

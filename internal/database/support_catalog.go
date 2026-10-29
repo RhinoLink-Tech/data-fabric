@@ -432,10 +432,18 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
-	case model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
-		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
-		model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:
+	case model.DatabaseTypeAlibabaOSSParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The OSS SDK protocol fixture covers access-key authentication; STS credentials are accepted but are not covered by a live contract."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
+			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
+			"Deterministic protocol-fixture coverage does not establish compatibility with a particular Alibaba OSS service release; no live OSS version contract is recorded.")
+	case model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
+		model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta,
+		model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
+		model.DatabaseTypeMinIODelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"No end-to-end query-service execution path is recorded for this connector; registry presence alone does not mean SQL queries are available.")
