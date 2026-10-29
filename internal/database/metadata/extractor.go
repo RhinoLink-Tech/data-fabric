@@ -271,7 +271,7 @@ func isCSVObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isParquetObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOParquet || dbType == model.DatabaseTypeS3Parquet || dbType == model.DatabaseTypeAlibabaOSSParquet || dbType == model.DatabaseTypeTencentCOSParquet
+	return dbType == model.DatabaseTypeMinIOParquet || dbType == model.DatabaseTypeS3Parquet || dbType == model.DatabaseTypeAlibabaOSSParquet || dbType == model.DatabaseTypeTencentCOSParquet || dbType == model.DatabaseTypeAzureBlobParquet || dbType == model.DatabaseTypeAzureParquet
 }
 
 func isORCObjectSource(dbType model.DatabaseType) bool {
@@ -296,6 +296,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSParquetTableName(config)
 	case model.DatabaseTypeTencentCOSParquet:
 		return object_storage.COSParquetTableName(config)
+	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
+		return object_storage.AzureBlobParquetTableName(config)
 	case model.DatabaseTypeS3ORC:
 		return object_storage.S3ORCTableName(config)
 	case model.DatabaseTypeS3Avro:

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -63,6 +64,14 @@ func TestFetchQueryRoutesCOSParquetThroughGateway(t *testing.T) {
 	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeTencentCOSParquet)
 }
 
+func TestFetchQueryRoutesAzureBlobParquetThroughGateway(t *testing.T) {
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeAzureBlobParquet)
+}
+
+func TestFetchQueryRoutesAzureParquetAliasThroughGateway(t *testing.T) {
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeAzureParquet)
+}
+
 func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.DatabaseType) {
 	t.Helper()
 	data := parquetObjectQueryTestData(t)
@@ -80,6 +89,9 @@ func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.Dat
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		w.Header().Set("x-ms-blob-type", "BlockBlob")
+		w.Header().Set("x-ms-request-id", "query-fixture")
+		w.Header().Set("x-ms-version", "2023-11-03")
 		switch r.Method {
 		case http.MethodHead:
 			w.WriteHeader(http.StatusOK)
@@ -106,10 +118,15 @@ func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.Dat
 	defer server.Close()
 
 	sourceName := string(sourceType)
+	username, password := "minio-access-key", "minio-secret-key"
+	if sourceType == model.DatabaseTypeAzureBlobParquet || sourceType == model.DatabaseTypeAzureParquet {
+		username = "testaccount"
+		password = base64.StdEncoding.EncodeToString([]byte("query-fixture-key"))
+	}
 	source := &model.DataSource{
 		ID: sourceName + "-query-service-test", Type: sourceType, Status: model.DataSourceStatusActive,
 		Config: model.DataSourceConfig{
-			Host: "data.parquet", Database: "demo-bucket", Username: "minio-access-key", Password: "minio-secret-key",
+			Host: "data.parquet", Database: "demo-bucket", Username: username, Password: password,
 			AdditionalProps: map[string]interface{}{
 				"object_key": "data.parquet", "table_name": "records", "region": "us-east-1",
 				"endpoint_url": server.URL, "force_path_style": true,

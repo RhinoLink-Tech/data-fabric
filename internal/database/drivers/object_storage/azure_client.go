@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
@@ -27,43 +29,65 @@ type AzureBlobConfig struct {
 
 // NewAzureBlobClient creates a new Azure Blob Storage client
 func NewAzureBlobClient(ctx context.Context, config *AzureBlobConfig) (*AzureBlobClient, error) {
-	if config.AccountName == "" {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, fmt.Errorf("Azure Blob configuration is required")
+	}
+	if strings.TrimSpace(config.AccountName) == "" {
 		return nil, fmt.Errorf("account name is required")
 	}
-
-	// Build blob service URL
-	blobURL := fmt.Sprintf("https://%s.blob.core.windows.net/", config.AccountName)
-	if config.Endpoint != "" {
-		blobURL = config.Endpoint
+	if strings.TrimSpace(config.ContainerName) == "" {
+		return nil, fmt.Errorf("container name is required")
+	}
+	if strings.TrimSpace(config.SASToken) == "" && strings.TrimSpace(config.AccountKey) == "" {
+		return nil, fmt.Errorf("Azure Blob account key or SAS token is required")
 	}
 
-	// Create client
-	var client *azblob.Client
-	var err error
+	blobURL := strings.TrimSpace(config.Endpoint)
+	if blobURL == "" {
+		blobURL = fmt.Sprintf("https://%s.blob.core.windows.net/", config.AccountName)
+	}
+	parsedURL, err := url.Parse(blobURL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") ||
+		parsedURL.User != nil || parsedURL.Fragment != "" {
+		return nil, fmt.Errorf("Azure Blob endpoint must be an HTTP(S) URL without credentials or fragment")
+	}
 
-	if config.SASToken != "" {
-		// Use SAS token
-		client, err = azblob.NewClientWithNoCredential(blobURL, &azblob.ClientOptions{})
+	var client *azblob.Client
+	if strings.TrimSpace(config.SASToken) != "" {
+		sasQuery, err := url.ParseQuery(strings.TrimPrefix(strings.TrimSpace(config.SASToken), "?"))
+		if err != nil || len(sasQuery) == 0 {
+			return nil, fmt.Errorf("Azure Blob SAS token is invalid")
+		}
+		query := parsedURL.Query()
+		for key, values := range sasQuery {
+			for _, value := range values {
+				query.Add(key, value)
+			}
+		}
+		parsedURL.RawQuery = query.Encode()
+		client, err = azblob.NewClientWithNoCredential(parsedURL.String(), &azblob.ClientOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Azure Blob client with SAS: %w", err)
 		}
 	} else {
-		// Use shared key
 		credential, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create shared key credential: %w", err)
 		}
-
-		client, err = azblob.NewClientWithSharedKeyCredential(blobURL, credential, nil)
+		client, err = azblob.NewClientWithSharedKeyCredential(parsedURL.String(), credential, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Azure Blob client: %w", err)
 		}
 	}
 
 	return &AzureBlobClient{
-		client:    client,
-		container: config.ContainerName,
-		config:    config,
+		client: client, container: config.ContainerName, config: config,
 	}, nil
 }
 
@@ -97,6 +121,18 @@ func (c *AzureBlobClient) ListBlobs(ctx context.Context, prefix string, maxResul
 
 // GetBlob retrieves a blob from Azure Blob Storage
 func (c *AzureBlobClient) GetBlob(ctx context.Context, name string) ([]byte, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("Azure Blob client is not initialized")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("blob name is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	resp, err := c.client.DownloadStream(ctx, c.container, name, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download blob: %w", err)
@@ -107,47 +143,56 @@ func (c *AzureBlobClient) GetBlob(ctx context.Context, name string) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to read blob data: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	return data, nil
 }
 
 // GetBlobMetadata retrieves blob metadata
 func (c *AzureBlobClient) GetBlobMetadata(ctx context.Context, name string) (*AzureBlobMetadata, error) {
-	maxResults := int32(1)
-	pager := c.client.NewListBlobsFlatPager(c.container, &azblob.ListBlobsFlatOptions{
-		Prefix:     &name,
-		MaxResults: &maxResults,
-	})
-
-	page, err := pager.NextPage(ctx)
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("Azure Blob client is not initialized")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("blob name is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	blobClient := c.client.ServiceClient().NewContainerClient(c.container).NewBlobClient(name)
+	properties, err := blobClient.GetProperties(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list blobs for metadata: %w", err)
+		return nil, fmt.Errorf("failed to get blob properties: %w", err)
 	}
 
-	for _, blob := range page.Segment.BlobItems {
-		if *blob.Name == name {
-			metadata := &AzureBlobMetadata{
-				Name:          name,
-				ContentLength: *blob.Properties.ContentLength,
-				ContentType:   *blob.Properties.ContentType,
-				LastModified:  *blob.Properties.LastModified,
-				ETag:          string(*blob.Properties.ETag),
-				BlobType:      string(*blob.Properties.BlobType),
-			}
-
-			if blob.Properties.ContentEncoding != nil {
-				metadata.ContentEncoding = *blob.Properties.ContentEncoding
-			}
-
-			if blob.Properties.CacheControl != nil {
-				metadata.CacheControl = *blob.Properties.CacheControl
-			}
-
-			return metadata, nil
-		}
+	metadata := &AzureBlobMetadata{Name: name}
+	if properties.ContentLength != nil {
+		metadata.ContentLength = *properties.ContentLength
 	}
-
-	return nil, fmt.Errorf("blob not found: %s", name)
+	if properties.ContentType != nil {
+		metadata.ContentType = *properties.ContentType
+	}
+	if properties.LastModified != nil {
+		metadata.LastModified = *properties.LastModified
+	}
+	if properties.ETag != nil {
+		metadata.ETag = string(*properties.ETag)
+	}
+	if properties.BlobType != nil {
+		metadata.BlobType = string(*properties.BlobType)
+	}
+	if properties.ContentEncoding != nil {
+		metadata.ContentEncoding = *properties.ContentEncoding
+	}
+	if properties.CacheControl != nil {
+		metadata.CacheControl = *properties.CacheControl
+	}
+	return metadata, nil
 }
 
 // PutBlob uploads a blob to Azure Blob Storage

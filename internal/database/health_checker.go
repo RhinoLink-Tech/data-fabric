@@ -415,6 +415,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeTencentCOSParquet {
 			return hc.validateCOSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeAzureBlobParquet || dbType == model.DatabaseTypeAzureParquet {
+			return hc.validateAzureParquetConfig(config)
+		}
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
@@ -626,6 +629,40 @@ func (hc *HealthChecker) validateCOSParquetConfig(config *model.DataSourceConfig
 		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 			(parsed.Path != "" && parsed.Path != "/") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return fmt.Errorf("endpoint_url must be an HTTP(S) origin without credentials, path, query, or fragment")
+		}
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateAzureParquetConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("container name is required in database")
+	}
+	objectKey := dataSourcePropString(config.AdditionalProps, "object_key")
+	if objectKey == "" {
+		objectKey = strings.TrimSpace(config.Host)
+	}
+	if objectKey == "" {
+		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	if _, err := object_storage.AzureBlobParquetTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" {
+		return fmt.Errorf("Azure Blob account name is required in username")
+	}
+	if strings.TrimSpace(config.Password) == "" && dataSourcePropString(config.AdditionalProps, "sas_token") == "" {
+		return fmt.Errorf("Azure Blob account key or sas_token is required")
+	}
+	endpoint := dataSourcePropString(config.AdditionalProps, "endpoint_url")
+	if endpoint != "" {
+		parsed, err := url.Parse(endpoint)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("endpoint_url must be an HTTP(S) URL without credentials, query, or fragment")
 		}
 	}
 	return nil

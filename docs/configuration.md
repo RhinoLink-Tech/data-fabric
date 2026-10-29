@@ -435,6 +435,32 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Azure Blob Parquet source
+
+The azure_blob_parquet and azure_parquet source types use the same adapter.
+Each exposes one configured Parquet blob as a read-only SQL table. Supported
+queries use a flat primitive schema and the shared object SQL subset:
+projection, comparisons joined by AND, IS NULL, IN, LIKE, ORDER BY, LIMIT,
+OFFSET, and COUNT(*). Nested/repeated values, partitions, and multiple-blob
+queries are not supported.
+
+| Data-source field or property | Azure Blob Parquet meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint; use this for compatible gateways and local emulators. Paths are allowed for emulator endpoints, but credentials, query strings, and fragments are not. |
+| additionalProps.object_key | Parquet blob name. host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000. |
+
+The adapter downloads the complete blob into gateway memory before decoding
+rows and applying SQL filters or pagination. Keep configured blobs within the
+gateway memory budget. Local Azure SDK protocol fixtures cover request wiring,
+Shared Key signing, and SAS token propagation; they do not establish
+compatibility with a live Azure Storage service release.
+
 ## Tencent COS Parquet source
 
 The cos_parquet connector exposes one configured Parquet object as a read-only

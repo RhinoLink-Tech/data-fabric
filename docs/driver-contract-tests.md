@@ -64,6 +64,22 @@ native JSON queries, and coordinator metadata are outside this fixture. The
 adapter remains experimental until a pinned live Druid contract is added under
 [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
+## Azure Blob Parquet protocol fixture
+
+The Azure Blob Parquet fixture uses the Azure SDK against a local HTTP server.
+It exercises Shared Key request signing, SAS query-token propagation, blob
+properties, health checks, metadata discovery, read-only filtering/order/
+pagination/count queries, cancellation, and write rejection for both registered
+type names. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'Test(AzureBlobParquetProtocolFixture|AzureParquetTypeAliasSharesBlobSQLPath)$' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract. TLS, cloud account behavior, and SAS authorization enforcement remain
+unverified.
+
 ## Tencent COS Parquet protocol fixture
 
 The COS Parquet adapter has deterministic protocol-fixture coverage using the

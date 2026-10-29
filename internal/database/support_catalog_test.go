@@ -249,12 +249,15 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeAlibabaOSSParquet,
-		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]
-		if profile.Status != ConnectorStatusExperimental || !containsSupportLimitation(profile.Limitations, "No end-to-end query-service execution path") {
-			t.Errorf("%s must disclose that gateway SQL execution is not verified: %+v", dbType, profile)
+		if profile.Status != ConnectorStatusExperimental || !profile.Capabilities.SupportsSQL {
+			t.Errorf("%s must expose its experimental read-only SQL adapter: %+v", dbType, profile)
+		}
+		if !containsSupportLimitation(profile.Limitations, "one configured object") || !containsSupportLimitation(profile.Limitations, "complete object is downloaded into gateway memory") {
+			t.Errorf("%s must disclose its object scope and buffering boundary: %+v", dbType, profile.Limitations)
 		}
 	}
 }

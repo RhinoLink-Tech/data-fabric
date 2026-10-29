@@ -448,8 +448,15 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"The deterministic SDK protocol fixture does not establish compatibility with a Tencent COS service release.")
-	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
+	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "Local SDK fixtures cover Shared Key request signing and SAS query propagation; no live Azure service version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured blob with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
+			"The complete blob is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage version or deployment.")
+	case model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg,
 		model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
