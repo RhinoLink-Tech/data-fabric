@@ -612,7 +612,10 @@ func (ss *streamingService) closeStreamLocked(streamID string, stream *ActiveStr
 		stream.CancelFunc()
 	}
 	if stream.Rows != nil {
-		if err := stream.Rows.Close(); err != nil {
+		// A cancelled stream reports the cancellation from Rows.Close; that
+		// is the expected outcome of client cancellation, so the stream is
+		// still deregistered instead of leaking and logging an error (#262).
+		if err := stream.Rows.Close(); err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("close stream %s rows: %w", streamID, err)
 		}
 	}
