@@ -694,12 +694,12 @@ func buildSpec(name, runTag string, env map[string]string) engineSpec {
 		spec.cells = []typeCell{
 			{"c_tinyint", int64(7), model.TypeInteger, model.TypeInteger},
 			{"c_int", int64(42), model.TypeInteger, model.TypeInteger},
-			{"c_bigint", int64(9223372036854775807), model.TypeBigInt, model.TypeInteger},
+			{"c_bigint", int64(9223372036854775807), model.TypeBigInt, model.TypeBigInt},
 			{"c_dec", "250.10", model.TypeDecimal, model.TypeDecimal},
 			{"c_vc", "hello types", model.TypeString, model.TypeString},
-			{"c_text", "long text value for type mapping", model.TypeText, model.TypeString},
+			{"c_text", "long text value for type mapping", model.TypeText, model.TypeText},
 			{"c_date", "2026-01-31", model.TypeDate, model.TypeDate},
-			{"c_dt", "2026-01-31 12:34:56", model.TypeDateTime, model.TypeDate},
+			{"c_dt", "2026-01-31 12:34:56", model.TypeDateTime, model.TypeDateTime},
 			{"c_bool", int64(1), model.TypeInteger, model.TypeInteger},
 			{"c_null", nil, model.TypeInteger, model.TypeInteger},
 		}
@@ -732,12 +732,9 @@ func buildSpec(name, runTag string, env map[string]string) engineSpec {
 			{"c_bigint", int64(9223372036854775807), model.TypeInteger, model.TypeInteger},
 			{"c_dec", "250.10", model.TypeDecimal, model.TypeDecimal},
 			{"c_vc", "hello types", model.TypeString, model.TypeString},
-			{"c_text", "long text value for type mapping", model.TypeText, model.TypeString},
+			{"c_text", "long text value for type mapping", model.TypeText, model.TypeText},
 			{"c_date", time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC), model.TypeDate, model.TypeDate},
-			// The streaming generic mapper checks "TIME" before
-			// "TIMESTAMP", so lib/pq's "timestamp" lands on time there —
-			// a real cross-path divergence the matrix records.
-			{"c_ts", time.Date(2026, 1, 31, 12, 34, 56, 0, time.UTC), model.TypeTimestamp, model.TypeTime},
+			{"c_ts", time.Date(2026, 1, 31, 12, 34, 56, 0, time.UTC), model.TypeTimestamp, model.TypeTimestamp},
 			{"c_bool", true, model.TypeBoolean, model.TypeBoolean},
 			{"c_null", nil, model.TypeInteger, model.TypeInteger},
 		}

@@ -59,8 +59,28 @@ func NewDataTypeMapper() *DataTypeMapper {
 	return &DataTypeMapper{}
 }
 
+// CoversStandardTypeMapping reports whether MapToStandardType has
+// database-specific mapping rules for dbType. Execution paths that need a
+// generic fallback for the remaining families route on this instead of
+// duplicating the supported list (#260).
+func (dtm *DataTypeMapper) CoversStandardTypeMapping(dbType model.DatabaseType) bool {
+	switch dbType {
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypePostgreSQL,
+		model.DatabaseTypeOracle, model.DatabaseTypeTrino, model.DatabaseTypePresto,
+		model.DatabaseTypeOpenLooKeng, model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid,
+		model.DatabaseTypeS3CSV:
+		return true
+	default:
+		return false
+	}
+}
+
 // MapToStandardType maps a database-specific type to a standard type
 func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumnType string, nullable bool) model.StandardizedType {
+	if !dtm.CoversStandardTypeMapping(dbType) {
+		return model.TypeUnknown
+	}
+
 	// Normalize the column type (convert to uppercase, remove size constraints)
 	normalizedType := dtm.normalizeColumnType(dbColumnType)
 
@@ -78,7 +98,9 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV:
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	default:
-		return model.TypeUnknown
+		// Trino/Presto/OpenLooKeng, MongoDB, Apache Druid, and S3 CSV all
+		// share the Presto-compatible mapping.
+		return dtm.mapPrestoCompatibleType(normalizedType)
 	}
 }
 

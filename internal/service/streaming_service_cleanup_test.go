@@ -323,3 +323,28 @@ func TestFetchStreamChunkClosesRowsAndSessionAfterScanFailure(t *testing.T) {
 		t.Fatal("streaming session remains after a scan failure")
 	}
 }
+
+// A cancelled stream's Rows.Close reports the cancellation itself. Cleanup
+// must treat that as the expected outcome — deregister the stream, keep the
+// log quiet — instead of logging an error and leaking the entry (#262).
+func TestExpiredSessionCleanupTreatsCanceledRowsCloseAsExpected(t *testing.T) {
+	svc, manager, session, _, _ := newExpiredStreamingFixture(t, context.Canceled)
+
+	var output bytes.Buffer
+	originalWriter := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(originalWriter)
+
+	if got := svc.CleanupExpiredSessions(context.Background()); got != 1 {
+		t.Fatalf("CleanupExpiredSessions() = %d, want 1 for a cancelled stream", got)
+	}
+	if manager.isCurrent(session) {
+		t.Fatal("session was kept even though cancellation is an expected close result")
+	}
+	if len(svc.GetAllStreams()) != 0 {
+		t.Fatal("cancelled stream was not deregistered")
+	}
+	if strings.Contains(output.String(), "cleanup failed") {
+		t.Fatalf("expected cancellation was logged as a failure: %q", output.String())
+	}
+}
