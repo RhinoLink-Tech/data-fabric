@@ -64,9 +64,9 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if dataSource.Type == model.DatabaseTypeMinIOParquet {
+	} else if isParquetObjectSource(dataSource.Type) {
 		var table *TableSchema
-		table, err = extractMinIOParquetTable(ctx, db, &dataSource.Config)
+		table, err = extractParquetObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
@@ -111,15 +111,15 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config)
 	}
-	if dataSource.Type == model.DatabaseTypeMinIOParquet {
-		name, err := object_storage.MinIOParquetTableName(&dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) {
+		name, err := parquetObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		if requestedSchema != "" || tableName != name {
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
-		return extractMinIOParquetTable(ctx, db, &dataSource.Config)
+		return extractParquetObjectTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
 
 	schemaName, tableType, found, err := e.findTable(ctx, db, dataSource.Type, requestedSchema, tableName)
@@ -235,8 +235,8 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if dataSource.Type == model.DatabaseTypeMinIOParquet {
-		name, err := object_storage.MinIOParquetTableName(&dataSource.Config)
+	if isParquetObjectSource(dataSource.Type) {
+		name, err := parquetObjectTableName(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -270,6 +270,21 @@ func isCSVObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV
 }
 
+func isParquetObjectSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeMinIOParquet || dbType == model.DatabaseTypeS3Parquet
+}
+
+func parquetObjectTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeMinIOParquet:
+		return object_storage.MinIOParquetTableName(config)
+	case model.DatabaseTypeS3Parquet:
+		return object_storage.S3ParquetTableName(config)
+	default:
+		return "", fmt.Errorf("Parquet object metadata is not supported for %s", dbType)
+	}
+}
+
 // extractCSVTable asks the configured adapter for column metadata. CSV has no
 // declared schema, so the reported types are inferred from the object using
 // the same parser and rules as SELECT queries; no row values are returned.
@@ -300,10 +315,10 @@ func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceCo
 	return &TableSchema{Name: name, Type: "TABLE", Columns: columns}, nil
 }
 
-// extractMinIOParquetTable obtains the schema from the configured object's
-// footer through LIMIT 0, without decoding data rows.
-func extractMinIOParquetTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig) (*TableSchema, error) {
-	name, err := object_storage.MinIOParquetTableName(config)
+// extractParquetObjectTable obtains the configured object's schema through
+// LIMIT 0, without decoding data rows.
+func extractParquetObjectTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
+	name, err := parquetObjectTableName(dbType, config)
 	if err != nil {
 		return nil, err
 	}

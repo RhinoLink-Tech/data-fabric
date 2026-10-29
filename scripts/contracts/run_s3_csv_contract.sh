@@ -62,7 +62,7 @@ DATA_FABRIC_S3_CONTRACT_REGION="us-east-1" \
 DATA_FABRIC_S3_CONTRACT_ACCESS_KEY="$access_key" \
 DATA_FABRIC_S3_CONTRACT_SECRET_KEY="$secret_key" \
 DATA_FABRIC_S3_CONTRACT_BUCKET="$bucket" \
-	go test ./internal/database/drivers/object_storage -run '^TestS3CSVContract$' -count=1 -v || {
+	go test ./internal/database/drivers/object_storage -run '^TestS3(CSV|Parquet)Contract$' -count=1 -v || {
 		docker logs "$container_name" >&2
 		exit 1
 	}

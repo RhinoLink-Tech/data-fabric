@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -15,6 +15,8 @@ type S3ParquetDriver struct {
 	parquetReader *ParquetReader
 	selectHandler *S3SelectHandler
 	config        *S3ParquetDriverConfig
+	objectKey     string
+	tableName     string
 }
 
 // S3ParquetDriverConfig holds S3 Parquet driver configuration
@@ -27,6 +29,9 @@ type S3ParquetDriverConfig struct {
 
 // NewS3ParquetDriver creates a new S3 Parquet driver
 func NewS3ParquetDriver(ctx context.Context, config *S3ParquetDriverConfig) (*S3ParquetDriver, error) {
+	if config == nil || config.S3Config == nil {
+		return nil, fmt.Errorf("S3 Parquet configuration is required")
+	}
 	s3Client, err := NewS3Client(ctx, config.S3Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
@@ -112,12 +117,12 @@ func (d *S3ParquetDriver) GetCategory() drivers.DriverCategory {
 // GetCapabilities returns driver capabilities
 func (d *S3ParquetDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false, // Uses S3 Select SQL dialect
+		SupportsSQL:             true,
 		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
 		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
@@ -270,17 +275,23 @@ func (d *S3ParquetDriver) matchesFilters(row map[string]interface{}, filters map
 
 // ApplyBatchPagination applies pagination to a SQL query
 func (d *S3ParquetDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 Parquet files, we don't support SQL pagination directly
-	// Instead, we'll return the original SQL and let the application handle pagination
-	// since Parquet files are read as complete datasets and then processed in memory
+	return applyParquetBatchPagination(sql, batchSize, offset)
+}
 
-	// If S3 Select API is enabled, we can use LIMIT and OFFSET clauses
-	if d.config.EnableSelectAPI {
-		// Add LIMIT and OFFSET to the SQL query
-		paginatedSQL := fmt.Sprintf("%s LIMIT %d OFFSET %d", sql, batchSize, offset)
-		return paginatedSQL, nil
+// GetSchema reads the configured object's footer without decoding its rows.
+func (d *S3ParquetDriver) GetSchema(ctx context.Context, key string) (*ParquetSchema, error) {
+	if d == nil || d.s3Client == nil {
+		return nil, fmt.Errorf("S3 Parquet driver is not initialized")
 	}
-
-	// For direct Parquet reading, return original SQL and handle pagination in memory
-	return sql, nil
+	batchSize := 1000
+	if d.config != nil && d.config.BatchSize > 0 {
+		batchSize = d.config.BatchSize
+	}
+	reader := NewParquetReader(d.s3Client, &ParquetReaderConfig{BatchSize: batchSize})
+	fileReader, err := reader.Read(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Parquet schema: %w", err)
+	}
+	defer fileReader.Close()
+	return fileReader.GetSchema()
 }

@@ -314,6 +314,36 @@ compatibility with other MinIO releases, S3-compatible providers, TLS, STS, or
 distributed deployments; consult the [support catalog](data-source-support.md)
 before production use.
 
+## S3 Parquet source
+
+Register an `s3_parquet` source to expose one configured Parquet object as a
+read-only SQL table. The adapter supports a flat schema of primitive columns,
+projection, `WHERE` comparisons joined by `AND`, `IS NULL`, `IN`, `LIKE`, `ORDER BY`,
+`LIMIT`, `OFFSET`, and `COUNT(*)`. Use the configured table name without a schema
+qualifier or table alias. Nested or repeated fields, partition scans, and
+queries spanning multiple objects are outside this adapter. It reads Parquet
+through ranged S3 object requests; it decodes rows before applying SQL filters
+and pagination, so SQL limits do not cap all object data reads. S3 Select is
+not used.
+
+| Data-source field or property | S3 Parquet meaning |
+| --- | --- |
+| `database` | S3 bucket name. |
+| `username` and `password` | Optional access key and secret key; configure both together. If omitted, the AWS SDK credential chain is used. |
+| `additionalProps.object_key` | Parquet object key. `host` is accepted as a fallback. |
+| `additionalProps.table_name` | SQL table name; defaults to the object filename without its extension. |
+| `additionalProps.region` | S3 signing region; defaults to `us-east-1`. |
+| `additionalProps.endpoint_url` | Optional S3-compatible endpoint. |
+| `additionalProps.force_path_style` | Set to `true` for compatible services that require path-style addressing. |
+| `additionalProps.session_token` | Optional session token for temporary static credentials. |
+| `additionalProps.role_arn, external_id` | Optional role-assumption settings supported by the S3 client. |
+| `additionalProps.batch_size` | Parquet reader batch size; defaults to `1000`. |
+
+The adapter has deterministic unified-query coverage and a pinned live contract
+against Garage v2.4.1 using SigV4 access-key credentials. That contract does
+not imply compatibility with AWS S3 or other providers and versions; consult
+the [support catalog](data-source-support.md) before production use.
+
 ## Data-source credential encryption
 
 The HTTP and MCP servers require an encryption keyring at startup. Keys are injected by the runtime or a secrets manager; they are not stored in the repository or the YAML config. If either variable is missing, malformed, or does not include the active key, startup fails.

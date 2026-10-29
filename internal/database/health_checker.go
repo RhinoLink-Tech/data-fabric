@@ -394,6 +394,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
 		}
+		if dbType == model.DatabaseTypeS3Parquet {
+			return hc.validateS3ParquetConfig(config)
+		}
 		if dbType == model.DatabaseTypeMinIOParquet {
 			return hc.validateMinIOParquetConfig(config)
 		}
@@ -538,6 +541,29 @@ func (hc *HealthChecker) validateMinIOParquetConfig(config *model.DataSourceConf
 	endpoint, _ := config.AdditionalProps["endpoint_url"].(string)
 	if strings.TrimSpace(endpoint) == "" {
 		return fmt.Errorf("endpoint_url is required in additionalProps")
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateS3ParquetConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("bucket name is required in database")
+	}
+	objectKey, _ := config.AdditionalProps["object_key"].(string)
+	if strings.TrimSpace(objectKey) == "" {
+		objectKey = config.Host
+	}
+	if strings.TrimSpace(objectKey) == "" {
+		return fmt.Errorf("object_key is required in additionalProps or host")
+	}
+	if _, err := object_storage.S3ParquetTableName(config); err != nil {
+		return err
+	}
+	if (strings.TrimSpace(config.Username) == "") != (strings.TrimSpace(config.Password) == "") {
+		return fmt.Errorf("S3 access key and secret key must be configured together")
 	}
 	return nil
 }

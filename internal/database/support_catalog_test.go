@@ -103,6 +103,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeS3Parquet {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
+				t.Errorf("S3 Parquet contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMinIOCSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
 				t.Errorf("MinIO CSV contract evidence must remain provider-specific and experimental: %+v", profile)
@@ -196,8 +202,15 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioParquet.Limitations, "one configured flat-schema Parquet object") || !containsSupportLimitation(minioParquet.Limitations, "Nested or repeated fields") {
 		t.Errorf("MinIO Parquet catalog must describe the adapter boundary: %+v", minioParquet.Limitations)
 	}
+	s3Parquet := profiles[string(model.DatabaseTypeS3Parquet)]
+	if s3Parquet.Status != ConnectorStatusExperimental || !s3Parquet.EndToEndVerified || !s3Parquet.Capabilities.SupportsSQL {
+		t.Errorf("S3 Parquet must expose its SQL path with pinned Garage contract evidence: %+v", s3Parquet)
+	}
+	if !containsSupportLimitation(s3Parquet.Limitations, "one configured flat-schema Parquet object") || !containsSupportLimitation(s3Parquet.Limitations, "does not verify AWS S3") {
+		t.Errorf("S3 Parquet catalog must disclose its adapter and provider boundary: %+v", s3Parquet.Limitations)
+	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
+		model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
 		model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet,
 	} {

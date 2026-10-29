@@ -60,7 +60,7 @@ func (r *ParquetReader) Read(ctx context.Context, key string) (*ParquetFileReade
 	}
 
 	// Download file or use S3 seekable reader.
-	s3File, err := NewS3File(r.s3Client, key)
+	s3File, err := NewS3FileWithContext(ctx, r.s3Client, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 file: %w", err)
 	}
@@ -240,7 +240,7 @@ type ColumnStats struct {
 
 // GetMetadata retrieves Parquet file metadata
 func (r *ParquetReader) GetMetadata(ctx context.Context, key string) (*ParquetMetadata, error) {
-	s3File, err := NewS3File(r.s3Client, key)
+	s3File, err := NewS3FileWithContext(ctx, r.s3Client, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 file: %w", err)
 	}
@@ -272,7 +272,19 @@ type S3File struct {
 
 // NewS3File creates a new S3 file reader
 func NewS3File(s3Client *S3Client, key string) (*S3File, error) {
-	size, err := s3Client.GetObjectSize(context.Background(), key)
+	return NewS3FileWithContext(context.Background(), s3Client, key)
+}
+
+// NewS3FileWithContext creates a seekable S3 object reader that honors the
+// caller context for metadata and range requests.
+func NewS3FileWithContext(ctx context.Context, s3Client *S3Client, key string) (*S3File, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if s3Client == nil {
+		return nil, fmt.Errorf("S3 client is required")
+	}
+	size, err := s3Client.GetObjectSize(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object size: %w", err)
 	}
@@ -281,12 +293,15 @@ func NewS3File(s3Client *S3Client, key string) (*S3File, error) {
 		s3Client: s3Client,
 		key:      key,
 		size:     size,
-		ctx:      context.Background(),
+		ctx:      ctx,
 	}, nil
 }
 
 // Read implements io.Reader interface
 func (f *S3File) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
 	// If buffer is empty or exhausted, fetch more data
 	if len(f.buffer) == 0 {
 		// Calculate how much to read (up to 10MB at a time)
@@ -373,7 +388,7 @@ func (f *S3File) Open(name string) (source.ParquetFile, error) {
 	if name != "" && name != f.key {
 		return nil, fmt.Errorf("external Parquet column file %q is not supported", name)
 	}
-	return NewS3File(f.s3Client, f.key)
+	return NewS3FileWithContext(f.ctx, f.s3Client, f.key)
 }
 
 // Create implements source.ParquetFile interface (needed for read operations)

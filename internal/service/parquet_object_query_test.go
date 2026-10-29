@@ -18,21 +18,21 @@ import (
 	"github.com/xitongsys/parquet-go/writer"
 )
 
-type minIOParquetQueryTestRow struct {
+type parquetObjectQueryTestRow struct {
 	ID     int64  `parquet:"name=id, type=INT64"`
 	Name   string `parquet:"name=name, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
 	Active bool   `parquet:"name=active, type=BOOLEAN"`
 }
 
-func minIOParquetQueryTestData(t *testing.T) []byte {
+func parquetObjectQueryTestData(t *testing.T) []byte {
 	t.Helper()
 	var output bytes.Buffer
-	parquetWriter, err := writer.NewParquetWriterFromWriter(&output, new(minIOParquetQueryTestRow), 1)
+	parquetWriter, err := writer.NewParquetWriterFromWriter(&output, new(parquetObjectQueryTestRow), 1)
 	if err != nil {
 		t.Fatalf("create Parquet writer: %v", err)
 	}
 	parquetWriter.CompressionType = parquet.CompressionCodec_UNCOMPRESSED
-	for _, row := range []minIOParquetQueryTestRow{
+	for _, row := range []parquetObjectQueryTestRow{
 		{ID: 1, Name: "Ada", Active: true},
 		{ID: 2, Name: "Lin", Active: false},
 		{ID: 3, Name: "Grace", Active: true},
@@ -48,14 +48,23 @@ func minIOParquetQueryTestData(t *testing.T) []byte {
 }
 
 func TestFetchQueryRoutesMinIOParquetThroughGateway(t *testing.T) {
-	data := minIOParquetQueryTestData(t)
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeMinIOParquet)
+}
+
+func TestFetchQueryRoutesS3ParquetThroughGateway(t *testing.T) {
+	runFetchQueryRoutesParquetThroughGateway(t, model.DatabaseTypeS3Parquet)
+}
+
+func runFetchQueryRoutesParquetThroughGateway(t *testing.T, sourceType model.DatabaseType) {
+	t.Helper()
+	data := parquetObjectQueryTestData(t)
 	var getCalls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/demo-bucket/data.parquet" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("ETag", `"minio-parquet-fixture"`)
+		w.Header().Set("ETag", "\"parquet-fixture\"")
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
@@ -84,12 +93,14 @@ func TestFetchQueryRoutesMinIOParquetThroughGateway(t *testing.T) {
 	}))
 	defer server.Close()
 
+	sourceName := string(sourceType)
 	source := &model.DataSource{
-		ID: "minio-parquet-query-service-test", Type: model.DatabaseTypeMinIOParquet, Status: model.DataSourceStatusActive,
+		ID: sourceName + "-query-service-test", Type: sourceType, Status: model.DataSourceStatusActive,
 		Config: model.DataSourceConfig{
 			Host: "data.parquet", Database: "demo-bucket", Username: "minio-access-key", Password: "minio-secret-key",
 			AdditionalProps: map[string]interface{}{
-				"object_key": "data.parquet", "table_name": "records", "region": "us-east-1", "endpoint_url": server.URL,
+				"object_key": "data.parquet", "table_name": "records", "region": "us-east-1",
+				"endpoint_url": server.URL, "force_path_style": true,
 			},
 		},
 	}
@@ -97,7 +108,7 @@ func TestFetchQueryRoutesMinIOParquetThroughGateway(t *testing.T) {
 	defer func() { _ = pool.CloseAll() }()
 	checker := database.NewHealthChecker(pool)
 	if err := checker.ValidateDataSourceConfiguration(&source.Config, source.Type); err != nil {
-		t.Fatalf("validate MinIO Parquet source config: %v", err)
+		t.Fatalf("validate %s source config: %v", sourceType, err)
 	}
 	queryService := NewQueryService(federationSourceRepository{source: source}, pool, false, newTestSQLTranslationManager())
 	response, err := queryService.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
@@ -129,10 +140,10 @@ func TestFetchQueryRoutesMinIOParquetThroughGateway(t *testing.T) {
 	if _, err := queryService.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
 		DataSourceID: source.ID, SQL: "DELETE FROM records", Type: 1, BatchSize: 10,
 	}); err == nil {
-		t.Fatal("FetchQuery() accepted a MinIO Parquet write")
+		t.Fatalf("FetchQuery() accepted a %s write", sourceType)
 	}
 	if afterWrite := getCalls.Load(); afterWrite != beforeWrite {
-		t.Fatalf("write rejection accessed the MinIO object: before=%d after=%d", beforeWrite, afterWrite)
+		t.Fatalf("write rejection accessed the object: before=%d after=%d", beforeWrite, afterWrite)
 	}
 	if getCalls.Load() == 0 || strings.TrimSpace(response.QueryID) == "" {
 		t.Fatalf("expected the query path to read the object and return a query id; get calls=%d, response=%+v", getCalls.Load(), response)
