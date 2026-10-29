@@ -68,7 +68,7 @@ func (dtm *DataTypeMapper) CoversStandardTypeMapping(dbType model.DatabaseType) 
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypePostgreSQL,
 		model.DatabaseTypeOracle, model.DatabaseTypeTrino, model.DatabaseTypePresto,
 		model.DatabaseTypeOpenLooKeng, model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid,
-		model.DatabaseTypeS3CSV:
+		model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV:
 		return true
 	default:
 		return false
