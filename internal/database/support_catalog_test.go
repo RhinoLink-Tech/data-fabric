@@ -163,7 +163,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
+		model.DatabaseTypeHDFSParquetCompressed,
 	} {
 		profile := profiles[string(dbType)]
 		if profile.Registered || profile.Supported || profile.Status != ConnectorStatusUnsupported {
@@ -172,6 +172,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if _, err := registry.GetDriver(dbType); err == nil {
 			t.Errorf("HDFS type %q still resolves to a registered driver", dbType)
 		}
+	}
+	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
+	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusExperimental || !hdfsText.Capabilities.SupportsSQL {
+		t.Errorf("HDFS text must expose its experimental read-only SQL path: %+v", hdfsText)
+	}
+	if !containsSupportLimitation(hdfsText.Limitations, "one configured UTF-8 text file") || !containsSupportLimitation(hdfsText.Limitations, "100,000 lines") {
+		t.Errorf("HDFS text catalog must disclose its file and line boundaries: %+v", hdfsText.Limitations)
 	}
 	hdfsCSV := profiles[string(model.DatabaseTypeHDFSCSV)]
 	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusExperimental || !hdfsCSV.Capabilities.SupportsSQL {

@@ -446,6 +446,12 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
+		if dbType == model.DatabaseTypeHDFSText {
+			if err := applyDriverDefaultPort(config, driver); err != nil {
+				return err
+			}
+			return file_system.ValidateHDFSTextConfig(config)
+		}
 		if dbType == model.DatabaseTypeHDFSCSV {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err

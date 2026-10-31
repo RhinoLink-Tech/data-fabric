@@ -986,3 +986,17 @@ adapter. The read-only SQL subset supports projections, supported WHERE
 comparisons and IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory
 scans, multiple files, streaming, Kerberos, and HDFS HA guarantees are not
 provided. HDFS files and decoded records are held in gateway memory.
+
+## HDFS plain-text data sources
+
+An HDFS text source exposes one configured UTF-8 .txt or .log file as a
+read-only SQL table. Each physical line is a row with a 1-based line_number
+and the original line text in line. LF and CRLF are supported; blank lines
+and a final line without a newline are retained. The table name defaults to
+the file name without its extension and can be set with additionalProps.table_name.
+
+Use the NameNode host, RPC port (8020 by default), HDFS simple-user identity,
+and absolute file path conventions described in the HDFS CSV section. The
+max_file_bytes property defaults to 16 MiB and can be raised to 64 MiB. Files
+with more than 100,000 lines are rejected. This source does not parse structured
+logs, scan directories, read compressed inputs, tail files, or provide streaming.

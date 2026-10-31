@@ -97,7 +97,6 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 	// HDFS file-format adapters without a unified query path remain explicitly unsupported.
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSText,
 		model.DatabaseTypeHDFSParquetCompressed,
 	} {
 		catalog = append(catalog, ConnectorSupport{
@@ -391,6 +390,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeHDFSText:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The local file-client fixture covers configured user forwarding only; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured UTF-8 text file, capped at 64 MiB and 100,000 lines; directory scans, multiple files, compression, and streaming are not supported.",
+			"Each physical line is exposed as line_number and line; structured multiline log parsing is not provided.",
+			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
 	case model.DatabaseTypeHDFSCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}

@@ -71,6 +71,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeHDFSAvro, func() drivers.Driver {
 		return &file_system.HDFSAvroDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSText, func() drivers.Driver {
+		return &file_system.HDFSTextDriver{}
+	})
 
 	// Chinese domestic databases
 	dr.register(model.DatabaseTypeDaMeng, func() drivers.Driver {

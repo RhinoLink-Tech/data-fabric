@@ -608,3 +608,14 @@ handling, and write rejection without requiring HDFS. The fixture does not
 certify NameNode/DataNode interoperability, a live HDFS release, authorization,
 Kerberos, HA behavior, or large-file performance. Keep the connector
 experimental until a pinned live HDFS contract is available.
+
+## HDFS plain-text local file-client fixture
+
+A deterministic UTF-8 file fixture and injected HDFS file client cover LF and
+CRLF splitting, blank lines, a final line without a newline, read-only SQL
+projection/filter/order/page queries, COUNT(*), metadata discovery, byte and
+line limits, invalid UTF-8, cancellation, I/O errors, and write rejection
+without an HDFS service. The fixture does not establish compatibility with a
+live HDFS release, authorization, Kerberos, HA behavior, or large-file
+performance. The connector remains experimental until a pinned live HDFS
+contract is available.
