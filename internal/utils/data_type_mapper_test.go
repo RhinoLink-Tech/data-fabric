@@ -77,7 +77,7 @@ func TestMapObjectStorageQueryColumnTypes(t *testing.T) {
 		{columnType: "BOOLEAN", want: model.TypeBoolean},
 		{columnType: "VARCHAR", want: model.TypeString},
 	}
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeHDFSCSV} {
 		for _, tt := range tests {
 			t.Run(string(dbType)+"/"+tt.columnType, func(t *testing.T) {
 				if got := mapper.MapToStandardType(dbType, tt.columnType, true); got != tt.want {

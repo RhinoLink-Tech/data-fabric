@@ -15,12 +15,17 @@ import (
 
 // S3CSVDriver implements Driver interface for querying CSV files on S3
 type S3CSVDriver struct {
-	s3Client       *S3Client
-	selectHandler  *S3SelectHandler
-	schemaDetector *CSVSchemadDetector
-	config         *S3CSVDriverConfig
-	objectKey      string
-	tableName      string
+	s3Client        *S3Client
+	selectHandler   *S3SelectHandler
+	schemaDetector  *CSVSchemadDetector
+	config          *S3CSVDriverConfig
+	objectKey       string
+	tableName       string
+	driverName      string
+	readObjectFunc  func(context.Context, string) ([]byte, error)
+	pingObjectFunc  func(context.Context, string) error
+	closeObjectFunc func() error
+	maxRows         int
 }
 
 // S3CSVDriverConfig holds S3 CSV driver configuration
@@ -112,6 +117,9 @@ func (d *S3CSVDriver) TestConnectionContext(ctx context.Context) error {
 
 // GetDriverName returns the driver name
 func (d *S3CSVDriver) GetDriverName() string {
+	if d.driverName != "" {
+		return d.driverName
+	}
 	return "s3-csv"
 }
 
@@ -224,7 +232,7 @@ func (d *S3CSVDriver) queryWithReader(ctx context.Context, query *S3CSVQuery) (*
 		return nil, err
 	}
 	// Download CSV file
-	data, err := d.s3Client.GetObject(ctx, query.Key)
+	data, err := d.readObject(ctx, query.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get CSV file: %w", err)
 	}
@@ -268,6 +276,9 @@ func (d *S3CSVDriver) queryWithReader(ctx context.Context, query *S3CSVQuery) (*
 			return nil, fmt.Errorf("failed to read row: %w", err)
 		}
 
+		if d.maxRows > 0 && rowCount >= d.maxRows {
+			return nil, fmt.Errorf("CSV object exceeds configured row limit of %d", d.maxRows)
+		}
 		// Create map for row
 		rowMap := make(map[string]interface{})
 
@@ -496,9 +507,30 @@ func (d *S3CSVDriver) lessThan(a, b interface{}) bool {
 	return fmt.Sprintf("%v", a) < fmt.Sprintf("%v", b)
 }
 
+func (d *S3CSVDriver) readObject(ctx context.Context, key string) ([]byte, error) {
+	if d.readObjectFunc != nil {
+		return d.readObjectFunc(ctx, key)
+	}
+	if d.s3Client == nil {
+		return nil, fmt.Errorf("CSV object reader is not configured")
+	}
+	return d.s3Client.GetObject(ctx, key)
+}
+
+func (d *S3CSVDriver) pingConfiguredObject(ctx context.Context) error {
+	if d.pingObjectFunc != nil {
+		return d.pingObjectFunc(ctx, d.objectKey)
+	}
+	if d.s3Client == nil {
+		return fmt.Errorf("CSV object health check is not configured")
+	}
+	_, err := d.s3Client.GetObjectMetadata(ctx, d.objectKey)
+	return err
+}
+
 // DetectSchema detects schema from a CSV file
 func (d *S3CSVDriver) DetectSchema(ctx context.Context, key string) (*DetectedSchema, error) {
-	data, err := d.s3Client.GetObject(ctx, key)
+	data, err := d.readObject(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get CSV file: %w", err)
 	}

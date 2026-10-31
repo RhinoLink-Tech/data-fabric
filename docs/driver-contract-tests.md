@@ -576,3 +576,14 @@ docker stop data-fabric-starrocks-contract
 ~~~~
 
 The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
+
+## HDFS CSV local file-client fixture
+
+The HDFS CSV adapter exposes one configured CSV file through the shared
+read-only query service. Its deterministic local file-client fixture covers
+bounded file reads, a simple projection/filter/order/page query, COUNT(*),
+metadata discovery, and write rejection without requiring a running HDFS
+cluster. It does not certify NameNode/DataNode interoperability, HDFS release
+compatibility, authorization behavior, Kerberos, HA failover, or large-file
+performance. Keep HDFS CSV experimental until a versioned live-cluster contract
+is available.

@@ -55,6 +55,32 @@ func (c *HDFSClient) Close() error {
 	return c.client.Close()
 }
 
+// ReadFileLimited reads at most maxBytes plus one sentinel byte from HDFS.
+func (c *HDFSClient) ReadFileLimited(ctx context.Context, path string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("maximum HDFS file size must be positive")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	reader, err := c.client.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open HDFS file: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read HDFS file: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("HDFS file exceeds configured maximum of %d bytes", maxBytes)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // ReadFile reads a file from HDFS
 func (c *HDFSClient) ReadFile(ctx context.Context, path string) ([]byte, error) {
 	reader, err := c.client.Open(path)

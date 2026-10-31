@@ -908,3 +908,44 @@ roles, and scopes to query authorization. Claim paths support dot notation for
 nested provider claims. Local `local-jwt` remains available for development;
 release-mode remote MCP requires `oidc`. MCP stdio remains a trusted local
 process and does not use remote bearer authentication.
+
+## HDFS CSV data sources
+
+An HDFS CSV source exposes one configured file as one read-only SQL table. Set
+host to the NameNode host, port to its RPC port (8020 by default), database to
+the absolute HDFS file path, and username to the HDFS simple-user identity. To
+list NameNodes explicitly, set additionalProps.namenodes to a comma-separated
+string or an array of addresses. Addresses may include their own ports.
+
+Example source configuration:
+
+    {
+      "host": "namenode.example.internal",
+      "port": 8020,
+      "database": "/warehouse/events.csv",
+      "username": "data-fabric-reader",
+      "additionalProps": {
+        "table_name": "events",
+        "has_header": true,
+        "delimiter": ",",
+        "skip_header_rows": 0,
+        "max_file_bytes": 16777216
+      }
+    }
+
+file_path may be used in additionalProps instead of database. The path must be
+absolute, must not contain dot or dot-dot path segments, and must end in .csv.
+table_name defaults to the file name without its extension. delimiter must be
+one character; the standard double quote is the only supported quote character.
+null_values accepts a list of field values treated as SQL NULL. Files default
+to a 16 MiB maximum and can be raised to 64 MiB; queries reject files with more
+than 100,000 records. CSV bytes and parsed rows are held in gateway memory, so
+keep configured files within these limits.
+
+The adapter supports the gateway's restricted read-only SQL subset for a single
+table: projections, supported WHERE comparisons and IS NULL checks, ORDER BY,
+LIMIT/OFFSET, and COUNT(*). It does not enumerate directories or combine files,
+and it does not provide partition discovery, streaming, or Kerberos
+authentication. The configured HDFS username is forwarded as the simple-user
+identity; deployments that require stronger authentication should use an engine
+or connector that supports their HDFS security mode.

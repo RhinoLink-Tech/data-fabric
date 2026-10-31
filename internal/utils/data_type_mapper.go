@@ -68,7 +68,7 @@ func (dtm *DataTypeMapper) CoversStandardTypeMapping(dbType model.DatabaseType) 
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypePostgreSQL,
 		model.DatabaseTypeOracle, model.DatabaseTypeTrino, model.DatabaseTypePresto,
 		model.DatabaseTypeOpenLooKeng, model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON:
+		model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeHDFSCSV:
 		return true
 	default:
 		return false
@@ -95,7 +95,7 @@ func (dtm *DataTypeMapper) MapToStandardType(dbType model.DatabaseType, dbColumn
 	case model.DatabaseTypeTrino, model.DatabaseTypePresto, model.DatabaseTypeOpenLooKeng,
 		model.DatabaseTypeMongoDB, model.DatabaseTypeApacheDruid:
 		return dtm.mapPrestoCompatibleType(normalizedType)
-	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON:
+	case model.DatabaseTypeS3CSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeHDFSCSV:
 		return dtm.mapPrestoCompatibleType(normalizedType)
 	default:
 		// Trino/Presto/OpenLooKeng, MongoDB, Apache Druid, and object-storage

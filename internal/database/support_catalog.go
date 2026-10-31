@@ -95,12 +95,9 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		catalog = append(catalog, profile)
 	}
 
-	// HDFS file-format adapters are not registered until they have a
-	// functioning unified query path. Keep their legacy type names visible but
-	// explicitly unsupported so registry presence is not implied.
+	// HDFS file-format adapters without a unified query path remain explicitly unsupported.
 	for _, dbType := range []model.DatabaseType{
 		model.DatabaseTypeHDFSAvro,
-		model.DatabaseTypeHDFSCSV,
 		model.DatabaseTypeHDFSParquet,
 		model.DatabaseTypeHDFSText,
 		model.DatabaseTypeHDFSParquetCompressed,
@@ -396,6 +393,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeHDFSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The local file-client fixture covers configured user forwarding only; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; flat row-oriented data only is supported.",
+			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
 	case model.DatabaseTypeApacheIceberg:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,

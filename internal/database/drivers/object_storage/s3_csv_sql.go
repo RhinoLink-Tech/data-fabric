@@ -21,6 +21,14 @@ import (
 
 var errS3CSVReadOnly = errors.New("s3-csv supports read-only SELECT queries")
 
+type csvAdapterError struct {
+	message string
+	cause   error
+}
+
+func (e *csvAdapterError) Error() string { return e.message }
+func (e *csvAdapterError) Unwrap() error { return e.cause }
+
 type s3CSVConnector struct{ driver *S3CSVDriver }
 
 func (c *s3CSVConnector) Connect(context.Context) (driver.Conn, error) {
@@ -37,16 +45,22 @@ func (d s3CSVDatabaseDriver) Open(string) (driver.Conn, error) {
 type s3CSVConn struct{ driver *S3CSVDriver }
 
 func (c *s3CSVConn) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("s3-csv does not support prepared statements")
+	return nil, fmt.Errorf("%s does not support prepared statements", c.driver.GetDriverName())
 }
-func (c *s3CSVConn) Close() error              { return nil }
-func (c *s3CSVConn) Begin() (driver.Tx, error) { return nil, errS3CSVReadOnly }
+func (c *s3CSVConn) Close() error {
+	if c.driver.closeObjectFunc != nil {
+		return c.driver.closeObjectFunc()
+	}
+	return nil
+}
+func (c *s3CSVConn) Begin() (driver.Tx, error) {
+	return nil, c.driver.readOnlyError()
+}
 func (c *s3CSVConn) Ping(ctx context.Context) error {
 	if c.driver.objectKey == "" {
-		return errors.New("s3-csv object_key is required")
+		return fmt.Errorf("%s object_key is required", c.driver.GetDriverName())
 	}
-	_, err := c.driver.s3Client.GetObjectMetadata(ctx, c.driver.objectKey)
-	if err != nil {
+	if err := c.driver.pingConfiguredObject(ctx); err != nil {
 		return fmt.Errorf("failed to access configured CSV object: %w", err)
 	}
 	return nil
@@ -54,12 +68,25 @@ func (c *s3CSVConn) Ping(ctx context.Context) error {
 func (c *s3CSVConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	result, err := c.driver.executeSQL(ctx, query, args)
 	if err != nil {
+		if c.driver.GetDriverName() != "s3-csv" && ctx.Err() == nil {
+			err = &csvAdapterError{
+				message: strings.ReplaceAll(err.Error(), "s3-csv", c.driver.GetDriverName()),
+				cause:   err,
+			}
+		}
 		return nil, err
 	}
 	return &s3CSVRows{ctx: ctx, columns: result.columns, types: result.types, rows: result.rows}, nil
 }
 func (c *s3CSVConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
-	return nil, errS3CSVReadOnly
+	return nil, c.driver.readOnlyError()
+}
+
+func (d *S3CSVDriver) readOnlyError() error {
+	if d.GetDriverName() == "s3-csv" {
+		return errS3CSVReadOnly
+	}
+	return fmt.Errorf("%s supports read-only SELECT queries", d.GetDriverName())
 }
 
 type s3CSVResult struct {
@@ -153,6 +180,53 @@ func (d *S3CSVDriver) OpenWithConfig(ctx context.Context, config *model.DataSour
 		return nil, err
 	}
 	return sql.OpenDB(&s3CSVConnector{driver: configuredDriver}), nil
+}
+
+// CSVSQLDatabaseConfig describes one bounded CSV file exposed as a read-only SQL table.
+type CSVSQLDatabaseConfig struct {
+	DriverName     string
+	ObjectKey      string
+	TableName      string
+	Delimiter      rune
+	HasHeader      bool
+	SkipHeaderRows int
+	NullValues     []string
+	MaxRows        int
+}
+
+// NewCSVSQLDatabase builds the shared CSV SQL adapter around a source-specific
+// reader. Object storage and filesystem drivers can reuse the same parser, SQL
+// subset, value conversion, and write rejection without sharing their clients.
+func NewCSVSQLDatabase(config CSVSQLDatabaseConfig, ping func(context.Context, string) error, read func(context.Context, string) ([]byte, error), close func() error) (*sql.DB, error) {
+	if strings.TrimSpace(config.DriverName) == "" || strings.TrimSpace(config.ObjectKey) == "" || strings.TrimSpace(config.TableName) == "" {
+		return nil, errors.New("CSV SQL adapter requires driver name, object key, and table name")
+	}
+	if config.Delimiter == 0 {
+		return nil, errors.New("CSV SQL adapter delimiter is required")
+	}
+	if config.SkipHeaderRows < 0 {
+		return nil, errors.New("CSV SQL adapter skip_header_rows cannot be negative")
+	}
+	if config.MaxRows < 0 {
+		return nil, errors.New("CSV SQL adapter max_rows cannot be negative")
+	}
+	if ping == nil || read == nil {
+		return nil, errors.New("CSV SQL adapter requires ping and read callbacks")
+	}
+	driverConfig := &S3CSVDriverConfig{
+		Delimiter: config.Delimiter, HasHeader: config.HasHeader, QuoteChar: '"',
+		SkipHeaderRows: config.SkipHeaderRows, NullValues: append([]string(nil), config.NullValues...),
+	}
+	detector := NewCSVSchemadDetector(&CSVDetectionConfig{
+		SampleSize: 1000, Delimiter: config.Delimiter, HasHeader: config.HasHeader,
+		QuoteChar: '"', HeaderRowsToSkip: config.SkipHeaderRows, NullValues: append([]string(nil), config.NullValues...),
+	})
+	configured := &S3CSVDriver{
+		config: driverConfig, schemaDetector: detector, objectKey: config.ObjectKey,
+		tableName: config.TableName, driverName: config.DriverName, maxRows: config.MaxRows,
+		readObjectFunc: read, pingObjectFunc: ping, closeObjectFunc: close,
+	}
+	return sql.OpenDB(&s3CSVConnector{driver: configured}), nil
 }
 
 // CSVTableName returns the single table identity used by the SQL adapter.

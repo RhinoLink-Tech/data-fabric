@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/file_system"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/readonly"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -445,6 +446,12 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
+		if dbType == model.DatabaseTypeHDFSCSV {
+			if err := applyDriverDefaultPort(config, driver); err != nil {
+				return err
+			}
+			return file_system.ValidateHDFSCSVConfig(config)
+		}
 		// File systems (HDFS/Ozone) use the registered driver's port defaults.
 		return hc.validateFileSystemConfig(config, driver)
 	case drivers.CategoryTableFormat:

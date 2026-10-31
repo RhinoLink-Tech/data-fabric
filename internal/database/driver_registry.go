@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/domestic"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/file_system"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/nosql"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/olap"
@@ -60,6 +61,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	})
 	dr.register(model.DatabaseTypeSQLServer, func() drivers.Driver {
 		return traditional.NewSQLServerDriver()
+	})
+	dr.register(model.DatabaseTypeHDFSCSV, func() drivers.Driver {
+		return &file_system.HDFSCSVDriver{}
 	})
 
 	// Chinese domestic databases

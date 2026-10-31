@@ -163,7 +163,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet,
 		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
 	} {
 		profile := profiles[string(dbType)]
@@ -173,6 +173,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if _, err := registry.GetDriver(dbType); err == nil {
 			t.Errorf("HDFS type %q still resolves to a registered driver", dbType)
 		}
+	}
+	hdfsCSV := profiles[string(model.DatabaseTypeHDFSCSV)]
+	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusExperimental || !hdfsCSV.Capabilities.SupportsSQL {
+		t.Errorf("HDFS CSV must expose its experimental read-only SQL path: %+v", hdfsCSV)
+	}
+	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") {
+		t.Errorf("HDFS CSV catalog must disclose its file and memory boundaries: %+v", hdfsCSV.Limitations)
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {
