@@ -64,6 +64,21 @@ native JSON queries, and coordinator metadata are outside this fixture. The
 adapter remains experimental until a pinned live Druid contract is added under
 [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
+## MinIO Delta protocol fixture
+
+The MinIO Delta fixture exercises MinIO's S3-compatible SDK against a local
+HTTP server. It covers signed log listing and reads, snapshot reconstruction,
+health checks, metadata discovery, restricted read-only SQL filtering/order/
+pagination/count, cancellation, and write rejection. The query-service fixture
+also exercises pagination. Run the fixtures directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage ./internal/service -run 'MinIODelta' -count=1 -v
+~~~~
+
+These fixtures do not run against a live MinIO deployment and do not establish a
+MinIO release contract. The adapter remains experimental.
+
 ## Azure Blob Parquet protocol fixture
 
 The Azure Blob Parquet fixture uses the Azure SDK against a local HTTP server.

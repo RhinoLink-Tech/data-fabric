@@ -4,65 +4,74 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// MinIODeltaDriver implements Driver interface for MinIO Delta Lake tables
+// MinIODeltaDriver reads bounded, unpartitioned Delta snapshots stored in MinIO.
 type MinIODeltaDriver struct {
-	config *MinIOConfig
-	client *MinIOClient
+	config    *MinIOConfig
+	client    *MinIOClient
+	tablePath string
+	tableName string
+	batchSize int
 }
 
-// NewMinIODeltaDriver creates a new MinIO Delta Lake driver
 func NewMinIODeltaDriver(ctx context.Context, config *MinIOConfig) (*MinIODeltaDriver, error) {
 	client, err := NewMinIOClient(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &MinIODeltaDriver{
-		config: config,
-		client: client,
-	}, nil
+	return &MinIODeltaDriver{config: config, client: client, batchSize: 1000}, nil
 }
 
-// Open opens a connection (not applicable for MinIO Delta Lake)
-func (d *MinIODeltaDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("MinIO Delta Lake driver does not support standard database connections")
+func (d *MinIODeltaDriver) Open(string) (*sql.DB, error) {
+	return nil, fmt.Errorf("MinIO Delta requires a configured read-only SQL adapter")
 }
 
-// ValidateDSN validates the connection string
 func (d *MinIODeltaDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	if !strings.HasPrefix(dsn, "s3://") {
+		return fmt.Errorf("invalid MinIO Delta URI: %s", dsn)
+	}
+	bucket, tablePath, found := strings.Cut(strings.TrimPrefix(dsn, "s3://"), "/")
+	if !found || strings.TrimSpace(bucket) == "" {
+		return fmt.Errorf("MinIO Delta URI must include a bucket and table path")
+	}
+	if _, err := cleanObjectDeltaTablePath(tablePath); err != nil {
+		return err
 	}
 	return nil
 }
 
-// GetDefaultPort returns the default MinIO port
-func (d *MinIODeltaDriver) GetDefaultPort() int {
-	return 9000
-}
+func (d *MinIODeltaDriver) GetDefaultPort() int { return 9000 }
 
-// BuildDSN builds a connection string from configuration
 func (d *MinIODeltaDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("s3://%s", config.Database)
+	if config == nil {
+		return "s3://"
+	}
+	tablePath := configString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = config.Host
+	}
+	return fmt.Sprintf("s3://%s/%s", config.Database, tablePath)
 }
 
-// GetDatabaseTypeName returns the database type name
-func (d *MinIODeltaDriver) GetDatabaseTypeName() string {
-	return "minio-delta"
+func (d *MinIODeltaDriver) GetDatabaseTypeName() string { return "minio-delta" }
+func (d *MinIODeltaDriver) GetDriverName() string       { return "minio-delta" }
+func (d *MinIODeltaDriver) GetCategory() drivers.DriverCategory {
+	return drivers.CategoryObjectStorage
 }
 
-// TestConnection tests if the connection is working
-func (d *MinIODeltaDriver) TestConnection(db *sql.DB) error {
+func (d *MinIODeltaDriver) TestConnection(*sql.DB) error {
 	return fmt.Errorf("use TestConnectionContext instead")
 }
 
-// TestConnectionContext tests the MinIO connection
 func (d *MinIODeltaDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.client == nil {
+		return fmt.Errorf("MinIO Delta driver is not initialized")
+	}
 	_, err := d.client.ListBuckets(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to test MinIO connection: %w", err)
@@ -70,37 +79,19 @@ func (d *MinIODeltaDriver) TestConnectionContext(ctx context.Context) error {
 	return nil
 }
 
-// GetDriverName returns the driver name
-func (d *MinIODeltaDriver) GetDriverName() string {
-	return "minio-delta"
-}
-
-// GetCategory returns the driver category
-func (d *MinIODeltaDriver) GetCategory() drivers.DriverCategory {
-	return drivers.CategoryObjectStorage
-}
-
-// GetCapabilities returns driver capabilities
 func (d *MinIODeltaDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
+		SupportsSQL:             true,
+		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
+		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
-// ConfigureAuth configures authentication
-func (d *MinIODeltaDriver) ConfigureAuth(authConfig interface{}) error {
-	return nil
-}
+func (d *MinIODeltaDriver) ConfigureAuth(interface{}) error { return nil }
 
-// ApplyBatchPagination adds pagination to SQL query
-func (d *MinIODeltaDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For MinIO Delta files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Delta files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+func (d *MinIODeltaDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return applyObjectBatchPagination(query, batchSize, offset)
 }

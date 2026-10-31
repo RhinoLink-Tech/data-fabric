@@ -376,6 +376,34 @@ authentication. TLS, STS, distributed MinIO deployments, and other releases
 remain outside that baseline; consult the [support catalog](data-source-support.md)
 before production use.
 
+## MinIO Delta source
+
+The minio_delta source exposes one configured Delta table as a read-only SQL
+table. It resolves the latest snapshot by replaying consecutive JSON transaction
+log commits from version zero and reads active Parquet files. It accepts
+unpartitioned tables with flat primitive columns and the shared object SQL
+subset: projection, simple comparisons joined by AND, IS NULL, IN, LIKE,
+ORDER BY, LIMIT, OFFSET, and COUNT(*).
+
+| Data-source field or property | MinIO Delta meaning |
+| --- | --- |
+| database | MinIO bucket name. |
+| username and password | Required MinIO access key and secret key. |
+| additionalProps.endpoint_url | HTTP(S) MinIO endpoint origin. |
+| additionalProps.table_path | Delta table root within the bucket; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the final path component. |
+| additionalProps.region | S3 signing region; defaults to us-east-1. |
+| additionalProps.session_token | Optional S3-compatible session token. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000 and is capped at 10000. |
+
+The adapter rejects checkpoints, partitioned tables, deletion vectors, empty
+tables, unknown transaction-log actions, and reader features beyond protocol
+version 1. It also rejects snapshots with more than 256 active data files, more
+than 64 MiB of active Parquet data, or more than 100,000 decoded rows. Active
+files are downloaded into gateway memory before SQL filtering and pagination;
+decoded rows add memory use beyond the compressed object sizes. Local MinIO SDK
+fixtures do not establish compatibility with a live MinIO release.
+
 ## MinIO Parquet source
 
 Register a `minio_parquet` source to expose one configured Parquet object as a

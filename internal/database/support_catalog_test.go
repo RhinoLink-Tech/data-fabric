@@ -264,8 +264,15 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if ossDelta.Status != ConnectorStatusExperimental || !ossDelta.Capabilities.SupportsSQL || ossDelta.EndToEndVerified {
 		t.Errorf("OSS Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", ossDelta)
 	}
-	if !containsSupportLimitation(ossDelta.Limitations, "checkpoints") || !containsSupportLimitation(ossDelta.Limitations, "64 MiB") {
+	if !containsSupportLimitation(ossDelta.Limitations, "checkpoints") || !containsSupportLimitation(ossDelta.Limitations, "64 MiB") || !containsSupportLimitation(ossDelta.Limitations, "100,000 decoded rows") {
 		t.Errorf("OSS Delta catalog must disclose its snapshot and memory boundaries: %+v", ossDelta.Limitations)
+	}
+	minioDelta := profiles[string(model.DatabaseTypeMinIODelta)]
+	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || minioDelta.EndToEndVerified {
+		t.Errorf("MinIO Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", minioDelta)
+	}
+	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") {
+		t.Errorf("MinIO Delta catalog must disclose its snapshot and memory boundaries: %+v", minioDelta.Limitations)
 	}
 }
 

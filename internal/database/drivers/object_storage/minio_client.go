@@ -35,6 +35,15 @@ type MinIOConfig struct {
 
 // NewMinIOClient creates a new MinIO client
 func NewMinIOClient(ctx context.Context, config *MinIOConfig) (*MinIOClient, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, fmt.Errorf("MinIO configuration is required")
+	}
 	if config.Endpoint == "" {
 		return nil, fmt.Errorf("endpoint is required")
 	}
@@ -135,6 +144,18 @@ func (c *MinIOClient) ListObjectsRecursive(ctx context.Context, prefix string) (
 
 // GetObject retrieves an object from MinIO
 func (c *MinIOClient) GetObject(ctx context.Context, key string) ([]byte, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("MinIO client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("MinIO object key is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -144,17 +165,13 @@ func (c *MinIOClient) GetObject(ctx context.Context, key string) ([]byte, error)
 	}
 	defer obj.Close()
 
-	stat, err := obj.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat object: %w", err)
-	}
-
-	data := make([]byte, stat.Size)
-	_, err = obj.Read(data)
+	data, err := io.ReadAll(obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read object data: %w", err)
 	}
-
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return data, nil
 }
 

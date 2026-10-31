@@ -462,9 +462,17 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.AuthenticationDisclosure = "Local SDK protocol fixtures cover access-key request signing; no live OSS version contract is recorded."
 		profile.Limitations = append(profile.Limitations,
 			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
-			"Queries use a restricted read-only SELECT subset and may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files.",
+			"Queries use a restricted read-only SELECT subset and may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
 			"The local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
-	case model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta, model.DatabaseTypeMinIODelta:
+	case model.DatabaseTypeMinIODelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"S3-compatible access key and secret key, with optional session token"}
+		profile.AuthenticationDisclosure = "Local MinIO SDK protocol fixtures cover signed requests; no live MinIO release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries use a restricted read-only SELECT subset and may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"The local protocol fixture does not establish compatibility with a live MinIO release.")
+	case model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"No end-to-end query-service execution path is recorded for this connector; registry presence alone does not mean SQL queries are available.")
