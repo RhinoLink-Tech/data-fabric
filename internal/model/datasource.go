@@ -43,6 +43,7 @@ const (
 	DatabaseTypeMinIOParquet      DatabaseType = "minio_parquet"
 	DatabaseTypeMinIOCSV          DatabaseType = "minio_csv"
 	DatabaseTypeMinIOORC          DatabaseType = "minio_orc"
+	DatabaseTypeMinIOAvro         DatabaseType = "minio_avro"
 	DatabaseTypeAlibabaOSSParquet DatabaseType = "oss_parquet"
 	DatabaseTypeTencentCOSParquet DatabaseType = "cos_parquet"
 	DatabaseTypeAzureBlobParquet  DatabaseType = "azure_blob_parquet"

@@ -95,6 +95,19 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO Avro OCF local S3-compatible fixture
+
+The MinIO Avro fixture serves a deterministic OCF sample through a local HTTP
+server that checks SigV4 authorization, bucket-in-path addressing, object
+metadata requests, and full-object reads. It covers source validation, health,
+metadata discovery, filtering, ordering, pagination, COUNT(*), schema discovery,
+and write rejection through the configured database/sql adapter. It is local
+protocol coverage, not a live MinIO release contract. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'MinIOAvro' -count=1 -v
+~~~~
+
 ## MinIO ORC local S3-compatible fixture
 
 The MinIO ORC fixture serves the committed ORC sample through a local HTTP

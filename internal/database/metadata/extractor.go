@@ -308,7 +308,7 @@ func isORCObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isAvroObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3Avro
+	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro
 }
 
 func isS3JSONObjectSource(dbType model.DatabaseType) bool {
@@ -343,6 +343,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.S3ORCTableName(config)
 	case model.DatabaseTypeS3Avro:
 		return object_storage.S3AvroTableName(config)
+	case model.DatabaseTypeMinIOAvro:
+		return object_storage.MinIOAvroTableName(config)
 	case model.DatabaseTypeS3JSON:
 		return object_storage.S3JSONTableName(config)
 	case model.DatabaseTypeOSSDelta:

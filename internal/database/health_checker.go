@@ -397,6 +397,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3Avro {
 			return hc.validateS3AvroConfig(config)
 		}
+		if dbType == model.DatabaseTypeMinIOAvro {
+			return object_storage.ValidateMinIOAvroConfig(config)
+		}
 		if dbType == model.DatabaseTypeS3JSON {
 			return hc.validateS3JSONConfig(config)
 		}

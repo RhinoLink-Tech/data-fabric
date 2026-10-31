@@ -11,6 +11,10 @@ import (
 
 // OpenWithConfig creates a read-only SQL adapter for one configured S3 Avro OCF.
 func (d *S3AvroDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	return d.openWithConfig(ctx, config, "s3-avro")
+}
+
+func (d *S3AvroDriver) openWithConfig(ctx context.Context, config *model.DataSourceConfig, driverName string) (*sql.DB, error) {
 	if config == nil {
 		return nil, errors.New("s3-avro data source config is required")
 	}
@@ -52,7 +56,7 @@ func (d *S3AvroDriver) OpenWithConfig(ctx context.Context, config *model.DataSou
 		return nil, err
 	}
 	return newObjectSQLDB(&objectSQLAdapter{
-		driverName: "s3-avro",
+		driverName: driverName,
 		objectKey:  objectKey,
 		tableName:  tableName,
 		ping: func(ctx context.Context, key string) error {

@@ -490,10 +490,18 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
-		profile.AuthenticationDisclosure = "A local S3-compatible HTTP fixture covers signed object metadata and byte-range reads; no live MinIO release contract is recorded."
+		profile.AuthenticationDisclosure = "A local S3-compatible HTTP fixture covers signed object metadata and full-object reads; no live MinIO release contract is recorded."
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured ORC object as one SQL table and reads object ranges into gateway memory before SQL filtering and pagination.",
 			"Only primitive top-level columns and the codecs supported by the shared ORC decoder are available; nested/repeated columns, multi-object scans, partition discovery, and write operations are not supported.")
+	case model.DatabaseTypeMinIOAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "A local S3-compatible HTTP fixture covers signed object metadata and byte-range reads; no live MinIO release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter exposes one configured Avro OCF object as one SQL table and downloads the full object into gateway memory before decoding and applying filters or pagination.",
+			"Only flat records with primitive fields or nullable unions of null and one primitive type are supported. Nested records, arrays, maps, named unions, schema registries, multiple objects, partition scans, and writes are not supported.",
+			"Only null, deflate, and Snappy OCF codecs are supported by the current decoder.")
 	}
 }
 

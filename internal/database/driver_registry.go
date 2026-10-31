@@ -194,6 +194,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeMinIOORC, func() drivers.Driver {
 		return &object_storage.MinIOORCDriver{}
 	})
+	dr.register(model.DatabaseTypeMinIOAvro, func() drivers.Driver {
+		return &object_storage.MinIOAvroDriver{}
+	})
 	dr.register(model.DatabaseTypeAlibabaOSSParquet, func() drivers.Driver {
 		return &object_storage.OSSParquetDriver{}
 	})

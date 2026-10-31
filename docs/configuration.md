@@ -404,6 +404,32 @@ files are downloaded into gateway memory before SQL filtering and pagination;
 decoded rows add memory use beyond the compressed object sizes. Local MinIO SDK
 fixtures do not establish compatibility with a live MinIO release.
 
+## MinIO Avro OCF source
+
+Register a minio_avro source to expose one Avro Object Container File (OCF)
+object stored in MinIO as a read-only SQL table. It uses the shared S3-compatible
+Avro reader and SQL adapter.
+
+| Data-source field or property | MinIO Avro meaning |
+| --- | --- |
+| database | Required bucket name. |
+| host or additionalProps.object_key | Required object key. If table_name is omitted, the SQL table name is inferred from the object filename. |
+| username and password | Required MinIO access key and secret key. |
+| additionalProps.endpoint_url | Required HTTP(S) MinIO endpoint origin; credentials, paths, query strings, and fragments are not allowed. |
+| additionalProps.region | S3 signing region; defaults to us-east-1. |
+| additionalProps.session_token | Optional temporary S3 credential token. |
+| additionalProps.force_path_style | Defaults to true for MinIO-compatible services. |
+| additionalProps.table_name | Optional SQL table name; defaults to the object filename without its extension. |
+
+The SQL adapter supports projection, its shared scalar filters, ORDER BY,
+LIMIT/OFFSET, and COUNT(*). It exposes one configured flat-record OCF object
+and downloads the full object into gateway memory before decoding and applying
+SQL filters or pagination. Nested records, arrays, maps, named unions, schema
+registries, multiple objects, partition scans, and writes are not supported.
+Only null, deflate, and Snappy OCF codecs are supported. The local signed
+S3-compatible fixture does not establish compatibility with a live MinIO
+release; see the support catalog.
+
 ## MinIO ORC source
 
 Register a minio_orc source to expose one ORC object stored in MinIO as a

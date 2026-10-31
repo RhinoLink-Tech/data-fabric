@@ -288,6 +288,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") {
 		t.Errorf("MinIO ORC catalog must disclose its object and schema boundaries: %+v", minioORC.Limitations)
 	}
+	minioAvro := profiles[string(model.DatabaseTypeMinIOAvro)]
+	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || minioAvro.EndToEndVerified {
+		t.Errorf("MinIO Avro must expose its experimental SQL adapter without claiming a live version contract: %+v", minioAvro)
+	}
+	if !containsSupportLimitation(minioAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(minioAvro.Limitations, "Nested records") {
+		t.Errorf("MinIO Avro catalog must disclose its object and schema boundaries: %+v", minioAvro.Limitations)
+	}
 	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
 	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
 		t.Errorf("Azure Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", azureDelta)
