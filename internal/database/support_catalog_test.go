@@ -163,7 +163,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
 	} {
 		profile := profiles[string(dbType)]
@@ -180,6 +180,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") {
 		t.Errorf("HDFS CSV catalog must disclose its file and memory boundaries: %+v", hdfsCSV.Limitations)
+	}
+	hdfsParquet := profiles[string(model.DatabaseTypeHDFSParquet)]
+	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusExperimental || !hdfsParquet.Capabilities.SupportsSQL {
+		t.Errorf("HDFS Parquet must expose its experimental read-only SQL path: %+v", hdfsParquet)
+	}
+	if !containsSupportLimitation(hdfsParquet.Limitations, "one configured Parquet file") || !containsSupportLimitation(hdfsParquet.Limitations, "64 MiB") {
+		t.Errorf("HDFS Parquet catalog must disclose its file and memory boundaries: %+v", hdfsParquet.Limitations)
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {

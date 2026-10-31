@@ -949,3 +949,23 @@ and it does not provide partition discovery, streaming, or Kerberos
 authentication. The configured HDFS username is forwarded as the simple-user
 identity; deployments that require stronger authentication should use an engine
 or connector that supports their HDFS security mode.
+
+## HDFS Parquet data sources
+
+An HDFS Parquet source exposes one configured file as one read-only SQL table.
+Use the same NameNode host, RPC port (8020 by default), and HDFS simple-user
+identity described above. Set database to an absolute path ending in .parquet;
+file_path in additionalProps may be used instead. The SQL table name defaults
+to the file name without its extension and can be overridden with table_name.
+
+The adapter accepts max_file_bytes in additionalProps. It defaults to 16 MiB
+and can be raised to 64 MiB. Queries reject files with more than 100,000 rows.
+The configured Parquet file is read into gateway memory before decoding; filters,
+projection, ordering, and pagination operate on decoded rows. Use it for small,
+flat files whose size and row count fit these limits.
+
+The read-only SQL subset supports projections, supported WHERE comparisons and
+IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory discovery,
+multiple files, partition pruning, row-group or column pruning, streaming,
+Kerberos, and HDFS HA guarantees are outside this adapter's contract. The
+configured username is forwarded as the HDFS simple-user identity.

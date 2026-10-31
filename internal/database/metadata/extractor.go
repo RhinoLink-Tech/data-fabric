@@ -65,7 +65,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isHDFSCSVSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	} else if isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil && isMinIOIcebergSource(dataSource.Type) {
@@ -134,7 +134,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		table.Schema = namespace
 		return table, nil
 	}
-	if isHDFSCSVSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -258,7 +258,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isHDFSCSVSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -300,6 +300,10 @@ func isHDFSCSVSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeHDFSCSV
 }
 
+func isHDFSParquetSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeHDFSParquet
+}
+
 func isCSVObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV
 }
@@ -336,6 +340,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 	switch dbType {
 	case model.DatabaseTypeHDFSCSV:
 		return file_system.HDFSCSVTableName(config)
+	case model.DatabaseTypeHDFSParquet:
+		return file_system.HDFSParquetTableName(config)
 	case model.DatabaseTypeMinIOParquet:
 		return object_storage.MinIOParquetTableName(config)
 	case model.DatabaseTypeS3Parquet:

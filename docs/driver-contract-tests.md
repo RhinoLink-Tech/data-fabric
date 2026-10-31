@@ -587,3 +587,14 @@ cluster. It does not certify NameNode/DataNode interoperability, HDFS release
 compatibility, authorization behavior, Kerberos, HA failover, or large-file
 performance. Keep HDFS CSV experimental until a versioned live-cluster contract
 is available.
+
+## HDFS Parquet local file-client fixture
+
+The HDFS Parquet adapter reads a single configured file through the shared
+read-only SQL path and uses the existing Parquet decoder. A deterministic local
+Parquet fixture and injected file client cover projected and filtered SQL,
+ordering and pagination, COUNT(*), metadata discovery, configured file bounds,
+and write rejection. This fixture requires no HDFS service and does not certify
+NameNode/DataNode interoperability, a live HDFS release, authorization,
+Kerberos, HA behavior, or large-file performance. The connector remains
+experimental until a pinned live HDFS contract is available.

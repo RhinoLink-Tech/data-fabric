@@ -129,7 +129,7 @@ func TestMongoDBUsesMySQLCompatibleReadOnlySQLGrammar(t *testing.T) {
 
 func TestUnsupportedHDFSTypesHaveNoSQLValidationDialect(t *testing.T) {
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed,
 	} {
 		if dialect, ok := SQLDialectForDataSource(dbType); ok {
@@ -164,6 +164,7 @@ func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 		model.DatabaseTypeClickHouse:  "clickhouse",
 		model.DatabaseTypeStarRocks:   "starrocks",
 		model.DatabaseTypeHDFSCSV:     "mysql",
+		model.DatabaseTypeHDFSParquet: "mysql",
 		model.DatabaseTypeS3Delta:     "spark",
 		model.DatabaseTypeMinIOORC:    "mysql",
 		model.DatabaseTypeMinIOAvro:   "mysql",

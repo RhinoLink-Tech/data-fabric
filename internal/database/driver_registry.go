@@ -65,6 +65,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeHDFSCSV, func() drivers.Driver {
 		return &file_system.HDFSCSVDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSParquet, func() drivers.Driver {
+		return &file_system.HDFSParquetDriver{}
+	})
 
 	// Chinese domestic databases
 	dr.register(model.DatabaseTypeDaMeng, func() drivers.Driver {

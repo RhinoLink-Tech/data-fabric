@@ -9,10 +9,13 @@ import (
 	"github.com/xitongsys/parquet-go/source"
 )
 
-// ParquetReader reads Parquet files from object storage
+// ParquetReader reads Parquet files from object storage or a supplied file factory
+type ParquetFileFactory func(context.Context, string) (source.ParquetFile, error)
+
 type ParquetReader struct {
-	s3Client *S3Client
-	config   *ParquetReaderConfig
+	s3Client    *S3Client
+	config      *ParquetReaderConfig
+	fileFactory ParquetFileFactory
 }
 
 // ParquetReaderConfig holds Parquet reader configuration
@@ -41,6 +44,14 @@ func NewParquetReader(s3Client *S3Client, config *ParquetReaderConfig) *ParquetR
 	}
 }
 
+// NewParquetReaderWithFileFactory creates a reader over a seekable file source
+// supplied by a filesystem or another storage backend.
+func NewParquetReaderWithFileFactory(config *ParquetReaderConfig, factory ParquetFileFactory) *ParquetReader {
+	reader := NewParquetReader(nil, config)
+	reader.fileFactory = factory
+	return reader
+}
+
 // ParquetFileReader wraps parquet-go reader with S3 integration
 type ParquetFileReader struct {
 	reader   *reader.ParquetReader
@@ -50,24 +61,35 @@ type ParquetFileReader struct {
 	key      string
 }
 
-// Read reads Parquet file from S3
+// Read opens a Parquet file through S3 or the configured file factory
 func (r *ParquetReader) Read(ctx context.Context, key string) (*ParquetFileReader, error) {
-	if r == nil || r.s3Client == nil {
-		return nil, fmt.Errorf("S3 client is required")
+	if r == nil || (r.s3Client == nil && r.fileFactory == nil) {
+		return nil, fmt.Errorf("S3 client or Parquet file factory is required")
 	}
 	if key == "" {
 		return nil, fmt.Errorf("Parquet object key is required")
 	}
 
-	// Download file or use S3 seekable reader.
-	s3File, err := NewS3FileWithContext(ctx, r.s3Client, key)
+	var parquetFile source.ParquetFile
+	var err error
+	if r.fileFactory != nil {
+		parquetFile, err = r.fileFactory(ctx, key)
+	} else {
+		if r.s3Client == nil {
+			return nil, fmt.Errorf("S3 client or Parquet file factory is required")
+		}
+		parquetFile, err = NewS3FileWithContext(ctx, r.s3Client, key)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 file: %w", err)
+		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
+	}
+	if parquetFile == nil {
+		return nil, fmt.Errorf("Parquet file factory returned a nil file")
 	}
 
-	fileReader, err := newParquetFileReader(s3File, int64(r.config.BatchSize))
+	fileReader, err := newParquetFileReader(parquetFile, int64(r.config.BatchSize))
 	if err != nil {
-		_ = s3File.Close()
+		_ = parquetFile.Close()
 		return nil, err
 	}
 	fileReader.s3Client = r.s3Client
@@ -240,6 +262,9 @@ type ColumnStats struct {
 
 // GetMetadata retrieves Parquet file metadata
 func (r *ParquetReader) GetMetadata(ctx context.Context, key string) (*ParquetMetadata, error) {
+	if r == nil || r.s3Client == nil {
+		return nil, fmt.Errorf("S3 client is required for object metadata")
+	}
 	s3File, err := NewS3FileWithContext(ctx, r.s3Client, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 file: %w", err)

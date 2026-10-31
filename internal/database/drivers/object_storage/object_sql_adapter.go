@@ -20,6 +20,7 @@ type objectSQLAdapter struct {
 	ping       func(context.Context, string) error
 	getSchema  func(context.Context, string) (*objectSQLSchema, error)
 	readRows   func(context.Context, string) (*objectSQLSchema, []map[string]interface{}, error)
+	close      func() error
 }
 
 func newObjectSQLDB(adapter *objectSQLAdapter) *sql.DB {
@@ -46,7 +47,12 @@ type objectSQLConn struct{ adapter *objectSQLAdapter }
 func (c *objectSQLConn) Prepare(string) (driver.Stmt, error) {
 	return nil, fmt.Errorf("%s does not support prepared statements", c.adapter.driverName)
 }
-func (c *objectSQLConn) Close() error { return nil }
+func (c *objectSQLConn) Close() error {
+	if c.adapter.close != nil {
+		return c.adapter.close()
+	}
+	return nil
+}
 func (c *objectSQLConn) Begin() (driver.Tx, error) {
 	return nil, fmt.Errorf("%s supports read-only SELECT queries", c.adapter.driverName)
 }
