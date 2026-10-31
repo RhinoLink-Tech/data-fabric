@@ -4,103 +4,95 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// AzureDeltaDriver implements Driver interface for Azure Blob Delta Lake tables
+// AzureDeltaDriver reads bounded, unpartitioned Delta snapshots stored in Azure Blob Storage.
 type AzureDeltaDriver struct {
-	config *AzureBlobConfig
-	client *AzureBlobClient
+	config    *AzureBlobConfig
+	client    *AzureBlobClient
+	tablePath string
+	tableName string
+	batchSize int
 }
 
-// NewAzureDeltaDriver creates a new Azure Delta Lake driver
+// NewAzureDeltaDriver creates an Azure Delta reader.
 func NewAzureDeltaDriver(ctx context.Context, config *AzureBlobConfig) (*AzureDeltaDriver, error) {
 	client, err := NewAzureBlobClient(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &AzureDeltaDriver{
-		config: config,
-		client: client,
-	}, nil
+	return &AzureDeltaDriver{config: config, client: client, batchSize: 1000}, nil
 }
 
-// Open opens a connection (not applicable for Azure Delta Lake)
-func (d *AzureDeltaDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("Azure Delta Lake driver does not support standard database connections")
+func (d *AzureDeltaDriver) Open(string) (*sql.DB, error) {
+	return nil, fmt.Errorf("Azure Delta requires a configured read-only SQL adapter")
 }
 
-// ValidateDSN validates the connection string
 func (d *AzureDeltaDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	if !strings.HasPrefix(dsn, "azure://") {
+		return fmt.Errorf("invalid Azure Delta URI: %s", dsn)
+	}
+	container, tablePath, found := strings.Cut(strings.TrimPrefix(dsn, "azure://"), "/")
+	if !found || strings.TrimSpace(container) == "" {
+		return fmt.Errorf("Azure Delta URI must include a container and table path")
+	}
+	if _, err := cleanObjectDeltaTablePath(tablePath); err != nil {
+		return err
 	}
 	return nil
 }
 
-// GetDefaultPort returns the default Azure Blob port
-func (d *AzureDeltaDriver) GetDefaultPort() int {
-	return 443 // HTTPS
-}
+func (d *AzureDeltaDriver) GetDefaultPort() int { return 443 }
 
-// BuildDSN builds a connection string from configuration
 func (d *AzureDeltaDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("azure://%s/%s", config.Database, config.Host)
-}
-
-// GetDatabaseTypeName returns the database type name
-func (d *AzureDeltaDriver) GetDatabaseTypeName() string {
-	return "azure-delta"
-}
-
-// TestConnection tests if the connection is working
-func (d *AzureDeltaDriver) TestConnection(db *sql.DB) error {
-	return fmt.Errorf("use TestConnectionContext instead")
-}
-
-// TestConnectionContext tests the Azure Blob connection
-func (d *AzureDeltaDriver) TestConnectionContext(ctx context.Context) error {
-	_, err := d.client.ListBlobs(ctx, "", 1)
-	if err != nil {
-		return fmt.Errorf("failed to test Azure connection: %w", err)
+	if config == nil {
+		return "azure://"
 	}
-	return nil
+	tablePath := configString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = config.Host
+	}
+	return fmt.Sprintf("azure://%s/%s", config.Database, tablePath)
 }
 
-// GetDriverName returns the driver name
-func (d *AzureDeltaDriver) GetDriverName() string {
-	return "azure-delta"
-}
-
-// GetCategory returns the driver category
+func (d *AzureDeltaDriver) GetDatabaseTypeName() string { return "azure-delta" }
+func (d *AzureDeltaDriver) GetDriverName() string       { return "azure-delta" }
 func (d *AzureDeltaDriver) GetCategory() drivers.DriverCategory {
 	return drivers.CategoryObjectStorage
 }
 
-// GetCapabilities returns driver capabilities
-func (d *AzureDeltaDriver) GetCapabilities() drivers.DriverCapabilities {
-	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
-	}
+func (d *AzureDeltaDriver) TestConnection(*sql.DB) error {
+	return fmt.Errorf("use TestConnectionContext instead")
 }
 
-// ConfigureAuth configures authentication
-func (d *AzureDeltaDriver) ConfigureAuth(authConfig interface{}) error {
+func (d *AzureDeltaDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.client == nil {
+		return fmt.Errorf("Azure Delta driver is not initialized")
+	}
+	_, err := d.client.ListBlobs(ctx, "", 1)
+	if err != nil {
+		return fmt.Errorf("failed to test Azure Blob connection: %w", err)
+	}
 	return nil
 }
 
-// ApplyBatchPagination adds pagination to SQL query
-func (d *AzureDeltaDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For Azure Delta files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Delta files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+func (d *AzureDeltaDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{
+		SupportsSQL:             true,
+		SupportsTransaction:     false,
+		SupportsSchemaDiscovery: true,
+		SupportsTimeTravel:      false,
+		RequiresTokenRotation:   false,
+		SupportsStreaming:       false,
+	}
+}
+
+func (d *AzureDeltaDriver) ConfigureAuth(interface{}) error { return nil }
+
+func (d *AzureDeltaDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return applyObjectBatchPagination(query, batchSize, offset)
 }

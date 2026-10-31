@@ -489,6 +489,35 @@ gateway memory budget. Local Azure SDK protocol fixtures cover request wiring,
 Shared Key signing, and SAS token propagation; they do not establish
 compatibility with a live Azure Storage service release.
 
+## Azure Blob Delta source
+
+The azure_delta source exposes one configured Delta table as a read-only SQL
+table. It resolves a snapshot from consecutive JSON transaction-log commits
+starting at version zero and reads active Parquet files. It accepts unpartitioned
+tables with flat primitive columns and the shared object SQL subset: projection,
+simple comparisons joined by AND, IS NULL, IN, LIKE, ORDER BY, LIMIT, OFFSET,
+and COUNT(*).
+
+| Data-source field or property | Azure Blob Delta meaning |
+| --- | --- |
+| database | Azure Blob container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted by the Azure client. |
+| additionalProps.endpoint_url | Optional Azure Blob endpoint; useful for local emulators and compatible endpoints. |
+| additionalProps.table_path | Delta table root within the container; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the final table-path component. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000 and is capped at 10000. |
+
+The adapter rejects checkpoints, partitioned tables, deletion vectors, empty
+tables, unknown transaction-log actions, and reader features beyond protocol
+version 1. It also rejects snapshots with more than 256 active data files, more
+than 64 MiB of active Parquet data, or more than 100,000 decoded rows. Active
+files are downloaded into gateway memory before SQL filtering and pagination;
+decoded rows add memory use beyond the compressed object sizes. Local Azure SDK
+protocol fixtures do not establish compatibility with a live Azure Storage
+release.
+
 ## Tencent COS Parquet source
 
 The cos_parquet connector exposes one configured Parquet object as a read-only

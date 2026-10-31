@@ -274,6 +274,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") {
 		t.Errorf("MinIO Delta catalog must disclose its snapshot and memory boundaries: %+v", minioDelta.Limitations)
 	}
+	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
+	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
+		t.Errorf("Azure Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", azureDelta)
+	}
+	if !containsSupportLimitation(azureDelta.Limitations, "checkpoints") || !containsSupportLimitation(azureDelta.Limitations, "100,000 decoded rows") {
+		t.Errorf("Azure Delta catalog must disclose its snapshot and memory boundaries: %+v", azureDelta.Limitations)
+	}
 }
 
 func containsSupportLimitation(limitations []string, expected string) bool {

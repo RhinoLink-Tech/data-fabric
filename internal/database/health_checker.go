@@ -418,6 +418,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeMinIODelta {
 			return hc.validateMinIODeltaConfig(config)
 		}
+		if dbType == model.DatabaseTypeAzureDelta {
+			return hc.validateAzureDeltaConfig(config)
+		}
 		if dbType == model.DatabaseTypeTencentCOSParquet {
 			return hc.validateCOSParquetConfig(config)
 		}
@@ -653,6 +656,35 @@ func (hc *HealthChecker) validateMinIODeltaConfig(config *model.DataSourceConfig
 		return fmt.Errorf("MinIO access key and secret key are required")
 	}
 	if _, _, err := object_storage.MinIODeltaEndpointFromConfig(config); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (hc *HealthChecker) validateAzureDeltaConfig(config *model.DataSourceConfig) error {
+	if config == nil {
+		return fmt.Errorf("data source config is required")
+	}
+	if strings.TrimSpace(config.Database) == "" {
+		return fmt.Errorf("container name is required in database")
+	}
+	tablePath := dataSourcePropString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = config.Host
+	}
+	if strings.Trim(strings.TrimSpace(tablePath), "/") == "" {
+		return fmt.Errorf("table_path is required in additionalProps or host")
+	}
+	if _, err := object_storage.AzureDeltaTableName(config); err != nil {
+		return err
+	}
+	if strings.TrimSpace(config.Username) == "" {
+		return fmt.Errorf("Azure Blob account name is required in username")
+	}
+	if strings.TrimSpace(config.Password) == "" && strings.TrimSpace(dataSourcePropString(config.AdditionalProps, "sas_token")) == "" {
+		return fmt.Errorf("Azure Blob account key or sas_token is required")
+	}
+	if _, err := object_storage.AzureDeltaEndpointFromConfig(config); err != nil {
 		return err
 	}
 	return nil

@@ -287,7 +287,7 @@ func isS3JSONObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeMinIODelta
+	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta
 }
 
 func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
@@ -312,6 +312,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSDeltaTableName(config)
 	case model.DatabaseTypeMinIODelta:
 		return object_storage.MinIODeltaTableName(config)
+	case model.DatabaseTypeAzureDelta:
+		return object_storage.AzureDeltaTableName(config)
 	default:
 		return "", fmt.Errorf("object SQL metadata is not supported for %s", dbType)
 	}

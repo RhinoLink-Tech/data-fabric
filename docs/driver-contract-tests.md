@@ -95,6 +95,21 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## Azure Blob Delta protocol fixture
+
+The Azure Delta fixture exercises the Azure SDK against a local HTTP server. It
+covers Shared Key signing, SAS query-token propagation, Delta snapshot listing
+and replay, active Parquet reads, health checks, schema discovery, read-only SQL
+filtering/order/pagination/count, cancellation, and write rejection. The
+query-service fixture also exercises batch pagination. Run the fixtures with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage ./internal/service -run 'AzureDelta' -count=1 -v
+~~~~
+
+These fixtures do not run against Azure Storage and do not establish a live
+Azure version contract. The adapter remains experimental.
+
 ## Tencent COS Parquet protocol fixture
 
 The COS Parquet adapter has deterministic protocol-fixture coverage using the
