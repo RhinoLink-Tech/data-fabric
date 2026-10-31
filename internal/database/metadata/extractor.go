@@ -312,7 +312,7 @@ func isAvroObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isS3JSONObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3JSON
+	return dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
@@ -347,6 +347,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.MinIOAvroTableName(config)
 	case model.DatabaseTypeS3JSON:
 		return object_storage.S3JSONTableName(config)
+	case model.DatabaseTypeMinIOJSON:
+		return object_storage.MinIOJSONTableName(config)
 	case model.DatabaseTypeOSSDelta:
 		return object_storage.OSSDeltaTableName(config)
 	case model.DatabaseTypeMinIODelta:

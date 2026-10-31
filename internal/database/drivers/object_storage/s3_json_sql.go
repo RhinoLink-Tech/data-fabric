@@ -13,6 +13,10 @@ import (
 // OpenWithConfig creates a read-only SQL adapter for one configured S3 JSON
 // object. The gateway parser is used consistently across S3-compatible stores.
 func (d *S3JSONDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	return d.openWithConfig(ctx, config, "s3-json")
+}
+
+func (d *S3JSONDriver) openWithConfig(ctx context.Context, config *model.DataSourceConfig, driverName string) (*sql.DB, error) {
 	if config == nil {
 		return nil, errors.New("s3-json data source config is required")
 	}
@@ -55,7 +59,7 @@ func (d *S3JSONDriver) OpenWithConfig(ctx context.Context, config *model.DataSou
 		return nil, err
 	}
 	return newObjectSQLDB(&objectSQLAdapter{
-		driverName: "s3-json",
+		driverName: driverName,
 		objectKey:  objectKey,
 		tableName:  tableName,
 		ping: func(ctx context.Context, key string) error {

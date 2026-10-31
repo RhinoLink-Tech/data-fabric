@@ -95,6 +95,20 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO JSON local S3-compatible fixture
+
+The MinIO JSON fixture serves a JSON object, a JSON array, and JSON Lines from a
+local HTTP server that checks SigV4 authorization, bucket-in-path addressing,
+object metadata requests, and full-object reads. It exercises source validation,
+health, metadata discovery, schema inference, read-only filtering, ordering,
+COUNT(*), schema-only queries, and write rejection through the configured
+database/sql adapter. It is local protocol coverage, not a live MinIO release
+contract. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'MinIOJSON' -count=1 -v
+~~~~
+
 ## MinIO Avro OCF local S3-compatible fixture
 
 The MinIO Avro fixture serves a deterministic OCF sample through a local HTTP

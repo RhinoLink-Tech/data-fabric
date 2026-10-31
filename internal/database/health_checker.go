@@ -403,6 +403,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3JSON {
 			return hc.validateS3JSONConfig(config)
 		}
+		if dbType == model.DatabaseTypeMinIOJSON {
+			return object_storage.ValidateMinIOJSONConfig(config)
+		}
 		if dbType == model.DatabaseTypeS3Parquet {
 			return hc.validateS3ParquetConfig(config)
 		}
