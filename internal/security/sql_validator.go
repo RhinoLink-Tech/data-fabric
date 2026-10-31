@@ -195,7 +195,7 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
 		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
 		model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
-		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return "mysql", true
 	default:
@@ -834,7 +834,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeS3Avro,
 		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
 		model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet,
-		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet,
+		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
@@ -859,8 +859,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 		}
 
 	// HDFS types without a registered query path must not inherit a SQL dialect.
-	case model.DatabaseTypeHDFSAvro,
-		model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
+	case model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSParquetCompressed:
 		return DataSourceSQLConfig{}
 
 	// File Systems

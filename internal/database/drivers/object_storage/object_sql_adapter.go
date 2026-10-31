@@ -64,7 +64,7 @@ func (c *objectSQLConn) Ping(ctx context.Context) error {
 		return fmt.Errorf("%s object access is not configured", c.adapter.driverName)
 	}
 	if err := c.adapter.ping(ctx, c.adapter.objectKey); err != nil {
-		return fmt.Errorf("failed to access configured Parquet object: %w", err)
+		return fmt.Errorf("failed to access configured object: %w", err)
 	}
 	return nil
 }

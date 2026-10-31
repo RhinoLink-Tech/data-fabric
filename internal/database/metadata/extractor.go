@@ -317,7 +317,7 @@ func isORCObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isAvroObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro
+	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro
 }
 
 func isS3JSONObjectSource(dbType model.DatabaseType) bool {
@@ -342,6 +342,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return file_system.HDFSCSVTableName(config)
 	case model.DatabaseTypeHDFSParquet:
 		return file_system.HDFSParquetTableName(config)
+	case model.DatabaseTypeHDFSAvro:
+		return file_system.HDFSAvroTableName(config)
 	case model.DatabaseTypeMinIOParquet:
 		return object_storage.MinIOParquetTableName(config)
 	case model.DatabaseTypeS3Parquet:

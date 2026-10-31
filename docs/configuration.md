@@ -969,3 +969,20 @@ IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory discovery,
 multiple files, partition pruning, row-group or column pruning, streaming,
 Kerberos, and HDFS HA guarantees are outside this adapter's contract. The
 configured username is forwarded as the HDFS simple-user identity.
+
+## HDFS Avro OCF data sources
+
+An HDFS Avro source exposes one configured Avro Object Container File as one
+read-only SQL table. Use the NameNode host, RPC port (8020 by default), HDFS
+simple-user identity, and absolute file path conventions described above. The
+path must end in .avro; table_name defaults to the file name without its
+extension. max_file_bytes defaults to 16 MiB and can be raised to 64 MiB.
+Queries reject files with more than 100,000 records.
+
+Only OCF files with a non-empty record schema and supported top-level primitive
+or nullable primitive fields are queryable. Raw Avro datum streams, standalone
+schema JSON, nested records, arrays, maps, and named fields are outside this
+adapter. The read-only SQL subset supports projections, supported WHERE
+comparisons and IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory
+scans, multiple files, streaming, Kerberos, and HDFS HA guarantees are not
+provided. HDFS files and decoded records are held in gateway memory.

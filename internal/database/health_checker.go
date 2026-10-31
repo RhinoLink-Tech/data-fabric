@@ -458,6 +458,12 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 			}
 			return file_system.ValidateHDFSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeHDFSAvro {
+			if err := applyDriverDefaultPort(config, driver); err != nil {
+				return err
+			}
+			return file_system.ValidateHDFSAvroConfig(config)
+		}
 		// File systems (HDFS/Ozone) use the registered driver's port defaults.
 		return hc.validateFileSystemConfig(config, driver)
 	case drivers.CategoryTableFormat:

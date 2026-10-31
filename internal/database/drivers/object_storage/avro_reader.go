@@ -12,10 +12,13 @@ import (
 	"github.com/linkedin/goavro/v2"
 )
 
-// AvroReader reads Avro Object Container Files from S3-compatible storage.
+// AvroReader reads Avro Object Container Files from S3-compatible storage or a supplied reader.
+type AvroObjectReadFunc func(context.Context, string) ([]byte, error)
+
 type AvroReader struct {
-	s3Client *S3Client
-	config   *AvroReaderConfig
+	s3Client   *S3Client
+	config     *AvroReaderConfig
+	readObject AvroObjectReadFunc
 }
 
 // AvroReaderConfig holds Avro reader configuration.
@@ -34,6 +37,14 @@ func NewAvroReader(s3Client *S3Client, config *AvroReaderConfig) *AvroReader {
 	return &AvroReader{s3Client: s3Client, config: config}
 }
 
+// NewAvroReaderWithReadFunc creates an OCF reader over a filesystem or other
+// bounded source without requiring an S3 client.
+func NewAvroReaderWithReadFunc(config *AvroReaderConfig, read AvroObjectReadFunc) *AvroReader {
+	reader := NewAvroReader(nil, config)
+	reader.readObject = read
+	return reader
+}
+
 // AvroFileReader holds the downloaded OCF bytes so schema discovery and row
 // decoding use the same object version and do not issue duplicate downloads.
 type AvroFileReader struct {
@@ -46,8 +57,8 @@ type AvroFileReader struct {
 // Read downloads one OCF object and reads its embedded schema from the OCF
 // header. Raw Avro datum streams and standalone schema JSON are not OCF files.
 func (r *AvroReader) Read(ctx context.Context, key string) (*AvroFileReader, error) {
-	if r == nil || r.s3Client == nil {
-		return nil, fmt.Errorf("S3 client is required")
+	if r == nil || (r.s3Client == nil && r.readObject == nil) {
+		return nil, fmt.Errorf("S3 client or Avro object reader is required")
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("Avro object key is required")
@@ -55,7 +66,13 @@ func (r *AvroReader) Read(ctx context.Context, key string) (*AvroFileReader, err
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	data, err := r.s3Client.GetObject(ctx, key)
+	var data []byte
+	var err error
+	if r.readObject != nil {
+		data, err = r.readObject(ctx, key)
+	} else {
+		data, err = r.s3Client.GetObject(ctx, key)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read Avro OCF object: %w", err)
 	}

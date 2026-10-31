@@ -598,3 +598,13 @@ and write rejection. This fixture requires no HDFS service and does not certify
 NameNode/DataNode interoperability, a live HDFS release, authorization,
 Kerberos, HA behavior, or large-file performance. The connector remains
 experimental until a pinned live HDFS contract is available.
+
+## HDFS Avro OCF local file-client fixture
+
+A deterministic Avro OCF fixture and injected local file client cover record
+decoding, nullable fields, read-only projection/filter/order/page queries,
+COUNT(*), metadata discovery, file and record limits, cancellation/error
+handling, and write rejection without requiring HDFS. The fixture does not
+certify NameNode/DataNode interoperability, a live HDFS release, authorization,
+Kerberos, HA behavior, or large-file performance. Keep the connector
+experimental until a pinned live HDFS contract is available.

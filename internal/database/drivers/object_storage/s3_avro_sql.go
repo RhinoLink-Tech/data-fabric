@@ -86,7 +86,7 @@ func (d *S3AvroDriver) openWithConfig(ctx context.Context, config *model.DataSou
 
 func objectSQLSchemaFromAvro(schema *AvroSchema) (*objectSQLSchema, error) {
 	if schema == nil || len(schema.Fields) == 0 {
-		return nil, errors.New("s3-avro returned an empty record schema")
+		return nil, errors.New("Avro OCF returned an empty record schema")
 	}
 	result := &objectSQLSchema{Columns: make([]objectSQLColumn, len(schema.Fields))}
 	for i, field := range schema.Fields {
