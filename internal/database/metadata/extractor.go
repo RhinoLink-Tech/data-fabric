@@ -316,7 +316,7 @@ func isS3JSONObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta
+	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta
 }
 
 func isMinIOIcebergSource(dbType model.DatabaseType) bool {
@@ -351,6 +351,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.MinIOJSONTableName(config)
 	case model.DatabaseTypeOSSDelta:
 		return object_storage.OSSDeltaTableName(config)
+	case model.DatabaseTypeS3Delta:
+		return object_storage.S3DeltaTableName(config)
 	case model.DatabaseTypeMinIODelta:
 		return object_storage.MinIODeltaTableName(config)
 	case model.DatabaseTypeAzureDelta:

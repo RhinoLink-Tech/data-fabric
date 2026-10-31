@@ -721,17 +721,21 @@ components:
         - azure_delta
         - azure_parquet
         - cos_parquet
+        - minio_avro
         - minio_csv
         - minio_delta
         - minio_iceberg
+        - minio_json
+        - minio_orc
         - minio_parquet
         - oss_delta
         - oss_parquet
-        - s3_parquet
-        - s3_orc
         - s3_avro
         - s3_csv
+        - s3_delta
         - s3_json
+        - s3_orc
+        - s3_parquet
         # Distributed file systems
         - hdfs_avro
         - hdfs_parquet

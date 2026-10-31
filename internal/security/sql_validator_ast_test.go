@@ -163,6 +163,10 @@ func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 		model.DatabaseTypeBigQuery:    "bigquery",
 		model.DatabaseTypeClickHouse:  "clickhouse",
 		model.DatabaseTypeStarRocks:   "starrocks",
+		model.DatabaseTypeS3Delta:     "spark",
+		model.DatabaseTypeMinIOORC:    "mysql",
+		model.DatabaseTypeMinIOAvro:   "mysql",
+		model.DatabaseTypeMinIOJSON:   "mysql",
 	}
 	for dbType, want := range tests {
 		got, ok := SQLDialectForDataSource(dbType)

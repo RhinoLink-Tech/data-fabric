@@ -376,6 +376,37 @@ authentication. TLS, STS, distributed MinIO deployments, and other releases
 remain outside that baseline; consult the [support catalog](data-source-support.md)
 before production use.
 
+## S3 Delta source
+
+The s3_delta source exposes one configured S3-hosted Delta table as a read-only
+SQL table. It replays consecutive JSON transaction-log commits from version zero
+and reads the active Parquet files. The adapter accepts unpartitioned tables
+with flat primitive columns and the shared object SQL subset: projection, simple
+comparisons joined by AND, IS NULL, IN, LIKE, ORDER BY, LIMIT, OFFSET, and
+COUNT(*).
+
+| Data-source field or property | S3 Delta meaning |
+| --- | --- |
+| database | S3 bucket name. |
+| username and password | Optional access key and secret key; configure both together. If omitted, the AWS SDK credential chain is used. |
+| additionalProps.endpoint_url | Optional S3-compatible HTTP(S) endpoint origin. |
+| additionalProps.force_path_style | Set to true for compatible services that require path-style addressing. |
+| additionalProps.table_path | Delta table root within the bucket; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the final table-path component. |
+| additionalProps.region | S3 signing region; defaults to us-east-1. |
+| additionalProps.session_token | Optional session token for temporary static credentials. |
+| additionalProps.role_arn and external_id | Optional role-assumption settings supported by the shared S3 client. |
+| additionalProps.batch_size | Number of Parquet rows decoded per batch; defaults to 1000 and is capped at 10000. |
+
+The adapter rejects checkpoints, partitioned tables, deletion vectors, empty
+tables, unknown transaction-log actions, and reader features beyond protocol
+version 1. It also rejects snapshots with more than 256 active data files, more
+than 64 MiB of active Parquet data, or more than 100,000 decoded rows. Active
+files are downloaded into gateway memory before SQL filtering and pagination;
+decoded rows add memory use beyond the compressed object sizes. The local signed
+S3 protocol fixture does not establish compatibility with AWS S3 or any other
+provider release.
+
 ## MinIO Delta source
 
 The minio_delta source exposes one configured Delta table as a read-only SQL

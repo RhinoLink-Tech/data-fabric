@@ -267,6 +267,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ossDelta.Limitations, "checkpoints") || !containsSupportLimitation(ossDelta.Limitations, "64 MiB") || !containsSupportLimitation(ossDelta.Limitations, "100,000 decoded rows") {
 		t.Errorf("OSS Delta catalog must disclose its snapshot and memory boundaries: %+v", ossDelta.Limitations)
 	}
+	s3Delta := profiles[string(model.DatabaseTypeS3Delta)]
+	if s3Delta.Status != ConnectorStatusExperimental || !s3Delta.Capabilities.SupportsSQL || s3Delta.EndToEndVerified {
+		t.Errorf("S3 Delta must expose an experimental SQL adapter without claiming a live version contract: %+v", s3Delta)
+	}
+	if !containsSupportLimitation(s3Delta.Limitations, "checkpoints") || !containsSupportLimitation(s3Delta.Limitations, "100,000 decoded rows") || !containsSupportLimitation(s3Delta.Limitations, "does not establish compatibility with AWS S3") {
+		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, and provider boundaries: %+v", s3Delta.Limitations)
+	}
 	minioDelta := profiles[string(model.DatabaseTypeMinIODelta)]
 	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || minioDelta.EndToEndVerified {
 		t.Errorf("MinIO Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", minioDelta)

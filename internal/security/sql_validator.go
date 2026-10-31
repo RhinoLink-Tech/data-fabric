@@ -189,12 +189,12 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 	case model.DatabaseTypeApacheDruid:
 		return "druid", true
 	case model.DatabaseTypeApacheIceberg, model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
 		model.DatabaseTypeMinIODelta:
 		return "spark", true
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
 		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
-		model.DatabaseTypeMinIOCSV, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+		model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return "mysql", true
@@ -831,8 +831,11 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 		}
 
 	// Object Storage - No SQL, API-based
-	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON:
+	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeS3Avro,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
+		model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet,
+		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,

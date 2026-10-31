@@ -79,6 +79,27 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 		t.Fatalf("S3 Avro partial credentials error = %v, want paired credential error", err)
 	}
 
+	s3DeltaConfig := &model.DataSourceConfig{
+		Host: "delta/events", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"table_path": "delta/events", "endpoint_url": "https://s3.example.test"},
+	}
+	if err := checker.ValidateDataSourceConfiguration(s3DeltaConfig, model.DatabaseTypeS3Delta); err != nil {
+		t.Fatalf("S3 Delta config should validate through its registered driver: %v", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{Database: "analytics"}, model.DatabaseTypeS3Delta); err == nil || !strings.Contains(err.Error(), "table_path") {
+		t.Fatalf("S3 Delta config without a table path error = %v, want table_path validation error", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "delta/events", Database: "analytics", Username: "access",
+	}, model.DatabaseTypeS3Delta); err == nil || !strings.Contains(err.Error(), "configured together") {
+		t.Fatalf("S3 Delta partial credentials error = %v, want paired credential error", err)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "../escape", Database: "analytics",
+	}, model.DatabaseTypeS3Delta); err == nil {
+		t.Fatal("S3 Delta config accepted a table path that escapes the bucket")
+	}
+
 	s3ORCConfig := &model.DataSourceConfig{
 		Host: "records.orc", Database: "analytics",
 		Username: "access", Password: "secret",

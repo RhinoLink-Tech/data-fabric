@@ -464,6 +464,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
 			"Queries use a restricted read-only SELECT subset and may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
 			"The local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
+	case model.DatabaseTypeS3Delta:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4), AWS credential chain, or assumed role"}
+		profile.AuthenticationDisclosure = "The local signed S3 protocol fixture covers static access-key authentication; AWS credential-chain, assumed-role, session-token, and provider-specific authorization modes are not covered by this fixture."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries use a restricted read-only SELECT subset and may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"The local S3 protocol fixture does not establish compatibility with AWS S3 or any S3-compatible provider release.")
 	case model.DatabaseTypeMinIODelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3-compatible access key and secret key, with optional session token"}

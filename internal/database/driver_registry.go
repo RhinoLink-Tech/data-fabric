@@ -173,6 +173,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeS3ORC, func() drivers.Driver {
 		return &object_storage.S3ORCDriver{}
 	})
+	dr.register(model.DatabaseTypeS3Delta, func() drivers.Driver {
+		return &object_storage.S3DeltaDriver{}
+	})
 	dr.register(model.DatabaseTypeS3Avro, func() drivers.Driver {
 		return &object_storage.S3AvroDriver{}
 	})

@@ -4,115 +4,110 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// S3DeltaDriver implements Driver interface for S3 Delta Lake tables
+// S3DeltaDriver reads bounded, unpartitioned Delta snapshots stored in S3.
 type S3DeltaDriver struct {
-	config *S3Config
-	client *S3Client
+	config    *S3Config
+	client    *S3Client
+	tablePath string
+	tableName string
+	batchSize int
 }
 
-// NewS3DeltaDriver creates a new S3 Delta Lake driver
 func NewS3DeltaDriver(ctx context.Context, config *S3Config) (*S3DeltaDriver, error) {
+	if config == nil {
+		return nil, fmt.Errorf("S3 Delta configuration is required")
+	}
 	client, err := NewS3Client(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &S3DeltaDriver{
-		config: config,
-		client: client,
-	}, nil
+	return &S3DeltaDriver{config: config, client: client, batchSize: 1000}, nil
 }
 
-// Open opens a connection (not applicable for S3 Delta Lake)
-func (d *S3DeltaDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("S3 Delta Lake driver does not support standard database connections")
+func (d *S3DeltaDriver) Open(string) (*sql.DB, error) {
+	return nil, fmt.Errorf("S3 Delta requires a configured read-only SQL adapter")
 }
 
-// ValidateDSN validates the connection string
 func (d *S3DeltaDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	if !strings.HasPrefix(dsn, "s3://") {
+		return fmt.Errorf("invalid S3 Delta URI")
 	}
-	return nil
-}
-
-// GetDefaultPort returns the default S3 port
-func (d *S3DeltaDriver) GetDefaultPort() int {
-	return 443 // HTTPS
-}
-
-// BuildDSN builds a connection string from configuration
-func (d *S3DeltaDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("s3://%s", config.Database)
-}
-
-// GetDatabaseTypeName returns the database type name
-func (d *S3DeltaDriver) GetDatabaseTypeName() string {
-	return "s3-delta"
-}
-
-// TestConnection tests if the connection is working
-func (d *S3DeltaDriver) TestConnection(db *sql.DB) error {
-	return fmt.Errorf("use TestConnectionContext instead")
-}
-
-// TestConnectionContext tests the S3 connection
-func (d *S3DeltaDriver) TestConnectionContext(ctx context.Context) error {
-	_, err := d.client.ListObjects(ctx, "", 1)
+	bucket, tablePath, err := ParseS3URI(dsn)
 	if err != nil {
-		return fmt.Errorf("failed to list S3 objects: %w", err)
+		return fmt.Errorf("invalid S3 Delta URI: %w", err)
+	}
+	if strings.TrimSpace(bucket) == "" {
+		return fmt.Errorf("S3 Delta URI must include a bucket")
+	}
+	if _, err := cleanObjectDeltaTablePath(tablePath); err != nil {
+		return err
 	}
 	return nil
 }
 
-// GetDriverName returns the driver name
-func (d *S3DeltaDriver) GetDriverName() string {
-	return "s3-delta"
+func (d *S3DeltaDriver) GetDefaultPort() int { return 443 }
+
+func (d *S3DeltaDriver) BuildDSN(config *model.DataSourceConfig) string {
+	if config == nil {
+		return "s3://"
+	}
+	tablePath := configString(config.AdditionalProps, "table_path")
+	if tablePath == "" {
+		tablePath = strings.TrimSpace(config.Host)
+	}
+	return fmt.Sprintf("s3://%s/%s", strings.TrimSpace(config.Database), tablePath)
 }
 
-// GetCategory returns the driver category
+func (d *S3DeltaDriver) GetDatabaseTypeName() string { return "s3-delta" }
+func (d *S3DeltaDriver) GetDriverName() string       { return "s3-delta" }
 func (d *S3DeltaDriver) GetCategory() drivers.DriverCategory {
 	return drivers.CategoryObjectStorage
 }
-
-// GetCapabilities returns driver capabilities
-func (d *S3DeltaDriver) GetCapabilities() drivers.DriverCapabilities {
-	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
-	}
+func (d *S3DeltaDriver) TestConnection(*sql.DB) error {
+	return fmt.Errorf("use TestConnectionContext instead")
 }
-
-// ConfigureAuth configures authentication
-func (d *S3DeltaDriver) ConfigureAuth(authConfig interface{}) error {
+func (d *S3DeltaDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.client == nil {
+		return fmt.Errorf("S3 Delta driver is not initialized")
+	}
+	_, err := d.client.ListObjects(ctx, "", 1)
+	if err != nil {
+		return fmt.Errorf("failed to test S3 connection: %w", err)
+	}
 	return nil
 }
-
-// GetTableMetadata retrieves Delta Lake table metadata
-func (d *S3DeltaDriver) GetTableMetadata(ctx context.Context, tablePath string) (*DeltaMetadata, error) {
-	logPath := tablePath + "/_delta_log/"
-	_, err := d.client.GetObject(ctx, logPath+"00000000000000000000.json")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read delta log: %w", err)
+func (d *S3DeltaDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{
+		SupportsSQL:             true,
+		SupportsSchemaDiscovery: true,
 	}
+}
+func (d *S3DeltaDriver) ConfigureAuth(interface{}) error { return nil }
 
-	// Parse Delta Lake transaction log (placeholder)
+// GetTableMetadata returns the current complete Delta snapshot metadata.
+func (d *S3DeltaDriver) GetTableMetadata(ctx context.Context, tablePath string) (*DeltaMetadata, error) {
+	cleanPath, err := cleanObjectDeltaTablePath(tablePath)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := d.resolveSnapshot(ctx, cleanPath)
+	if err != nil {
+		return nil, err
+	}
 	return &DeltaMetadata{
-		TableLocation: "s3://" + d.config.Bucket + "/" + tablePath,
+		TableLocation: "s3://" + d.config.Bucket + "/" + cleanPath,
 		Format:        "delta",
-		Version:       0,
+		Version:       snapshot.version,
 	}, nil
 }
 
-// DeltaMetadata represents Delta Lake table metadata
+// DeltaMetadata describes the latest snapshot resolved from the transaction log.
 type DeltaMetadata struct {
 	TableLocation string
 	Format        string
@@ -120,27 +115,32 @@ type DeltaMetadata struct {
 	PartitionCols []string
 }
 
-// QueryTable queries a Delta Lake table at a specific version
+// QueryTable reads the current Delta snapshot. Historical time travel is not supported.
 func (d *S3DeltaDriver) QueryTable(ctx context.Context, tablePath string, version int64) (*DeltaQueryResult, error) {
-	// Query Delta Lake table (placeholder)
-	return &DeltaQueryResult{
-		Rows:    []map[string]interface{}{},
-		NumRows: 0,
-		Version: version,
-	}, nil
+	snapshot, err := d.resolveSnapshot(ctx, tablePath)
+	if err != nil {
+		return nil, err
+	}
+	if version >= 0 && version != snapshot.version {
+		return nil, fmt.Errorf("S3 Delta time travel is not supported; current snapshot is version %d", snapshot.version)
+	}
+	batchSize := d.batchSize
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+	_, rows, err := readObjectDeltaRows(ctx, snapshot, batchSize, maxObjectDeltaTableBytes, d.client.GetObject)
+	if err != nil {
+		return nil, err
+	}
+	return &DeltaQueryResult{Rows: rows, NumRows: int64(len(rows)), Version: snapshot.version}, nil
 }
 
-// DeltaQueryResult represents query result
 type DeltaQueryResult struct {
 	Rows    []map[string]interface{}
 	NumRows int64
 	Version int64
 }
 
-// ApplyBatchPagination adds pagination to SQL query
-func (d *S3DeltaDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 Delta files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Delta files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+func (d *S3DeltaDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return applyObjectBatchPagination(query, batchSize, offset)
 }

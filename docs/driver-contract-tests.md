@@ -64,6 +64,22 @@ native JSON queries, and coordinator metadata are outside this fixture. The
 adapter remains experimental until a pinned live Druid contract is added under
 [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
 
+## S3 Delta local protocol fixture
+
+The S3 Delta fixture uses a local HTTP server and the AWS SDK to exercise
+SigV4-signed bucket-in-path requests, Delta log listing and reads, snapshot
+reconstruction, health checks, metadata discovery, restricted read-only SQL,
+filtering, ordering, pagination, COUNT(*), cancellation, and write rejection.
+Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestS3DeltaProtocolFixture$' -count=1 -v
+~~~~
+
+This local fixture does not run against AWS S3 or an S3-compatible service and
+does not establish a live provider version contract. The adapter remains
+experimental.
+
 ## MinIO Delta protocol fixture
 
 The MinIO Delta fixture exercises MinIO's S3-compatible SDK against a local

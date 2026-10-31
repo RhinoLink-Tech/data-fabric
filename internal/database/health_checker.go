@@ -412,6 +412,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3ORC {
 			return hc.validateS3ORCConfig(config)
 		}
+		if dbType == model.DatabaseTypeS3Delta {
+			return object_storage.ValidateS3DeltaConfig(config)
+		}
 		if dbType == model.DatabaseTypeMinIOORC {
 			return object_storage.ValidateMinIOORCConfig(config)
 		}

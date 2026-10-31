@@ -19,6 +19,12 @@ func TestQueryEngineDatabaseTypes(t *testing.T) {
 	}
 }
 
+func TestS3DeltaDatabaseTypeIsValid(t *testing.T) {
+	if !IsValidDatabaseType(string(DatabaseTypeS3Delta)) {
+		t.Fatal("s3_delta should be a valid data source type")
+	}
+}
+
 func TestDatabaseTypeMetadata(t *testing.T) {
 	tests := []struct {
 		dbType              DatabaseType
@@ -37,10 +43,14 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeMongoDB, "nosql", false},
 		// These later additions must retain their storage-family category.
 		{DatabaseTypeOSSDelta, "object_storage", false},
+		{DatabaseTypeS3Delta, "object_storage", false},
 		{DatabaseTypeMinIOIceberg, "object_storage", false},
 		{DatabaseTypeAzureDelta, "object_storage", false},
 		{DatabaseTypeAzureParquet, "object_storage", false},
 		{DatabaseTypeMinIODelta, "object_storage", false},
+		{DatabaseTypeMinIOORC, "object_storage", false},
+		{DatabaseTypeMinIOAvro, "object_storage", false},
+		{DatabaseTypeMinIOJSON, "object_storage", false},
 		{DatabaseTypeOzoneText, "filesystems", false},
 		{DatabaseTypeOzoneAvro, "filesystems", false},
 		{DatabaseTypeHDFSText, "filesystems", false},
