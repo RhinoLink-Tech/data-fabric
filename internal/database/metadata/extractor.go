@@ -64,7 +64,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) {
+	} else if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil && isMinIOIcebergSource(dataSource.Type) {
@@ -133,7 +133,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		table.Schema = namespace
 		return table, nil
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) {
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -257,7 +257,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) {
+	if isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -323,6 +323,10 @@ func isMinIOIcebergSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeMinIOIceberg
 }
 
+func isMinIOORCSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeMinIOORC
+}
+
 func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
 	case model.DatabaseTypeMinIOParquet:
@@ -349,6 +353,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.AzureDeltaTableName(config)
 	case model.DatabaseTypeMinIOIceberg:
 		return object_storage.MinIOIcebergTableName(config)
+	case model.DatabaseTypeMinIOORC:
+		return object_storage.MinIOORCTableName(config)
 	default:
 		return "", fmt.Errorf("object SQL metadata is not supported for %s", dbType)
 	}

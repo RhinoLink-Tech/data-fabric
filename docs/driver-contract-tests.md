@@ -95,6 +95,19 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO ORC local S3-compatible fixture
+
+The MinIO ORC fixture serves the committed ORC sample through a local HTTP
+server that checks SigV4 authorization, bucket-in-path addressing, object
+metadata requests, and byte-range reads. It exercises source validation,
+health, metadata discovery, SQL filtering/order/count, and write rejection
+through the configured database/sql adapter. This fixture is local protocol
+coverage, not a live MinIO release contract. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'MinIOORC' -count=1 -v
+~~~~
+
 ## MinIO Iceberg local catalog fixture
 
 The MinIO Iceberg fixture routes a configured source through a local Iceberg

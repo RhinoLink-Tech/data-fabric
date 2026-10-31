@@ -11,6 +11,10 @@ import (
 
 // OpenWithConfig creates a read-only SQL adapter for one configured S3 ORC object.
 func (d *S3ORCDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	return d.openWithConfig(ctx, config, "s3-orc")
+}
+
+func (d *S3ORCDriver) openWithConfig(ctx context.Context, config *model.DataSourceConfig, driverName string) (*sql.DB, error) {
 	if config == nil {
 		return nil, errors.New("s3-orc data source config is required")
 	}
@@ -53,7 +57,7 @@ func (d *S3ORCDriver) OpenWithConfig(ctx context.Context, config *model.DataSour
 		return nil, err
 	}
 	return newObjectSQLDB(&objectSQLAdapter{
-		driverName: "s3-orc",
+		driverName: driverName,
 		objectKey:  objectKey,
 		tableName:  tableName,
 		ping: func(ctx context.Context, key string) error {

@@ -281,6 +281,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") {
 		t.Errorf("MinIO Iceberg catalog must disclose its table and read-only boundaries: %+v", minioIceberg.Limitations)
 	}
+	minioORC := profiles[string(model.DatabaseTypeMinIOORC)]
+	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || minioORC.EndToEndVerified {
+		t.Errorf("MinIO ORC must expose its experimental SQL adapter without claiming a live version contract: %+v", minioORC)
+	}
+	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") {
+		t.Errorf("MinIO ORC catalog must disclose its object and schema boundaries: %+v", minioORC.Limitations)
+	}
 	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
 	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
 		t.Errorf("Azure Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", azureDelta)

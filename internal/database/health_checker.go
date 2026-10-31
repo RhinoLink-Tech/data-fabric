@@ -406,6 +406,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeS3ORC {
 			return hc.validateS3ORCConfig(config)
 		}
+		if dbType == model.DatabaseTypeMinIOORC {
+			return object_storage.ValidateMinIOORCConfig(config)
+		}
 		if dbType == model.DatabaseTypeMinIOParquet {
 			return hc.validateMinIOParquetConfig(config)
 		}

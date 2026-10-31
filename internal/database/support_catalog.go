@@ -487,6 +487,13 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured table through an Iceberg REST catalog and MinIO S3 FileIO; catalog_uri, warehouse, namespace, table_name, endpoint, and MinIO credentials are required.",
 			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.")
+	case model.DatabaseTypeMinIOORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "A local S3-compatible HTTP fixture covers signed object metadata and byte-range reads; no live MinIO release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter exposes one configured ORC object as one SQL table and reads object ranges into gateway memory before SQL filtering and pagination.",
+			"Only primitive top-level columns and the codecs supported by the shared ORC decoder are available; nested/repeated columns, multi-object scans, partition discovery, and write operations are not supported.")
 	}
 }
 

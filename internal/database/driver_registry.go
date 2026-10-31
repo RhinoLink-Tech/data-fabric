@@ -191,6 +191,9 @@ func (dr *DriverRegistry) registerDrivers() {
 		// the unified query service instead of a disconnected custom API.
 		return &object_storage.S3CSVDriver{}
 	})
+	dr.register(model.DatabaseTypeMinIOORC, func() drivers.Driver {
+		return &object_storage.MinIOORCDriver{}
+	})
 	dr.register(model.DatabaseTypeAlibabaOSSParquet, func() drivers.Driver {
 		return &object_storage.OSSParquetDriver{}
 	})
