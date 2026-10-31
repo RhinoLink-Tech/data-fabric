@@ -482,8 +482,11 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The local protocol fixture does not establish compatibility with a live Azure Storage release.")
 	case model.DatabaseTypeMinIOIceberg:
 		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Iceberg REST catalog credentials and MinIO S3-compatible access key/secret key"}
+		profile.AuthenticationDisclosure = "Local REST catalog and configuration fixtures cover query routing and MinIO FileIO property mapping; no live MinIO or REST Catalog release contract is recorded."
 		profile.Limitations = append(profile.Limitations,
-			"No end-to-end query-service execution path is recorded for this connector; registry presence alone does not mean SQL queries are available.")
+			"The adapter exposes one configured table through an Iceberg REST catalog and MinIO S3 FileIO; catalog_uri, warehouse, namespace, table_name, endpoint, and MinIO credentials are required.",
+			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.")
 	}
 }
 

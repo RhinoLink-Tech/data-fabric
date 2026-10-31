@@ -404,6 +404,33 @@ files are downloaded into gateway memory before SQL filtering and pagination;
 decoded rows add memory use beyond the compressed object sizes. Local MinIO SDK
 fixtures do not establish compatibility with a live MinIO release.
 
+## MinIO Iceberg source
+
+The minio_iceberg source routes one configured table through an external
+Iceberg REST catalog and uses MinIO as the S3-compatible Iceberg FileIO store.
+Data Fabric does not run an Iceberg catalog for this source.
+
+| Data-source field or property | MinIO Iceberg meaning |
+| --- | --- |
+| host or additionalProps.catalog_uri | HTTP(S) Iceberg REST catalog URL. A URL path is allowed; credentials, query strings, and fragments are not. |
+| database or additionalProps.warehouse | Iceberg warehouse name. |
+| schema or additionalProps.namespace | Iceberg namespace; defaults to schema. |
+| additionalProps.table_name | Required, unqualified SQL table name exposed by this source. |
+| username and password | Required MinIO access key and secret key for Iceberg S3 FileIO. |
+| additionalProps.endpoint_url or s3.endpoint | Required MinIO S3 endpoint origin. |
+| additionalProps.region | S3 signing region; defaults to us-east-1. |
+| additionalProps.session_token | Optional MinIO S3 session token. |
+| additionalProps.force_path_style | Defaults to true for MinIO-compatible endpoints. |
+| additionalProps.catalog_token or catalog_credential | Optional REST catalog bearer token or credential, separate from MinIO storage credentials. |
+| additionalProps.max_rows | Iceberg SQL scan limit; defaults to 10000 and can be configured up to 100000. |
+
+The adapter exposes only the configured table and supports the shared Iceberg
+read-only SQL subset: projections, supported AND filters, LIMIT/OFFSET, and
+COUNT(*). Writes, catalog-wide table enumeration, ORDER BY, and direct
+metadata-file discovery are not supported. Local fixtures verify REST catalog
+query routing and MinIO FileIO property mapping; they do not establish
+compatibility with a live MinIO or REST Catalog release.
+
 ## MinIO Parquet source
 
 Register a `minio_parquet` source to expose one configured Parquet object as a

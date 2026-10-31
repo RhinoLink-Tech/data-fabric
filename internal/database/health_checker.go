@@ -409,6 +409,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeMinIOParquet {
 			return hc.validateMinIOParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeMinIOIceberg {
+			return hc.validateMinIOIcebergConfig(config)
+		}
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}
@@ -659,6 +662,10 @@ func (hc *HealthChecker) validateMinIODeltaConfig(config *model.DataSourceConfig
 		return err
 	}
 	return nil
+}
+
+func (hc *HealthChecker) validateMinIOIcebergConfig(config *model.DataSourceConfig) error {
+	return object_storage.ValidateMinIOIcebergConfig(config)
 }
 
 func (hc *HealthChecker) validateAzureDeltaConfig(config *model.DataSourceConfig) error {

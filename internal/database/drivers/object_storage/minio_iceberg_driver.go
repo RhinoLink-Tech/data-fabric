@@ -4,65 +4,71 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/table_formats"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// MinIOIcebergDriver implements Driver interface for MinIO Iceberg tables
+// MinIOIcebergDriver routes a MinIO-backed Iceberg table through an Iceberg REST catalog.
 type MinIOIcebergDriver struct {
 	config *MinIOConfig
 	client *MinIOClient
 }
 
-// NewMinIOIcebergDriver creates a new MinIO Iceberg driver
 func NewMinIOIcebergDriver(ctx context.Context, config *MinIOConfig) (*MinIOIcebergDriver, error) {
 	client, err := NewMinIOClient(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &MinIOIcebergDriver{
-		config: config,
-		client: client,
-	}, nil
+	return &MinIOIcebergDriver{config: config, client: client}, nil
 }
 
-// Open opens a connection (not applicable for MinIO Iceberg)
-func (d *MinIOIcebergDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("MinIO Iceberg driver does not support standard database connections")
+func (d *MinIOIcebergDriver) Open(string) (*sql.DB, error) {
+	return nil, fmt.Errorf("MinIO Iceberg requires a configured REST catalog and read-only SQL adapter")
 }
 
-// ValidateDSN validates the connection string
 func (d *MinIOIcebergDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
+	if !strings.HasPrefix(dsn, "minio-iceberg://") {
+		return fmt.Errorf("invalid MinIO Iceberg URI: %s", dsn)
+	}
+	warehouseAndTable := strings.TrimPrefix(dsn, "minio-iceberg://")
+	warehouse, table, found := strings.Cut(warehouseAndTable, "/")
+	if !found || strings.TrimSpace(warehouse) == "" || strings.TrimSpace(table) == "" {
+		return fmt.Errorf("MinIO Iceberg URI must include a warehouse and configured table")
 	}
 	return nil
 }
 
-// GetDefaultPort returns the default MinIO port
-func (d *MinIOIcebergDriver) GetDefaultPort() int {
-	return 9000
-}
+func (d *MinIOIcebergDriver) GetDefaultPort() int { return 8181 }
 
-// BuildDSN builds a connection string from configuration
 func (d *MinIOIcebergDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("s3://%s", config.Database)
+	if config == nil {
+		return "minio-iceberg://"
+	}
+	warehouse := configString(config.AdditionalProps, "warehouse")
+	if warehouse == "" {
+		warehouse = config.Database
+	}
+	tableName := configString(config.AdditionalProps, "table_name")
+	return fmt.Sprintf("minio-iceberg://%s/%s", warehouse, tableName)
 }
 
-// GetDatabaseTypeName returns the database type name
-func (d *MinIOIcebergDriver) GetDatabaseTypeName() string {
-	return "minio-iceberg"
+func (d *MinIOIcebergDriver) GetDatabaseTypeName() string { return "minio-iceberg" }
+func (d *MinIOIcebergDriver) GetDriverName() string       { return "minio-iceberg" }
+func (d *MinIOIcebergDriver) GetCategory() drivers.DriverCategory {
+	return drivers.CategoryObjectStorage
 }
 
-// TestConnection tests if the connection is working
-func (d *MinIOIcebergDriver) TestConnection(db *sql.DB) error {
-	return fmt.Errorf("use TestConnectionContext instead")
+func (d *MinIOIcebergDriver) TestConnection(*sql.DB) error {
+	return fmt.Errorf("use the configured Iceberg catalog health check")
 }
 
-// TestConnectionContext tests the MinIO connection
 func (d *MinIOIcebergDriver) TestConnectionContext(ctx context.Context) error {
+	if d == nil || d.client == nil {
+		return fmt.Errorf("MinIO Iceberg driver is not initialized")
+	}
 	_, err := d.client.ListBuckets(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to test MinIO connection: %w", err)
@@ -70,37 +76,19 @@ func (d *MinIOIcebergDriver) TestConnectionContext(ctx context.Context) error {
 	return nil
 }
 
-// GetDriverName returns the driver name
-func (d *MinIOIcebergDriver) GetDriverName() string {
-	return "minio-iceberg"
-}
-
-// GetCategory returns the driver category
-func (d *MinIOIcebergDriver) GetCategory() drivers.DriverCategory {
-	return drivers.CategoryObjectStorage
-}
-
-// GetCapabilities returns driver capabilities
 func (d *MinIOIcebergDriver) GetCapabilities() drivers.DriverCapabilities {
 	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     true,
+		SupportsSQL:             true,
+		SupportsTransaction:     false,
 		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      true,
+		SupportsTimeTravel:      false,
 		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
+		SupportsStreaming:       false,
 	}
 }
 
-// ConfigureAuth configures authentication
-func (d *MinIOIcebergDriver) ConfigureAuth(authConfig interface{}) error {
-	return nil
-}
+func (d *MinIOIcebergDriver) ConfigureAuth(interface{}) error { return nil }
 
-// ApplyBatchPagination adds pagination to SQL query
-func (d *MinIOIcebergDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For MinIO Iceberg files, pagination is typically not supported in the same way as traditional databases
-	// We return the original SQL as-is since Iceberg files don't support LIMIT/OFFSET in the same way
-	// The pagination is usually handled at the application level
-	return sql, nil
+func (d *MinIOIcebergDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return (&table_formats.IcebergDriver{}).ApplyBatchPagination(query, batchSize, offset)
 }

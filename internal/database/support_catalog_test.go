@@ -274,6 +274,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") {
 		t.Errorf("MinIO Delta catalog must disclose its snapshot and memory boundaries: %+v", minioDelta.Limitations)
 	}
+	minioIceberg := profiles[string(model.DatabaseTypeMinIOIceberg)]
+	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || minioIceberg.EndToEndVerified {
+		t.Errorf("MinIO Iceberg must expose its experimental SQL adapter without claiming a live version contract: %+v", minioIceberg)
+	}
+	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") {
+		t.Errorf("MinIO Iceberg catalog must disclose its table and read-only boundaries: %+v", minioIceberg.Limitations)
+	}
 	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
 	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
 		t.Errorf("Azure Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", azureDelta)

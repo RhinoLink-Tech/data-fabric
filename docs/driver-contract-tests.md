@@ -95,6 +95,20 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO Iceberg local catalog fixture
+
+The MinIO Iceberg fixture routes a configured source through a local Iceberg
+REST catalog and an Iceberg table stored in a temporary local warehouse. It
+covers catalog health, configured-table metadata, schema discovery, read-only
+filtering and pagination, and table-boundary enforcement. A separate config
+fixture verifies how MinIO endpoint and credentials map into S3 FileIO
+properties. These fixtures do not call a MinIO service or establish live
+MinIO/REST Catalog compatibility. Run them with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'MinIOIceberg' -count=1 -v
+~~~~
+
 ## Azure Blob Delta protocol fixture
 
 The Azure Delta fixture exercises the Azure SDK against a local HTTP server. It

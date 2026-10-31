@@ -39,6 +39,7 @@ type icebergSQLConfig struct {
 	uri        string
 	warehouse  string
 	namespace  string
+	tableName  string
 	token      string
 	credential string
 	props      iceberg.Properties
@@ -117,6 +118,12 @@ func (c *icebergSQLConn) QueryContext(ctx context.Context, query string, args []
 	plan, err := parseIcebergSQL(query, args, c.config.namespace, c.config.maxRows, false)
 	if err != nil {
 		return nil, err
+	}
+	if c.config.tableName != "" {
+		namespace := strings.Join(plan.namespace, ".")
+		if plan.table != c.config.tableName || (c.config.namespace != "" && namespace != c.config.namespace) {
+			return nil, fmt.Errorf("Iceberg source is restricted to configured table %s.%s", c.config.namespace, c.config.tableName)
+		}
 	}
 	identifier := make(table.Identifier, 0, len(plan.namespace)+1)
 	identifier = append(identifier, plan.namespace...)
@@ -973,7 +980,8 @@ func icebergConfigFromDataSource(config *model.DataSourceConfig) (icebergSQLConf
 	}
 	return icebergSQLConfig{
 		uri: strings.TrimRight(uri, "/"), warehouse: warehouse, namespace: namespace,
-		token: icebergConfigString(props, "token"), credential: credential,
+		tableName: icebergConfigString(props, "table_name"),
+		token:     icebergConfigString(props, "token"), credential: credential,
 		props: allowedProperties, maxRows: maxRows,
 	}, nil
 }
