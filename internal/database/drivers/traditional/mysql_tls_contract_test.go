@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,12 +21,44 @@ const (
 	mysqlTLSContractRootCAEnv  = "DATA_FABRIC_MYSQL_TLS_ROOT_CA"
 	mysqlTLSContractBadCAEnv   = "DATA_FABRIC_MYSQL_TLS_BAD_CA"
 	mysqlTLSContractVersionEnv = "DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION"
+	mariaDBTLSContractHostEnv  = "DATA_FABRIC_MARIADB_TLS_CONTRACT_HOST"
+	mariaDBTLSContractPortEnv  = "DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT"
+	mariaDBTLSContractUserEnv  = "DATA_FABRIC_MARIADB_TLS_CONTRACT_USERNAME"
+	mariaDBTLSContractPassEnv  = "DATA_FABRIC_MARIADB_TLS_CONTRACT_PASSWORD"
+	mariaDBTLSContractDBEnv    = "DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE"
+	mariaDBTLSContractRootCA   = "DATA_FABRIC_MARIADB_TLS_ROOT_CA"
+	mariaDBTLSContractBadCA    = "DATA_FABRIC_MARIADB_TLS_BAD_CA"
+	mariaDBTLSContractVersion  = "DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION"
 )
 
 func TestMySQLTLSVerification(t *testing.T) {
+	runMySQLProtocolTLSContract(t, "MySQL")
+}
+
+func TestMariaDBTLSVerification(t *testing.T) {
+	if os.Getenv(mariaDBTLSContractHostEnv) == "" {
+		t.Skipf("set %s to run the MariaDB TLS contract", mariaDBTLSContractHostEnv)
+	}
+	for _, mapping := range [][2]string{
+		{mysqlTLSContractHostEnv, mariaDBTLSContractHostEnv},
+		{mysqlTLSContractPortEnv, mariaDBTLSContractPortEnv},
+		{mysqlTLSContractUserEnv, mariaDBTLSContractUserEnv},
+		{mysqlTLSContractPassEnv, mariaDBTLSContractPassEnv},
+		{mysqlTLSContractDBEnv, mariaDBTLSContractDBEnv},
+		{mysqlTLSContractRootCAEnv, mariaDBTLSContractRootCA},
+		{mysqlTLSContractBadCAEnv, mariaDBTLSContractBadCA},
+		{mysqlTLSContractVersionEnv, mariaDBTLSContractVersion},
+	} {
+		t.Setenv(mapping[0], os.Getenv(mapping[1]))
+	}
+	runMySQLProtocolTLSContract(t, "MariaDB")
+}
+
+func runMySQLProtocolTLSContract(t *testing.T, product string) {
+	t.Helper()
 	host := os.Getenv(mysqlTLSContractHostEnv)
 	if host == "" {
-		t.Skipf("set %s to run the MySQL TLS contract", mysqlTLSContractHostEnv)
+		t.Skipf("set %s to run the %s TLS contract", mysqlTLSContractHostEnv, product)
 	}
 	port, err := strconv.Atoi(os.Getenv(mysqlTLSContractPortEnv))
 	if err != nil || port < 1 || port > 65535 {
@@ -38,7 +71,7 @@ func TestMySQLTLSVerification(t *testing.T) {
 	badCA := os.Getenv(mysqlTLSContractBadCAEnv)
 	expectedVersion := os.Getenv(mysqlTLSContractVersionEnv)
 	if username == "" || password == "" || databaseName == "" || rootCA == "" || badCA == "" || expectedVersion == "" {
-		t.Fatalf("MySQL TLS contract credentials, database, CA paths, and expected version are required")
+		t.Fatalf("%s TLS contract credentials, database, CA paths, and expected version are required", product)
 	}
 
 	driver := &MySQLDriver{}
@@ -53,10 +86,17 @@ func TestMySQLTLSVerification(t *testing.T) {
 	defer cancel()
 	var version string
 	if err := db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
-		t.Fatalf("read MySQL version over verified TLS: %v", err)
+		t.Fatalf("read %s version over verified TLS: %v", product, err)
 	}
-	if version != expectedVersion {
-		t.Fatalf("MySQL version = %q, want %q", version, expectedVersion)
+	observedVersion := version
+	if product == "MariaDB" {
+		if !strings.Contains(strings.ToLower(version), "mariadb") {
+			t.Fatalf("server version %q does not identify MariaDB", version)
+		}
+		observedVersion = strings.SplitN(version, "-", 2)[0]
+	}
+	if observedVersion != expectedVersion {
+		t.Fatalf("%s version = %q, want %q", product, observedVersion, expectedVersion)
 	}
 	assertMySQLTLSState(t, ctx, db, true)
 

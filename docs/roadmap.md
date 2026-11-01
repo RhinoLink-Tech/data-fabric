@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [c3a6444](https://github.com/RhinoLink-Tech/data-fabric/commit/c3a64442ec3295f655089e8088fe99476a16b9a3).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [37593b8](https://github.com/RhinoLink-Tech/data-fabric/commit/37593b86a9c7e8492c897615fe50fa8c9f8d83ac).
 
 ### Delivered capabilities
 
@@ -43,6 +43,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify MySQL server identity with private CA roots
 
 [#300](https://github.com/RhinoLink-Tech/data-fabric/issues/300) adds `sslRootCert` support to the MySQL connector while retaining system trust roots for `ssl: true` and plaintext behavior for `ssl: false`. The pinned MySQL 8.0.46 contract validates the certificate and hostname with a trusted private CA and rejects an untrusted CA or hostname mismatch. Other MySQL versions and MariaDB TLS behavior remain outside this evidence.
+
+### Completed: verify MariaDB TLS using the shared MySQL protocol driver
+
+[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. Other MariaDB versions remain outside this evidence.
 
 ### 1. Raise connector confidence from real demand
 
