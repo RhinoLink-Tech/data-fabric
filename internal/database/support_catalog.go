@@ -132,10 +132,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"11.8.9"}
 		profile.VersionPolicy = "Only MariaDB 11.8.9 has a pinned contract result; other MariaDB versions and MySQL are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 11.8.9 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MariaDB 11.8.9 contract tests."
 		profile.Limitations = []string{
 			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
-			"TLS behavior and other MariaDB versions are not covered by this baseline.",
+			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MariaDB versions are not covered.",
 		}
 	case model.DatabaseTypeTiDB:
 		profile.Status = ConnectorStatusEndToEndVerified

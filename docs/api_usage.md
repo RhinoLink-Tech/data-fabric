@@ -32,6 +32,8 @@ For PostgreSQL TLS, set `sslMode` to `verify-full` and `sslRootCert` to a CA cer
 
 For MySQL, set `ssl: true` to verify the server certificate and hostname with the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against MySQL 8.0.46.
 
+MariaDB uses the same MySQL-protocol connector settings. The pinned MariaDB 11.8.9 contract verifies certificate and hostname validation with a private CA; other MariaDB versions are not covered by that test.
+
 For TiDB, set `ssl: true` to require TLS and verify the server certificate and hostname using the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against TiDB v8.5.8.
 
 Successful responses use this envelope:

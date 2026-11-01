@@ -256,6 +256,22 @@ jobs:
       - name: Run MySQL TLS certificate contract
         run: bash scripts/contracts/run_mysql_tls_contract.sh
 
+  mariadb-tls-contract:
+    name: MariaDB TLS certificate contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MariaDB TLS certificate contract
+        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+
   tidb-tls-contract:
     name: TiDB TLS certificate contract
     runs-on: ubuntu-latest
