@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [9735066](https://github.com/RhinoLink-Tech/data-fabric/commit/97350665d803910b8ad704764d2fc8118f915506).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [18ae0ce](https://github.com/RhinoLink-Tech/data-fabric/commit/18ae0ceb23fc8ba4d1fe6bdb1c49464eebe1f8e1).
 
 ### Delivered capabilities
 
@@ -35,6 +35,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify PostgreSQL server identity over TLS
 
 [#296](https://github.com/RhinoLink-Tech/data-fabric/issues/296) adds explicit PostgreSQL `sslMode` and `sslRootCert` settings. The pinned PostgreSQL 17.11 contract validates `verify-full` with a trusted CA and rejects an untrusted CA or hostname mismatch. Existing `ssl: true` and `ssl: false` behavior remains compatible. TLS evidence is connector-specific; this does not claim certificate verification for other connectors.
+
+### Completed: verify TiDB server identity over TLS
+
+[#298](https://github.com/RhinoLink-Tech/data-fabric/issues/298) honors the TiDB ssl setting and supports a mounted PEM CA for private trust roots. The pinned TiDB v8.5.8 TLS contract verifies the server certificate and hostname, rejects an untrusted CA and hostname mismatch, and confirms ssl: false retains plaintext behavior. Other TiDB versions and TLS behavior for other connectors remain outside this evidence.
 
 ### 1. Raise connector confidence from real demand
 
