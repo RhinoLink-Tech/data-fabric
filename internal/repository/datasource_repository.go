@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -19,6 +21,8 @@ type dataSourceRepository struct {
 	db    *gorm.DB
 	vault *security.CredentialVault
 }
+
+var _ security.TokenStore = (*dataSourceRepository)(nil)
 
 func NewDataSourceRepository(db *gorm.DB, vault *security.CredentialVault) (DataSourceRepository, error) {
 	if db == nil {
@@ -54,6 +58,79 @@ func (r *dataSourceRepository) GetByID(ctx context.Context, id string) (*model.D
 		return nil, fmt.Errorf("decrypt data source %s credentials: %w", id, err)
 	}
 	return &ds, nil
+}
+
+// LoadAccessToken reads the currently persisted OAuth access token. The
+// repository decrypts the token using the configured credential vault.
+func (r *dataSourceRepository) LoadAccessToken(ctx context.Context, dataSourceID string) (string, time.Time, error) {
+	ds, err := r.GetByID(ctx, dataSourceID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if ds.Config.AdditionalProps == nil {
+		return "", time.Time{}, nil
+	}
+	token, _ := ds.Config.AdditionalProps["access_token"].(string)
+	rawExpiry, _ := ds.Config.AdditionalProps["access_token_expires_at"].(string)
+	if rawExpiry == "" {
+		return token, time.Time{}, nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, rawExpiry)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("parse stored access token expiry: %w", err)
+	}
+	return token, expiresAt, nil
+}
+
+// CompareAndSwapAccessToken persists a replacement token and expiry in one
+// transaction. The row lock and expected-token check prevent concurrent
+// gateway instances from overwriting a newer token with a stale refresh result.
+func (r *dataSourceRepository) CompareAndSwapAccessToken(ctx context.Context, dataSourceID, expectedToken, replacement string, expiresAt time.Time) (bool, error) {
+	if replacement == "" {
+		return false, errors.New("replacement access token is required")
+	}
+	if !expiresAt.After(time.Now()) {
+		return false, errors.New("replacement access token must not be expired")
+	}
+
+	swapped := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var ds model.DataSource
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", dataSourceID).First(&ds).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrDataSourceNotFound
+			}
+			return err
+		}
+		if err := r.decryptDataSource(&ds); err != nil {
+			return fmt.Errorf("decrypt data source %s credentials: %w", dataSourceID, err)
+		}
+		if ds.Config.AdditionalProps == nil {
+			ds.Config.AdditionalProps = make(map[string]interface{})
+		}
+		currentToken, _ := ds.Config.AdditionalProps["access_token"].(string)
+		if currentToken != expectedToken {
+			return nil
+		}
+
+		ds.Config.AdditionalProps["access_token"] = replacement
+		ds.Config.AdditionalProps["access_token_expires_at"] = expiresAt.UTC().Format(time.RFC3339Nano)
+		stored, err := r.encryptDataSource(&ds)
+		if err != nil {
+			return err
+		}
+		result := tx.Model(&model.DataSource{}).Where("id = ?", dataSourceID).Update("config", stored.Config)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrDataSourceNotFound
+		}
+		swapped = true
+		return nil
+	})
+	return swapped, err
 }
 
 func (r *dataSourceRepository) GetByName(ctx context.Context, tenantID, name string) (*model.DataSource, error) {

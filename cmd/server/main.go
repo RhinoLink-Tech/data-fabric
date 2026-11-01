@@ -110,7 +110,14 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 
 	// Initialize infrastructure
-	connPool := database.NewConnectionPool(database.GetDriverRegistry(), security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	tokenManager := security.NewTokenManager(vault)
+	connPool := database.NewConnectionPool(database.GetDriverRegistry(), tokenManager, vault, cfg.Security.EnforceReadOnly)
+	tokenStore, ok := datasourceRepo.(security.TokenStore)
+	if !ok {
+		return fmt.Errorf("data-source repository does not support encrypted access-token storage")
+	}
+	connPool.SetTokenStore(tokenStore)
+	connPool.StartTokenRotation(context.Background())
 	// Registered before the streaming maintenance defers so it unwinds after
 	// them: cursors close first, then pooled connections and the metadata
 	// database (#32).
@@ -342,7 +349,14 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		log.Printf("Encrypted or rotated credentials for %d data sources", migrated)
 	}
 
-	connPool := database.NewConnectionPool(database.GetDriverRegistry(), security.NewTokenManager(vault), vault, cfg.Security.EnforceReadOnly)
+	tokenManager := security.NewTokenManager(vault)
+	connPool := database.NewConnectionPool(database.GetDriverRegistry(), tokenManager, vault, cfg.Security.EnforceReadOnly)
+	tokenStore, ok := datasourceRepo.(security.TokenStore)
+	if !ok {
+		return fmt.Errorf("data-source repository does not support encrypted access-token storage")
+	}
+	connPool.SetTokenStore(tokenStore)
+	connPool.StartTokenRotation(context.Background())
 	// Unwinds after the streaming maintenance defer below: cursors close
 	// first, then pooled connections and the metadata database (#32).
 	defer closeGatewayResources(db, connPool)

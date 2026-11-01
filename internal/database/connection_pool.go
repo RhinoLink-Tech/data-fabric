@@ -40,6 +40,7 @@ type ConnectionPool struct {
 	health          map[string]bool
 	healthMu        sync.RWMutex
 	tokenManager    *security.TokenManager
+	tokenStartOnce  sync.Once
 	vault           *security.CredentialVault
 	driverCaps      map[string]drivers.DriverCapabilities // Cached driver capabilities
 	enforceReadOnly bool
@@ -66,6 +67,9 @@ func NewConnectionPool(registry *DriverRegistry, tokenManager *security.TokenMan
 
 // GetConnection gets or creates a database connection for the specified data source
 func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.DataSource) (*sql.DB, error) {
+	if dataSource == nil {
+		return nil, fmt.Errorf("data source is required")
+	}
 	fingerprint := dataSourceFingerprint(dataSource)
 
 	if db := cp.pooledConnectionIfCurrent(dataSource.ID, fingerprint); db != nil {
@@ -151,10 +155,21 @@ func (cp *ConnectionPool) pooledConnectionIfCurrent(dataSourceID, fingerprint st
 // sources with the same fingerprint can share a pool; any change means the
 // pooled connections were built from stale settings and must be replaced.
 func dataSourceFingerprint(dataSource *model.DataSource) string {
+	config := dataSource.Config
+	if config.AdditionalProps != nil {
+		props := make(map[string]interface{}, len(config.AdditionalProps))
+		for key, value := range config.AdditionalProps {
+			if key == "access_token" || key == "access_token_expires_at" {
+				continue
+			}
+			props[key] = value
+		}
+		config.AdditionalProps = props
+	}
 	payload, err := json.Marshal(struct {
 		Type   model.DatabaseType     `json:"type"`
 		Config model.DataSourceConfig `json:"config"`
-	}{Type: dataSource.Type, Config: dataSource.Config})
+	}{Type: dataSource.Type, Config: config})
 	if err != nil {
 		// json.Marshal of this struct cannot fail in practice; fall back to a
 		// unique value so an unexpected marshal failure degrades to pool
@@ -172,6 +187,10 @@ func dataSourceFingerprint(dataSource *model.DataSource) string {
 // are reconciled at install time: the first pool wins, later duplicates are
 // closed so nothing leaks.
 func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *model.DataSource, fingerprint string) (*sql.DB, error) {
+	if err := cp.SetupTokenRotation(ctx, dataSource); err != nil {
+		return nil, fmt.Errorf("setup token rotation: %w", err)
+	}
+
 	// Get connection string
 	dsn, err := cp.getConnectUrl(dataSource.Type, &dataSource.Config)
 	if err != nil {
@@ -449,6 +468,9 @@ func (cp *ConnectionPool) CloseConnection(dataSourceID string) error {
 
 // CloseAll closes all connections in the pool
 func (cp *ConnectionPool) CloseAll() error {
+	if cp.tokenManager != nil {
+		cp.tokenManager.Stop()
+	}
 	cp.mutex.Lock()
 	closing := cp.pools
 	cp.pools = make(map[string]*sql.DB)
@@ -546,8 +568,28 @@ func (cp *ConnectionPool) getHealth(dataSourceID string) bool {
 // Token Rotation Support
 // =============================================================================
 
-// SetupTokenRotation registers token rotation for a data source if needed
+// SetTokenStore configures encrypted persistence for the token manager.
+func (cp *ConnectionPool) SetTokenStore(store security.TokenStore) {
+	if cp.tokenManager != nil {
+		cp.tokenManager.SetStore(store)
+	}
+}
+
+// StartTokenRotation starts the pool's token manager once. CloseAll stops it
+// during normal server shutdown.
+func (cp *ConnectionPool) StartTokenRotation(ctx context.Context) {
+	if cp.tokenManager == nil {
+		return
+	}
+	cp.tokenStartOnce.Do(func() { cp.tokenManager.Start(ctx) })
+}
+
+// SetupTokenRotation registers and initializes token rotation for a data source
+// only when its driver explicitly requires managed token rotation.
 func (cp *ConnectionPool) SetupTokenRotation(ctx context.Context, dataSource *model.DataSource) error {
+	if dataSource == nil {
+		return fmt.Errorf("data source is required")
+	}
 	driver, err := cp.registry.GetDriver(dataSource.Type)
 	if err != nil {
 		return err
@@ -555,79 +597,89 @@ func (cp *ConnectionPool) SetupTokenRotation(ctx context.Context, dataSource *mo
 
 	caps := driver.GetCapabilities()
 	if !caps.RequiresTokenRotation {
-		return nil // No rotation needed
+		return nil
+	}
+	if cp.tokenManager == nil {
+		return fmt.Errorf("%w for %s: token manager is not configured", security.ErrTokenRotationUnsupported, dataSource.Type)
 	}
 
-	// Cache driver capabilities
+	cp.mutex.Lock()
 	cp.driverCaps[dataSource.ID] = caps
+	cp.mutex.Unlock()
 
-	// Register token rotation with TokenManager
-	if cp.tokenManager != nil {
-		// Define rotation function
-		onRotate := func(ctx context.Context) (string, time.Time, error) {
-			return cp.rotateToken(ctx, dataSource)
-		}
-
-		// Set expiration time (default 1 hour, should be configured per data source)
-		expiresAt := time.Now().Add(1 * time.Hour)
-
-		cp.tokenManager.RegisterToken(dataSource.ID, expiresAt, onRotate)
+	// Capture a stable copy; request handlers may reuse or mutate their model.
+	source := *dataSource
+	if err := cp.tokenManager.RegisterToken(dataSource.ID, func(ctx context.Context) (string, time.Time, error) {
+		return cp.rotateToken(ctx, &source)
+	}); err != nil {
+		return err
 	}
-
-	return nil
+	return cp.tokenManager.EnsureToken(ctx, dataSource.ID)
 }
 
-// rotateToken performs token rotation for a data source
+// rotateToken obtains a real token from the configured Google credential
+// provider. Access tokens are encrypted by the repository before persistence;
+// the service-account credential remains the source of truth.
 func (cp *ConnectionPool) rotateToken(ctx context.Context, dataSource *model.DataSource) (string, time.Time, error) {
-	_, err := cp.registry.GetDriver(dataSource.Type)
+	if dataSource.Type != model.DatabaseTypeBigQuery {
+		return "", time.Time{}, fmt.Errorf("%w for %s", security.ErrTokenRotationUnsupported, dataSource.Type)
+	}
+
+	var auth *security.GCPAuth
+	if raw, ok := dataSource.Config.AdditionalProps["credentials_json"]; ok {
+		var err error
+		switch credentials := raw.(type) {
+		case string:
+			auth, err = security.NewGCPAuthFromJSON([]byte(credentials))
+		case []byte:
+			auth, err = security.NewGCPAuthFromJSON(credentials)
+		default:
+			return "", time.Time{}, fmt.Errorf("BigQuery credentials_json must be a string or byte array, got %T", raw)
+		}
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("configure BigQuery credentials: %w", err)
+		}
+	} else {
+		var err error
+		auth, err = security.NewGCPAuthFromADC(ctx)
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("BigQuery token provider is not configured: %w", err)
+		}
+	}
+	if auth == nil {
+		return "", time.Time{}, fmt.Errorf("BigQuery token provider is unavailable")
+	}
+	token, err := auth.GetToken(ctx)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("retrieve BigQuery OAuth token: %w", err)
 	}
-
-	// Get credentials from vault
-	// TODO: Implement credential retrieval from database via CredentialVault
-
-	// Rotate token based on data source type
-	switch dataSource.Type {
-	case model.DatabaseTypeBigQuery:
-		// GCP OAuth token rotation
-		// TODO: Call GCP security to refresh OAuth token
-		return "new-token", time.Now().Add(1 * time.Hour), nil
-
-	// TODO: Add support for other data source types when they are implemented
-	// case model.DatabaseTypeS3, model.DatabaseTypeMinIO:
-	// case model.DatabaseTypeHDFS, model.DatabaseTypeOzone:
-
-	default:
-		return "", time.Time{}, fmt.Errorf("token rotation not supported for %s", dataSource.Type)
+	if token == nil || !token.Valid() {
+		return "", time.Time{}, fmt.Errorf("BigQuery credential provider returned an invalid OAuth token")
 	}
+	return token.AccessToken, token.Expiry, nil
 }
 
-// RefreshToken forces an immediate token refresh for a data source
+// RefreshToken forces an immediate token refresh for a data source.
 func (cp *ConnectionPool) RefreshToken(ctx context.Context, dataSourceID string) error {
 	if cp.tokenManager == nil {
-		return fmt.Errorf("token manager not configured")
+		return fmt.Errorf("%w: token manager is not configured", security.ErrTokenRotationUnsupported)
 	}
-
-	// Trigger token rotation
 	_, _, err := cp.tokenManager.RotateTokenWithResult(ctx, dataSourceID)
 	return err
 }
 
-// GetCurrentToken retrieves the current token for a data source
+// GetCurrentToken retrieves the current unexpired token for a data source.
 func (cp *ConnectionPool) GetCurrentToken(ctx context.Context, dataSourceID string) (string, error) {
 	if cp.tokenManager == nil {
-		return "", fmt.Errorf("token manager not configured")
+		return "", fmt.Errorf("%w: token manager is not configured", security.ErrTokenUnavailable)
 	}
-
-	return cp.tokenManager.GetToken(dataSourceID)
+	return cp.tokenManager.GetToken(ctx, dataSourceID)
 }
 
-// RemoveTokenRotation removes token rotation for a data source
+// RemoveTokenRotation removes token rotation for a data source.
 func (cp *ConnectionPool) RemoveTokenRotation(dataSourceID string) {
 	if cp.tokenManager != nil {
-		// TODO: Implement token removal in TokenManager
-		_ = dataSourceID
+		cp.tokenManager.RemoveToken(dataSourceID)
 	}
 }
 

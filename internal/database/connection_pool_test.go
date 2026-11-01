@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	sqldriver "database/sql/driver"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
 // failingDriver is a database/sql driver whose connections always fail, used to
@@ -168,6 +171,9 @@ type stubPoolDriver struct {
 	drivers.Driver
 }
 
+func (stubPoolDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{}
+}
 func (stubPoolDriver) BuildDSN(*model.DataSourceConfig) string { return "stub://" }
 func (stubPoolDriver) Open(string) (*sql.DB, error)            { return sql.OpenDB(pingableConnector{}), nil }
 
@@ -318,6 +324,9 @@ type recoveryPoolDriver struct {
 	state *recoveryPoolState
 }
 
+func (d recoveryPoolDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{}
+}
 func (d recoveryPoolDriver) BuildDSN(*model.DataSourceConfig) string { return "recovery://" }
 
 func (d recoveryPoolDriver) Open(string) (*sql.DB, error) {
@@ -482,5 +491,67 @@ func TestConcurrentConnectionCloseIsIdempotent(t *testing.T) {
 	}
 	if pool.IsHealthy(dataSourceID) {
 		t.Error("closed data source is still reported healthy")
+	}
+}
+
+func TestRotateTokenUsesConfiguredGoogleOAuthProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm() error = %v", err)
+		}
+		if got := r.Form.Get("grant_type"); got != "refresh_token" {
+			t.Errorf("grant_type = %q, want refresh_token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"provider-issued-token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	credentials := `{"type":"authorized_user","client_id":"client-id","client_secret":"client-secret","refresh_token":"refresh-token","token_uri":"` + server.URL + `"}`
+	pool := NewConnectionPool(NewDriverRegistry(), security.NewTokenManager(nil), nil, false)
+	token, expiresAt, err := pool.rotateToken(context.Background(), &model.DataSource{
+		ID:   "bigquery-source",
+		Type: model.DatabaseTypeBigQuery,
+		Config: model.DataSourceConfig{
+			AdditionalProps: map[string]interface{}{"credentials_json": credentials},
+		},
+	})
+	if err != nil {
+		t.Fatalf("rotateToken() error = %v", err)
+	}
+	if token != "provider-issued-token" {
+		t.Fatalf("rotateToken() = %q, want provider-issued-token", token)
+	}
+	if !expiresAt.After(time.Now()) {
+		t.Fatalf("rotateToken() expiry = %v, want a future expiry", expiresAt)
+	}
+}
+
+func TestRotateTokenFailsClearlyForUnsupportedDataSource(t *testing.T) {
+	pool := NewConnectionPool(NewDriverRegistry(), security.NewTokenManager(nil), nil, false)
+	_, _, err := pool.rotateToken(context.Background(), &model.DataSource{Type: model.DatabaseTypeMySQL})
+	if !errors.Is(err, security.ErrTokenRotationUnsupported) {
+		t.Fatalf("rotateToken() error = %v, want ErrTokenRotationUnsupported", err)
+	}
+}
+
+func TestDataSourceFingerprintIgnoresRotatedAccessToken(t *testing.T) {
+	source := &model.DataSource{
+		ID: "source-1", Type: model.DatabaseTypeBigQuery,
+		Config: model.DataSourceConfig{AdditionalProps: map[string]interface{}{
+			"project":                 "analytics",
+			"access_token":            "token-one",
+			"access_token_expires_at": "2026-11-01T06:00:00Z",
+		}},
+	}
+	first := dataSourceFingerprint(source)
+	source.Config.AdditionalProps["access_token"] = "token-two"
+	source.Config.AdditionalProps["access_token_expires_at"] = "2026-11-01T07:00:00Z"
+	if got := dataSourceFingerprint(source); got != first {
+		t.Fatalf("rotating an access token changed the connection fingerprint: got %s, want %s", got, first)
+	}
+	source.Config.AdditionalProps["project"] = "warehouse"
+	if got := dataSourceFingerprint(source); got == first {
+		t.Fatal("changing connection configuration did not change the fingerprint")
 	}
 }

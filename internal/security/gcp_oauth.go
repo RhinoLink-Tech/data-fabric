@@ -50,7 +50,7 @@ func (g *GCPAuth) GetToken(ctx context.Context) (*oauth2.Token, error) {
 	}
 
 	// Parse service account JSON and create JWT token source
-	creds, err := google.CredentialsFromJSON(ctx, g.credentialsJSON)
+	creds, err := google.CredentialsFromJSON(ctx, g.credentialsJSON, "https://www.googleapis.com/auth/bigquery")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse credentials JSON: %w", err)
 	}

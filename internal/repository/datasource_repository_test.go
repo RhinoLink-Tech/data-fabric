@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -256,5 +257,56 @@ func TestDataSourceMutationsAcceptExistingRecordsAndDoNotRecreateOnUpdate(t *tes
 	}
 	if count != 0 {
 		t.Fatalf("update recreated deleted row; count = %d", count)
+	}
+}
+
+func TestDataSourceRepositoryStoresAccessTokensEncryptedWithAtomicCompareAndSwap(t *testing.T) {
+	vault := vaultForTest(t)
+	db, repo := testRepository(t, vault)
+	expiry := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	ds := &model.DataSource{
+		Name: "oauth-source", Type: model.DatabaseTypeBigQuery, Status: model.DataSourceStatusActive,
+		Config: model.DataSourceConfig{
+			Host: "bigquery.googleapis.com", Database: "project", Username: "service-account",
+			AdditionalProps: map[string]interface{}{
+				"access_token":            "old-access-token",
+				"access_token_expires_at": expiry.Format(time.RFC3339Nano),
+			},
+		},
+	}
+	if err := repo.Create(context.Background(), ds); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	store, ok := repo.(security.TokenStore)
+	if !ok {
+		t.Fatal("data-source repository does not implement security.TokenStore")
+	}
+
+	gotToken, gotExpiry, err := store.LoadAccessToken(context.Background(), ds.ID)
+	if err != nil || gotToken != "old-access-token" || !gotExpiry.Equal(expiry) {
+		t.Fatalf("LoadAccessToken() = %q, %v, %v", gotToken, gotExpiry, err)
+	}
+
+	replacementExpiry := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	swapped, err := store.CompareAndSwapAccessToken(context.Background(), ds.ID, "old-access-token", "replacement-access-token", replacementExpiry)
+	if err != nil || !swapped {
+		t.Fatalf("CompareAndSwapAccessToken() = %v, %v; want true, nil", swapped, err)
+	}
+	persisted, persistedExpiry, err := store.LoadAccessToken(context.Background(), ds.ID)
+	if err != nil || persisted != "replacement-access-token" || !persistedExpiry.Equal(replacementExpiry) {
+		t.Fatalf("replacement = %q, %v, %v", persisted, persistedExpiry, err)
+	}
+	raw := storedConfig(t, db, ds.ID)
+	if strings.Contains(raw, "replacement-access-token") || strings.Contains(raw, "old-access-token") {
+		t.Fatalf("access token was persisted in plaintext: %s", raw)
+	}
+
+	swapped, err = store.CompareAndSwapAccessToken(context.Background(), ds.ID, "old-access-token", "stale-access-token", time.Now().Add(3*time.Hour))
+	if err != nil || swapped {
+		t.Fatalf("stale compare-and-swap = %v, %v; want false, nil", swapped, err)
+	}
+	persisted, _, err = store.LoadAccessToken(context.Background(), ds.ID)
+	if err != nil || persisted != "replacement-access-token" {
+		t.Fatalf("stale compare-and-swap changed token to %q, error %v", persisted, err)
 	}
 }
