@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [18ae0ce](https://github.com/RhinoLink-Tech/data-fabric/commit/18ae0ceb23fc8ba4d1fe6bdb1c49464eebe1f8e1).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [c3a6444](https://github.com/RhinoLink-Tech/data-fabric/commit/c3a64442ec3295f655089e8088fe99476a16b9a3).
 
 ### Delivered capabilities
 
@@ -38,7 +38,11 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ### Completed: verify TiDB server identity over TLS
 
-[#298](https://github.com/RhinoLink-Tech/data-fabric/issues/298) honors the TiDB ssl setting and supports a mounted PEM CA for private trust roots. The pinned TiDB v8.5.8 TLS contract verifies the server certificate and hostname, rejects an untrusted CA and hostname mismatch, and confirms ssl: false retains plaintext behavior. Other TiDB versions and TLS behavior for other connectors remain outside this evidence.
+[#298](https://github.com/RhinoLink-Tech/data-fabric/issues/298) honors the TiDB `ssl` setting and supports a mounted PEM CA for private trust roots. The pinned TiDB v8.5.8 TLS contract verifies the server certificate and hostname, rejects an untrusted CA and hostname mismatch, and confirms `ssl: false` retains plaintext behavior. Other TiDB versions and TLS behavior for other connectors remain outside this evidence.
+
+### Completed: verify MySQL server identity with private CA roots
+
+[#300](https://github.com/RhinoLink-Tech/data-fabric/issues/300) adds `sslRootCert` support to the MySQL connector while retaining system trust roots for `ssl: true` and plaintext behavior for `ssl: false`. The pinned MySQL 8.0.46 contract validates the certificate and hostname with a trusted private CA and rejects an untrusted CA or hostname mismatch. Other MySQL versions and MariaDB TLS behavior remain outside this evidence.
 
 ### 1. Raise connector confidence from real demand
 

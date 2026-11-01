@@ -1,14 +1,20 @@
 package traditional
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"net/url"
+	"os"
 	"strings"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/go-sql-driver/mysql"
 )
+
+const mysqlTLSRootCertParam = "datafabricsslrootcert"
 
 // MySQLDriver implements Driver for MySQL/MariaDB
 type MySQLDriver struct{}
@@ -31,15 +37,65 @@ func (qs *MySQLDriver) ApplyBatchPagination(sql string, batchSize, offset int64)
 	return fmt.Sprintf("%s LIMIT %d", sql, batchSize), nil
 }
 func (d *MySQLDriver) Open(dsn string) (*sql.DB, error) {
-	return sql.Open("mysql", dsn)
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, fmt.Errorf("invalid MySQL connection configuration: %w", err)
+	}
+
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MySQL connection string")
+	}
+	rootCertPath := config.Params[mysqlTLSRootCertParam]
+	delete(config.Params, mysqlTLSRootCertParam)
+	if rootCertPath == "" {
+		return sql.Open("mysql", dsn)
+	}
+
+	certificate, err := os.ReadFile(rootCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("MySQL sslRootCert must refer to a readable PEM CA certificate")
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(certificate) {
+		return nil, fmt.Errorf("MySQL sslRootCert must contain at least one valid PEM CA certificate")
+	}
+	config.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    rootCAs,
+	}
+	connector, err := mysql.NewConnector(config)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MySQL TLS configuration")
+	}
+	return sql.OpenDB(connector), nil
 }
 
 func (d *MySQLDriver) ValidateDSN(dsn string) error {
-	// Basic MySQL DSN validation
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
-	// More sophisticated validation could be added here
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid MySQL DSN")
+	}
+	if config.TLSConfig != "" && config.TLSConfig != "true" && config.TLSConfig != "false" {
+		return fmt.Errorf("MySQL TLS requires verified tls=true; insecure modes and custom TLS names are unsupported")
+	}
+	rootCertPath := config.Params[mysqlTLSRootCertParam]
+	if rootCertPath == "" {
+		return nil
+	}
+	if config.TLSConfig != "true" {
+		return fmt.Errorf("MySQL sslRootCert requires ssl=true")
+	}
+	certificate, err := os.ReadFile(rootCertPath)
+	if err != nil {
+		return fmt.Errorf("MySQL sslRootCert must refer to a readable PEM CA certificate")
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(certificate) {
+		return fmt.Errorf("MySQL sslRootCert must contain at least one valid PEM CA certificate")
+	}
 	return nil
 }
 
@@ -60,6 +116,9 @@ func (d *MySQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 	params := []string{}
 	if config.SSL {
 		params = append(params, "tls=true")
+	}
+	if config.SSLRootCert != "" {
+		params = append(params, mysqlTLSRootCertParam+"="+url.QueryEscape(config.SSLRootCert))
 	}
 	if config.Timezone != "" {
 		params = append(params, "loc="+config.Timezone)

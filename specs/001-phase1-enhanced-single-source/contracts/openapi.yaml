@@ -786,7 +786,7 @@ components:
           description: PostgreSQL-only TLS mode. When omitted, the legacy ssl boolean maps to disable or require; explicit sslMode takes precedence.
         sslRootCert:
           type: string
-          description: PostgreSQL and TiDB path to a PEM CA certificate readable by the Data Fabric process; required for a private CA. TiDB also requires ssl to be true.
+          description: Path to a PEM CA certificate readable by the Data Fabric process. PostgreSQL uses it with verify-ca or verify-full; MySQL and TiDB require ssl to be true.
         timeout:
           type: integer
           description: Connection timeout in seconds
