@@ -157,10 +157,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"openGauss 6.0.0 build aee4abd5"}
 		profile.VersionPolicy = "Only openGauss 6.0.0 build aee4abd5 has a pinned contract result; no other openGauss or PostgreSQL version is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the openGauss 6.0.0 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the openGauss 6.0.0 contract tests."
 		profile.Limitations = []string{
-			"The openGauss contract test covers the PostgreSQL-wire driver against one openGauss 6.0.0 server instance.",
-			"Database-side read-only session enforcement, SQL execution, schema metadata, pagination, cancellation, and query errors are verified. TLS, other openGauss versions, and other PostgreSQL-compatible products are not covered.",
+			"The openGauss contract tests cover the PostgreSQL-wire driver against one openGauss 6.0.0 server instance.",
+			"Database-side read-only session enforcement, SQL execution, schema metadata, pagination, cancellation, query errors, and TLS verification are verified. Other openGauss versions and other PostgreSQL-compatible products are not covered.",
 		}
 	case model.DatabaseTypeClickHouse:
 		profile.Status = ConnectorStatusEndToEndVerified
