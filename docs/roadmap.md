@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. The latest reviewed mainline commit is [403fd87](https://github.com/RhinoLink-Tech/data-fabric/commit/403fd872) and its [Go CI run passed](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/41280666701).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. The latest reviewed mainline commit is [a03e198](https://github.com/RhinoLink-Tech/data-fabric/commit/a03e1988fafd28bce72fae5f7e043b06c30f1c4d) and its [Go CI run passed](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/41291951640).
 
 ### Delivered capabilities
 
@@ -28,9 +28,11 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Prioritized evolution
 
-### 1. Measure the lightweight deployment footprint
+### 1. Measure and reduce the deployment footprint
 
-[P2 #291](https://github.com/RhinoLink-Tech/data-fabric/issues/291) adds a reproducible baseline for binary and image size, startup readiness, idle memory, and memory under bounded query workloads. The existing PostgreSQL report measures query latency; it does not establish deployment footprint. Decide on packaging changes only after the measurements show a concrete need.
+The reproducible [#291 baseline](performance/deployment-footprint.md) is measured on the current mainline. On one WSL2 host, restart-to-health readiness was 0.493 s median, idle process RSS was 82.65 MiB median, and a 50,000-row bounded stream reached 95.64 MiB median process high-water RSS. The release binary was 172.2 MB and the uncompressed image was 326.1 MB. A compile-only stripped build measured 27.2% smaller; it is not yet a release artifact.
+
+[P2 #293](https://github.com/RhinoLink-Tech/data-fabric/issues/293) tracks applying and validating the low-risk linker-stripping change. Keep the lightweight claim focused on measured startup and runtime memory; do not imply that the current release artifact is small.
 
 ### 2. Raise connector confidence from real demand
 
