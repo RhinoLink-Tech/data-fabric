@@ -7,7 +7,7 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | Driver | Exact server version | Pinned runtime artifact | Authentication |
 | --- | --- | --- | --- |
 | PostgreSQL | 17.11 | postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 | username/password; TLS verify-full with test CA |
-| openGauss | 6.0.0 (server reports openGauss 6.0.0 build aee4abd5) | enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5 | username and password |
+| openGauss | 6.0.0 (server reports openGauss 6.0.0 build aee4abd5) | enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5 | username/password; TLS verify-ca and verify-full with generated CA |
 | MySQL | 8.0.46 | mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b | username/password; TLS certificate and hostname validation with private test CA |
 | MariaDB | 11.8.9 | mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68 | username/password; TLS certificate and hostname validation with private test CA |
 | TiDB | 8.5.8 (server reports 8.0.11-TiDB-v8.5.8) | pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5 | username/password; TLS certificate and hostname validation with test CA |
@@ -36,9 +36,11 @@ The MariaDB TLS contract starts the pinned MariaDB 11.8.9 image with an ephemera
 
 The TiDB TLS contract starts the same pinned TiDB v8.5.8 release with an ephemeral server certificate. It verifies TLS with a trusted test CA, rejects an untrusted CA and a hostname mismatch, confirms system roots reject the test CA when no custom CA is configured, and confirms ssl: false remains plaintext. Run it locally with bash scripts/contracts/run_tidb_tls_contract.sh; it creates and removes its temporary Docker image and container.
 
+The openGauss TLS contract starts the pinned 6.0.0 image with a generated server certificate. It verifies a trusted CA with verify-full and verify-ca, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private CA, and checks that legacy ssl: true still requires encryption while ssl: false disables TLS. Run it with bash scripts/contracts/run_opengauss_tls_contract.sh; it creates and removes its temporary container and certificates.
+
 The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate both CSV and flat-schema Parquet unified query adapters against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
 
-These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 17.11, MySQL 8.0.46, MariaDB 11.8.9, and TiDB v8.5.8 certificate and hostname validation are covered by pinned TLS contracts; production TLS validation for the other listed baselines and other server versions remains unverified.
+These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, and TiDB v8.5.8 certificate validation are covered by pinned TLS contracts; production TLS validation for the other listed baselines and other server versions remains unverified.
 
 The MinIO contracts build the pinned upstream source archive locally because the historical upstream container image is no longer published. The script verifies the archive SHA-256, checks the built binary's release identifier, then runs the CSV and Parquet fixtures against that MinIO process. The S3 CSV, Parquet, ORC, Avro OCF, and JSON contracts run against the pinned Garage v2.4.1 image.
 
@@ -418,7 +420,16 @@ Stop the test service when finished:
 docker stop data-fabric-opengauss-contract
 ~~~~
 
-openGauss uses the PostgreSQL wire protocol in this contract. Its build-specific product signature is recorded separately from the PostgreSQL-compatible protocol version. TLS behavior and other openGauss versions are not covered.
+openGauss uses the PostgreSQL wire protocol in this contract. Its build-specific product signature is recorded separately from the PostgreSQL-compatible protocol version. The separate TLS contract below covers client-side certificate verification only for the pinned openGauss build; other openGauss versions are not covered.
+
+## Run the openGauss TLS contract locally
+
+The TLS contract requires Docker, OpenSSL, and the Go version declared in go.mod. It starts the pinned openGauss 6.0.0 image, creates a temporary CA and localhost server certificate, configures TLS on the server, runs both the TLS verification and regular driver contracts, then removes the container and generated certificates:
+
+~~~~sh
+bash scripts/contracts/run_opengauss_tls_contract.sh
+~~~~
+
 
 ## Run the SQL Server contract locally
 

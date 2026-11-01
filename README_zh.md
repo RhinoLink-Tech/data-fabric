@@ -72,7 +72,7 @@ flowchart LR
 - **连接诊断：** 测试连接、校验配置，并查看连接健康状态和连接池统计。
 - **统一查询 API：** 提交 SQL 并分批获取结果；支持流式读取的驱动可降低大结果集的一次性内存占用。
 - **SQL 方言适配：** 将兼容范围内的查询语法转换为目标方言，详见[统一 SQL v1 兼容矩阵](SQL_TRANSLATION_FEATURES.md)。
-- **安全与审计：** 提供 JWT API 认证、远程 MCP 的 OIDC 身份校验、所有者/租户及表列级访问策略、脱敏审计事件、只读 SQL 校验，并在支持的数据库会话中启用只读限制；PostgreSQL、MySQL、MariaDB 和 TiDB 连接支持服务端证书和主机名校验，同时提供请求限流、配置校验和健康检查。
+- **安全与审计：** 提供 JWT API 认证、远程 MCP 的 OIDC 身份校验、所有者/租户及表列级访问策略、脱敏审计事件、只读 SQL 校验，并在支持的数据库会话中启用只读限制；PostgreSQL、openGauss、MySQL、MariaDB 和 TiDB 连接支持服务端证书和主机名校验，同时提供请求限流、配置校验和健康检查。
 - **Prometheus 监控：** 从 `/metrics` 抓取 HTTP 和查询指标；该端点始终需要管理员 Bearer JWT。详见[可观测性指南](docs/observability.md)。
 
 ## 数据源范围

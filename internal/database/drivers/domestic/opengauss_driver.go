@@ -4,10 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 
 	_ "github.com/lib/pq"
@@ -61,8 +65,40 @@ func (d *OpenGaussDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *OpenGaussDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
+		return fmt.Errorf("OpenGauss DSN must use the postgres or postgresql scheme")
+	}
+
+	query := parsed.Query()
+	sslMode := query.Get("sslmode")
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	switch sslMode {
+	case "disable", "require", "verify-ca", "verify-full":
+	default:
+		return fmt.Errorf("unsupported OpenGauss sslMode; use disable, require, verify-ca, or verify-full")
+	}
+
+	rootCert := query.Get("sslrootcert")
+	if rootCert == "" {
+		return nil
+	}
+	if sslMode != "verify-ca" && sslMode != "verify-full" {
+		return fmt.Errorf("OpenGauss sslRootCert requires sslMode verify-ca or verify-full")
+	}
+	file, err := os.Open(rootCert)
+	if err != nil {
+		return fmt.Errorf("OpenGauss sslRootCert must refer to a readable certificate file")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("OpenGauss sslRootCert must refer to a readable certificate file")
 	}
 	return nil
 }
@@ -74,18 +110,31 @@ func (d *OpenGaussDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *OpenGaussDriver) BuildDSN(config *model.DataSourceConfig) string {
-	sslMode := "disable"
-	if config.SSL {
-		sslMode = "require"
+	sslMode := strings.TrimSpace(config.SSLMode)
+	if sslMode == "" && d != nil && d.config != nil {
+		sslMode = strings.TrimSpace(d.config.SSLMode)
 	}
-	if d != nil && d.config != nil && d.config.SSLMode != "" {
-		sslMode = d.config.SSLMode
+	if sslMode == "" {
+		if config.SSL {
+			sslMode = "require"
+		} else {
+			sslMode = "disable"
+		}
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
-		config.Host, config.Port, config.Database, config.Username, config.Password, sslMode)
-
-	return dsn
+	dsn := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(config.Username, config.Password),
+		Host:   net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		Path:   "/" + config.Database,
+	}
+	query := url.Values{}
+	query.Set("sslmode", sslMode)
+	if config.SSLRootCert != "" {
+		query.Set("sslrootcert", config.SSLRootCert)
+	}
+	dsn.RawQuery = query.Encode()
+	return dsn.String()
 }
 
 // GetDatabaseTypeName returns the database type name

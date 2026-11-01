@@ -48,6 +48,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 [#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. Other MariaDB versions remain outside this evidence.
 
+### Completed: verify openGauss server identity over TLS
+
+[#304](https://github.com/RhinoLink-Tech/data-fabric/issues/304) makes the openGauss connector honor sslMode and sslRootCert. The pinned openGauss 6.0.0 contract verifies a private CA and hostname, rejects an untrusted CA and hostname mismatch, and preserves legacy ssl: true/false behavior. Other openGauss versions remain outside this evidence.
+
 ### 1. Raise connector confidence from real demand
 
 The initial versioned connector contract baseline in [#35](https://github.com/RhinoLink-Tech/data-fabric/issues/35) is complete. The catalog remains the source of truth: new verified claims require a pinned version and a passing contract for the operations being claimed. Select additional connectors from actual user demand rather than attempting to certify every registered type at once.
