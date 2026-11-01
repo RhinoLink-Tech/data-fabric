@@ -87,7 +87,7 @@ func TestS3ORCContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("describe S3 ORC table: %v", err)
 	}
-	if len(table.Columns) != 5 || table.Columns[0].Name != "userid" || table.Columns[0].Type != "INTEGER" ||
+	if len(table.Columns) != 5 || table.Columns[0].Name != "userid" || table.Columns[0].Type != "BIGINT" ||
 		table.Columns[1].Name != "string1" || table.Columns[1].Type != "VARCHAR" {
 		t.Fatalf("S3 ORC columns = %+v", table.Columns)
 	}
