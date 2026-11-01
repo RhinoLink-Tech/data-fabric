@@ -85,7 +85,7 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 			Capabilities:                 capabilities,
 			Limitations: []string{
 				"No supported server-version range or exact verified server version is recorded.",
-				"A versioned end-to-end contract test is not recorded; see issue #35.",
+				"No versioned end-to-end contract test is recorded for this connector; see the driver contract test report.",
 			},
 		}
 		applySupportStatus(&profile, dbType)
@@ -420,7 +420,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.AuthenticationDisclosure = "The protocol fixture covers optional HTTP basic authentication. No live Druid authentication mode or TLS configuration has a versioned contract result."
 		profile.Limitations = append(profile.Limitations,
 			"The unified query path sends Druid SQL over HTTP and accepts only top-level SELECT or EXPLAIN statements; transactions, DML, native JSON queries, and streaming are not available through this adapter.",
-			"The adapter has deterministic HTTP protocol and query-service tests, but no live Druid cluster or versioned server contract is recorded; retain experimental status until issue #35 has that evidence.",
+			"The adapter has deterministic HTTP protocol and query-service tests, but no live Druid cluster or versioned server contract is recorded; retain experimental status until a version-pinned live contract is recorded.",
 			"TLS behavior, asynchronous statements, propagation of gateway cancellation to Druid's cancel endpoint, and coordinator metadata behavior are not covered by this adapter baseline.")
 	case model.DatabaseTypeS3CSV:
 		profile.Status = ConnectorStatusExperimental
@@ -717,7 +717,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 			profile.ServerVersionDetection, operations, authentication, profile.AuthenticationDisclosure,
 			capabilitySummary(profile.Capabilities), versionCapabilities, limitations))
 	}
-	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); for the plan, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35). For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
+	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); new connector verification work should be scoped to a concrete user need and a pinned server version. For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
 	return out.String()
 }
 

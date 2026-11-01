@@ -72,12 +72,12 @@ flowchart LR
 - **连接诊断：** 测试连接、校验配置，并查看连接健康状态和连接池统计。
 - **统一查询 API：** 提交 SQL 并分批获取结果；支持流式读取的驱动可降低大结果集的一次性内存占用。
 - **SQL 方言适配：** 将兼容范围内的查询语法转换为目标方言，详见[统一 SQL v1 兼容矩阵](SQL_TRANSLATION_FEATURES.md)。
-- **网关控制：** 提供 JWT 认证、请求限流、配置校验和健康检查能力。
+- **安全与审计：** 提供 JWT API 认证、远程 MCP 的 OIDC 身份校验、所有者/租户及表列级访问策略、脱敏审计事件、只读 SQL 校验，并在支持的数据库会话中启用只读限制；同时提供请求限流、配置校验和健康检查。
 - **Prometheus 监控：** 从 `/metrics` 抓取 HTTP 和查询指标；该端点始终需要管理员 Bearer JWT。详见[可观测性指南](docs/observability.md)。
 
 ## 数据源范围
 
-Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容性接口。目录区分“已注册实现”和“端到端验证”，分别记录声明的版本范围与精确测试版本，并列出协议兼容方式、驱动能力、版本策略和服务器版本探测结果。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已注册实现仍处于实验状态。Apache Ozone 因对象操作尚未完成而未注册。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
+Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容性接口。目录区分“已注册实现”和“端到端验证”，分别记录声明的版本范围与精确测试版本，并列出协议兼容方式、驱动能力、版本策略和服务器版本探测结果。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已注册实现仍处于实验状态。Ozone Parquet、按行文本和 Avro OCF 可通过 S3 Gateway 以只读实验性适配器访问；原生 Ozone RPC 尚未实现。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
 
 ### 驱动打包与运行占用
 
@@ -173,7 +173,7 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 
 ## 跨源查询引擎接入
 
-需要跨源 SQL 时，Data Fabric 可通过统一适配接入兼容的联邦查询引擎。管理员可将 Trino、Presto 和 OpenLooKeng 登记为数据源，由对应协调器使用其 catalogs 和 connectors 规划并执行跨目录查询；应用仍通过 Data Fabric 查询 API 提交 SQL。
+需要跨源 SQL 时，Data Fabric 可通过统一适配接入兼容的联邦查询引擎。Trino、Presto 和 OpenLooKeng 适配器已实现并可登记为数据源；支持目录将它们标为“已实现”，尚未标为“端到端验证”。当前跨目录回归使用模拟协调器，真实协调器验证按 [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179) 暂缓。
 
 连接配置见 [API 使用指南](docs/api_usage.md)，SQL 兼容范围见[统一 SQL v1 说明](SQL_TRANSLATION_FEATURES.md)。
 
