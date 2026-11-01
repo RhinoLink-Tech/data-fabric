@@ -77,7 +77,7 @@ Applications can use a gateway driver for an individual source or send SQL throu
 
 ## Data Sources
 
-Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. It distinguishes registered implementation code from end-to-end verified support, separates declared version ranges from exact versions tested, and reports compatible protocol families, driver capabilities, version policy, and detected server versions. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations are experimental. Ozone Parquet is available through its S3 Gateway endpoint; native Ozone Text and Avro connectors remain unavailable. See the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
+Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. It distinguishes registered implementation code from end-to-end verified support, separates declared version ranges from exact versions tested, and reports compatible protocol families, driver capabilities, version policy, and detected server versions. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations are experimental. Ozone Parquet and line-oriented text are available through the S3 Gateway; native Ozone RPC and Ozone Avro remain unavailable. See the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
 
 ### Build and Runtime Footprint
 

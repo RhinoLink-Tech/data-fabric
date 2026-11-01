@@ -115,11 +115,10 @@ func TestUpdateDataSourceValidatesExistingTypeAndFinalConfigBeforePersistence(t 
 	}
 }
 
-func TestCreateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t *testing.T) {
+func TestCreateDataSourceRejectsUnimplementedOzoneAvroBeforePersistence(t *testing.T) {
 	repo := &validatingDataSourceRepositoryStub{}
 	svc := NewDataSourceService(repo, nil, database.NewHealthChecker(nil))
 	ozoneTypes := []model.DatabaseType{
-		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	}
 	for _, dbType := range ozoneTypes {
@@ -138,9 +137,8 @@ func TestCreateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t
 	}
 }
 
-func TestUpdateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t *testing.T) {
+func TestUpdateDataSourceRejectsUnimplementedOzoneAvroBeforePersistence(t *testing.T) {
 	ozoneTypes := []model.DatabaseType{
-		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	}
 	for _, dbType := range ozoneTypes {
@@ -166,31 +164,39 @@ func TestUpdateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t
 	}
 }
 
-func TestCreateAndUpdateOzoneParquetDataSource(t *testing.T) {
-	config := model.DataSourceConfig{
-		Host: "warehouse/events.parquet", Database: "analytics", Username: "access", Password: "secret",
-		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
-	}
-	createRepo := &validatingDataSourceRepositoryStub{}
-	createService := NewDataSourceService(createRepo, nil, database.NewHealthChecker(nil))
-	if _, err := createService.CreateDataSource(context.Background(), nil, &CreateDataSourceRequest{
-		Name: "ozone-events", Type: model.DatabaseTypeOzoneParquet, Config: config,
-	}); err != nil {
-		t.Fatalf("CreateDataSource() error = %v", err)
-	}
-	if createRepo.created == nil || createRepo.created.Type != model.DatabaseTypeOzoneParquet {
-		t.Fatalf("created source = %+v, want persisted Ozone Parquet source", createRepo.created)
-	}
+func TestCreateAndUpdateOzoneS3GatewayDataSources(t *testing.T) {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText} {
+		t.Run(string(dbType), func(t *testing.T) {
+			extension := "parquet"
+			if dbType == model.DatabaseTypeOzoneText {
+				extension = "log"
+			}
+			config := model.DataSourceConfig{
+				Host: "warehouse/events." + extension, Database: "analytics", Username: "access", Password: "secret",
+				AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
+			}
+			createRepo := &validatingDataSourceRepositoryStub{}
+			createService := NewDataSourceService(createRepo, nil, database.NewHealthChecker(nil))
+			if _, err := createService.CreateDataSource(context.Background(), nil, &CreateDataSourceRequest{
+				Name: "ozone-events", Type: dbType, Config: config,
+			}); err != nil {
+				t.Fatalf("CreateDataSource() error = %v", err)
+			}
+			if createRepo.created == nil || createRepo.created.Type != dbType {
+				t.Fatalf("created source = %+v, want persisted Ozone source", createRepo.created)
+			}
 
-	const id = "e8c3cfb8-21dd-4f29-a197-7a616e0165ba"
-	updateRepo := &validatingDataSourceRepositoryStub{existing: &model.DataSource{
-		ID: id, Name: "ozone-events", Type: model.DatabaseTypeOzoneParquet, Config: config,
-	}}
-	updateService := NewDataSourceService(updateRepo, nil, database.NewHealthChecker(nil))
-	if _, err := updateService.UpdateDataSource(context.Background(), nil, id, &UpdateDataSourceRequest{Config: &config}); err != nil {
-		t.Fatalf("UpdateDataSource() error = %v", err)
-	}
-	if updateRepo.updated == nil || updateRepo.updated.Type != model.DatabaseTypeOzoneParquet {
-		t.Fatalf("updated source = %+v, want updated Ozone Parquet source", updateRepo.updated)
+			const id = "e8c3cfb8-21dd-4f29-a197-7a616e0165ba"
+			updateRepo := &validatingDataSourceRepositoryStub{existing: &model.DataSource{
+				ID: id, Name: "ozone-events", Type: dbType, Config: config,
+			}}
+			updateService := NewDataSourceService(updateRepo, nil, database.NewHealthChecker(nil))
+			if _, err := updateService.UpdateDataSource(context.Background(), nil, id, &UpdateDataSourceRequest{Config: &config}); err != nil {
+				t.Fatalf("UpdateDataSource() error = %v", err)
+			}
+			if updateRepo.updated == nil || updateRepo.updated.Type != dbType {
+				t.Fatalf("updated source = %+v, want updated Ozone source", updateRepo.updated)
+			}
+		})
 	}
 }

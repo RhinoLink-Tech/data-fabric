@@ -77,6 +77,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeOzoneParquet, func() drivers.Driver {
 		return &file_system.OzoneParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeOzoneText, func() drivers.Driver {
+		return &file_system.OzoneTextDriver{}
+	})
 	dr.register(model.DatabaseTypeHDFSText, func() drivers.Driver {
 		return &file_system.HDFSTextDriver{}
 	})

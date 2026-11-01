@@ -156,7 +156,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneAvro} {
 		profile, ok := profiles[string(dbType)]
 		if !ok || profile.Supported || profile.Status != ConnectorStatusUnsupported {
 			t.Errorf("unsupported type %q has incorrect profile: %+v", dbType, profile)
@@ -168,6 +168,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(ozoneParquet.Limitations, "S3 Gateway endpoint") || !containsSupportLimitation(ozoneParquet.Limitations, "64 MiB") {
 		t.Errorf("Ozone Parquet catalog must disclose endpoint and resource limits: %+v", ozoneParquet.Limitations)
+	}
+	ozoneText := profiles[string(model.DatabaseTypeOzoneText)]
+	if !ozoneText.Registered || !ozoneText.Supported || ozoneText.Status != ConnectorStatusExperimental || !ozoneText.Capabilities.SupportsSQL {
+		t.Errorf("Ozone text must expose its experimental S3 Gateway SQL path: %+v", ozoneText)
+	}
+	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
+		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
 	}
 
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]

@@ -633,4 +633,4 @@ remains experimental until a pinned live HDFS contract is available.
 
 ## Ozone S3 Gateway Parquet protocol fixture
 
-The Ozone Parquet adapter uses the shared S3 client against a local HTTP protocol fixture. Its deterministic tests cover path-style bucket addressing, metadata HEAD, bounded object GET, Snappy Parquet read-only SQL, metadata discovery, and write rejection. This is protocol simulation only; it does not establish compatibility with a live Ozone release or gateway deployment. The connector remains experimental until a version-pinned live Ozone contract is run.
+The Ozone Parquet and text adapters use the shared S3 client against local HTTP protocol fixtures. Their deterministic tests cover path-style bucket addressing, SigV4 authorization, metadata HEAD, bounded object GET, Snappy Parquet or line-oriented text read-only SQL, metadata discovery, and write rejection. This is protocol simulation only; it does not establish compatibility with a live Ozone release or gateway deployment. The connector remains experimental until a version-pinned live Ozone contract is run.

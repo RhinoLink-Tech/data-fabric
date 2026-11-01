@@ -137,6 +137,22 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 	}, model.DatabaseTypeOzoneParquet); err == nil || !strings.Contains(err.Error(), "endpoint_url") {
 		t.Fatalf("Ozone config without endpoint error = %v, want endpoint_url validation error", err)
 	}
+	ozoneTextConfig := &model.DataSourceConfig{
+		Host: "warehouse/events.log", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
+	}
+	if !checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneText) {
+		t.Fatal("Ozone text should be registered through its S3 Gateway adapter")
+	}
+	if err := checker.ValidateDataSourceConfiguration(ozoneTextConfig, model.DatabaseTypeOzoneText); err != nil {
+		t.Fatalf("Ozone text config should validate through its S3 Gateway adapter: %v", err)
+	}
+	if ozoneTextConfig.Port != 9878 {
+		t.Fatalf("Ozone text S3 Gateway default port = %d, want 9878", ozoneTextConfig.Port)
+	}
+	if checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneAvro) {
+		t.Fatal("Ozone Avro should remain unregistered until its adapter is implemented")
+	}
 
 	invalidPort := &model.DataSourceConfig{
 		Host: "sql.example.test", Port: 70000, Database: "analytics", Username: "gateway",

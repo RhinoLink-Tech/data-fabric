@@ -229,10 +229,10 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
 		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeTencentCOSParquet, DatabaseTypeAzureBlobParquet,
-		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet:
+		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
-		DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
+		DatabaseTypeOzoneAvro, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
 		return "filesystems"
 	case DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid, DatabaseTypeHologres:
 		return "olap"

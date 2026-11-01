@@ -58,9 +58,12 @@ func TestDatabaseTypeAPIsUseSharedSupportCatalog(t *testing.T) {
 	if !ok || ozone.Status != database.ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
 		t.Fatalf("compatibility response should report the experimental Ozone Parquet SQL adapter: %+v", ozone)
 	}
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
-		if profile, ok := response.Data[string(dbType)]; !ok || profile.Status != database.ConnectorStatusUnsupported {
-			t.Errorf("compatibility response should preserve unsupported Ozone format %s: %+v", dbType, profile)
-		}
+	textProfile, ok := response.Data[string(model.DatabaseTypeOzoneText)]
+	if !ok || textProfile.Status != database.ConnectorStatusExperimental || !textProfile.Capabilities.SupportsSQL {
+		t.Errorf("compatibility response should report Ozone text as experimental: %+v", textProfile)
+	}
+	avroProfile, ok := response.Data[string(model.DatabaseTypeOzoneAvro)]
+	if !ok || avroProfile.Status != database.ConnectorStatusUnsupported {
+		t.Errorf("compatibility response should preserve unsupported Ozone Avro: %+v", avroProfile)
 	}
 }

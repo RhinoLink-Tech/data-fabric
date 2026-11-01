@@ -1013,7 +1013,7 @@ max_file_bytes setting described in the HDFS Parquet section.
 
 ## Apache Ozone Parquet through S3 Gateway
 
-The experimental ozone_parquet source reads one Parquet object by using Apache Ozone's S3-compatible gateway. Configure the bucket in database, the object key in additionalProps.object_key (or host), and the gateway origin in additionalProps.endpoint_url. The endpoint defaults to port 9878 when the URL has no explicit port.
+The experimental ozone_parquet and ozone_text sources read one configured object by using Apache Ozone's S3-compatible gateway. Configure the bucket in database, the object key in additionalProps.object_key (or host), and the gateway origin in additionalProps.endpoint_url. Parquet keys must end in .parquet; text keys must end in .txt or .log. The endpoint defaults to port 9878 when the URL has no explicit port.
 
 | Data-source field | Ozone Parquet meaning |
 | --- | --- |
@@ -1026,4 +1026,4 @@ The experimental ozone_parquet source reads one Parquet object by using Apache O
 | additionalProps.table_name | SQL table name; defaults from the object key. |
 | additionalProps.max_file_bytes | Maximum object bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
 
-Requests use path-style addressing. The adapter exposes one object as a bounded read-only SQL table and caps it at 100,000 rows. It does not implement native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.
+Requests use path-style addressing. The Parquet adapter exposes one object as a bounded read-only SQL table; the text adapter exposes each physical line as line_number BIGINT and line VARCHAR. Each format caps objects at 64 MiB and results at 100,000 rows or lines. Neither adapter implements native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.

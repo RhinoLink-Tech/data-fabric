@@ -3,137 +3,145 @@ package file_system
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"net/url"
+	"path"
+	"strings"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
-// OzoneTextDriver implements Driver interface for Ozone text files
-type OzoneTextDriver struct {
-	config *OzoneConfig
-	client *OzoneClient
+// OzoneTextDriver exposes one UTF-8 text object from the Ozone S3 Gateway as read-only SQL.
+type OzoneTextDriver struct{}
+
+func (*OzoneTextDriver) Open(string) (*sql.DB, error) {
+	return nil, errors.New("Ozone text requires a configured S3 Gateway read-only SQL adapter")
 }
 
-// ApplyBatchPagination adds pagination to SQL query
-//
-// Ozone text files are read as files rather than queried through a SQL engine,
-// so there is no LIMIT/OFFSET to push into the source and the query is returned
-// as-is. This used to be an unimplemented stub that panicked.
-func (d *OzoneTextDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	return sql, nil
-}
-
-// NewOzoneTextDriver creates a new Ozone text driver
-func NewOzoneTextDriver(ctx context.Context, config *OzoneConfig) (*OzoneTextDriver, error) {
-	client, err := NewOzoneClient(ctx, config)
+func (*OzoneTextDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	normalized, endpoint, err := NormalizeOzoneTextConfig(config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &OzoneTextDriver{
-		config: config,
-		client: client,
-	}, nil
-}
-
-// Open opens a connection (not applicable for Ozone text)
-func (d *OzoneTextDriver) Open(dsn string) (*sql.DB, error) {
-	return nil, fmt.Errorf("Ozone text driver does not support standard database connections")
-}
-
-// ValidateDSN validates the connection string
-func (d *OzoneTextDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
-	}
-	return nil
-}
-
-// GetDefaultPort returns the default Ozone port
-func (d *OzoneTextDriver) GetDefaultPort() int {
-	return 9880
-}
-
-// BuildDSN builds a connection string from configuration
-func (d *OzoneTextDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("ozone://%s:%d/%s/%s",
-		config.Host, config.Port, d.config.Volume, d.config.Bucket)
-}
-
-// GetDatabaseTypeName returns the database type name
-func (d *OzoneTextDriver) GetDatabaseTypeName() string {
-	return "ozone-text"
-}
-
-// TestConnection tests if the connection is working
-func (d *OzoneTextDriver) TestConnection(db *sql.DB) error {
-	return fmt.Errorf("use TestConnectionContext instead")
-}
-
-// TestConnectionContext tests the Ozone connection
-func (d *OzoneTextDriver) TestConnectionContext(ctx context.Context) error {
-	_, err := d.client.GetCapacity(ctx)
+	objectKey := OzoneTextObjectKey(normalized)
+	tableName, err := OzoneTextTableName(normalized)
 	if err != nil {
-		return fmt.Errorf("failed to test Ozone connection: %w", err)
+		return nil, err
 	}
-	return nil
-}
-
-// GetDriverName returns the driver name
-func (d *OzoneTextDriver) GetDriverName() string {
-	return "ozone-text"
-}
-
-// GetCategory returns the driver category
-func (d *OzoneTextDriver) GetCategory() drivers.DriverCategory {
-	return drivers.CategoryFileSystem
-}
-
-// GetCapabilities returns driver capabilities
-func (d *OzoneTextDriver) GetCapabilities() drivers.DriverCapabilities {
-	return drivers.DriverCapabilities{
-		SupportsSQL:             false,
-		SupportsTransaction:     false,
-		SupportsSchemaDiscovery: true,
-		SupportsTimeTravel:      false,
-		RequiresTokenRotation:   false,
-		SupportsStreaming:       true,
-	}
-}
-
-// ConfigureAuth configures authentication
-func (d *OzoneTextDriver) ConfigureAuth(authConfig interface{}) error {
-	return nil
-}
-
-// ListTextFiles lists text files in a bucket
-func (d *OzoneTextDriver) ListTextFiles(ctx context.Context, prefix string) ([]OzoneFileInfo, error) {
-	return d.client.ListFiles(ctx, prefix)
-}
-
-// QueryTextFile queries a text file from Ozone
-func (d *OzoneTextDriver) QueryTextFile(ctx context.Context, key string) (*OzoneTextResult, error) {
-	data, err := d.client.ReadFile(ctx, key)
+	client, err := newOzoneS3Client(ctx, normalized, endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read text file: %w", err)
+		return nil, fmt.Errorf("create Ozone S3 Gateway client: %w", err)
 	}
-
-	// Parse text file (placeholder)
-	return &OzoneTextResult{
-		Rows:      []string{string(data)},
-		LineCount: 1,
-		BytesRead: int64(len(data)),
-		Key:       key,
-	}, nil
+	maxBytes := OzoneTextMaxFileBytes(normalized)
+	return object_storage.NewTextSQLDatabase(object_storage.TextSQLDatabaseConfig{
+		DriverName: "ozone-text", ObjectKey: objectKey, TableName: tableName,
+		MaxFileBytes: maxBytes, MaxRows: ozoneTextMaxRows,
+	}, func(ctx context.Context, key string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		metadata, err := client.GetObjectMetadata(ctx, key)
+		if err != nil {
+			return fmt.Errorf("inspect Ozone text object: %w", err)
+		}
+		if metadata == nil || metadata.ContentLength < 0 || metadata.ContentLength > maxBytes {
+			return fmt.Errorf("Ozone text object exceeds configured maximum of %d bytes or has an invalid size", maxBytes)
+		}
+		return nil
+	}, func(ctx context.Context, key string) ([]byte, error) {
+		data, err := client.GetObjectLimited(ctx, key, maxBytes)
+		if err != nil {
+			return nil, fmt.Errorf("read Ozone text object: %w", err)
+		}
+		return data, nil
+	}, nil)
 }
 
-// OzoneTextResult represents query result
-type OzoneTextResult struct {
-	Rows      []string
-	LineCount int
-	BytesRead int64
-	Key       string
+func NormalizeOzoneTextConfig(config *model.DataSourceConfig) (*model.DataSourceConfig, string, error) {
+	return normalizeOzoneS3ObjectConfig(config, "text", validOzoneTextKey)
 }
 
-// RegisterOzoneTextDriver registers the Ozone text driver globally
+func ValidateOzoneTextConfig(config *model.DataSourceConfig) error {
+	_, _, err := NormalizeOzoneTextConfig(config)
+	return err
+}
+
+func OzoneTextObjectKey(config *model.DataSourceConfig) string {
+	return OzoneS3ObjectKey(config)
+}
+
+func OzoneTextTableName(config *model.DataSourceConfig) (string, error) {
+	return OzoneS3TableName(config, "text")
+}
+
+func OzoneTextMaxFileBytes(config *model.DataSourceConfig) int64 {
+	return OzoneS3MaxFileBytes(config)
+}
+
+func validOzoneTextKey(key string) bool {
+	return validOzoneS3ObjectKey(key, ".txt", ".log")
+}
+
+func (*OzoneTextDriver) GetDefaultPort() int         { return 9878 }
+func (*OzoneTextDriver) GetDatabaseTypeName() string { return "ozone-text" }
+func (*OzoneTextDriver) GetDriverName() string       { return "ozone-text" }
+func (*OzoneTextDriver) GetCategory() drivers.DriverCategory {
+	return drivers.CategoryObjectStorage
+}
+func (*OzoneTextDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{SupportsSQL: true, SupportsSchemaDiscovery: true}
+}
+func (*OzoneTextDriver) ConfigureAuth(interface{}) error { return nil }
+func (*OzoneTextDriver) TestConnection(db *sql.DB) error {
+	if db == nil {
+		return errors.New("Ozone text SQL database is required for a connection check")
+	}
+	return db.Ping()
+}
+func (*OzoneTextDriver) TestConnectionContext(context.Context) error {
+	return errors.New("Ozone text connectivity must be checked with PingContext on the database opened from its S3 Gateway configuration")
+}
+
+func (*OzoneTextDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	if batchSize <= 0 {
+		return "", errors.New("batch size must be positive")
+	}
+	query = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+	if query == "" {
+		return "", errors.New("query is required")
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return fmt.Sprintf("SELECT * FROM (%s) AS __data_fabric_page LIMIT %d OFFSET %d", query, batchSize, offset), nil
+}
+
+func (*OzoneTextDriver) ValidateDSN(dsn string) error {
+	parsed, err := url.Parse(dsn)
+	if err != nil || parsed.Scheme != "ozone-s3" || parsed.Host == "" || !path.IsAbs(parsed.Path) {
+		return errors.New("invalid Ozone text URI; expected ozone-s3://gateway/bucket/path/file.txt or file.log")
+	}
+	parts := strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")
+	if len(parts) < 2 || strings.TrimSpace(parts[0]) == "" || !validOzoneTextKey(strings.Join(parts[1:], "/")) {
+		return errors.New("invalid Ozone text URI; expected ozone-s3://gateway/bucket/path/file.txt or file.log")
+	}
+	return nil
+}
+
+func (*OzoneTextDriver) BuildDSN(config *model.DataSourceConfig) string {
+	normalized, endpoint, err := NormalizeOzoneTextConfig(config)
+	if err != nil {
+		return "ozone-s3://"
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "ozone-s3://"
+	}
+	return (&url.URL{Scheme: "ozone-s3", Host: parsed.Host, Path: "/" + strings.TrimSpace(normalized.Database) + "/" + OzoneTextObjectKey(normalized)}).String()
+}

@@ -95,10 +95,9 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		catalog = append(catalog, profile)
 	}
 
-	// The S3 Gateway provides the bounded Parquet object path. Native Ozone
-	// text and Avro adapters remain unavailable and are shown as unsupported.
+	// The S3 Gateway provides bounded Parquet and text object paths. Keep the
+	// unimplemented Ozone Avro type visible as unsupported.
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	} {
 		catalog = append(catalog, ConnectorSupport{
@@ -389,14 +388,21 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeOzoneParquet:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
 		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
-		profile.Limitations = append(profile.Limitations,
-			"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
-			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
-			"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
+		if dbType == model.DatabaseTypeOzoneParquet {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
+				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
+		} else {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured UTF-8 text object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 lines, downloaded into gateway memory, and exposed through the restricted read-only text SQL subset.",
+				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, multiline parsing, and live Ozone compatibility are not covered.")
+		}
 	case model.DatabaseTypeHDFSAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}

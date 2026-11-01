@@ -65,7 +65,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isHDFSTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil && isMinIOIcebergSource(dataSource.Type) {
@@ -134,7 +134,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		table.Schema = namespace
 		return table, nil
 	}
-	if isHDFSTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -258,7 +258,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isHDFSTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -300,8 +300,8 @@ func isHDFSCSVSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeHDFSCSV
 }
 
-func isHDFSTextSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeHDFSText
+func isLineTextSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeHDFSText || dbType == model.DatabaseTypeOzoneText
 }
 
 func isHDFSParquetSource(dbType model.DatabaseType) bool {
@@ -344,6 +344,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 	switch dbType {
 	case model.DatabaseTypeHDFSText:
 		return file_system.HDFSTextTableName(config)
+	case model.DatabaseTypeOzoneText:
+		return file_system.OzoneTextTableName(config)
 	case model.DatabaseTypeHDFSCSV:
 		return file_system.HDFSCSVTableName(config)
 	case model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed:

@@ -5,21 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"path"
-	"strconv"
 	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/object_storage"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-)
-
-const (
-	defaultOzoneParquetMaxFileBytes int64 = 16 << 20
-	maxOzoneParquetMaxFileBytes     int64 = 64 << 20
-	ozoneParquetMaxRows                   = 100000
 )
 
 // OzoneParquetDriver reads one Parquet object through the Apache Ozone S3 Gateway.
@@ -37,21 +29,12 @@ func (d *OzoneParquetDriver) OpenWithConfig(ctx context.Context, config *model.D
 	if err != nil {
 		return nil, err
 	}
-	region := configPropString(normalized, "region")
-	if region == "" {
-		region = "us-east-1"
-	}
 	objectKey := OzoneParquetObjectKey(normalized)
 	tableName, err := OzoneParquetTableName(normalized)
 	if err != nil {
 		return nil, err
 	}
-	client, err := object_storage.NewS3Client(ctx, &object_storage.S3Config{
-		Region: region, Bucket: strings.TrimSpace(normalized.Database),
-		AccessKey: normalized.Username, SecretKey: normalized.Password,
-		SessionToken: configPropString(normalized, "session_token"),
-		EndpointURL:  endpoint, ForcePathStyle: true,
-	})
+	client, err := newOzoneS3Client(ctx, normalized, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("create Ozone S3 Gateway client: %w", err)
 	}
@@ -141,74 +124,7 @@ func (d *OzoneParquetDriver) BuildDSN(config *model.DataSourceConfig) string {
 // NormalizeOzoneParquetConfig validates the S3 Gateway origin and copies the
 // data-source config without mutating its AdditionalProps map.
 func NormalizeOzoneParquetConfig(config *model.DataSourceConfig) (*model.DataSourceConfig, string, error) {
-	if config == nil {
-		return nil, "", errors.New("Ozone Parquet data source config is required")
-	}
-	bucket := strings.TrimSpace(config.Database)
-	if bucket == "" {
-		return nil, "", errors.New("Ozone S3 bucket is required in database")
-	}
-	if strings.ContainsAny(bucket, "/\\") || bucket == "." || bucket == ".." {
-		return nil, "", errors.New("Ozone S3 bucket must be one path-safe bucket name")
-	}
-	key := OzoneParquetObjectKey(config)
-	if !validOzoneParquetKey(key) {
-		return nil, "", errors.New("Ozone Parquet object_key must be a safe relative .parquet key")
-	}
-	if strings.TrimSpace(config.Username) == "" || strings.TrimSpace(config.Password) == "" {
-		return nil, "", errors.New("Ozone S3 access key and secret key are required")
-	}
-	if _, present := configProp(config, "max_file_bytes"); present {
-		if _, err := configPropInt64(config, "max_file_bytes"); err != nil {
-			return nil, "", errors.New("Ozone Parquet max_file_bytes must be an integer")
-		}
-	}
-	maxBytes := OzoneParquetMaxFileBytes(config)
-	if maxBytes <= 0 || maxBytes > maxOzoneParquetMaxFileBytes {
-		return nil, "", fmt.Errorf("Ozone Parquet max_file_bytes must be between 1 and %d", maxOzoneParquetMaxFileBytes)
-	}
-
-	rawEndpoint := configPropString(config, "endpoint_url")
-	if rawEndpoint == "" {
-		return nil, "", errors.New("Ozone S3 Gateway endpoint_url is required in additionalProps")
-	}
-	endpoint, err := url.Parse(rawEndpoint)
-	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || (endpoint.Path != "" && endpoint.Path != "/") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-		return nil, "", errors.New("Ozone S3 Gateway endpoint_url must be an HTTP(S) origin without credentials, path, query, or fragment")
-	}
-	port := config.Port
-	if port < 0 {
-		return nil, "", errors.New("Ozone S3 Gateway port must be between 1 and 65535")
-	}
-	if port == 0 {
-		port = 9878
-	}
-	if port > 65535 {
-		return nil, "", errors.New("Ozone S3 Gateway port must be between 1 and 65535")
-	}
-	if endpoint.Port() == "" {
-		endpoint.Host = net.JoinHostPort(endpoint.Hostname(), strconv.Itoa(port))
-	} else {
-		parsedPort, parseErr := strconv.Atoi(endpoint.Port())
-		if parseErr != nil || parsedPort < 1 || parsedPort > 65535 {
-			return nil, "", errors.New("Ozone S3 Gateway endpoint port must be between 1 and 65535")
-		}
-	}
-	endpoint.Path = ""
-	endpoint.RawPath = ""
-
-	props := make(map[string]interface{}, len(config.AdditionalProps)+3)
-	for name, value := range config.AdditionalProps {
-		props[name] = value
-	}
-	props["endpoint_url"] = endpoint.String()
-	if strings.TrimSpace(fmt.Sprint(props["region"])) == "" || props["region"] == nil {
-		props["region"] = "us-east-1"
-	}
-	props["force_path_style"] = true
-	normalized := *config
-	normalized.AdditionalProps = props
-	return &normalized, endpoint.String(), nil
+	return normalizeOzoneS3ObjectConfig(config, "Parquet", validOzoneParquetKey)
 }
 
 func ValidateOzoneParquetConfig(config *model.DataSourceConfig) error {
@@ -217,55 +133,19 @@ func ValidateOzoneParquetConfig(config *model.DataSourceConfig) error {
 }
 
 func OzoneParquetObjectKey(config *model.DataSourceConfig) string {
-	if value := configPropString(config, "object_key"); value != "" {
-		return value
-	}
-	if config == nil {
-		return ""
-	}
-	return strings.TrimSpace(config.Host)
+	return OzoneS3ObjectKey(config)
 }
 
 func OzoneParquetTableName(config *model.DataSourceConfig) (string, error) {
-	if config == nil {
-		return "", errors.New("Ozone Parquet data source config is required")
-	}
-	if name := configPropString(config, "table_name"); name != "" {
-		return name, nil
-	}
-	key := OzoneParquetObjectKey(config)
-	if key == "" {
-		return "", errors.New("Ozone Parquet object_key is required in additionalProps or host")
-	}
-	name := strings.TrimSuffix(path.Base(key), path.Ext(key))
-	if name == "" || name == "." {
-		return "", errors.New("Ozone Parquet table_name could not be inferred; set additionalProps.table_name")
-	}
-	return name, nil
+	return OzoneS3TableName(config, "Parquet")
 }
 
 func OzoneParquetMaxFileBytes(config *model.DataSourceConfig) int64 {
-	if _, present := configProp(config, "max_file_bytes"); present {
-		parsed, err := configPropInt64(config, "max_file_bytes")
-		if err != nil {
-			return 0
-		}
-		return parsed
-	}
-	return defaultOzoneParquetMaxFileBytes
+	return OzoneS3MaxFileBytes(config)
 }
 
 func validOzoneParquetKey(key string) bool {
-	key = strings.TrimSpace(key)
-	if key == "" || path.IsAbs(key) || strings.Contains(key, "\\") || !strings.EqualFold(path.Ext(key), ".parquet") {
-		return false
-	}
-	for _, segment := range strings.Split(key, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return false
-		}
-	}
-	return true
+	return validOzoneS3ObjectKey(key, ".parquet")
 }
 
 // Legacy object methods now fail explicitly instead of returning success-shaped placeholders.

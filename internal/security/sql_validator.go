@@ -859,7 +859,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 		}
 
 	// File Systems
-	case model.DatabaseTypeOzoneParquet:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,
