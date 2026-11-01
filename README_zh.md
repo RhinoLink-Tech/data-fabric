@@ -1,9 +1,15 @@
 # Data Fabric：面向 AI 应用的轻量数据接入网关
 
 <div align="center">
-  <img src="assets/data-fabric-icon.png" alt="Data Fabric 图标" width="160">
-  <p><strong>面向 AI Agent、RAG 与智能分析的轻量数据网关：统一接入多源，让应用用一套 SQL 查询常见数据。</strong></p>
-  <p><a href="README.md">English</a></p>
+  <img src="assets/data-fabric-icon.png" alt="Data Fabric 图标" width="140">
+  <p><strong>一个轻量网关，让 AI 应用通过统一 SQL API（含 MCP）访问多种企业数据源。</strong></p>
+  <p>
+    <a href="README.md">English</a> ·
+    <a href="#快速开始">快速开始</a> ·
+    <a href="MCP_SERVER.md">MCP</a> ·
+    <a href="docs/data-source-support.md">连接器目录</a> ·
+    <a href="https://github.com/RhinoLink-Tech/data-fabric">Star</a>
+  </p>
   <p>
     <img src="https://img.shields.io/badge/Go-1.26.1+-00ADD8?logo=go" alt="Go 1.26.1+">
     <img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache 2.0">
@@ -11,113 +17,107 @@
   </p>
 </div>
 
-⭐ [欢迎为 Data Fabric 点亮 Star](https://github.com/RhinoLink-Tech/data-fabric) · 🚀 [快速开始](#快速开始) · 🤝 [参与贡献](CONTRIBUTING.md)
+**适合：** 需要只读访问混合数据库、数仓、湖仓、对象存储和文件的 AI Agent、RAG、Text-to-SQL 与智能分析场景。
 
-你是否正在构建 AI Agent、RAG 流程或智能分析功能，需要从多个企业数据系统中获取上下文？每种数据源各自的连接方式、认证配置、SQL 方言和结果格式，都会增加 AI 应用的集成工作。
+**不是：** 数仓、ETL、向量库，也不接管模型推理或 AI 编排。数据仍留在你现有系统里。
 
-Data Fabric 为 AI 应用提供轻量、自托管的异构数据访问层。团队在一个入口集中管理连接，应用则通过统一 API 和 SQL 接口查询已登记的数据源。它连接 AI 工作负载与现有数据系统，不接管模型推理和 AI 流程编排。
+## 为什么用它
+
+| 痛点 | Data Fabric 怎么解决 |
+| --- | --- |
+| 每个 AI 功能各自接库、管凭据 | 数据源登记一次，应用走统一 API |
+| 模型 SQL 方言对不上引擎 | 在已文档化的 [SQL v1 合同](SQL_TRANSLATION_FEATURES.md) 内可选转换 |
+| Agent 需要安全的工具面 | 可选 [MCP 服务](MCP_SERVER.md)：发现 → 校验 → 查询 → 分批取结果 |
+| 跨源 SQL 不是默认刚需 | 默认单源驱动；需要时再接 Trino / Presto / OpenLooKeng |
 
 ## AI 应用场景
 
-- **AI Agent：** 可选的 MCP 工具支持本地 stdio 客户端，以及使用 Bearer JWT 认证的远程 Streamable HTTP 客户端发现数据源、校验只读 SQL、执行查询并分批获取结果，详见 [MCP 使用指南](MCP_DOCUMENTATION.md)。
-- **RAG 检索：** 从数据库、数仓、对象存储及已支持的文件源获取结构化或半结构化记录；切分、Embedding、向量存储和排序仍由 RAG 应用负责。
-- **Text-to-SQL：** 模型生成的只读查询可以经统一 API 提交，并在兼容范围内转换为目标数据源方言。
-- **AI 智能分析：** 让助手通过统一入口访问已登记的数据源；需要跨源 SQL 时再连接联邦查询引擎。
+- **AI Agent：** 本地 stdio 或经认证的 Streamable HTTP MCP — 发现数据源、校验只读 SQL、执行查询、分批取结果。见 [MCP 指南](MCP_SERVER.md) 与 [Agent Skill](docs/agent-skill.md)。
+- **RAG 检索：** 从已登记数据源拉取结构化 / 半结构化记录；切分、Embedding、排序仍在你的 RAG 栈。
+- **Text-to-SQL：** 模型生成的只读 SQL 经统一 API 提交，仅在已发布兼容矩阵内转换。
+- **AI 智能分析：** 助手共用一个入口；只有跨源 SQL 时再挂联邦引擎。
 
-Data Fabric 为 AI 应用提供数据访问层；模型、提示词、向量化流程和向量检索由 AI 技术栈负责。
+示例：[DeepSeek 函数调用](examples/deepseek-agent/README.md)。
 
-## 为什么选择 Data Fabric
+## 在架构中的位置
 
-- **集中管理数据源：** 通过统一入口登记和维护数据源连接、查看配置并诊断连通性。
-- **统一应用查询方式：** 通过一致的 API 提交查询并获取结果；SQL 方言转换范围见[统一 SQL v1 说明](SQL_TRANSLATION_FEATURES.md)。
-- **按需保持轻量：** 单源访问可直接使用网关驱动，无需为了简单查询额外部署联邦引擎；需要跨源 SQL 时再接入。
-- **数据留在原系统：** Data Fabric 提供访问层，不负责复制数据或运行 ETL；联邦查询仍会在系统之间传输查询请求和中间结果。
-- **适配企业与集群的混合环境：** 用同一个应用侧入口访问数据库、数仓、湖仓、对象存储和文件。
-
-## SQL 标准与兼容范围
-
-目前已发布的国际 SQL 标准版本为 [ISO/IEC 9075:2023（SQL:2023）](https://www.iso.org/standard/76584.html)。实际使用中，各数据库实现的标准特性范围不同，也会增加各自的方言语法；仅使用标准名称并不能保证任意 SQL 都能跨库运行。可参考 [PostgreSQL](https://www.postgresql.org/docs/current/features.html) 和 [MySQL](https://dev.mysql.com/doc/refman/8.4/en/compatibility.html) 的 SQL 兼容说明。
-
-Data Fabric 的 SQL v1 是面向常见应用查询的统一只读语法子集，不另造一套 SQL，也不宣称完整符合 SQL:2023。它覆盖 SELECT 和 UNION、投影与基本表达式、WHERE、INNER/LEFT JOIN、GROUP BY 与聚合、HAVING、ORDER BY、LIMIT/OFFSET；常见标量及日期时间构造以兼容矩阵中的样例为准。
-
-需要跨方言转换时，通过 sourceDialect 声明输入 SQL 的方言，Data Fabric 按[兼容矩阵](SQL_TRANSLATION_FEATURES.md)转换为目标数据源方言。省略 sourceDialect 时，SQL 按目标引擎原生语法直接提交，不进行方言转换。引擎专有函数、CTE、窗口函数、复杂类型和时间旅行语法没有统一转换保证；类型转换、NULL 排序、时区、精度等执行语义仍由目标引擎决定。
-
-## Data Fabric 在架构中的位置
-
-| 组成部分 | 负责什么 |
+| 组成部分 | 职责 |
 | --- | --- |
-| Data Fabric | 面向应用的 API、数据源连接管理、诊断、查询路由和结果获取 |
-| 联邦查询引擎（可选） | 通过 catalogs 和 connectors 访问多个系统，并规划、执行跨源 SQL |
-| 原始数据系统 | 保存和管理实际数据 |
+| Data Fabric | 面向应用的 API、数据源生命周期、诊断、查询路由、结果获取 |
+| 联邦查询引擎（可选） | 跨目录规划与执行 |
+| 原始数据系统 | 保存和管理数据 |
 
-Data Fabric 是面向应用的网关。它不替代原有数据库，不是数仓，也不重新实现分布式查询引擎。
-
-~~~mermaid
+```mermaid
 flowchart LR
-    App[AI / RAG / BI / 业务应用] --> Gateway[Data Fabric<br/>统一 API 与数据源管理]
-    Gateway --> Drivers[单源数据源驱动]
+    App[AI / RAG / BI / 业务应用] --> Gateway[Data Fabric<br/>API · MCP · 数据源管理]
+    Gateway --> Drivers[单源驱动]
     Drivers --> Sources[数据库 / 数仓 / 湖仓 / 对象存储 / 文件]
-    Gateway --> Adapter[查询引擎连接适配]
-    Adapter --> Engine[外部联邦查询引擎]
-    Engine --> Catalogs[引擎 Catalogs 与 Connectors]
+    Gateway --> Adapter[引擎适配]
+    Adapter --> Engine[外部联邦引擎]
+    Engine --> Catalogs[Catalogs 与 Connectors]
     Catalogs --> Sources
-~~~
-
-应用可以通过网关驱动访问单个数据源，也可以将 SQL 发往外部联邦引擎执行跨目录查询。
+```
 
 ## 核心能力
 
-- **数据源生命周期管理：** 创建、查看、更新、启用、停用和删除数据源。
-- **驱动注册与扩展：** 通过统一驱动接口扩展数据源类型。
-- **连接诊断：** 测试连接、校验配置，并查看连接健康状态和连接池统计。
-- **统一查询 API：** 提交 SQL 并分批获取结果；支持流式读取的驱动可降低大结果集的一次性内存占用。
-- **SQL 方言适配：** 将兼容范围内的查询语法转换为目标方言，详见[统一 SQL v1 兼容矩阵](SQL_TRANSLATION_FEATURES.md)。
-- **安全与审计：** 提供 JWT API 认证、远程 MCP 的 OIDC 身份校验、所有者/租户及表列级访问策略、脱敏审计事件、只读 SQL 校验，并在支持的数据库会话中启用只读限制；PostgreSQL、openGauss、MySQL、MariaDB 和 TiDB 连接支持服务端证书和主机名校验，同时提供请求限流、配置校验和健康检查。
-- **Prometheus 监控：** 从 `/metrics` 抓取 HTTP 和查询指标；该端点始终需要管理员 Bearer JWT。详见[可观测性指南](docs/observability.md)。
+- 数据源生命周期：创建、查看、更新、启用、停用、删除
+- 驱动注册与扩展
+- 连接测试、配置校验、连接池统计、健康检查
+- 统一查询 API，支持分批（及可流式）取结果
+- SQL 方言适配（见 [SQL v1 矩阵](SQL_TRANSLATION_FEATURES.md)）
+- 安全：JWT API、远程 MCP 的 OIDC、所有者/租户与表列策略、脱敏审计、只读 SQL 校验；PostgreSQL / openGauss / MySQL / MariaDB / TiDB 服务端证书校验；限流
+- Prometheus：`/metrics`（始终需要管理员 Bearer JWT）— [可观测性指南](docs/observability.md)
 
-## 数据源范围
+## 数据源与支持声明
 
-Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容性接口。目录区分“已注册实现”和“端到端验证”，分别记录声明的版本范围与精确测试版本，并列出协议兼容方式、驱动能力、版本策略和服务器版本探测结果。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已注册实现仍处于实验状态。Ozone Parquet、按行文本和 Avro OCF 可通过 S3 Gateway 以只读实验性适配器访问；原生 Ozone RPC 尚未实现。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
+项目通过**支持目录**区分「已注册实现」与「端到端验证」，以及声明版本范围与精确测试版本。连接测试成功本身不等于端到端验证；部分连接器仍为实验性。
 
-### 驱动打包与运行占用
+选用前请阅读 [数据源支持目录](docs/data-source-support.md) 与 [Ozone 支持状态](docs/ozone-support.md)。
 
-标准服务构建会将注册表中的驱动实现及其依赖编译进同一个可执行文件，无需按数据源单独安装运行时插件。驱动在服务启动时注册，只有实际配置并使用的数据源才会建立连接。单文件部署更直接，但可执行文件和构建依赖会随注册的驱动类型增加。
+标准构建为单可执行文件，注册驱动编译进二进制；只有实际配置并使用的数据源才会建连。
+
+## SQL v1（摘要）
+
+SQL v1 是面向常见 `SELECT` 工作负载的统一**只读**子集——不是新方言，也不宣称完整符合 SQL:2023。覆盖投影、`WHERE`、`INNER`/`LEFT JOIN`、`GROUP BY`/聚合、`HAVING`、`ORDER BY`、`LIMIT`/`OFFSET`、`UNION` 等（以文档样例为准）。
+
+传入 `sourceDialect` 时在 [兼容矩阵](SQL_TRANSLATION_FEATURES.md) 内转换；省略则按目标引擎原生 SQL 提交。引擎专有函数、CTE、窗口、复杂类型、时间旅行等无统一转换保证。
 
 ## 快速开始
 
 ### 环境要求
 
-- 本地源码运行需要 Go 1.26.1 或更高版本。
-- 构建或运行容器需要 Docker Engine。
-- 已配置且可访问的元数据数据库。
-- 服务能够访问计划登记的数据源。
-- 通过环境变量提供 JWT 密钥和凭证加密密钥环。
+- 源码运行：Go **1.26.1+**；或使用 Docker Engine 构建容器
+- 可访问的**元数据数据库**
+- 能访问计划登记的数据源
+- 通过环境变量提供 `JWT_SECRET`（≥ 32 字节）与凭证加密密钥环
 
-### 本地运行
+> 目前**没有**现成的一键 Compose，也**没有**公开发布的预构建镜像。需要本地构建，并自备元数据库——这是当前最大的上手摩擦。
 
-~~~bash
+### 本地源码运行
+
+```bash
 git clone https://github.com/RhinoLink-Tech/data-fabric.git
 cd data-fabric
 cp configs/config.yaml.example configs/config.yaml
 go mod download
-~~~
+```
 
-在 configs/config.yaml 中配置元数据数据库。生成密钥后请妥善保存，并在服务重启时继续使用相同的值。
+在 `configs/config.yaml` 中配置元数据库，然后：
 
-~~~bash
-export JWT_SECRET="<稳定且至少 32 字节的密钥>"
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
-export DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}'
+export DATA_FABRIC_CREDENTIAL_KEYS="{\"dev-v1\":\"$(openssl rand -base64 32)\"}"
 go run ./cmd/server
-~~~
+```
 
-JWT 密钥可用 openssl rand -hex 32 生成，凭证加密密钥可用 openssl rand -base64 32 生成。请妥善保存，并在服务重启时继续使用相同值。服务健康检查路径为 /health；部署参数、密钥管理和轮换方式见[配置指南](docs/configuration.md)。
+重启请复用同一套密钥。健康检查：`GET /health`。详见 [配置指南](docs/configuration.md)。
 
-### 使用 Docker 构建和运行
+### Docker 构建与运行
 
-镜像使用与 `go.mod` 一致的 Go 1.26.1，默认监听 8080，并以非 root 用户运行。启动前请先创建 MySQL 元数据数据库和账号。
+先创建 MySQL 元数据库与账号，再：
 
-~~~bash
+```bash
 docker build -t data-fabric:local .
 docker run --rm --name data-fabric \
   --add-host=host.docker.internal:host-gateway \
@@ -131,41 +131,45 @@ docker run --rm --name data-fabric \
   -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
   -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}' \
   data-fabric:local
-~~~
+```
 
-容器镜像不包含实际配置文件，通过环境变量和默认值启动，默认端口为 8080。如果通过 SERVER_PORT 或 server.port 覆盖端口，请同步修改容器端口和端口映射。真实密钥应由部署平台注入，重启时复用相同的凭证密钥环。
+镜像默认监听 **8080**，非 root 运行，配置来自环境变量。
 
 ## 性能预期
 
-Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎，请求会多经过应用到网关的网络链路，并增加网关侧的认证、校验、路由、结果归一化和 JSON 编码；启用 SQL 方言转换时还会增加转换处理。对于很短的查询，网关开销占比会更明显；对于耗时较长或结果量较大的查询，引擎执行与数据传输通常占更大比重。
+Data Fabric 是**网关**，不是查询加速器。额外开销来自链路与认证、校验、路由、归一化、JSON 编码（以及可选的方言转换）。短查询更能感知这一层；长查询通常由引擎与数据传输主导。
 
-在本机 WSL 环境中使用 PostgreSQL 模拟数据源，以 500 行合成数据和 14 类查询进行测试，Data Fabric 进程内查询服务的 P95 耗时为 0.682–2.159 毫秒；与直连 PostgreSQL 的 P95 分位值之差为 0.446–0.694 毫秒，P50 分位值之差为 0.246–0.450 毫秒。另有一组 5,000 行规模测试，包含内连接和左连接、聚合、宽结果和无索引排序；完整报告提供 CPU、内存分配和原始采样数据。本地串行测试不包含 HTTP、认证中间件、并发流量及客户端到网关的网络链路，不构成生产环境保证。这套自建测试也不代表 TPC 官方成绩。详见[性能测试报告](docs/performance/postgres-gateway-benchmark.md)。
+本机 WSL 基准与部署资源数据见下列报告（含限制说明；非生产保证，非 TPC）：
 
-另外提供本地部署资源基线：在该 WSL2 实测环境中，服务重启至健康检查通过的中位耗时为 0.488 秒，空闲 RSS 中位值为 83.6 MiB。报告列出 5 万行分批流式场景、构建产物体积、原始样本和复现方法。这是单机本地数据，不构成生产保证。详见[部署资源基线报告](docs/performance/deployment-footprint.md)。
+- [PostgreSQL 网关基准](docs/performance/postgres-gateway-benchmark.md)
+- [部署资源基线](docs/performance/deployment-footprint.md)
+
 ## API 概览
 
 | 方法 | 路径 | 用途 | 认证 |
 | --- | --- | --- | --- |
-| GET | /health | 服务健康检查 | 无 |
-| GET | /api/v1/database/types | 查询服务识别的数据源类型 | 无 |
-| GET | /api/v1/database/compatibility | 查看数据库兼容性信息 | 无 |
-| GET / POST | /api/v1/datasources | 列出或创建数据源 | 开启认证时需要 Bearer；按所有者/租户隔离 |
-| GET / PUT / DELETE | /api/v1/datasources/:id | 查看、更新或删除数据源 | 同上；非管理员对不存在与他人数据源返回统一的 403 |
-| POST | /api/v1/datasources/:id/activate | 启用数据源 | 同上 |
-| POST | /api/v1/datasources/:id/deactivate | 停用数据源 | 同上 |
-| POST | /api/v1/database/test-connection | 测试数据源连接 | 开启认证时需要 Bearer |
-| POST | /api/v1/database/validate-config | 校验数据源配置 | 开启认证时需要 Bearer |
-| GET | /api/v1/database/health | 全量数据源健康探测 | 开启认证时仅限 admin 角色 |
-| GET | /api/v1/database/connections/stats | 连接池统计 | 开启认证时仅限 admin 角色 |
-| POST | /api/v1/fetch | 执行查询并获取首批结果 | 始终需要 Bearer；需对目标数据源有读权限 |
-| GET | /api/v1/fetch/:query_id/:slug/:token | 获取后续结果批次 | 始终需要 Bearer；会话仅创建者可续拉 |
+| GET | `/health` | 健康检查 | 无 |
+| GET | `/api/v1/database/types` | 识别的数据源类型 | 无 |
+| GET | `/api/v1/database/compatibility` | 兼容性信息 | 无 |
+| GET / POST | `/api/v1/datasources` | 列出或创建数据源 | 开启认证时 Bearer；按所有者/租户隔离 |
+| GET / PUT / DELETE | `/api/v1/datasources/:id` | 查看、更新、删除 | 同上；非管理员对缺失/他人资源统一 403 |
+| POST | `/api/v1/datasources/:id/activate` | 启用 | 同上 |
+| POST | `/api/v1/datasources/:id/deactivate` | 停用 | 同上 |
+| POST | `/api/v1/database/test-connection` | 测试连接 | 开启认证时 Bearer |
+| POST | `/api/v1/database/validate-config` | 校验配置 | 开启认证时 Bearer |
+| GET | `/api/v1/database/health` | 全量健康探测 | 开启认证时仅 admin |
+| GET | `/api/v1/database/connections/stats` | 连接池统计 | 开启认证时仅 admin |
+| POST | `/api/v1/fetch` | 执行查询并取首批结果 | 始终 Bearer；需读权限 |
+| GET | `/api/v1/fetch/:query_id/:slug/:token` | 后续批次 | 始终 Bearer；仅创建者可续拉 |
 
-请求字段、响应结构和认证行为见 [API 使用指南](docs/api_usage.md)，数据源授权模型见 [配置文档](docs/configuration.md#data-source-authorization)。
+详情见 [API 使用指南](docs/api_usage.md)。
 
 ## 项目文档
 
 - [API 使用指南](docs/api_usage.md)
-- [DeepSeek API 函数调用示例](examples/deepseek-agent/README.md)
+- [MCP Server](MCP_SERVER.md)
+- [Data Fabric Agent Skill](docs/agent-skill.md)
+- [DeepSeek 函数调用示例](examples/deepseek-agent/README.md)
 - [架构设计](docs/architecture.md)
 - [配置指南](docs/configuration.md)
 - [开发指南](docs/development.md)
@@ -173,16 +177,14 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 - [安全政策](SECURITY.md)
 - [获取帮助](SUPPORT.md)
 
-## 跨源查询引擎接入
+## 跨源查询引擎
 
-需要跨源 SQL 时，Data Fabric 可通过统一适配接入兼容的联邦查询引擎。Trino、Presto 和 OpenLooKeng 适配器已实现并可登记为数据源；支持目录将它们标为“已实现”，尚未标为“端到端验证”。当前跨目录回归使用模拟协调器，真实协调器验证按 [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179) 暂缓。
-
-连接配置见 [API 使用指南](docs/api_usage.md)，SQL 兼容范围见[统一 SQL v1 说明](SQL_TRANSLATION_FEATURES.md)。
+可登记 Trino、Presto、OpenLooKeng 适配器。支持目录将其标为**已实现、尚未端到端验证**。真实协调器验证见 [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179)。
 
 ## 参与贡献
 
-欢迎通过 Issue、Pull Request 和文档改进参与共建，详情见[贡献指南](CONTRIBUTING.md)。
+欢迎 Issue、Pull Request 与文档改进，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 
-本项目采用 Apache License 2.0，详见 [LICENSE](LICENSE)。
+Apache License 2.0，见 [LICENSE](LICENSE)。
