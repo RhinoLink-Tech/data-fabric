@@ -53,6 +53,8 @@ type DataSourceConfigResponse struct {
 	Schema          string                 `json:"schema,omitempty"`
 	Username        string                 `json:"username"`
 	SSL             bool                   `json:"ssl"`
+	SSLMode         string                 `json:"sslMode,omitempty"`
+	SSLRootCert     string                 `json:"sslRootCert,omitempty"`
 	Timeout         int                    `json:"timeout"`
 	MaxPoolSize     int                    `json:"maxPoolSize"`
 	IdleTimeout     int                    `json:"idleTimeout"`
@@ -89,6 +91,8 @@ func toDataSourceResponse(dataSource *model.DataSource) *DataSourceResponse {
 			Schema:          config.Schema,
 			Username:        config.Username,
 			SSL:             config.SSL,
+			SSLMode:         config.SSLMode,
+			SSLRootCert:     config.SSLRootCert,
 			Timeout:         config.Timeout,
 			MaxPoolSize:     config.MaxPoolSize,
 			IdleTimeout:     config.IdleTimeout,

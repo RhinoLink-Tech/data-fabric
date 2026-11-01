@@ -28,6 +28,8 @@ curl -X POST http://localhost:8080/api/v1/datasources \
 
 Use `data.id` from the response as `dataSourceId` below. Replace the placeholders with values reachable from the Data Fabric server, and avoid putting real credentials in shell history.
 
+For PostgreSQL TLS, set `sslMode` to `verify-full` and `sslRootCert` to a CA certificate file readable inside the Data Fabric process. Mount that file into the service container. Explicit `sslMode` takes precedence over the legacy `ssl` boolean. If `sslMode` is omitted, `ssl: true` retains its existing `require` behavior (encryption without CA or hostname verification), and `ssl: false` disables TLS. Supported modes are `disable`, `require`, `verify-ca`, and `verify-full`. See the [connector support catalog](data-source-support.md#data-source-support-catalog) for the pinned PostgreSQL TLS evidence.
+
 Successful responses use this envelope:
 
 ```json
