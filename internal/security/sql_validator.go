@@ -858,8 +858,8 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 			TimeTravelSyntax:        "",
 		}
 
-	// File Systems
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText:
+	// Flat-file adapters
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,

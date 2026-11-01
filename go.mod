@@ -60,6 +60,7 @@ require (
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/goccy/go-yaml v1.17.1 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-sqlite3 v1.14.34 // indirect

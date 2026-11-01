@@ -53,7 +53,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeMinIOAvro, "object_storage", false},
 		{DatabaseTypeMinIOJSON, "object_storage", false},
 		{DatabaseTypeOzoneText, "object_storage", false},
-		{DatabaseTypeOzoneAvro, "filesystems", false},
+		{DatabaseTypeOzoneAvro, "object_storage", false},
 		{DatabaseTypeHDFSText, "filesystems", false},
 		{DatabaseTypeHDFSParquetCompressed, "filesystems", false},
 		// RequiresSQLProtocol describes the legacy domestic compatibility set.

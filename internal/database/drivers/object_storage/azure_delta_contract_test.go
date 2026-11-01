@@ -49,7 +49,7 @@ func TestAzureDeltaProtocolFixture(t *testing.T) {
 				return
 			}
 			xml := fmt.Sprintf(
-				"<?xml version=\"1.0\" encoding=\"utf-8\"?><EnumerationResults ServiceEndpoint=\"%s/\" ContainerName=\"%s\"><Prefix>%s</Prefix><MaxResults>1000</MaxResults><Blobs><Blob><Name>%s</Name><Properties><Creation-Time>2026-10-29T00:00:00Z</Creation-Time><Last-Modified>2026-10-29T00:00:00Z</Last-Modified><Etag>&quot;azure-delta-fixture&quot;</Etag><Content-Length>%d</Content-Length><Content-Type>application/json</Content-Type><BlobType>BlockBlob</BlobType><LeaseStatus>unlocked</LeaseStatus></Properties></Blob></Blobs><NextMarker></NextMarker></EnumerationResults>",
+				"<?xml version=\"1.0\" encoding=\"utf-8\"?><EnumerationResults ServiceEndpoint=\"%s/\" ContainerName=\"%s\"><Prefix>%s</Prefix><MaxResults>1000</MaxResults><Blobs><Blob><Name>%s</Name><Properties><Creation-Time>Thu, 29 Oct 2026 00:00:00 GMT</Creation-Time><Last-Modified>Thu, 29 Oct 2026 00:00:00 GMT</Last-Modified><Etag>&quot;azure-delta-fixture&quot;</Etag><Content-Length>%d</Content-Length><Content-Type>application/json</Content-Type><BlobType>BlockBlob</BlobType><LeaseStatus>unlocked</LeaseStatus></Properties></Blob></Blobs><NextMarker></NextMarker></EnumerationResults>",
 				server.URL, container, tablePath+"/_delta_log/", logKey, len(logBody),
 			)
 			w.Header().Set("Content-Type", "application/xml")

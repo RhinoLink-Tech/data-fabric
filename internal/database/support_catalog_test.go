@@ -156,12 +156,6 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneAvro} {
-		profile, ok := profiles[string(dbType)]
-		if !ok || profile.Supported || profile.Status != ConnectorStatusUnsupported {
-			t.Errorf("unsupported type %q has incorrect profile: %+v", dbType, profile)
-		}
-	}
 	ozoneParquet := profiles[string(model.DatabaseTypeOzoneParquet)]
 	if !ozoneParquet.Registered || !ozoneParquet.Supported || ozoneParquet.Status != ConnectorStatusExperimental || !ozoneParquet.Capabilities.SupportsSQL {
 		t.Errorf("Ozone Parquet must expose its experimental S3 Gateway SQL path: %+v", ozoneParquet)
@@ -175,6 +169,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
 		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
+	}
+	ozoneAvro := profiles[string(model.DatabaseTypeOzoneAvro)]
+	if !ozoneAvro.Registered || !ozoneAvro.Supported || ozoneAvro.Status != ConnectorStatusExperimental || !ozoneAvro.Capabilities.SupportsSQL {
+		t.Errorf("Ozone Avro must expose its experimental S3 Gateway SQL path: %+v", ozoneAvro)
+	}
+	if !containsSupportLimitation(ozoneAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(ozoneAvro.Limitations, "100,000 records") {
+		t.Errorf("Ozone Avro catalog must disclose its object and record limits: %+v", ozoneAvro.Limitations)
 	}
 
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
@@ -294,7 +295,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if profile.Status != ConnectorStatusExperimental || !profile.Capabilities.SupportsSQL {
 			t.Errorf("%s must expose its experimental read-only SQL adapter: %+v", dbType, profile)
 		}
-		if !containsSupportLimitation(profile.Limitations, "one configured") || !containsSupportLimitation(profile.Limitations, "complete object is downloaded into gateway memory") {
+		if !containsSupportLimitation(profile.Limitations, "one configured") || !containsSupportLimitation(profile.Limitations, "downloaded into gateway memory") {
 			t.Errorf("%s must disclose its object scope and buffering boundary: %+v", dbType, profile.Limitations)
 		}
 	}

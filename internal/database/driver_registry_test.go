@@ -122,7 +122,7 @@ func TestRegisteredDriversReportTypeAndCategory(t *testing.T) {
 	}
 }
 
-func TestOzoneParquetAndTextUseS3GatewayAdaptersWhileAvroStaysUnsupported(t *testing.T) {
+func TestOzoneParquetTextAndAvroUseS3GatewayAdapters(t *testing.T) {
 	registry := NewDriverRegistry()
 	driver, err := registry.GetDriver(model.DatabaseTypeOzoneParquet)
 	if err != nil {
@@ -135,10 +135,8 @@ func TestOzoneParquetAndTextUseS3GatewayAdaptersWhileAvroStaysUnsupported(t *tes
 	if err != nil || !textDriver.GetCapabilities().SupportsSQL {
 		t.Fatalf("Ozone text driver = %v, error = %v; want registered SQL adapter", textDriver, err)
 	}
-	if registry.IsSupported(model.DatabaseTypeOzoneAvro) {
-		t.Fatal("registry advertises Ozone Avro before its adapter exists")
-	}
-	if _, err := registry.GetDriver(model.DatabaseTypeOzoneAvro); err == nil {
-		t.Fatal("GetDriver(ozone_avro) error = nil, want unsupported type")
+	avroDriver, err := registry.GetDriver(model.DatabaseTypeOzoneAvro)
+	if err != nil || avroDriver.GetCategory() != "object_storage" || !avroDriver.GetCapabilities().SupportsSQL {
+		t.Fatalf("Ozone Avro driver = %v, error = %v; want registered object-storage SQL adapter", avroDriver, err)
 	}
 }

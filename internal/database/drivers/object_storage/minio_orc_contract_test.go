@@ -101,7 +101,7 @@ func TestMinIOORCReadOnlySQLContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("describe configured MinIO ORC table: %v", err)
 	}
-	if len(schema.Columns) != 5 || schema.Columns[0].Name != "userid" || schema.Columns[0].Type != "INTEGER" {
+	if len(schema.Columns) != 5 || schema.Columns[0].Name != "userid" || schema.Columns[0].Type != "BIGINT" {
 		t.Fatalf("MinIO ORC columns = %+v", schema.Columns)
 	}
 

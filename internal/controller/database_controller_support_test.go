@@ -63,7 +63,7 @@ func TestDatabaseTypeAPIsUseSharedSupportCatalog(t *testing.T) {
 		t.Errorf("compatibility response should report Ozone text as experimental: %+v", textProfile)
 	}
 	avroProfile, ok := response.Data[string(model.DatabaseTypeOzoneAvro)]
-	if !ok || avroProfile.Status != database.ConnectorStatusUnsupported {
-		t.Errorf("compatibility response should preserve unsupported Ozone Avro: %+v", avroProfile)
+	if !ok || avroProfile.Status != database.ConnectorStatusExperimental || !avroProfile.Capabilities.SupportsSQL {
+		t.Errorf("compatibility response should report Ozone Avro as experimental: %+v", avroProfile)
 	}
 }

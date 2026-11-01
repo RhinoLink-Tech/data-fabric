@@ -69,7 +69,7 @@ func TestFetchQueryRoutesS3JSONDocumentFormsThroughGateway(t *testing.T) {
 		if key != "object.json" {
 			wantRows = 2
 		}
-		if response.TotalCount != int64(wantRows) || len(response.Entries) != wantRows {
+		if response.TotalCount != wantRows || len(response.Entries) != wantRows {
 			t.Fatalf("%s response count=%d entries=%d, want %d", key, response.TotalCount, len(response.Entries), wantRows)
 		}
 		entry := response.Entries[0]

@@ -25,6 +25,9 @@ const (
 	defaultOzoneTextMaxFileBytes    = defaultOzoneS3MaxFileBytes
 	maxOzoneTextMaxFileBytes        = maxOzoneS3MaxFileBytes
 	ozoneTextMaxRows                = ozoneS3MaxRows
+	defaultOzoneAvroMaxFileBytes    = defaultOzoneS3MaxFileBytes
+	maxOzoneAvroMaxFileBytes        = maxOzoneS3MaxFileBytes
+	ozoneAvroMaxRows                = ozoneS3MaxRows
 )
 
 func normalizeOzoneS3ObjectConfig(config *model.DataSourceConfig, format string, validKey func(string) bool) (*model.DataSourceConfig, string, error) {

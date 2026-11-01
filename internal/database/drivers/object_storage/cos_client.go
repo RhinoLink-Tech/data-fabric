@@ -137,6 +137,9 @@ func (c *COSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
 	}
 	resp, err := c.client.Object.Get(ctx, key, nil)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("failed to get object: %w", err)
 	}
 	defer resp.Body.Close()

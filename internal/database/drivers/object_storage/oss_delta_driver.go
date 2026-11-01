@@ -99,8 +99,3 @@ func (d *OSSDeltaDriver) GetCapabilities() drivers.DriverCapabilities {
 }
 
 func (d *OSSDeltaDriver) ConfigureAuth(interface{}) error { return nil }
-
-// ApplyBatchPagination adds pagination to a SQL query.
-func (d *OSSDeltaDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
-	return applyObjectBatchPagination(query, batchSize, offset)
-}

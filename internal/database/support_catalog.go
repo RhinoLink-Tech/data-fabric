@@ -95,32 +95,6 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		catalog = append(catalog, profile)
 	}
 
-	// The S3 Gateway provides bounded Parquet and text object paths. Keep the
-	// unimplemented Ozone Avro type visible as unsupported.
-	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeOzoneAvro,
-	} {
-		catalog = append(catalog, ConnectorSupport{
-			Type:                         string(dbType),
-			Category:                     model.GetDatabaseCategory(dbType),
-			Registered:                   false,
-			Supported:                    false,
-			Version:                      "",
-			Features:                     []string{},
-			Recommended:                  false,
-			Status:                       ConnectorStatusUnsupported,
-			VerifiedServerVersions:       []string{},
-			VersionPolicy:                "Unsupported; registration and connection attempts are rejected.",
-			VersionDependentCapabilities: []string{},
-			CompatibilityMode:            compatibilityMode(dbType, drivers.CategoryFileSystem),
-			ServerVersionDetection:       "not_applicable",
-			Operations:                   []string{},
-			AuthenticationMethods:        []string{},
-			AuthenticationDisclosure:     "Not applicable while unsupported.",
-			Limitations:                  []string{"Object operations are incomplete; source configuration is rejected."},
-		})
-	}
-
 	sort.Slice(catalog, func(i, j int) bool { return catalog[i].Type < catalog[j].Type })
 	return catalog
 }
@@ -287,7 +261,7 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.AuthenticationDisclosure = "Signed S3 requests using an access key and secret key are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authentication are not covered by this baseline."
 		profile.Limitations = []string{
 			"The Garage v2.4.1 contract covers signed OCF upload, flat-record schema discovery, read-only SQL, LIMIT 0 schema discovery, COUNT(*), and rejection of writes.",
-			"The adapter exposes one configured Avro OCF object as one SQL table and downloads the full object into gateway memory before decoding records and applying filters or pagination.",
+			"The adapter exposes one configured Avro OCF object as one SQL table. On a cache miss, it downloads and decodes the full object into gateway memory before applying filters or pagination; results for the same ETag may be reused for up to five seconds across count and page requests.",
 			"Only flat records with primitive fields or nullable unions of null and one primitive type are supported. Nested records, arrays, maps, named unions, schema registries, multiple objects, and partition scans are not supported.",
 			"Only null, deflate, and Snappy OCF codecs are supported by the current decoder; other codecs and provider versions are not verified.",
 		}
@@ -388,7 +362,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
 		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
@@ -397,11 +371,16 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 				"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
-		} else {
+		} else if dbType == model.DatabaseTypeOzoneText {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured UTF-8 text object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 lines, downloaded into gateway memory, and exposed through the restricted read-only text SQL subset.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, multiline parsing, and live Ozone compatibility are not covered.")
+		} else {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured Avro OCF object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through the restricted read-only Avro SQL subset.",
+				"Only flat records with supported primitive or nullable primitive fields are queryable. Path-style S3 requests are used; native Ozone Kerberos, volume/bucket administration, multiple-object scans, nested schemas, and live Ozone compatibility are not covered.")
 		}
 	case model.DatabaseTypeHDFSAvro:
 		profile.Status = ConnectorStatusExperimental

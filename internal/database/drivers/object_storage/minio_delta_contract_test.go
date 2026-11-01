@@ -45,6 +45,7 @@ func TestMinIODeltaProtocolFixture(t *testing.T) {
 			_, _ = w.Write([]byte(xml))
 			return
 		}
+		w.Header().Set("Last-Modified", time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC).Format(http.TimeFormat))
 		key := strings.TrimPrefix(r.URL.Path, "/test-bucket/")
 		switch key {
 		case logKey:

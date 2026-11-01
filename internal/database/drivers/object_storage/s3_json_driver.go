@@ -129,21 +129,9 @@ func (d *S3JSONDriver) ConfigureAuth(authConfig interface{}) error {
 	return nil
 }
 
-// ApplyBatchPagination applies pagination to a SQL query
-func (d *S3JSONDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// For S3 JSON files, we don't support SQL pagination directly
-	// Instead, we'll return the original SQL and let the application handle pagination
-	// since JSON files are read as complete datasets and then processed in memory
-
-	// If S3 Select API is enabled, we can use LIMIT and OFFSET clauses
-	if d.config.EnableSelectAPI {
-		// Add LIMIT and OFFSET to the SQL query
-		paginatedSQL := fmt.Sprintf("%s LIMIT %d OFFSET %d", sql, batchSize, offset)
-		return paginatedSQL, nil
-	}
-
-	// For direct JSON reading, return original SQL and handle pagination in memory
-	return sql, nil
+// ApplyBatchPagination applies pagination to the read-only SQL adapter.
+func (d *S3JSONDriver) ApplyBatchPagination(query string, batchSize, offset int64) (string, error) {
+	return applyObjectBatchPagination(query, batchSize, offset)
 }
 
 // =============================================================================

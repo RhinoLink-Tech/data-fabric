@@ -36,8 +36,9 @@ func TestApplyBatchPaginationDoesNotPanic(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ApplyBatchPagination returned error: %v", err)
 			}
-			if got != query {
-				t.Errorf("ApplyBatchPagination = %q, want the query unchanged (%q)", got, query)
+			want := "SELECT * FROM (" + query + ") AS __data_fabric_page LIMIT 100 OFFSET 0"
+			if got != want {
+				t.Errorf("ApplyBatchPagination = %q, want %q", got, want)
 			}
 		})
 	}

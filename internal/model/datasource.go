@@ -204,7 +204,7 @@ func IsValidDatabaseType(dbType string) bool {
 		DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery,
 		DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
 		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeTencentCOSParquet, DatabaseTypeAzureBlobParquet,
-		DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
+		DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV, DatabaseTypeOzoneParquet,
 		DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid,
 		DatabaseTypeOceanBaseMySQL, DatabaseTypeOceanBaseOracle, DatabaseTypeTiDB, DatabaseTypeTDSQL,
 		DatabaseTypeGaussDBMySQL, DatabaseTypeGaussDBPostgres, DatabaseTypeDaMeng, DatabaseTypeKingbaseES,
@@ -229,10 +229,10 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
 		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeTencentCOSParquet, DatabaseTypeAzureBlobParquet,
-		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText:
+		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
-		DatabaseTypeOzoneAvro, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
+		DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
 		return "filesystems"
 	case DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid, DatabaseTypeHologres:
 		return "olap"

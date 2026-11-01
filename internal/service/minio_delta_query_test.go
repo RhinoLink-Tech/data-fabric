@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -38,6 +39,7 @@ func TestFetchQueryRoutesMinIODeltaThroughGateway(t *testing.T) {
 			_, _ = w.Write([]byte(xml))
 			return
 		}
+		w.Header().Set("Last-Modified", time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC).Format(http.TimeFormat))
 		switch strings.TrimPrefix(r.URL.Path, "/demo-bucket/") {
 		case logKey:
 			w.Header().Set("Content-Length", strconv.Itoa(len(logBody)))

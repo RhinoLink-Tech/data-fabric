@@ -45,12 +45,13 @@ func s3AvroServiceFixture(t *testing.T) []byte {
 func TestFetchQueryRoutesS3AvroThroughGateway(t *testing.T) {
 	data := s3AvroServiceFixture(t)
 	var getCalls atomic.Int64
+	var etagVersion atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/demo-bucket/data.avro" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("ETag", "\"avro-fixture\"")
+		w.Header().Set("ETag", "\"avro-fixture-"+strconv.Itoa(int(etagVersion.Load()))+"\"")
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		switch r.Method {
@@ -128,6 +129,18 @@ func TestFetchQueryRoutesS3AvroThroughGateway(t *testing.T) {
 		t.Fatalf("write rejection read Avro records: GET calls before=%d after=%d", beforeWrite, afterWrite)
 	}
 	if getCalls.Load() != 1 {
-		t.Fatalf("query downloaded the OCF %d times, want once", getCalls.Load())
+		t.Fatalf("one paginated query downloaded the OCF %d times, want once", getCalls.Load())
+	}
+	etagVersion.Add(1)
+	if _, err := queryService.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{
+		DataSourceID: source.ID,
+		SQL:          "SELECT id FROM records WHERE active = true",
+		Type:         1,
+		BatchSize:    10,
+	}); err != nil {
+		t.Fatalf("FetchQuery() after object ETag changes: %v", err)
+	}
+	if getCalls.Load() != 2 {
+		t.Fatalf("changed object ETag caused %d total OCF downloads, want cache refresh to 2", getCalls.Load())
 	}
 }

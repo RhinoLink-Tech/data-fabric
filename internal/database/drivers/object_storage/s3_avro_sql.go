@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
@@ -55,6 +57,44 @@ func (d *S3AvroDriver) openWithConfig(ctx context.Context, config *model.DataSou
 	if err != nil {
 		return nil, err
 	}
+	var cacheMu sync.Mutex
+	var cachedETag string
+	var cachedAt time.Time
+	var cachedResult *S3AvroResult
+	var cacheTimer *time.Timer
+	loadResult := func(ctx context.Context, key string) (*S3AvroResult, error) {
+		cacheMu.Lock()
+		defer cacheMu.Unlock()
+		metadata, err := configured.s3Client.GetObjectMetadata(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if metadata != nil && metadata.ETag != "" && cachedResult != nil &&
+			cachedETag == metadata.ETag && time.Since(cachedAt) < 5*time.Second {
+			return cachedResult, nil
+		}
+		result, err := configured.Query(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if metadata != nil && metadata.ETag != "" {
+			cachedETag = metadata.ETag
+			cachedAt = time.Now()
+			cachedResult = result
+			if cacheTimer != nil {
+				cacheTimer.Stop()
+			}
+			cacheTimer = time.AfterFunc(5*time.Second, func() {
+				cacheMu.Lock()
+				defer cacheMu.Unlock()
+				if time.Since(cachedAt) >= 5*time.Second {
+					cachedETag = ""
+					cachedResult = nil
+				}
+			})
+		}
+		return result, nil
+	}
 	return newObjectSQLDB(&objectSQLAdapter{
 		driverName: driverName,
 		objectKey:  objectKey,
@@ -71,7 +111,7 @@ func (d *S3AvroDriver) openWithConfig(ctx context.Context, config *model.DataSou
 			return objectSQLSchemaFromAvro(schema)
 		},
 		readRows: func(ctx context.Context, key string) (*objectSQLSchema, []map[string]interface{}, error) {
-			result, err := configured.Query(ctx, key)
+			result, err := loadResult(ctx, key)
 			if err != nil {
 				return nil, nil, err
 			}

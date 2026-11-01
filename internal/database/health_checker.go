@@ -392,14 +392,20 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 	// Validate based on category
 	switch category {
 	case drivers.CategoryObjectStorage:
-		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneText {
+		if driver.GetDefaultPort() > 0 {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err
 			}
-			if dbType == model.DatabaseTypeOzoneText {
+		}
+		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneText || dbType == model.DatabaseTypeOzoneAvro {
+			switch dbType {
+			case model.DatabaseTypeOzoneText:
 				return file_system.ValidateOzoneTextConfig(config)
+			case model.DatabaseTypeOzoneAvro:
+				return file_system.ValidateOzoneAvroConfig(config)
+			default:
+				return file_system.ValidateOzoneParquetConfig(config)
 			}
-			return file_system.ValidateOzoneParquetConfig(config)
 		}
 		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
