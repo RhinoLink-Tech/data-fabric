@@ -115,11 +115,10 @@ func TestUpdateDataSourceValidatesExistingTypeAndFinalConfigBeforePersistence(t 
 	}
 }
 
-func TestCreateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *testing.T) {
+func TestCreateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t *testing.T) {
 	repo := &validatingDataSourceRepositoryStub{}
 	svc := NewDataSourceService(repo, nil, database.NewHealthChecker(nil))
 	ozoneTypes := []model.DatabaseType{
-		model.DatabaseTypeOzoneParquet,
 		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	}
@@ -139,9 +138,8 @@ func TestCreateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *test
 	}
 }
 
-func TestUpdateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *testing.T) {
+func TestUpdateDataSourceRejectsUnimplementedOzoneTextAndAvroBeforePersistence(t *testing.T) {
 	ozoneTypes := []model.DatabaseType{
-		model.DatabaseTypeOzoneParquet,
 		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	}
@@ -165,5 +163,34 @@ func TestUpdateDataSourceRejectsUnimplementedOzoneTypesBeforePersistence(t *test
 				t.Fatalf("unsupported Ozone source was updated: %+v", repo.updated)
 			}
 		})
+	}
+}
+
+func TestCreateAndUpdateOzoneParquetDataSource(t *testing.T) {
+	config := model.DataSourceConfig{
+		Host: "warehouse/events.parquet", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
+	}
+	createRepo := &validatingDataSourceRepositoryStub{}
+	createService := NewDataSourceService(createRepo, nil, database.NewHealthChecker(nil))
+	if _, err := createService.CreateDataSource(context.Background(), nil, &CreateDataSourceRequest{
+		Name: "ozone-events", Type: model.DatabaseTypeOzoneParquet, Config: config,
+	}); err != nil {
+		t.Fatalf("CreateDataSource() error = %v", err)
+	}
+	if createRepo.created == nil || createRepo.created.Type != model.DatabaseTypeOzoneParquet {
+		t.Fatalf("created source = %+v, want persisted Ozone Parquet source", createRepo.created)
+	}
+
+	const id = "e8c3cfb8-21dd-4f29-a197-7a616e0165ba"
+	updateRepo := &validatingDataSourceRepositoryStub{existing: &model.DataSource{
+		ID: id, Name: "ozone-events", Type: model.DatabaseTypeOzoneParquet, Config: config,
+	}}
+	updateService := NewDataSourceService(updateRepo, nil, database.NewHealthChecker(nil))
+	if _, err := updateService.UpdateDataSource(context.Background(), nil, id, &UpdateDataSourceRequest{Config: &config}); err != nil {
+		t.Fatalf("UpdateDataSource() error = %v", err)
+	}
+	if updateRepo.updated == nil || updateRepo.updated.Type != model.DatabaseTypeOzoneParquet {
+		t.Fatalf("updated source = %+v, want updated Ozone Parquet source", updateRepo.updated)
 	}
 }

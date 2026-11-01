@@ -47,6 +47,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeMinIOIceberg, "object_storage", false},
 		{DatabaseTypeAzureDelta, "object_storage", false},
 		{DatabaseTypeAzureParquet, "object_storage", false},
+		{DatabaseTypeOzoneParquet, "object_storage", false},
 		{DatabaseTypeMinIODelta, "object_storage", false},
 		{DatabaseTypeMinIOORC, "object_storage", false},
 		{DatabaseTypeMinIOAvro, "object_storage", false},

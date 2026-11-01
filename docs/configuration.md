@@ -1009,3 +1009,21 @@ Parquet data pages; the deterministic adapter fixture covers Snappy. Files
 wrapped in an external gzip stream are not Parquet files for this connector.
 Use an absolute .parquet path, an optional additionalProps.table_name, and the
 max_file_bytes setting described in the HDFS Parquet section.
+
+
+## Apache Ozone Parquet through S3 Gateway
+
+The experimental ozone_parquet source reads one Parquet object by using Apache Ozone's S3-compatible gateway. Configure the bucket in database, the object key in additionalProps.object_key (or host), and the gateway origin in additionalProps.endpoint_url. The endpoint defaults to port 9878 when the URL has no explicit port.
+
+| Data-source field | Ozone Parquet meaning |
+| --- | --- |
+| database | Bucket name. |
+| host or additionalProps.object_key | One relative .parquet object key; object_key takes precedence. |
+| username and password | Required S3 access key and secret key; signed with SigV4. |
+| additionalProps.session_token | Optional session token paired with the access key and secret key. |
+| additionalProps.endpoint_url | Required S3 Gateway HTTP(S) origin without a path, credentials, query, or fragment. |
+| additionalProps.region | S3 signing region; defaults to us-east-1. |
+| additionalProps.table_name | SQL table name; defaults from the object key. |
+| additionalProps.max_file_bytes | Maximum object bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+
+Requests use path-style addressing. The adapter exposes one object as a bounded read-only SQL table and caps it at 100,000 rows. It does not implement native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.

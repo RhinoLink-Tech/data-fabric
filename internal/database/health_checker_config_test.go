@@ -118,11 +118,24 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 		t.Fatalf("S3 ORC partial credentials error = %v, want paired credential error", err)
 	}
 
-	if checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneParquet) {
-		t.Fatal("Ozone must stay unregistered until its object operations are implemented")
+	if !checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneParquet) {
+		t.Fatal("Ozone Parquet should be registered through its S3 Gateway adapter")
 	}
-	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{Host: "ozone.example.test"}, model.DatabaseTypeOzoneParquet); err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("Ozone validation error = %v, want unsupported-type error", err)
+	ozoneConfig := &model.DataSourceConfig{
+		Host: "warehouse/events.parquet", Database: "analytics",
+		Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
+	}
+	if err := checker.ValidateDataSourceConfiguration(ozoneConfig, model.DatabaseTypeOzoneParquet); err != nil {
+		t.Fatalf("Ozone Parquet config should validate through its S3 Gateway adapter: %v", err)
+	}
+	if ozoneConfig.Port != 9878 {
+		t.Fatalf("Ozone S3 Gateway default port = %d, want 9878", ozoneConfig.Port)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "warehouse/events.parquet", Database: "analytics", Username: "access", Password: "secret",
+	}, model.DatabaseTypeOzoneParquet); err == nil || !strings.Contains(err.Error(), "endpoint_url") {
+		t.Fatalf("Ozone config without endpoint error = %v, want endpoint_url validation error", err)
 	}
 
 	invalidPort := &model.DataSourceConfig{

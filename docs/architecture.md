@@ -68,7 +68,7 @@ data-fabric/
 │           ├── warehouses/       # Snowflake, Databricks, Redshift, BigQuery
 │           ├── olap/             # ClickHouse, Doris, StarRocks, Druid
 │           ├── object_storage/   # S3, MinIO, OSS, COS, Azure Blob
-│           ├── file_system/      # HDFS; Ozone placeholders are not registered
+│           ├── file_system/      # HDFS; Ozone Parquet uses the S3 Gateway
 │           └── domestic/         # OceanBase, TiDB, TDSQL, etc.
 ├── configs/                      # Configuration files
 ├── pkg/response/                 # Response formatting utilities

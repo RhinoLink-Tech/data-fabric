@@ -233,6 +233,36 @@ func (c *S3Client) ListObjectsWithDelimiter(ctx context.Context, prefix, delimit
 }
 
 // GetObject retrieves an object from S3
+// GetObjectLimited reads at most maxBytes plus one sentinel byte so callers
+// can enforce memory bounds even if the advertised object size is incorrect.
+func (c *S3Client) GetObjectLimited(ctx context.Context, key string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, fmt.Errorf("maximum S3 object size must be positive and representable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	reader, err := c.GetObjectReader(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read object data: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("S3 object exceeds configured maximum of %d bytes", maxBytes)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 func (c *S3Client) GetObject(ctx context.Context, key string) ([]byte, error) {
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(c.config.Bucket),

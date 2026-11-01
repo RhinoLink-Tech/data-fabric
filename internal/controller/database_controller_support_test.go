@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,7 +48,19 @@ func TestDatabaseTypeAPIsUseSharedSupportCatalog(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	controller.GetDatabaseCompatibility(ctx)
-	if !strings.Contains(recorder.Body.String(), `"ozone_parquet"`) || !strings.Contains(recorder.Body.String(), `"status":"unsupported"`) {
-		t.Fatalf("compatibility response should expose explicit unsupported connectors: %s", recorder.Body.String())
+	var response struct {
+		Data map[string]database.ConnectorSupport `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode compatibility response: %v", err)
+	}
+	ozone, ok := response.Data[string(model.DatabaseTypeOzoneParquet)]
+	if !ok || ozone.Status != database.ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("compatibility response should report the experimental Ozone Parquet SQL adapter: %+v", ozone)
+	}
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
+		if profile, ok := response.Data[string(dbType)]; !ok || profile.Status != database.ConnectorStatusUnsupported {
+			t.Errorf("compatibility response should preserve unsupported Ozone format %s: %+v", dbType, profile)
+		}
 	}
 }

@@ -156,11 +156,18 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
 		profile, ok := profiles[string(dbType)]
 		if !ok || profile.Supported || profile.Status != ConnectorStatusUnsupported {
 			t.Errorf("unsupported type %q has incorrect profile: %+v", dbType, profile)
 		}
+	}
+	ozoneParquet := profiles[string(model.DatabaseTypeOzoneParquet)]
+	if !ozoneParquet.Registered || !ozoneParquet.Supported || ozoneParquet.Status != ConnectorStatusExperimental || !ozoneParquet.Capabilities.SupportsSQL {
+		t.Errorf("Ozone Parquet must expose its experimental S3 Gateway SQL path: %+v", ozoneParquet)
+	}
+	if !containsSupportLimitation(ozoneParquet.Limitations, "S3 Gateway endpoint") || !containsSupportLimitation(ozoneParquet.Limitations, "64 MiB") {
+		t.Errorf("Ozone Parquet catalog must disclose endpoint and resource limits: %+v", ozoneParquet.Limitations)
 	}
 
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
@@ -388,11 +395,11 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if !ok || oracle.Status != ConnectorStatusEndToEndVerified || !oracle.EndToEndVerified || oracle.SupportedVersionRange != "23.26.3.0.0 only" || !reflect.DeepEqual(oracle.VerifiedServerVersions, []string{"23.26.3.0.0"}) {
 		t.Fatalf("type endpoint has missing or overly broad Oracle verification evidence: %+v", oracle)
 	}
-	if _, ok := info[string(model.DatabaseTypeOzoneParquet)]; ok {
-		t.Fatal("type endpoint must not advertise unsupported Ozone")
+	if ozone, ok := info[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("type endpoint must advertise the experimental Ozone Parquet adapter: %+v", ozone)
 	}
-	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusUnsupported {
-		t.Fatalf("compatibility endpoint must report Ozone as unsupported: %+v", ozone)
+	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental {
+		t.Fatalf("compatibility endpoint must report Ozone Parquet as experimental: %+v", ozone)
 	}
 	if len(compatibility) != len(catalog) {
 		t.Fatalf("compatibility profiles = %d, catalog = %d", len(compatibility), len(catalog))

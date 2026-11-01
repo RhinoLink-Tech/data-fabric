@@ -122,16 +122,18 @@ func TestRegisteredDriversReportTypeAndCategory(t *testing.T) {
 	}
 }
 
-func TestOzoneDriversAreNotAdvertisedUntilClientOperationsExist(t *testing.T) {
+func TestOzoneParquetUsesS3GatewayAdapterWhileOtherFormatsStayUnsupported(t *testing.T) {
 	registry := NewDriverRegistry()
-	ozoneTypes := []model.DatabaseType{
-		model.DatabaseTypeOzoneParquet,
-		model.DatabaseTypeOzoneText,
-		model.DatabaseTypeOzoneAvro,
+	driver, err := registry.GetDriver(model.DatabaseTypeOzoneParquet)
+	if err != nil {
+		t.Fatalf("GetDriver(ozone_parquet) error = %v", err)
 	}
-	for _, dbType := range ozoneTypes {
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL {
+		t.Fatalf("Ozone Parquet driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
 		if registry.IsSupported(dbType) {
-			t.Errorf("registry still advertises %s", dbType)
+			t.Errorf("registry advertises unsupported format %s", dbType)
 		}
 		if _, err := registry.GetDriver(dbType); err == nil {
 			t.Errorf("GetDriver(%s) error = nil, want unsupported type", dbType)

@@ -95,16 +95,15 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		catalog = append(catalog, profile)
 	}
 
-	// Ozone is intentionally not registered while its object operations remain
-	// incomplete. Keep it visible as explicitly unsupported.
+	// The S3 Gateway provides the bounded Parquet object path. Native Ozone
+	// text and Avro adapters remain unavailable and are shown as unsupported.
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeOzoneParquet,
 		model.DatabaseTypeOzoneText,
 		model.DatabaseTypeOzoneAvro,
 	} {
 		catalog = append(catalog, ConnectorSupport{
 			Type:                         string(dbType),
-			Category:                     string(drivers.CategoryObjectStorage),
+			Category:                     model.GetDatabaseCategory(dbType),
 			Registered:                   false,
 			Supported:                    false,
 			Version:                      "",
@@ -114,7 +113,7 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 			VerifiedServerVersions:       []string{},
 			VersionPolicy:                "Unsupported; registration and connection attempts are rejected.",
 			VersionDependentCapabilities: []string{},
-			CompatibilityMode:            "object_storage_api",
+			CompatibilityMode:            compatibilityMode(dbType, drivers.CategoryFileSystem),
 			ServerVersionDetection:       "not_applicable",
 			Operations:                   []string{},
 			AuthenticationMethods:        []string{},
@@ -390,6 +389,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
+	case model.DatabaseTypeOzoneParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
+		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
+			"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
 	case model.DatabaseTypeHDFSAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}

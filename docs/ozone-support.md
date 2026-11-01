@@ -1,20 +1,28 @@
 # Apache Ozone support status
 
-Apache Ozone is not currently a supported Data Fabric connector. The Ozone client is a placeholder; its success-shaped responses do not establish connectivity or provide valid object metadata.
+Data Fabric exposes one bounded Ozone Parquet object through Apache Ozone S3 Gateway. The adapter uses the gateway S3-compatible HTTP API and the shared read-only Parquet SQL path. It does not use the native Ozone Manager RPC client.
 
 ## Current operation status
 
 | Operation | Current status |
 | --- | --- |
-| Create or update an Ozone data source | Rejected as unsupported before persistence |
-| Advertise Ozone through GET /api/v1/database/types | Not advertised |
-| Query Ozone-backed Parquet, text, or Avro data | Not supported |
-| Read, write, delete, rename, or range-read an object | Not implemented |
-| List objects or retrieve object information | Placeholder only; must not be treated as a valid result |
-| Check object existence or list buckets | Placeholder only; must not be treated as a valid result |
-| Create a volume or bucket, or delete a bucket | Not implemented |
-| Check Ozone connection or report cluster capacity | Placeholder only; must not be treated as a successful health check |
+| Create or update an ozone_parquet data source | Supported by the registered experimental adapter when endpoint, bucket, object key, and credentials validate |
+| Advertise ozone_parquet through the database type API | Registered and reported as experimental |
+| Query one Ozone Parquet object | Read-only SQL over a single configured Parquet object |
+| Inspect the configured object | S3-compatible HEAD request to the configured S3 Gateway |
+| Read the configured object | S3-compatible GET request to the configured S3 Gateway |
+| List buckets or objects, write/delete/rename objects, administer volumes | Not provided by this adapter |
+| Query Ozone text or Avro data | Unsupported; those types remain unregistered |
+| Use Ozone-native RPC, Kerberos, or cluster-capacity APIs | Not provided |
 
-The ozone_parquet, ozone_text, and ozone_avro types are not registered in the driver registry. They therefore do not appear in GET /api/v1/database/types; new create and update requests fail type validation before they reach the client stubs or persist a data source. An already stored Ozone source cannot resolve a registered driver for query execution.
+## Configuration and limits
 
-The implementation can be advertised again after the object operations have context-aware requests, meaningful error and resource handling, and tests against a real or protocol-faithful Ozone endpoint.
+- database is the bucket name.
+- additionalProps.endpoint_url is the S3 Gateway HTTP(S) origin. It must not include credentials, a path, query, or fragment. If no port is supplied, the adapter uses port 9878.
+- host or additionalProps.object_key identifies one relative .parquet object key. object_key takes precedence.
+- username and password are required S3 access-key and secret-key credentials. Requests use SigV4 and path-style bucket addressing. additionalProps.session_token may supply the paired session token.
+- additionalProps.region defaults to us-east-1; additionalProps.table_name defaults to the object filename without its extension.
+- The default object limit is 16 MiB; the configured maximum is 64 MiB. Each object is capped at 100,000 rows and materialized in gateway memory for the restricted SQL adapter.
+- Parquet page codecs are handled by the shared decoder. An externally wrapped .gz object, directory or multi-object scan, schema evolution, and partition discovery are outside this adapter.
+
+Deterministic tests use a local S3-protocol HTTP fixture and a Snappy-compressed Parquet object. They verify path-style requests, HEAD/GET, bounded reads, metadata discovery, read-only SQL, and write rejection. They do not establish compatibility with a live Apache Ozone release, gateway authentication configuration, TLS setup, or Kerberos. Keep this connector experimental until a version-pinned live Ozone contract has been run.
