@@ -26,6 +26,11 @@ not prescribe a client-specific configuration file, tool namespace, model,
 or installation command. A model API alone does not load skills or execute
 tools: it needs an agent client with skill and tool support.
 
+For applications calling the DeepSeek API directly, see the separate
+[DeepSeek function-calling reference client](../examples/deepseek-agent/README.md).
+It maps DeepSeek function calls to authenticated Data Fabric MCP tools; it is
+not required when using an MCP-capable host directly.
+
 ## Bundle contents and limits
 
 - `SKILL.md` contains the shared workflow and standard `name`/`description`

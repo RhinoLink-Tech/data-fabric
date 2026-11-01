@@ -271,32 +271,15 @@ or use a real certificate.
 
 ### DeepSeek-backed agent host
 
-Any MCP client SDK works; the snippet below is the Python `mcp` package
-(`pip install mcp`) — point the model side at DeepSeek with your own API key,
-which never touches this deployment:
+A direct DeepSeek API integration needs a local agent client to translate
+function calls into authenticated Data Fabric MCP calls. The model API alone
+does not connect to MCP or execute tools.
 
-```python
-import asyncio
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-
-URL = "https://localhost:8443/mcp"
-TOKEN = "<OIDC access token>"
-
-async def main():
-    async with streamablehttp_client(URL, headers={"Authorization": f"Bearer {TOKEN}"}) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            print("tools:", [t.name for t in tools.tools])
-            result = await session.call_tool("list_data_sources", {})
-            print(result.content[0].text)
-
-asyncio.run(main())
-```
-
-With a self-signed certificate, import it into the system trust store so the
-client's default verification accepts it.
+See the runnable [DeepSeek function-calling reference client](../examples/deepseek-agent/README.md)
+for prerequisites, environment variables, bounded read-only SQL, pagination,
+credential handling, and checks. It uses the current MCP Python SDK v2 client
+transport. Applications that already use Codex, Deep Code, or another MCP-capable
+host can connect that host directly and install the shared Agent Skill instead.
 
 ## Local stdio vs remote Streamable HTTP
 

@@ -164,6 +164,7 @@ See the [API usage guide](docs/api_usage.md) for request fields, response struct
 
 - [API Usage Guide](docs/api_usage.md)
 - [Data Fabric Agent Skill](docs/agent-skill.md)
+- [DeepSeek Function-Calling Example](examples/deepseek-agent/README.md)
 - [Architecture Guide](docs/architecture.md)
 - [Configuration Guide](docs/configuration.md)
 - [Development Guide](docs/development.md)
