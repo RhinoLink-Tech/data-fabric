@@ -1000,3 +1000,12 @@ and absolute file path conventions described in the HDFS CSV section. The
 max_file_bytes property defaults to 16 MiB and can be raised to 64 MiB. Files
 with more than 100,000 lines are rejected. This source does not parse structured
 logs, scan directories, read compressed inputs, tail files, or provide streaming.
+
+## HDFS compressed Parquet data sources
+
+The hdfs_parquet_compressed source type uses the same single-file, read-only
+SQL adapter and limits as HDFS Parquet. It decodes compression stored inside
+Parquet data pages; the deterministic adapter fixture covers Snappy. Files
+wrapped in an external gzip stream are not Parquet files for this connector.
+Use an absolute .parquet path, an optional additionalProps.table_name, and the
+max_file_bytes setting described in the HDFS Parquet section.

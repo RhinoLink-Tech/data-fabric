@@ -619,3 +619,13 @@ without an HDFS service. The fixture does not establish compatibility with a
 live HDFS release, authorization, Kerberos, HA behavior, or large-file
 performance. The connector remains experimental until a pinned live HDFS
 contract is available.
+
+## HDFS compressed Parquet local file-client fixture
+
+A deterministic Snappy-compressed Parquet fixture and injected HDFS file client
+cover the shared SQL reader, projections, filtering, ordering, pagination,
+COUNT(*), metadata discovery, configured path validation, and write rejection
+without HDFS. External gzip wrapping is rejected. The fixture does not
+establish compatibility with a live HDFS release, authorization, Kerberos, HA
+behavior, other Parquet codecs, or large-file performance. The connector
+remains experimental until a pinned live HDFS contract is available.

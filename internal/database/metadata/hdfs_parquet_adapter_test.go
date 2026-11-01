@@ -92,3 +92,53 @@ func TestHDFSParquetAdapterSupportsUnifiedMetadataDiscovery(t *testing.T) {
 		t.Fatalf("ExtractSchema() tables = %+v, want events", schema.Tables)
 	}
 }
+
+func TestHDFSCompressedParquetAdapterSupportsUnifiedMetadataDiscovery(t *testing.T) {
+	ctx := context.Background()
+	var output bytes.Buffer
+	parquetWriter, err := writer.NewParquetWriterFromWriter(&output, new(hdfsParquetMetadataRow), 1)
+	if err != nil {
+		t.Fatalf("create compressed Parquet writer: %v", err)
+	}
+	parquetWriter.CompressionType = parquet.CompressionCodec_SNAPPY
+	if err := parquetWriter.Write(hdfsParquetMetadataRow{Name: "Ada", Quantity: 3}); err != nil {
+		t.Fatalf("write compressed Parquet fixture: %v", err)
+	}
+	if err := parquetWriter.WriteStop(); err != nil {
+		t.Fatalf("finish compressed Parquet fixture: %v", err)
+	}
+
+	source := &model.DataSource{
+		ID: "hdfs-compressed-events", Type: model.DatabaseTypeHDFSParquetCompressed,
+		Config: model.DataSourceConfig{
+			Host: "namenode.local", Port: 8020, Database: "/warehouse/events.parquet", Username: "hdfs",
+			AdditionalProps: map[string]interface{}{"table_name": "events"},
+		},
+	}
+	registry := database.NewDriverRegistry()
+	registry.RegisterDriver(model.DatabaseTypeHDFSParquetCompressed, file_system.NewHDFSParquetCompressionDriverWithFileClient(
+		&hdfsParquetMetadataClient{data: append([]byte(nil), output.Bytes()...)},
+	))
+	pool := database.NewConnectionPool(registry, nil, nil, false)
+	defer func() { _ = pool.CloseAll() }()
+	extractor := &MetadataExtractor{
+		connPool: pool,
+		sources:  &dataSourceLookupStub{dataSource: source},
+		registry: registry,
+	}
+
+	tables, err := extractor.ListTables(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("ListTables() error = %v", err)
+	}
+	if len(tables) != 1 || tables[0].Name != "events" {
+		t.Fatalf("ListTables() = %+v, want events", tables)
+	}
+	table, err := extractor.ExtractTableSchema(ctx, source.ID, "events")
+	if err != nil {
+		t.Fatalf("ExtractTableSchema() error = %v", err)
+	}
+	if len(table.Columns) != 2 || table.Columns[0].Name != "name" || table.Columns[1].Name != "quantity" {
+		t.Fatalf("ExtractTableSchema() columns = %+v, want name and quantity", table.Columns)
+	}
+}

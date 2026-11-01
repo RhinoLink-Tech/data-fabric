@@ -305,7 +305,7 @@ func isHDFSTextSource(dbType model.DatabaseType) bool {
 }
 
 func isHDFSParquetSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeHDFSParquet
+	return dbType == model.DatabaseTypeHDFSParquet || dbType == model.DatabaseTypeHDFSParquetCompressed
 }
 
 func isCSVObjectSource(dbType model.DatabaseType) bool {
@@ -346,7 +346,7 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return file_system.HDFSTextTableName(config)
 	case model.DatabaseTypeHDFSCSV:
 		return file_system.HDFSCSVTableName(config)
-	case model.DatabaseTypeHDFSParquet:
+	case model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed:
 		return file_system.HDFSParquetTableName(config)
 	case model.DatabaseTypeHDFSAvro:
 		return file_system.HDFSAvroTableName(config)

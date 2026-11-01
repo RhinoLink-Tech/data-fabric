@@ -68,6 +68,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeHDFSParquet, func() drivers.Driver {
 		return &file_system.HDFSParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSParquetCompressed, func() drivers.Driver {
+		return &file_system.HDFSParquetCompressionDriver{}
+	})
 	dr.register(model.DatabaseTypeHDFSAvro, func() drivers.Driver {
 		return &file_system.HDFSAvroDriver{}
 	})

@@ -127,19 +127,6 @@ func TestMongoDBUsesMySQLCompatibleReadOnlySQLGrammar(t *testing.T) {
 	}
 }
 
-func TestUnsupportedHDFSTypesHaveNoSQLValidationDialect(t *testing.T) {
-	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSParquetCompressed,
-	} {
-		if dialect, ok := SQLDialectForDataSource(dbType); ok {
-			t.Errorf("SQLDialectForDataSource(%q) = %q, true; want no SQL dialect", dbType, dialect)
-		}
-		if config := GetDataSourceSQLConfig(dbType); config != (DataSourceSQLConfig{}) {
-			t.Errorf("GetDataSourceSQLConfig(%q) = %+v; want no SQL capabilities", dbType, config)
-		}
-	}
-}
-
 func TestValidateDataSourceSyntaxUsesASTInsteadOfSubstringHeuristics(t *testing.T) {
 	analyzer := &stubSQLASTAnalyzer{
 		analysis: sqlanalysis.Analysis{StatementCount: 1, IsQuery: true},
@@ -153,23 +140,24 @@ func TestValidateDataSourceSyntaxUsesASTInsteadOfSubstringHeuristics(t *testing.
 
 func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 	tests := map[model.DatabaseType]string{
-		model.DatabaseTypeMySQL:       "mysql",
-		model.DatabaseTypePostgreSQL:  "postgres",
-		model.DatabaseTypeOracle:      "oracle",
-		model.DatabaseTypeSQLServer:   "sqlserver",
-		model.DatabaseTypeTrino:       "trino",
-		model.DatabaseTypeOpenLooKeng: "presto",
-		model.DatabaseTypeBigQuery:    "bigquery",
-		model.DatabaseTypeClickHouse:  "clickhouse",
-		model.DatabaseTypeStarRocks:   "starrocks",
-		model.DatabaseTypeHDFSText:    "mysql",
-		model.DatabaseTypeHDFSCSV:     "mysql",
-		model.DatabaseTypeHDFSParquet: "mysql",
-		model.DatabaseTypeHDFSAvro:    "mysql",
-		model.DatabaseTypeS3Delta:     "spark",
-		model.DatabaseTypeMinIOORC:    "mysql",
-		model.DatabaseTypeMinIOAvro:   "mysql",
-		model.DatabaseTypeMinIOJSON:   "mysql",
+		model.DatabaseTypeMySQL:                 "mysql",
+		model.DatabaseTypePostgreSQL:            "postgres",
+		model.DatabaseTypeOracle:                "oracle",
+		model.DatabaseTypeSQLServer:             "sqlserver",
+		model.DatabaseTypeTrino:                 "trino",
+		model.DatabaseTypeOpenLooKeng:           "presto",
+		model.DatabaseTypeBigQuery:              "bigquery",
+		model.DatabaseTypeClickHouse:            "clickhouse",
+		model.DatabaseTypeStarRocks:             "starrocks",
+		model.DatabaseTypeHDFSText:              "mysql",
+		model.DatabaseTypeHDFSCSV:               "mysql",
+		model.DatabaseTypeHDFSParquet:           "mysql",
+		model.DatabaseTypeHDFSParquetCompressed: "mysql",
+		model.DatabaseTypeHDFSAvro:              "mysql",
+		model.DatabaseTypeS3Delta:               "spark",
+		model.DatabaseTypeMinIOORC:              "mysql",
+		model.DatabaseTypeMinIOAvro:             "mysql",
+		model.DatabaseTypeMinIOJSON:             "mysql",
 	}
 	for dbType, want := range tests {
 		got, ok := SQLDialectForDataSource(dbType)

@@ -162,17 +162,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			t.Errorf("unsupported type %q has incorrect profile: %+v", dbType, profile)
 		}
 	}
-	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSParquetCompressed,
-	} {
-		profile := profiles[string(dbType)]
-		if profile.Registered || profile.Supported || profile.Status != ConnectorStatusUnsupported {
-			t.Errorf("HDFS type %q must be explicitly unsupported until a query path exists: %+v", dbType, profile)
-		}
-		if _, err := registry.GetDriver(dbType); err == nil {
-			t.Errorf("HDFS type %q still resolves to a registered driver", dbType)
-		}
-	}
+
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
 	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusExperimental || !hdfsText.Capabilities.SupportsSQL {
 		t.Errorf("HDFS text must expose its experimental read-only SQL path: %+v", hdfsText)
@@ -186,6 +176,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") {
 		t.Errorf("HDFS CSV catalog must disclose its file and memory boundaries: %+v", hdfsCSV.Limitations)
+	}
+	hdfsParquetCompressed := profiles[string(model.DatabaseTypeHDFSParquetCompressed)]
+	if !hdfsParquetCompressed.Registered || !hdfsParquetCompressed.Supported || hdfsParquetCompressed.Status != ConnectorStatusExperimental || !hdfsParquetCompressed.Capabilities.SupportsSQL {
+		t.Errorf("HDFS compressed Parquet must expose its experimental read-only SQL path: %+v", hdfsParquetCompressed)
+	}
+	if !containsSupportLimitation(hdfsParquetCompressed.Limitations, "Parquet page compression") || !containsSupportLimitation(hdfsParquetCompressed.Limitations, "64 MiB") {
+		t.Errorf("HDFS compressed Parquet catalog must disclose codec and file limits: %+v", hdfsParquetCompressed.Limitations)
 	}
 	hdfsParquet := profiles[string(model.DatabaseTypeHDFSParquet)]
 	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusExperimental || !hdfsParquet.Capabilities.SupportsSQL {

@@ -458,7 +458,7 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 			}
 			return file_system.ValidateHDFSCSVConfig(config)
 		}
-		if dbType == model.DatabaseTypeHDFSParquet {
+		if dbType == model.DatabaseTypeHDFSParquet || dbType == model.DatabaseTypeHDFSParquetCompressed {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err
 			}

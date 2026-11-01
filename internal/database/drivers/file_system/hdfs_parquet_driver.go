@@ -44,6 +44,10 @@ func (d *HDFSParquetDriver) Open(string) (*sql.DB, error) {
 }
 
 func (d *HDFSParquetDriver) OpenWithConfig(ctx context.Context, config *model.DataSourceConfig) (*sql.DB, error) {
+	return d.openWithConfig(ctx, config, "hdfs-parquet")
+}
+
+func (d *HDFSParquetDriver) openWithConfig(ctx context.Context, config *model.DataSourceConfig, driverName string) (*sql.DB, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -70,7 +74,7 @@ func (d *HDFSParquetDriver) OpenWithConfig(ctx context.Context, config *model.Da
 	}
 	maxBytes := HDFSCSVMaxFileBytes(config)
 	return object_storage.NewParquetSQLDatabase(object_storage.ParquetSQLDatabaseConfig{
-		DriverName: "hdfs-parquet", ObjectKey: filePath, TableName: tableName,
+		DriverName: driverName, ObjectKey: filePath, TableName: tableName,
 		BatchSize: 1000, MaxFileBytes: maxBytes, MaxRows: hdfsParquetMaxRows,
 	}, func(ctx context.Context, key string) error {
 		if err := ctx.Err(); err != nil {

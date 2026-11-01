@@ -95,31 +95,6 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 		catalog = append(catalog, profile)
 	}
 
-	// HDFS file-format adapters without a unified query path remain explicitly unsupported.
-	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeHDFSParquetCompressed,
-	} {
-		catalog = append(catalog, ConnectorSupport{
-			Type:                         string(dbType),
-			Category:                     string(drivers.CategoryFileSystem),
-			Registered:                   false,
-			Supported:                    false,
-			Version:                      "",
-			Features:                     []string{},
-			Recommended:                  false,
-			Status:                       ConnectorStatusUnsupported,
-			VerifiedServerVersions:       []string{},
-			VersionPolicy:                "Unsupported; registration and connection attempts are rejected.",
-			VersionDependentCapabilities: []string{},
-			CompatibilityMode:            "filesystem_protocol",
-			ServerVersionDetection:       "not_applicable",
-			Operations:                   []string{},
-			AuthenticationMethods:        []string{},
-			AuthenticationDisclosure:     "Not applicable while unsupported.",
-			Limitations:                  []string{"No verified file read path is connected to the unified query service; legacy format parser methods are incomplete."},
-		})
-	}
-
 	// Ozone is intentionally not registered while its object operations remain
 	// incomplete. Keep it visible as explicitly unsupported.
 	for _, dbType := range []model.DatabaseType{
@@ -406,12 +381,13 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
 			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; flat row-oriented data only is supported.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeHDFSParquet:
+	case model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
 		profile.AuthenticationDisclosure = "The local file-client fixture covers configured user forwarding only; Kerberos and HDFS authorization behavior are not covered."
 		profile.Limitations = append(profile.Limitations,
 			"The adapter reads one configured Parquet file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
 	case model.DatabaseTypeHDFSAvro:
