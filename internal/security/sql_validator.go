@@ -63,8 +63,8 @@ func (sv *SQLValidator) SetASTAnalyzer(analyzer SQLASTAnalyzer) {
 	sv.astAnalyzer = analyzer
 }
 
-// SupportsASTAnalysis reports whether this validator can return table
-// references from a dialect-aware parser.
+// SupportsASTAnalysis reports whether this validator can return table and
+// column references from a dialect-aware parser.
 func (sv *SQLValidator) SupportsASTAnalysis() bool {
 	return sv != nil && sv.astAnalyzer != nil
 }

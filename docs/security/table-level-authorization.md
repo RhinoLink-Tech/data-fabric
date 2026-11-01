@@ -1,6 +1,6 @@
-# Table-Level Authorization
+# Table and Column Authorization
 
-Table-level authorization adds optional read and metadata permissions inside an already-authorized data source. Data-source ownership and tenant checks still run first. The feature is disabled by default.
+Table and column-level authorization adds optional read and metadata permissions inside an already-authorized data source. Data-source ownership and tenant checks still run first. The feature is disabled by default.
 
 ## Configuration
 
@@ -18,6 +18,7 @@ table_authorization:
             - catalog: lake
               schema: reporting
               table: daily_summary
+              columns: [date, total, region]
             - catalog: lake
               schema: sales
               table: "*"
@@ -29,23 +30,30 @@ table_authorization:
           read:
             - schema: private
               table: customer_rollup
+              columns: [customer_id, display_name]
           metadata:
             - schema: private
               table: customer_rollup
+              columns: [customer_id, display_name]
 ~~~
 
 Each scope has `catalog`, `schema`, and `table` components. A component equal to `"*"` matches any value at that level. Omitted components match only an omitted component; use `"*"` when the grant should span catalogs or schemas. Table names and scope values are compared exactly.
+
+A scope may also include `columns`, an exact-name allowlist. Omit `columns` to keep the existing table-wide behavior. When provided, only listed columns can be referenced by SQL or exposed by metadata under that scope. An explicit empty list denies every column. If multiple matching scopes apply, their column grants are combined; a matching scope with `columns` omitted grants all columns. Column names are compared exactly, including case.
+Column rules apply to top-level physical columns. Fields inside a JSON or structured column follow the parent column permission and are not independently allowlisted.
 
 `read` and `metadata` are independent permissions:
 
 - `read` is required for SQL validation, query execution, and every pagination or streaming continuation.
 - `metadata` is required for MCP `list_tables` and `describe_table`. A metadata grant does not allow reading rows, and a read grant does not reveal table names or columns.
+- `columns` inside a `read` scope is checked for every resolved column used by the query, including projections, predicates, joins, grouping, ordering, and expressions. The same read policy is rechecked for query execution and page/stream continuations.
+- `columns` inside a `metadata` scope filters `describe_table`; hidden names are also removed from primary-key and index column lists; index names are withheld because they are arbitrary and may embed hidden names. Foreign keys and arbitrary table properties are omitted when column filtering applies because they may reveal hidden column names or remote schema details.
 
 A data source with no policy, or a table that matches no caller rule, is denied while authorization is enabled. A request referencing multiple tables must be authorized for every physical table.
 
 ## SQL resolution
 
-Queries are parsed using the target data-source dialect. Physical tables inside joins, nested queries, and CTE definitions are checked; CTE names and derived-table aliases are not treated as separate physical tables. If SQL contains a table-valued function or a source the parser cannot resolve, the request is denied.
+Queries are parsed using the target data-source dialect. Physical tables inside joins, nested queries, and CTE definitions are checked; CTE names and derived-table aliases are not treated as separate physical tables. If SQL contains a table-valued function or a source the parser cannot resolve, the request is denied. For a table with a column allowlist, the analyzer also fails closed on `SELECT *` (including `COUNT(*)`), CTE or derived-table column lineage, unqualified columns across multiple sources, `JOIN ... USING`, `NATURAL JOIN`, and any column reference it cannot map to a physical table. Qualify join columns with table aliases and select explicit columns to keep the mapping unambiguous. These restrictions apply only when the resolved table has a column allowlist; table-only scopes retain their prior behavior.
 
 Unqualified table names are resolved from `DataSource.Config.Schema`. Trino, Presto, and OpenLooKeng also use `DataSource.Config.Database` as the default catalog; MySQL-family connections use their configured database as the default schema. If the default cannot be determined, a grant with an explicit schema does not match an unqualified reference. Use a schema wildcard only when the grant is intended to cover any schema.
 
@@ -53,7 +61,7 @@ Table authorization requires the configured SQLGlot AST analyzer. If table autho
 
 ## Metadata behavior
 
-`list_tables` filters table identities before serializing its response. `describe_table` checks metadata permission before reading columns, indexes, or keys. Pass the optional `schema` argument when the same table name exists in multiple schemas. An unqualified ambiguous table name is rejected.
+`list_tables` filters table identities before serializing its response. `describe_table` checks metadata permission before reading columns, indexes, or keys, then removes columns outside the configured allowlist. Pass the optional `schema` argument when the same table name exists in multiple schemas. An unqualified ambiguous table name is rejected. Column denials and unresolved column-policy denials are written to structured application logs with caller and table context; raw SQL and result values are not logged by this policy check.
 
 Policy updates are read from configuration at server startup, so restart the service after changing them. The `admin_override` option is off unless explicitly enabled. When enabled, administrator access is logged with the caller, data source, permission, and a bounded list of table names.
 

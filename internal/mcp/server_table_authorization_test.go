@@ -153,6 +153,48 @@ func TestDescribeTableAuthorizesBeforeReadingSchema(t *testing.T) {
 	}
 }
 
+func TestDescribeTableHidesRestrictedColumnsAndRelatedMetadata(t *testing.T) {
+	source := activeOwnedSource()
+	metadataSource := &stubTableDescriber{table: &metadata.TableSchema{
+		Name: "orders", Schema: "public",
+		Columns:     []metadata.ColumnSchema{{Name: "id", Type: "integer"}, {Name: "customer_email", Type: "text"}, {Name: "total", Type: "numeric"}},
+		PrimaryKey:  []string{"id"},
+		Indexes:     []metadata.IndexSchema{{Name: "orders_email_idx", Columns: []string{"customer_email"}}, {Name: "orders_id_idx", Columns: []string{"id"}}},
+		ForeignKeys: []metadata.ForeignKeySchema{{Name: "orders_customer_fk", Columns: []string{"customer_email"}, RefTable: "customers", RefColumns: []string{"email"}}},
+		Properties:  map[string]interface{}{"partition_column": "customer_email"},
+	}}
+	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true, DataSources: map[string]security.DataSourceTablePolicy{
+		source.ID: {Rules: []security.TableAccessRule{{UserID: "alice", Metadata: []security.TableScope{{Schema: "public", Table: "orders", Columns: []string{"id", "total"}}}}}},
+	}})
+	server := NewMCPServerWithTableAuthorizer(nil, describeTableRepo{source: source}, metadataSource, authorizer)
+	ctx, request := tablePolicyRequest(&security.Caller{UserID: "alice"}, "describe_table", map[string]any{
+		"datasource_id": source.ID, "table_name": "orders", "schema": "public",
+	})
+	result, err := server.handleDescribeTable(ctx, request)
+	if err != nil || result.IsError {
+		t.Fatalf("describe result=%+v, error=%v", result, err)
+	}
+	var payload struct {
+		Table metadata.TableSchema `json:"table"`
+	}
+	if err := json.Unmarshal([]byte(describeTableText(t, result)), &payload); err != nil {
+		t.Fatalf("decode description: %v", err)
+	}
+	if len(payload.Table.Columns) != 2 || payload.Table.Columns[0].Name != "id" || payload.Table.Columns[1].Name != "total" {
+		t.Fatalf("visible columns = %+v", payload.Table.Columns)
+	}
+	if len(payload.Table.Indexes) != 1 || payload.Table.Indexes[0].Name != "" || len(payload.Table.Indexes[0].Columns) != 1 || payload.Table.Indexes[0].Columns[0] != "id" {
+		t.Fatalf("visible indexes = %+v", payload.Table.Indexes)
+	}
+	if len(payload.Table.PrimaryKey) != 1 || payload.Table.PrimaryKey[0] != "id" || len(payload.Table.ForeignKeys) != 0 || payload.Table.Properties != nil {
+		t.Fatalf("restricted metadata leaked through keys/properties: %+v", payload.Table)
+	}
+	body := describeTableText(t, result)
+	if strings.Contains(body, "customer_email") || strings.Contains(body, "orders_email_idx") || strings.Contains(body, "customers") || strings.Contains(body, "orders_id_idx") {
+		t.Fatalf("restricted metadata leaked in response: %s", body)
+	}
+}
+
 func TestListTablesAuthorizesConfiguredTrinoCatalog(t *testing.T) {
 	source := &model.DataSource{
 		ID: "trino-source", OwnerID: "alice", Status: model.DataSourceStatusActive,

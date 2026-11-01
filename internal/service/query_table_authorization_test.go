@@ -49,6 +49,23 @@ func TestValidateAndAuthorizeSQLRejectsAnyUnpermittedTable(t *testing.T) {
 	}
 }
 
+func TestValidateAndAuthorizeSQLRejectsDeniedColumnBeforeExecution(t *testing.T) {
+	source := &model.DataSource{ID: "ds-1", Type: model.DatabaseTypePostgreSQL, Config: model.DataSourceConfig{Schema: "public"}}
+	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true, DataSources: map[string]security.DataSourceTablePolicy{
+		"ds-1": {Rules: []security.TableAccessRule{{UserID: "alice", Read: []security.TableScope{{Schema: "public", Table: "employees", Columns: []string{"id"}}}}}},
+	}})
+	service := NewQueryServiceWithTableAuthorizer(nil, nil, false, authorizer, newTestSQLTranslationManager()).(*queryService)
+	service.sqlValidator.SetASTAnalyzer(fixedSQLASTAnalyzer{analysis: sqlanalysis.Analysis{
+		StatementCount: 1, IsQuery: true,
+		Tables:  []sqlanalysis.TableReference{{Schema: "public", Table: "employees"}},
+		Columns: []sqlanalysis.ColumnReference{{Schema: "public", Table: "employees", Column: "salary"}},
+	}})
+	_, err := service.validateAndAuthorizeSQL(context.Background(), &security.Caller{UserID: "alice"}, source, "SELECT salary FROM public.employees", security.TablePermissionRead)
+	if !errors.Is(err, security.ErrTableAccessDenied) {
+		t.Fatalf("validateAndAuthorizeSQL() error = %v, want denied column before execution", err)
+	}
+}
+
 func TestValidateAndAuthorizeSQLFailsClosedWithoutAST(t *testing.T) {
 	source := &model.DataSource{ID: "ds-1", Type: model.DatabaseTypePostgreSQL}
 	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true})
@@ -105,6 +122,65 @@ func TestExecuteStreamQueryRejectsUnauthorizedTableBeforeConnection(t *testing.T
 	})
 	if !errors.Is(err, security.ErrTableAccessDenied) {
 		t.Fatalf("ExecuteStreamQuery() error = %v, want ErrTableAccessDenied before opening a connection", err)
+	}
+}
+
+func TestFetchNextBatchRechecksColumnPolicy(t *testing.T) {
+	source := &model.DataSource{ID: "ds-1", Type: model.DatabaseTypePostgreSQL, OwnerID: "alice", Status: model.DataSourceStatusActive}
+	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true, DataSources: map[string]security.DataSourceTablePolicy{
+		"ds-1": {Rules: []security.TableAccessRule{{UserID: "alice", Read: []security.TableScope{{Schema: "public", Table: "orders", Columns: []string{"id"}}}}}},
+	}})
+	service := NewQueryServiceWithTableAuthorizer(
+		federationSourceRepository{source: source},
+		database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false),
+		false,
+		authorizer,
+		newTestSQLTranslationManager(),
+	).(*queryService)
+	service.sqlValidator.SetASTAnalyzer(fixedSQLASTAnalyzer{analysis: sqlanalysis.Analysis{
+		StatementCount: 1, IsQuery: true,
+		Tables:  []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
+		Columns: []sqlanalysis.ColumnReference{{Schema: "public", Table: "orders", Column: "secret"}},
+	}})
+	service.sessionManager.Store(&QuerySession{
+		QueryID: "column-query", Slug: "column-slug", Token: "column-token", CreatorID: "alice",
+		DataSourceID: "ds-1", SQL: "SELECT secret FROM public.orders",
+		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
+		TotalRows: 1, FetchedRows: 1, ExpiresAt: time.Now().Add(time.Hour),
+	})
+	_, err := service.FetchNextBatch(context.Background(), &security.Caller{UserID: "alice"}, "column-query", "column-slug", "column-token", 1)
+	if !errors.Is(err, security.ErrTableAccessDenied) {
+		t.Fatalf("FetchNextBatch() error = %v, want current column policy denial", err)
+	}
+}
+
+func TestFetchNextBatchWithStreamingRechecksColumnPolicy(t *testing.T) {
+	source := &model.DataSource{ID: "ds-1", Type: model.DatabaseTypePostgreSQL, OwnerID: "alice", Status: model.DataSourceStatusActive}
+	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true, DataSources: map[string]security.DataSourceTablePolicy{
+		"ds-1": {Rules: []security.TableAccessRule{{UserID: "alice", Read: []security.TableScope{{Schema: "public", Table: "orders", Columns: []string{"id"}}}}}},
+	}})
+	manager := NewStreamingSessionManager()
+	manager.Store(&StreamingSession{
+		QueryID: "stream-column-query", Slug: "stream-column-slug", Token: "stream-column-token", CreatorID: "alice",
+		DataSourceID: "ds-1", SQL: "SELECT secret FROM public.orders",
+		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	service := &streamingService{
+		datasourceRepo:          federationSourceRepository{source: source},
+		activeStreams:           make(map[string]*ActiveStream),
+		streamingSessionManager: manager,
+		tableAuthorizer:         authorizer,
+		sqlValidator:            security.NewSQLValidator(1000),
+	}
+	service.sqlValidator.SetASTAnalyzer(fixedSQLASTAnalyzer{analysis: sqlanalysis.Analysis{
+		StatementCount: 1, IsQuery: true,
+		Tables:  []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
+		Columns: []sqlanalysis.ColumnReference{{Schema: "public", Table: "orders", Column: "secret"}},
+	}})
+	_, err := service.FetchNextBatchWithStreaming(context.Background(), &security.Caller{UserID: "alice"}, "stream-column-query", "stream-column-slug", "stream-column-token", 1)
+	if !errors.Is(err, security.ErrTableAccessDenied) {
+		t.Fatalf("FetchNextBatchWithStreaming() error = %v, want current column policy denial", err)
 	}
 }
 

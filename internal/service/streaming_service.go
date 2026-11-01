@@ -203,6 +203,7 @@ type ActiveStream struct {
 	DataSourceID   string
 	DatabaseType   model.DatabaseType
 	Rows           *sql.Rows
+	querySQL       string
 	Columns        []model.ColumnInfo
 	Tables         []sqlanalysis.TableReference
 	StartedAt      time.Time
@@ -423,6 +424,7 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		DataSourceID:   req.DataSourceID,
 		DatabaseType:   dataSource.Type,
 		Rows:           rows,
+		querySQL:       querySQL,
 		Columns:        columnInfo,
 		Tables:         append([]sqlanalysis.TableReference(nil), tables...),
 		StartedAt:      time.Now(),
@@ -940,6 +942,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	ss.streamsMutex.RLock()
 	if active, ok := ss.activeStreams[streamID]; ok {
 		session.Tables = append([]sqlanalysis.TableReference(nil), active.Tables...)
+		session.SQL = active.querySQL
 	}
 	ss.streamsMutex.RUnlock()
 
@@ -1045,11 +1048,9 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		_ = ss.closeSessionStream(session)
 		return nil, err
 	}
-	if ss.tableAuthorizer != nil && ss.tableAuthorizer.Enabled() {
-		if err := ss.tableAuthorizer.AuthorizeReferences(ctx, caller, datasource, session.Tables, security.TablePermissionRead); err != nil {
-			_ = ss.closeSessionStream(session)
-			return nil, err
-		}
+	if err := reauthorizeSavedQuery(ctx, caller, datasource, ss.tableAuthorizer, ss.sqlValidator, session.SQL, session.Tables); err != nil {
+		_ = ss.closeSessionStream(session)
+		return nil, err
 	}
 
 	// Check if stream exists and is valid

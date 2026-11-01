@@ -48,6 +48,8 @@ def analyze_sql(sql, dialect):
             "functions": [],
             "tables": [],
             "unresolved_tables": False,
+            "columns": [],
+            "unresolved_columns": False,
         }
         if root is None:
             return result
@@ -104,6 +106,61 @@ def analyze_sql(sql, dialect):
             for catalog, schema, table, unqualified in sorted(tables)
         ]
         result["unresolved_tables"] = unresolved_tables
+
+        # Map every column reference in each lexical scope to a physical table.
+        # SQLGlot scopes exclude nested scopes from `scope.columns`, which lets
+        # aliases resolve without accidentally binding a nested query twice.
+        columns = set()
+        unresolved_columns = False
+        for scope in traverse_scope(root):
+            sources = scope.sources
+            if next(scope.find_all(exp.Star), None) is not None:
+                unresolved_columns = True
+            for column in scope.columns:
+                if column.is_star:
+                    unresolved_columns = True
+                    continue
+
+                source = None
+                if column.table:
+                    source = sources.get(column.table)
+                    if source is None:
+                        matches = [value for name, value in sources.items() if name.casefold() == column.table.casefold()]
+                        if len(matches) == 1:
+                            source = matches[0]
+                elif len(sources) == 1:
+                    source = next(iter(sources.values()))
+                else:
+                    # An unqualified identifier across multiple sources (or
+                    # with no source) cannot be safely assigned to a table.
+                    unresolved_columns = True
+                    continue
+
+                if not isinstance(source, exp.Table):
+                    # CTEs and derived tables need column lineage before they
+                    # can be authorized; fail closed until that is available.
+                    unresolved_columns = True
+                    continue
+                if not isinstance(source.this, exp.Identifier) or not source.name or not column.name:
+                    unresolved_columns = True
+                    continue
+
+                catalog = source.catalog or ""
+                schema = source.db or ""
+                columns.add((catalog, schema, source.name, not catalog and not schema, column.name))
+
+            # USING and NATURAL JOIN refer to columns without exp.Column nodes.
+            # Their semantics depend on source metadata, so reject them when a
+            # caller has a column allowlist rather than guessing both sides.
+            for join in scope.find_all(exp.Join):
+                if join.args.get("using") or str(join.args.get("method", "")).upper() == "NATURAL":
+                    unresolved_columns = True
+
+        result["columns"] = [
+            {"catalog": catalog, "schema": schema, "table": table, "unqualified": unqualified, "column": column}
+            for catalog, schema, table, unqualified, column in sorted(columns)
+        ]
+        result["unresolved_columns"] = unresolved_columns
         return result
     except Exception as e:
         return {"error": f"ERROR: {str(e)}"}

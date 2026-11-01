@@ -166,8 +166,8 @@ func (qs *queryService) ValidateQuery(ctx context.Context, caller *security.Call
 }
 
 // validateAndAuthorizeSQL validates a query and, when enabled, authorizes every
-// AST-resolved physical table. It fails closed if table policies cannot be
-// checked by the dialect-aware analyzer.
+// AST-resolved physical table and column. It fails closed if policy checks cannot
+// be completed by the dialect-aware analyzer.
 func (qs *queryService) validateAndAuthorizeSQL(ctx context.Context, caller *security.Caller, dataSource *model.DataSource, query string, permission security.TablePermission) ([]sqlanalysis.TableReference, error) {
 	if qs.tableAuthorizer == nil || !qs.tableAuthorizer.Enabled() {
 		return nil, qs.sqlValidator.ValidateDataSourceSyntaxContext(ctx, query, dataSource.Type)
@@ -559,18 +559,6 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		return nil, ErrQuerySessionUnavailable
 	}
 
-	// Check if all data has been fetched
-	if session.FetchedRows >= session.TotalRows {
-		return &model.FetchQueryResponse{
-			QueryID:    session.QueryID,
-			Slug:       session.Slug,
-			Token:      session.Token,
-			Columns:    session.Columns,
-			Entries:    []*[]interface{}{},
-			TotalCount: int(session.TotalRows),
-		}, nil
-	}
-
 	// Re-check the data source on continuation: the source may have been
 	// disabled or deleted since the session was created (#118)
 	datasource, err := qs.datasourceRepo.GetByID(ctx, session.DataSourceID)
@@ -585,10 +573,21 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	if err := requireActiveDataSource(datasource); err != nil {
 		return nil, err
 	}
-	if qs.tableAuthorizer != nil && qs.tableAuthorizer.Enabled() {
-		if err := qs.tableAuthorizer.AuthorizeReferences(ctx, caller, datasource, session.Tables, security.TablePermissionRead); err != nil {
-			return nil, err
-		}
+	if err := reauthorizeSavedQuery(ctx, caller, datasource, qs.tableAuthorizer, qs.sqlValidator, session.SQL, session.Tables); err != nil {
+		return nil, err
+	}
+
+	// Check if all data has been fetched only after current access policy has
+	// been rechecked, since the empty response still exposes result columns.
+	if session.FetchedRows >= session.TotalRows {
+		return &model.FetchQueryResponse{
+			QueryID:    session.QueryID,
+			Slug:       session.Slug,
+			Token:      session.Token,
+			Columns:    session.Columns,
+			Entries:    []*[]interface{}{},
+			TotalCount: int(session.TotalRows),
+		}, nil
 	}
 
 	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {

@@ -706,12 +706,15 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 	}
 
 	var table *metadata.TableSchema
-	if m.tableAuthorizer != nil && m.tableAuthorizer.Enabled() {
+	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
+	authorizedTable := sqlanalysis.TableReference{}
+	if tablePolicyEnabled {
 		reference := sqlanalysis.TableReference{Schema: requestedSchema, Table: tableName, Unqualified: requestedSchema == ""}
 		references, authErr := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, []sqlanalysis.TableReference{reference}, security.TablePermissionMetadata)
 		if authErr != nil || len(references) != 1 {
 			return mcp.NewToolResultError("table not found or access denied"), nil
 		}
+		authorizedTable = references[0]
 		if qualified, ok := m.tableDescriber.(SchemaQualifiedTableDescriber); ok {
 			table, err = qualified.ExtractTableSchemaInSchema(ctx, datasourceID, references[0].Schema, tableName)
 		} else if references[0].Schema == "" {
@@ -739,6 +742,44 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 		}
 	}
 
+	if tablePolicyEnabled && table != nil {
+		columnNames := make([]string, 0, len(table.Columns))
+		for _, column := range table.Columns {
+			columnNames = append(columnNames, column.Name)
+		}
+		visibleColumns, restricted, filterErr := m.tableAuthorizer.FilterColumns(ctx, caller, dataSource, authorizedTable, columnNames, security.TablePermissionMetadata)
+		if filterErr != nil {
+			return mcp.NewToolResultError("table not found or access denied"), nil
+		}
+		if restricted {
+			visible := make(map[string]struct{}, len(visibleColumns))
+			for _, name := range visibleColumns {
+				visible[name] = struct{}{}
+			}
+			columns := make([]metadata.ColumnSchema, 0, len(visibleColumns))
+			for _, column := range table.Columns {
+				if _, ok := visible[column.Name]; ok {
+					columns = append(columns, column)
+				}
+			}
+			table.Columns = columns
+			table.PrimaryKey = filterVisibleNames(table.PrimaryKey, visible)
+			indexes := make([]metadata.IndexSchema, 0, len(table.Indexes))
+			for _, index := range table.Indexes {
+				if len(index.Columns) > 0 && allNamesVisible(index.Columns, visible) {
+					index.Name = "" // Index names are arbitrary and may embed hidden column names.
+					indexes = append(indexes, index)
+				}
+			}
+			table.Indexes = indexes
+			// Foreign keys include remote table and column names, which this
+			// table's metadata grant cannot authorize. Arbitrary properties may
+			// also encode hidden schema details, so omit both under column policy.
+			table.ForeignKeys = nil
+			table.Properties = nil
+		}
+	}
+
 	// Identify the data source and table in the result so agents can tie the
 	// columns back to a concrete source (#184 acceptance).
 	response := map[string]interface{}{
@@ -756,6 +797,25 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 			mcp.NewTextContent(string(jsonResp)),
 		},
 	}, nil
+}
+
+func filterVisibleNames(names []string, visible map[string]struct{}) []string {
+	filtered := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, ok := visible[name]; ok {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered
+}
+
+func allNamesVisible(names []string, visible map[string]struct{}) bool {
+	for _, name := range names {
+		if _, ok := visible[name]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // handleTranslateSQL handles the translate_sql tool call

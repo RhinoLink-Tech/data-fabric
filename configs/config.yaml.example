@@ -50,9 +50,11 @@ security:
   # additionalProps: { enforce_read_only: false }（详见 docs/readonly-access.md）。
   enforce_read_only: true
 
-# Optional table-level permissions (#218). Disabled by default; when enabled,
-# queries and metadata requests are denied unless a caller rule matches. Admin
-# access bypasses rules only for a source that explicitly sets admin_override.
+# Optional table- and column-level permissions (#218, #219). Disabled by
+# default; when enabled, requests are denied unless a caller rule matches. Add
+# columns to a read/metadata scope to restrict it to an exact column allowlist;
+# omit columns to grant all columns in that table scope. Admin access bypasses
+# rules only for a source that explicitly sets admin_override.
 # Unqualified SQL requires an explicit datasource schema (or MySQL database)
 # unless the rule uses schema: "*".
 table_authorization:
@@ -75,9 +77,11 @@ table_authorization:
           read:
             - schema: public
               table: daily_summary
+              columns: [date, total]
           metadata:
             - schema: public
               table: daily_summary
+              columns: [date, total]
 
 # Durable access audit events (#220). Raw SQL and result rows are omitted.
 audit:

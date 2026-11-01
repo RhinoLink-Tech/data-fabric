@@ -18,6 +18,36 @@ func resetViper(t *testing.T) {
 	t.Cleanup(viper.Reset)
 }
 
+func TestColumnAuthorizationEmptyAllowlistSurvivesConfigDecode(t *testing.T) {
+	configReader := viper.New()
+	configReader.SetConfigType("yaml")
+	content := `table_authorization:
+  enabled: true
+  data_sources:
+    ds-1:
+      rules:
+        - user_id: alice
+          read:
+            - schema: public
+              table: orders
+              columns: []
+`
+	if err := configReader.ReadConfig(strings.NewReader(content)); err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg Config
+	if err := configReader.Unmarshal(&cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	columns := cfg.TableAuthorization.DataSources["ds-1"].Rules[0].Read[0].Columns
+	if columns == nil {
+		t.Fatal("explicit empty columns allowlist decoded as nil and would grant all columns")
+	}
+	if len(columns) != 0 {
+		t.Fatalf("decoded empty allowlist has values: %v", columns)
+	}
+}
+
 func TestSecretsFromEnv(t *testing.T) {
 	resetViper(t)
 	t.Setenv("DATABASE_USERNAME", "env-user")

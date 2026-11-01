@@ -154,6 +154,51 @@ class SQLTranslationRegressionTests(unittest.TestCase):
         self.assertNotIn("error", result, result)
         self.assertTrue(result["unresolved_tables"])
 
+    def test_ast_column_references_resolve_aliases_and_query_clauses(self):
+        result = analyze_sql(
+            "SELECT o.id, SUM(o.amount) AS total FROM sales.orders o "
+            "WHERE o.region = 'west' GROUP BY o.id ORDER BY o.amount",
+            "postgres",
+        )
+        self.assertNotIn("error", result, result)
+        self.assertFalse(result["unresolved_columns"])
+        self.assertEqual(
+            {"id", "amount", "region"},
+            {column["column"] for column in result["columns"]},
+        )
+        self.assertEqual({"orders"}, {column["table"] for column in result["columns"]})
+        self.assertEqual({"sales"}, {column["schema"] for column in result["columns"]})
+
+    def test_ast_column_references_cover_qualified_join_sources(self):
+        result = analyze_sql(
+            "SELECT o.id FROM sales.orders o JOIN crm.customers c "
+            "ON c.id = o.customer_id WHERE c.status = 'active' ORDER BY o.id",
+            "postgres",
+        )
+        self.assertNotIn("error", result, result)
+        self.assertFalse(result["unresolved_columns"])
+        pairs = {(column["table"], column["column"]) for column in result["columns"]}
+        self.assertEqual(
+            {("orders", "id"), ("orders", "customer_id"), ("customers", "id"), ("customers", "status")},
+            pairs,
+        )
+
+    def test_ast_column_analysis_fails_closed_when_resolution_is_ambiguous(self):
+        cases = [
+            "SELECT id FROM orders o JOIN customers c ON o.id = c.id",
+            "SELECT * FROM orders",
+            "SELECT o.* FROM orders o",
+            "SELECT count(*) FROM orders",
+            "SELECT id FROM orders o JOIN customers c USING (id)",
+            "SELECT id FROM orders o NATURAL JOIN customers c",
+            "WITH recent AS (SELECT id FROM orders) SELECT id FROM recent",
+        ]
+        for sql in cases:
+            with self.subTest(sql=sql):
+                result = analyze_sql(sql, "postgres")
+                self.assertNotIn("error", result, result)
+                self.assertTrue(result["unresolved_columns"], result)
+
     def test_read_only_ast_analysis_reports_security_constructs(self):
         cases = [
             (
