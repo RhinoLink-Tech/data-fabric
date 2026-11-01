@@ -190,6 +190,9 @@ jobs:
       - name: Run static analysis
         run: go vet ./...
 
+      - name: Verify PostgreSQL TLS certificate contract
+        run: bash scripts/contracts/run_postgresql_tls_contract.sh
+
       - name: Run tests
         run: |
           result_file="$RUNNER_TEMP/go-test.json"

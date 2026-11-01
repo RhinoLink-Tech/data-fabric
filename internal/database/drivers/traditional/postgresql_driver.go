@@ -3,6 +3,8 @@ package traditional
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
@@ -34,8 +36,40 @@ func (d *PostgreSQLDriver) Open(dsn string) (*sql.DB, error) {
 }
 
 func (d *PostgreSQLDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid PostgreSQL DSN")
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return fmt.Errorf("PostgreSQL DSN must use the postgres or postgresql scheme")
+	}
+
+	query := parsed.Query()
+	mode := query.Get("sslmode")
+	switch mode {
+	case "", "disable", "require", "verify-ca", "verify-full":
+	default:
+		return fmt.Errorf("unsupported PostgreSQL sslMode; use disable, require, verify-ca, or verify-full")
+	}
+
+	rootCert := query.Get("sslrootcert")
+	if rootCert == "" {
+		return nil
+	}
+	if mode != "verify-ca" && mode != "verify-full" {
+		return fmt.Errorf("PostgreSQL sslRootCert requires sslMode verify-ca or verify-full")
+	}
+	file, err := os.Open(rootCert)
+	if err != nil {
+		return fmt.Errorf("PostgreSQL sslRootCert must refer to a readable certificate file")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("PostgreSQL sslRootCert must refer to a readable certificate file")
 	}
 	return nil
 }
@@ -53,27 +87,23 @@ func (d *PostgreSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 		config.Database,
 	)
 
-	// Add parameters
-	params := []string{}
-	if config.SSL {
-		params = append(params, "sslmode=require")
-	} else {
-		params = append(params, "sslmode=disable")
+	sslMode := config.SSLMode
+	if sslMode == "" {
+		if config.SSL {
+			sslMode = "require"
+		} else {
+			sslMode = "disable"
+		}
+	}
+	params := []string{"sslmode=" + url.QueryEscape(sslMode)}
+	if config.SSLRootCert != "" {
+		params = append(params, "sslrootcert="+url.QueryEscape(config.SSLRootCert))
 	}
 	if config.Timezone != "" {
 		params = append(params, "TimeZone="+config.Timezone)
 	}
 
-	if len(params) > 0 {
-		dsn += "?"
-		for i, param := range params {
-			if i > 0 {
-				dsn += "&"
-			}
-			dsn += param
-		}
-	}
-
+	dsn += "?" + strings.Join(params, "&")
 	return dsn
 }
 

@@ -108,10 +108,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"17.11"}
 		profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 17.11 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the PostgreSQL 17.11 contract test."
 		profile.Limitations = []string{
 			"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
-			"TLS behavior and other PostgreSQL versions are not covered by this baseline.",
+			"The TLS contract verifies sslmode=verify-full with a trusted CA and rejects an untrusted CA or hostname mismatch; other TLS modes and PostgreSQL versions are not covered.",
 		}
 	case model.DatabaseTypeMySQL:
 		profile.Status = ConnectorStatusEndToEndVerified

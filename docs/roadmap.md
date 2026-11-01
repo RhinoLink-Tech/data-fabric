@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [11a03ce](https://github.com/RhinoLink-Tech/data-fabric/commit/11a03cec5b2f932e6ae4ffaac11f47f5742915ff).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [9735066](https://github.com/RhinoLink-Tech/data-fabric/commit/97350665d803910b8ad704764d2fc8118f915506).
 
 ### Delivered capabilities
 
@@ -31,6 +31,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: establish and reduce deployment footprint
 
 [#291](https://github.com/RhinoLink-Tech/data-fabric/issues/291) established the reproducible deployment baseline, and [#293](https://github.com/RhinoLink-Tech/data-fabric/issues/293) applies stripped Go linker output to the release Docker build. The measured release binary decreased from 164.2 MiB to 119.5 MiB, and the uncompressed image from 311.0 MiB to 236.1 MiB. Restart-to-health remained about 0.49 seconds median; the 50,000-row bounded stream measured 95.09 MiB median process high-water RSS. The report includes before/after samples and limitations. These are local measurements, not production guarantees.
+
+### Completed: verify PostgreSQL server identity over TLS
+
+[#296](https://github.com/RhinoLink-Tech/data-fabric/issues/296) adds explicit PostgreSQL `sslMode` and `sslRootCert` settings. The pinned PostgreSQL 17.11 contract validates `verify-full` with a trusted CA and rejects an untrusted CA or hostname mismatch. Existing `ssl: true` and `ssl: false` behavior remains compatible. TLS evidence is connector-specific; this does not claim certificate verification for other connectors.
 
 ### 1. Raise connector confidence from real demand
 

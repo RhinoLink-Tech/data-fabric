@@ -134,6 +134,8 @@ type DataSourceConfig struct {
 	Username        string                 `json:"username" validate:"required"`
 	Password        string                 `json:"password"` // Never include this field in API response DTOs
 	SSL             bool                   `json:"ssl"`
+	SSLMode         string                 `json:"sslMode,omitempty"`
+	SSLRootCert     string                 `json:"sslRootCert,omitempty"`
 	Timeout         int                    `json:"timeout"`     // Connection timeout in seconds, default 30
 	MaxPoolSize     int                    `json:"maxPoolSize"` // Maximum pool size, default 10
 	IdleTimeout     int                    `json:"idleTimeout"` // Idle timeout in seconds, default 600

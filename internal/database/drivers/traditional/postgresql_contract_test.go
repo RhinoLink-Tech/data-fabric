@@ -200,11 +200,13 @@ func postgresConfigFromURL(t *testing.T, rawDSN string) *model.DataSourceConfig 
 		t.Fatalf("parse contract DSN database: %v", err)
 	}
 	return &model.DataSourceConfig{
-		Host:     parsed.Hostname(),
-		Port:     port,
-		Database: databaseName,
-		Username: parsed.User.Username(),
-		Password: password,
-		SSL:      parsed.Query().Get("sslmode") == "require",
+		Host:        parsed.Hostname(),
+		Port:        port,
+		Database:    databaseName,
+		Username:    parsed.User.Username(),
+		Password:    password,
+		SSL:         parsed.Query().Get("sslmode") == "require",
+		SSLMode:     parsed.Query().Get("sslmode"),
+		SSLRootCert: parsed.Query().Get("sslrootcert"),
 	}
 }
