@@ -1,0 +1,27 @@
+{
+  "run_at_utc": "2026-11-01T09:50:34.442405+00:00",
+  "source_commit": "a03e1988fafd28bce72fae5f7e043b06c30f1c4d",
+  "docker_server_version": "29.8.0",
+  "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "architecture": "x86_64",
+  "logical_cpus": 24,
+  "cpu_model": "Intel(R) Core(TM) Ultra 9 275HX",
+  "host_memory_total_bytes": 16466497536,
+  "go_builder": "golang:1.26.1 (Dockerfile)",
+  "build_mode": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath ./cmd/server",
+  "mysql_version": "8.4.13",
+  "mysql_image": "mysql@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7",
+  "mysql_image_id": "sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7",
+  "mysql_repo_digests": [
+    "mysql@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7"
+  ],
+  "source_rows": 50000,
+  "payload_bytes": 256,
+  "stream_batch_size": 1000,
+  "startup_repeats": 5,
+  "query_repeats": 3,
+  "idle_settle_seconds": 5,
+  "binary_size_bytes": 172161122,
+  "container_image_size_uncompressed_bytes": 326102374,
+  "container_image_id": "sha256:359bda28198d4446144015ab69f2ce0197cfd93508a8c8e4e64d10a87903a398"
+}
