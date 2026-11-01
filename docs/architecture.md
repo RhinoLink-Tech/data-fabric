@@ -36,6 +36,7 @@ The gateway supports direct access to an individual source and an optional feder
 data-fabric/
 ├── cmd/server/                    # Application entry point
 ├── internal/
+│   ├── execution/               # SQL, object-scan, and native API result contracts
 │   ├── controller/               # HTTP request handlers
 │   │   ├── query_controller.go
 │   │   ├── datasource_controller.go
@@ -134,12 +135,20 @@ The same query API routes through the selected data source driver:
 1. Resolve the requested data source and verify that it is active.
 2. Validate the query as a single read-only statement.
 3. If sourceDialect is provided, translate SQL within the supported dialect contract.
-4. Select the driver from the data source type and open or reuse its pooled connection.
+4. Resolve the source execution contract. SQL connectors use the SQLExecutor compatibility adapter over database/sql; sources that expose a native protocol can provide a NativeAPIExecutor and bypass that connection path.
 5. For Trino, Presto, or OpenLooKeng data sources, the shared protocol adapter submits the statement to the configured coordinator. The coordinator resolves catalog-qualified table names using its own catalogs and connectors.
 6. Normalize result columns and values, then return results using the query or streaming API.
 7. Propagate request deadlines and cancellation to the active query and release result resources.
 
-For direct database sources, the selected source driver executes the query itself. For federated SQL, Data Fabric is the application-facing gateway; it does not embed a second planner or duplicate the engine catalog configuration.
+#### 4. Source Execution Contracts
+
+The internal/execution package defines a common result contract for SQL queries, object/file scans, and native APIs. Executors report capabilities, typed columns, query metadata, bounded batches, and protocol-neutral errors through ResultStream.
+
+The existing drivers.Driver interface describes source identity and configuration. SQL connection methods live in the optional drivers.SQLDriver extension. This allows a registered source to provide a native executor without implementing Open() (*sql.DB, error). Existing SQL drivers use SQLDatabaseExecutor as the compatibility adapter.
+
+Apache Druid demonstrates the native path: the query service sends bounded, parameterized requests to Druid's SQL-over-HTTP endpoint and keeps continuation state in the gateway. The result still uses Druid SQL; the native execution contract describes the HTTP protocol and result handling, not a new SQL dialect. The ObjectScanExecutor contract is available for future direct file/object adapters; current file and object connectors continue to use their existing SQL adapters.
+
+For federated SQL, Data Fabric is the application-facing gateway; it does not embed a second planner or duplicate the engine catalog configuration.
 
 ## Security Architecture
 

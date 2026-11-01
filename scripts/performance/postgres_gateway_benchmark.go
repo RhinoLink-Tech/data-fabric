@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -167,7 +168,11 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	admin, e := drv.Open(drv.BuildDSN(&cfg))
+	sqlOpener, ok := drv.(drivers.SQLDatabaseOpener)
+	if !ok {
+		return errors.New("PostgreSQL driver does not provide a SQL connection")
+	}
+	admin, e := sqlOpener.Open(drv.BuildDSN(&cfg))
 	if e != nil {
 		return e
 	}
@@ -190,7 +195,7 @@ func run() error {
 	}
 	cfg.Database = testDB
 	src := &model.DataSource{ID: sourceID, Name: "temporary-perf-source", Type: model.DatabaseTypePostgreSQL, Status: model.DataSourceStatusActive, Config: cfg}
-	direct, e := drv.Open(drv.BuildDSN(&cfg))
+	direct, e := sqlOpener.Open(drv.BuildDSN(&cfg))
 	if e != nil {
 		return e
 	}

@@ -13,7 +13,7 @@ import (
 func TestApplyBatchPaginationDoesNotPanic(t *testing.T) {
 	const query = "SELECT * FROM events LIMIT 100"
 
-	driversUnderTest := map[string]drivers.Driver{
+	driversUnderTest := map[string]drivers.SQLQueryPaginater{
 		"hdfs-avro":                &HDFSAvroDriver{},
 		"hdfs-parquet":             &HDFSParquetDriver{},
 		"hdfs-csv":                 &HDFSCSVDriver{},

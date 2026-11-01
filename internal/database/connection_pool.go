@@ -13,6 +13,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/readonly"
+	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
@@ -87,6 +88,49 @@ func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.D
 
 	// Create new connection
 	return cp.createConnection(ctx, dataSource, fingerprint)
+}
+
+// GetNativeSQLAPIExecutor opens the native protocol path for a source that
+// accepts SQL. Non-SQL native operations require their own request surface.
+func (cp *ConnectionPool) GetNativeSQLAPIExecutor(ctx context.Context, dataSource *model.DataSource) (execution.NativeAPIExecutor, bool, error) {
+	if dataSource == nil {
+		return nil, false, fmt.Errorf("data source is required")
+	}
+	driver, err := cp.registry.GetDriver(dataSource.Type)
+	if err != nil {
+		return nil, false, err
+	}
+	if !driver.GetCapabilities().SupportsSQL {
+		return nil, false, nil
+	}
+	return cp.GetNativeAPIExecutor(ctx, dataSource)
+}
+
+// GetNativeAPIExecutor opens an optional native-protocol executor. Drivers
+// without that extension keep using the existing database/sql pool unchanged.
+func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *model.DataSource) (execution.NativeAPIExecutor, bool, error) {
+	if dataSource == nil {
+		return nil, false, fmt.Errorf("data source is required")
+	}
+	driver, err := cp.registry.GetDriver(dataSource.Type)
+	if err != nil {
+		return nil, false, err
+	}
+	provider, ok := driver.(drivers.NativeAPIExecutorProvider)
+	if !ok {
+		return nil, false, nil
+	}
+	executor, err := provider.OpenNativeAPIExecutor(ctx, &dataSource.Config)
+	if err != nil {
+		return nil, true, err
+	}
+	if executor == nil {
+		return nil, true, fmt.Errorf("native API provider returned a nil executor")
+	}
+	if executor.Capabilities().Mode != execution.ModeNativeAPI {
+		return nil, true, fmt.Errorf("native API provider returned executor with mode %q", executor.Capabilities().Mode)
+	}
+	return executor, true, nil
 }
 
 // pooledConnectionIfCurrent returns the pooled connection for a data source
@@ -205,7 +249,11 @@ func (cp *ConnectionPool) ApplyBatchPagination(dbType model.DatabaseType, sql st
 	if err != nil {
 		return "", err
 	}
-	return driver.ApplyBatchPagination(sql, batchSize, offset)
+	paginater, ok := driver.(drivers.SQLQueryPaginater)
+	if !ok {
+		return "", fmt.Errorf("driver %s does not provide SQL pagination", dbType)
+	}
+	return paginater.ApplyBatchPagination(sql, batchSize, offset)
 }
 
 // openDatabase opens a database connection based on database type. When
@@ -222,7 +270,11 @@ func (cp *ConnectionPool) openDatabase(dbType model.DatabaseType, dsn string, en
 			return db, err
 		}
 	}
-	return driver.Open(dsn)
+	opener, ok := driver.(drivers.SQLDatabaseOpener)
+	if !ok {
+		return nil, fmt.Errorf("driver %s does not provide a SQL database connection", dbType)
+	}
+	return opener.Open(dsn)
 }
 
 // readOnlyEnforced resolves the global security.enforce_read_only flag with

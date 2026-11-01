@@ -14,6 +14,7 @@ data-fabric/
 │   └── server/
 │       └── main.go              # Application entry point
 ├── internal/
+│   ├── execution/               # SQL, object-scan, and native API result contracts
 │   ├── controller/              # HTTP request handlers
 │   │   ├── query_controller.go
 │   │   ├── datasource_controller.go
@@ -58,24 +59,17 @@ data-fabric/
 
 ### Core Components
 
-#### Driver Interface (drivers.Driver)
+#### Source Driver and Execution Interfaces
 
-All drivers must implement the unified interface:
+drivers.Driver contains source identity, configuration validation, defaults, categories, and capabilities. It does not require a SQL connection. SQL sources can additionally implement drivers.SQLDriver, which groups Open, connection checks, and SQL pagination.
 
-```go
-type Driver interface {
-    Open(dsn string) (*sql.DB, error)           // Open database connection
-    ValidateDSN(dsn string) error               // Validate connection string
-    GetDefaultPort() int                        // Get default port
-    BuildDSN(config *model.DataSourceConfig) string  // Build connection string
-    GetDatabaseTypeName() string                // Get database type name
-    TestConnection(db *sql.DB) error            // Test connection
-    GetDriverName() string                      // Get driver name
-    GetCategory() DriverCategory                // Get driver category
-    GetCapabilities() DriverCapabilities        // Get driver capabilities
-    ConfigureAuth(authConfig interface{}) error // Configure authentication
-}
-```
+Executors implement one of the contracts in internal/execution:
+
+- SQLExecutor executes parameterized SQL and returns a ResultStream.
+- ObjectScanExecutor scans a file or object with columns, predicates, and bounded pagination.
+- NativeAPIExecutor calls a source's HTTP, RPC, or SDK API.
+
+A result stream reports typed columns and metadata, yields bounded batches, accepts context cancellation, and is closed by its owner. drivers.NativeAPIExecutorProvider optionally exposes a native executor to the query service; drivers.NativeAPIHealthChecker provides a protocol-native connection check. The existing SQL path uses SQLDatabaseExecutor as a compatibility adapter.
 
 #### Driver Registry
 
@@ -105,56 +99,17 @@ Driver registration is implemented through the `DriverRegistry.registerDrivers()
 
 ### Driver Implementation Standards
 
-#### Required Methods Implementation
+#### Required Interfaces and Tests
 
-All drivers must implement the following methods:
-
-1. **Connection Management**:
-   - `Open()`: Establish database connection
-   - `ValidateDSN()`: Validate connection parameters
-   - `GetDefaultPort()`: Return default port
-
-2. **Configuration Processing**:
-   - `BuildDSN()`: Build connection string from configuration
-   - `ConfigureAuth()`: Configure authentication parameters
-
-3. **Metadata**:
-   - `GetDatabaseTypeName()`: Return database type
-   - `GetDriverName()`: Return driver name
-   - `GetCategory()`: Return driver category
-
-4. **Capability Query**:
-   - `GetCapabilities()`: Return driver capabilities
+1. Implement drivers.Driver for source identity, configuration validation, defaults, category, and capabilities.
+2. Choose the execution contract that fits the source: SQLExecutor, ObjectScanExecutor, or NativeAPIExecutor.
+3. Implement drivers.SQLDriver only when the source uses a database/sql connection. Native protocols do not need an Open method on the source driver.
+4. For native execution, implement drivers.NativeAPIExecutorProvider. Implement drivers.NativeAPIHealthChecker when the source can provide a native connectivity probe.
+5. Register the source in DriverRegistry and add a contract test for query results, columns, batching, cancellation, and errors.
 
 ### Type Mapping Standards
 
-To ensure cross-database compatibility, all drivers should implement type mapping:
-
-```go
-type StandardizedType int
-
-const (
-    StandardizedTypeBoolean StandardizedType = iota
-    StandardizedTypeInteger
-    StandardizedTypeLong
-    StandardizedTypeFloat
-    StandardizedTypeDouble
-    StandardizedTypeDecimal
-    StandardizedTypeString
-    StandardizedTypeText
-    StandardizedTypeDate
-    StandardizedTypeTime
-    StandardizedTypeTimestamp
-    StandardizedTypeDateTime
-    StandardizedTypeTimestampWithZone
-    StandardizedTypeBinary
-    StandardizedTypeVariant
-    StandardizedTypeArray
-    StandardizedTypeStruct
-    StandardizedTypeObject
-    StandardizedTypeGeography
-)
-```
+Executors report each source's native type name and nullability in execution.Column. The query service uses the shared DataTypeMapper to convert those source types to the public result schema. Drivers should report accurate source metadata instead of maintaining separate gateway type mappings.
 
 ### Security Features
 

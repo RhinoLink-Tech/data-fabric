@@ -11,6 +11,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -465,6 +466,16 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		return nil, fmt.Errorf("SQL validation failed: %w", err)
 	}
 
+	// Drivers with a native protocol can execute through a typed executor
+	// without manufacturing a database/sql connection.
+	nativeExecutor, supported, err := qs.connPool.GetNativeSQLAPIExecutor(ctx, datasource)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open native API executor: %w", err)
+	}
+	if supported {
+		return qs.fetchNativeAPIQuery(ctx, caller, datasource, req, sqlToExecute, tables, parameters, nativeExecutor)
+	}
+
 	// Get connection from pool
 	conn, err := qs.connPool.GetConnection(ctx, datasource)
 	if err != nil {
@@ -579,6 +590,44 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		}
 	}
 
+	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {
+		if batchSize <= 0 {
+			batchSize = session.BatchSize
+		}
+		if batchSize <= 0 {
+			batchSize = 10000
+		}
+		if batchSize > 10000 {
+			batchSize = 10000
+		}
+		batch, sourceColumns, totalRows, err := cursor.NextBatch(ctx, batchSize)
+		if err != nil {
+			qs.sessionManager.Delete(session.QueryID)
+			return nil, fmt.Errorf("failed to fetch native API batch: %w", err)
+		}
+		columns := qs.buildExecutionColumnInfo(sourceColumns, datasource.Type)
+		entries := encodeExecutionRows(batch.Rows, columns)
+		session.Columns = columns
+		session.Entries = entries
+		session.FetchedRows += int64(len(entries))
+		session.TotalRows = totalRows
+		session.Token = qs.generateToken()
+		response := &model.FetchQueryResponse{
+			QueryID:    session.QueryID,
+			Slug:       session.Slug,
+			Token:      session.Token,
+			Columns:    columns,
+			Entries:    entries,
+			TotalCount: int(totalRows),
+		}
+		if batch.HasMore {
+			response.NextURI = qs.buildNextURI(session.QueryID, session.Slug, session.Token, batchSize)
+		} else {
+			qs.sessionManager.Delete(session.QueryID)
+		}
+		return response, nil
+	}
+
 	conn, err := qs.connPool.GetConnection(ctx, datasource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
@@ -663,9 +712,19 @@ func (sm *SessionManager) Get(queryID string) (*QuerySession, error) {
 
 func (sm *SessionManager) Delete(queryID string) {
 	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
-
+	session := sm.sessions[queryID]
 	delete(sm.sessions, queryID)
+	sm.mutex.Unlock()
+	closeQueryCursor(session)
+}
+
+func closeQueryCursor(session *QuerySession) {
+	if session == nil {
+		return
+	}
+	if closer, ok := session.Cursor.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
 }
 
 func (sm *SessionManager) cleanupSessions() {
@@ -673,14 +732,19 @@ func (sm *SessionManager) cleanupSessions() {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		var expired []*QuerySession
 		sm.mutex.Lock()
 		now := time.Now()
 		for id, session := range sm.sessions {
 			if now.After(session.ExpiresAt) {
 				delete(sm.sessions, id)
+				expired = append(expired, session)
 			}
 		}
 		sm.mutex.Unlock()
+		for _, session := range expired {
+			closeQueryCursor(session)
+		}
 	}
 }
 
@@ -692,65 +756,40 @@ func (qs *queryService) buildNextURI(queryID, slug, token string, batchSize int)
 // The args are bound by the driver for both the batch statement and the row
 // count — they are never interpolated into the SQL text (#21).
 func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.DatabaseType, conn interface{}, query string, batchSize, offset int64, args []interface{}) ([]model.ColumnInfo, []*[]interface{}, int64, error) {
-	// Convert conn to *sql.DB
 	db, ok := conn.(*sql.DB)
 	if !ok {
 		return nil, nil, 0, fmt.Errorf("invalid database connection type")
 	}
+	if batchSize < 1 {
+		return nil, nil, 0, fmt.Errorf("batch size must be positive")
+	}
 
-	// Apply pagination to the SQL query
 	paginatedSQL, err := qs.connPool.ApplyBatchPagination(dbType, query, batchSize, offset)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to apply query pagination: %w", err)
 	}
-
 	queryCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Execute the query
-	rows, err := db.QueryContext(queryCtx, paginatedSQL, args...)
+	executor := execution.NewSQLDatabaseExecutor(db)
+	stream, err := executor.ExecuteSQL(queryCtx, execution.SQLRequest{Query: paginatedSQL, Parameters: args})
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to execute query: %w", err)
 	}
-	defer rows.Close()
+	defer stream.Close()
 
-	// Get column information
-	columnTypes, err := rows.ColumnTypes()
+	columns := qs.buildExecutionColumnInfo(stream.Columns(), dbType)
+	batch, err := stream.NextBatch(queryCtx, int(batchSize))
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to get column types: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to read query batch: %w", err)
 	}
+	entries := encodeExecutionRows(batch.Rows, columns)
 
-	// Build column information
-	columns := qs.buildBatchColumnInfo(columnTypes, dbType)
-
-	// Process rows. Reuse the scan destination slice across rows; only the
-	// returned row needs a fresh allocation because it remains in entries.
-	scanArgs := make([]interface{}, len(columnTypes))
-	var entries []*[]interface{}
-	for rows.Next() {
-		rowValues, err := qs.scanBatchRowWithArgs(rows, len(columnTypes), scanArgs)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to scan row: %w", err)
-		}
-		// Encode into the fetch wire representation with the column types:
-		// NULL stays null, binary bytes become base64, text bytes stay text
-		// (#123).
-		encodeFetchRow(rowValues, columns)
-		entries = append(entries, &rowValues)
-	}
-
-	// Check for errors from rows iteration
-	if err = rows.Err(); err != nil {
-		return nil, nil, 0, fmt.Errorf("error iterating rows: %w", err)
-	}
-
-	// If the first page is not full, it contains the complete result set, so its
-	// length is already the exact total. Avoid a second database round trip for
-	// these common small-result queries. A full page is ambiguous and still
-	// needs the exact count to preserve the existing response contract.
+	// If the first page is not full, its length is already the exact total.
+	// A full page is ambiguous and retains the existing exact-count query.
 	var totalCount int64
 	if offset == 0 {
-		if batchSize > 0 && int64(len(entries)) < batchSize {
+		if int64(len(entries)) < batchSize {
 			totalCount = int64(len(entries))
 		} else {
 			totalCount, err = qs.getRowCount(ctx, db, query, args...)
@@ -759,48 +798,9 @@ func (qs *queryService) executeBatchQuery(ctx context.Context, dbType model.Data
 			}
 		}
 	}
-
 	return columns, entries, totalCount, nil
 }
 
-// buildBatchColumnInfo builds column information from column types
-func (qs *queryService) buildBatchColumnInfo(columnTypes []*sql.ColumnType, dbType model.DatabaseType) []model.ColumnInfo {
-	columns := make([]model.ColumnInfo, len(columnTypes))
-
-	for i, col := range columnTypes {
-		nullable, _ := col.Nullable()
-		columns[i] = model.ColumnInfo{
-			Name:     col.Name(),
-			Type:     qs.typeMapper.MapToStandardType(dbType, col.DatabaseTypeName(), nullable),
-			Nullable: nullable,
-		}
-	}
-
-	return columns
-}
-
-// scanBatchRowWithArgs scans a row using reusable scan arguments when
-// provided. Values are returned as the driver delivered them; converting
-// them into the fetch wire representation is the caller's job (see
-// encodeFetchRow), because it needs the result set's column types.
-func (qs *queryService) scanBatchRowWithArgs(rows *sql.Rows, columnCount int, scanArgs []interface{}) ([]interface{}, error) {
-	result := make([]interface{}, columnCount)
-	if len(scanArgs) != columnCount {
-		scanArgs = make([]interface{}, columnCount)
-	}
-	for i := range result {
-		scanArgs[i] = &result[i]
-	}
-
-	if err := rows.Scan(scanArgs...); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// getRowCount gets the total row count for the query, binding the caller's
-// parameters so query and count see identical inputs.
 func (qs *queryService) getRowCount(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

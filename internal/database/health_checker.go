@@ -145,11 +145,23 @@ func (hc *HealthChecker) CheckDataSourceHealth(ctx context.Context, dataSource *
 	}
 
 	// Get driver for the database type
-	_, err := hc.registry.GetDriver(dataSource.Type)
+	driver, err := hc.registry.GetDriver(dataSource.Type)
 	if err != nil {
 		result.Status = "error"
 		result.Message = fmt.Sprintf("Driver not available: %s", redactConnectionError(err, &dataSource.Config))
 		result.Latency = time.Since(startTime)
+		return result, nil
+	}
+	if checker, ok := driver.(drivers.NativeAPIHealthChecker); ok {
+		err = checker.CheckNativeAPIConnection(ctx, &dataSource.Config)
+		result.Latency = time.Since(startTime)
+		if err != nil {
+			result.Status = "unhealthy"
+			result.Message = fmt.Sprintf("Connection test failed: %s", redactConnectionError(err, &dataSource.Config))
+			return result, nil
+		}
+		result.Status = "healthy"
+		result.Message = "Connection successful"
 		return result, nil
 	}
 
@@ -266,6 +278,19 @@ func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config
 		return result, nil
 	}
 
+	if checker, ok := driver.(drivers.NativeAPIHealthChecker); ok {
+		err := checker.CheckNativeAPIConnection(ctx, config)
+		result.Latency = time.Since(startTime)
+		if err != nil {
+			result.Status = "unhealthy"
+			result.Message = fmt.Sprintf("Connection test failed: %s", redactConnectionError(err, config))
+			return result, nil
+		}
+		result.Status = "healthy"
+		result.Message = "Connection successful"
+		return result, nil
+	}
+
 	// Config-aware sources can construct a database/sql adapter without putting
 	// object-store credentials and options into the DSN.
 	configured := false
@@ -275,8 +300,10 @@ func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config
 	}); ok {
 		configured = true
 		db, err = opener.OpenWithConfig(ctx, config)
+	} else if opener, ok := driver.(drivers.SQLDatabaseOpener); ok {
+		db, err = opener.Open(dsn)
 	} else {
-		db, err = driver.Open(dsn)
+		err = fmt.Errorf("driver does not provide a SQL connection or native health check")
 	}
 	if err != nil {
 		result.Status = "unhealthy"
@@ -290,8 +317,10 @@ func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config
 	// Legacy drivers keep their existing connectivity probe.
 	if configured {
 		err = db.PingContext(ctx)
+	} else if checker, ok := driver.(drivers.SQLConnectionTester); ok {
+		err = checker.TestConnection(db)
 	} else {
-		err = driver.TestConnection(db)
+		err = fmt.Errorf("driver does not provide a SQL connection tester")
 	}
 	result.Latency = time.Since(startTime)
 
@@ -318,7 +347,11 @@ func (hc *HealthChecker) verifyReadOnlySession(ctx context.Context, result *Heal
 		return
 	}
 
-	enforced, warnings, err := readonly.VerifySession(ctx, dbType, driver.Open, dsn)
+	opener, ok := driver.(drivers.SQLDatabaseOpener)
+	if !ok {
+		return
+	}
+	enforced, warnings, err := readonly.VerifySession(ctx, dbType, opener.Open, dsn)
 	result.Warnings = append(result.Warnings, warnings...)
 	if err != nil {
 		result.ReadOnlyEnforced = new(bool)

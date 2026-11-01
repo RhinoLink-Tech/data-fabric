@@ -1,9 +1,11 @@
 package drivers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -57,38 +59,53 @@ func (db *DriverBase) GetCategory() DriverCategory {
 	return db.category
 }
 
-// Driver interface
+// Driver describes source identity and configuration. SQL connection behavior is
+// optional so native API, object, and file executors need not implement a
+// database/sql compatibility layer just to enter the registry.
 type Driver interface {
-	ApplyBatchPagination(sql string, batchSize, offset int64) (string, error)
-	// Open opens a database connection
-	Open(dsn string) (*sql.DB, error)
-
-	// ValidateDSN validates the connection string
 	ValidateDSN(dsn string) error
-
-	// GetDefaultPort returns the default port for the database
 	GetDefaultPort() int
-
-	// BuildDSN builds a connection string from configuration
 	BuildDSN(config *model.DataSourceConfig) string
-
-	// GetDatabaseTypeName returns the database type name
 	GetDatabaseTypeName() string
-
-	// TestConnection tests if the connection is working
-	TestConnection(db *sql.DB) error
-
-	// GetDriverName returns the underlying SQL driver name
 	GetDriverName() string
-
-	// GetCategory returns the driver category
 	GetCategory() DriverCategory
-
-	// GetCapabilities returns driver capabilities
 	GetCapabilities() DriverCapabilities
-
-	// ConfigureAuth configures authentication (for IAM/OAuth2/Kerberos)
 	ConfigureAuth(authConfig interface{}) error
+}
+
+// SQLDatabaseOpener opens a database/sql compatibility connection.
+type SQLDatabaseOpener interface {
+	Open(dsn string) (*sql.DB, error)
+}
+
+// SQLConnectionTester validates a database/sql connection.
+type SQLConnectionTester interface {
+	TestConnection(db *sql.DB) error
+}
+
+// SQLQueryPaginater applies dialect-specific LIMIT/OFFSET pagination.
+type SQLQueryPaginater interface {
+	ApplyBatchPagination(query string, batchSize, offset int64) (string, error)
+}
+
+// SQLDriver is the optional legacy SQL connection extension implemented by
+// drivers that use database/sql for query execution.
+type SQLDriver interface {
+	Driver
+	SQLDatabaseOpener
+	SQLConnectionTester
+	SQLQueryPaginater
+}
+
+// NativeAPIHealthChecker provides a protocol-native connectivity probe.
+type NativeAPIHealthChecker interface {
+	CheckNativeAPIConnection(context.Context, *model.DataSourceConfig) error
+}
+
+// NativeAPIExecutorProvider is an optional extension for drivers whose native
+// protocol should bypass the database/sql compatibility path.
+type NativeAPIExecutorProvider interface {
+	OpenNativeAPIExecutor(context.Context, *model.DataSourceConfig) (execution.NativeAPIExecutor, error)
 }
 
 // DriverFactory creates database drivers for different database types

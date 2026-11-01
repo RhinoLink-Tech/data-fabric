@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -43,11 +44,15 @@ func runMySQLWireOLAPMetadataContract(t *testing.T, dbType model.DatabaseType, h
 	if err != nil {
 		t.Fatalf("get %s driver: %v", dbType, err)
 	}
+	sqlDriver, ok := driver.(drivers.SQLDriver)
+	if !ok {
+		t.Fatalf("%s driver does not implement the SQL connection extension", dbType)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	adminConfig := &model.DataSourceConfig{Host: host, Port: port, Database: databaseName, Username: "root"}
-	adminDB, err := driver.Open(driver.BuildDSN(adminConfig))
+	adminDB, err := sqlDriver.Open(driver.BuildDSN(adminConfig))
 	if err != nil {
 		t.Fatalf("open %s fixture setup connection: %v", dbType, err)
 	}
@@ -77,7 +82,7 @@ func runMySQLWireOLAPMetadataContract(t *testing.T, dbType model.DatabaseType, h
 	}
 
 	appConfig := &model.DataSourceConfig{Host: host, Port: port, Database: databaseName, Username: username, Password: password}
-	appDB, err := driver.Open(driver.BuildDSN(appConfig))
+	appDB, err := sqlDriver.Open(driver.BuildDSN(appConfig))
 	if err != nil {
 		t.Fatalf("open %s application connection: %v", dbType, err)
 	}
