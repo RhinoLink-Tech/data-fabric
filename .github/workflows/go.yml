@@ -161,6 +161,9 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Test contract result summary
+        run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
+
       - name: Check formatting
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -182,7 +185,19 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
-        run: go test ./...
+        run: |
+          result_file="$RUNNER_TEMP/go-test.json"
+          set +e
+          go test -json ./... >"$result_file"
+          test_status=$?
+          python scripts/validation/summarize_driver_contracts.py "$result_file" --require-configured
+          summary_status=$?
+          set -e
+          if [ "$test_status" -ne 0 ]; then
+            cat "$result_file"
+            exit "$test_status"
+          fi
+          exit "$summary_status"
 
       - name: Run race-enabled core tests
         run: go test -race ./internal/database ./internal/service
