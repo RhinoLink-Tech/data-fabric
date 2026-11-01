@@ -120,10 +120,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"8.0.46"}
 		profile.VersionPolicy = "Only MySQL 8.0.46 has a pinned driver contract result; no other server version or MySQL-compatible product is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MySQL 8.0.46 contract tests."
 		profile.Limitations = []string{
 			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
-			"TLS behavior and other MySQL versions are not covered by this baseline.",
+			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MySQL versions are not covered.",
 		}
 	case model.DatabaseTypeMariaDB:
 		profile.Status = ConnectorStatusEndToEndVerified
