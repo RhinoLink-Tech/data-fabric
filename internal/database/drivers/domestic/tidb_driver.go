@@ -2,16 +2,21 @@ package domestic
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
+
+const tidbTLSRootCertParam = "datafabricsslrootcert"
 
 // TiDBDriver implements Driver interface for TiDB (compatible with MySQL)
 type TiDBDriver struct {
@@ -41,9 +46,34 @@ func NewTiDBDriver(config *TiDBConfig) (*TiDBDriver, error) {
 
 // Open opens a connection to TiDB
 func (d *TiDBDriver) Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, fmt.Errorf("invalid TiDB connection configuration: %w", err)
+	}
+
+	config, err := mysql.ParseDSN(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open TiDB connection: %w", err)
+		return nil, fmt.Errorf("invalid TiDB connection string")
+	}
+	rootCertPath := config.Params[tidbTLSRootCertParam]
+	delete(config.Params, tidbTLSRootCertParam)
+
+	var db *sql.DB
+	if rootCertPath != "" {
+		tlsConfig, err := newTiDBTLSConfig(rootCertPath)
+		if err != nil {
+			return nil, err
+		}
+		config.TLS = tlsConfig
+		connector, err := mysql.NewConnector(config)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TiDB TLS configuration")
+		}
+		db = sql.OpenDB(connector)
+	} else {
+		db, err = sql.Open("mysql", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open TiDB connection: %w", err)
+		}
 	}
 
 	// Test connection
@@ -60,10 +90,45 @@ func (d *TiDBDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *TiDBDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
+
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid TiDB DSN")
+	}
+	if config.TLSConfig != "" && config.TLSConfig != "true" && config.TLSConfig != "false" {
+		return fmt.Errorf("TiDB TLS requires verified tls=true; insecure modes and custom TLS names are unsupported")
+	}
+
+	rootCertPath := config.Params[tidbTLSRootCertParam]
+	delete(config.Params, tidbTLSRootCertParam)
+	if rootCertPath == "" {
+		return nil
+	}
+	if config.TLSConfig != "true" {
+		return fmt.Errorf("TiDB sslRootCert requires ssl=true")
+	}
+	if _, err := newTiDBTLSConfig(rootCertPath); err != nil {
+		return err
+	}
 	return nil
+}
+
+func newTiDBTLSConfig(rootCertPath string) (*tls.Config, error) {
+	certificate, err := os.ReadFile(rootCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("TiDB sslRootCert must refer to a readable PEM CA certificate")
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(certificate) {
+		return nil, fmt.Errorf("TiDB sslRootCert must contain at least one valid PEM CA certificate")
+	}
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    rootCAs,
+	}, nil
 }
 
 // GetDefaultPort returns the default TiDB port
@@ -86,6 +151,12 @@ func (d *TiDBDriver) BuildDSN(config *model.DataSourceConfig) string {
 		"parseTime=true",
 		"charset=utf8mb4",
 		"interpolateParams=true",
+	}
+	if config.SSL {
+		params = append(params, "tls=true")
+	}
+	if config.SSLRootCert != "" {
+		params = append(params, tidbTLSRootCertParam+"="+url.QueryEscape(config.SSLRootCert))
 	}
 
 	if len(params) > 0 {

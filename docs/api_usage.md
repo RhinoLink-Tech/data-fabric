@@ -30,6 +30,8 @@ Use `data.id` from the response as `dataSourceId` below. Replace the placeholder
 
 For PostgreSQL TLS, set `sslMode` to `verify-full` and `sslRootCert` to a CA certificate file readable inside the Data Fabric process. Mount that file into the service container. Explicit `sslMode` takes precedence over the legacy `ssl` boolean. If `sslMode` is omitted, `ssl: true` retains its existing `require` behavior (encryption without CA or hostname verification), and `ssl: false` disables TLS. Supported modes are `disable`, `require`, `verify-ca`, and `verify-full`. See the [connector support catalog](data-source-support.md#data-source-support-catalog) for the pinned PostgreSQL TLS evidence.
 
+For TiDB, set ssl: true to require TLS and verify the server certificate and hostname using the process' system trust roots. For a private CA, also set sslRootCert to its PEM file path and make the file readable inside the Data Fabric process; sslRootCert requires ssl: true. ssl: false keeps the existing plaintext behavior. This TLS behavior is contract-tested against TiDB v8.5.8.
+
 Successful responses use this envelope:
 
 ```json

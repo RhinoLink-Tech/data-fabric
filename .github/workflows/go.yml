@@ -240,6 +240,22 @@ jobs:
           touch "$config_dir"/mount-smoke
           docker run --rm --entrypoint /bin/sh -v "$config_dir:/app/configs:ro" data-fabric:ci -c "test -r /app/configs/mount-smoke"
 
+  tidb-tls-contract:
+    name: TiDB TLS certificate contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run TiDB TLS certificate contract
+        run: bash scripts/contracts/run_tidb_tls_contract.sh
+
   sqlserver-contract:
     name: SQL Server driver contract
     runs-on: ubuntu-latest
