@@ -72,7 +72,7 @@ Applications can use a gateway driver for an individual source or send SQL throu
 - **Connection diagnostics:** Test connections, validate configuration, and inspect connection health and pool statistics.
 - **Unified query API:** Submit SQL and retrieve results in batches; streaming-capable drivers can reduce peak memory use for large results.
 - **SQL dialect adaptation:** Translate supported query syntax for a target dialect. See the [SQL v1 compatibility matrix](SQL_TRANSLATION_FEATURES.md).
-- **Gateway controls:** JWT authentication, rate limiting, configuration validation, and health checks.
+- **Security and audit:** JWT-authenticated APIs, OIDC validation for remote MCP, owner/tenant and table/column access policies, redacted audit events, read-only SQL validation, database-side read-only sessions where supported, rate limiting, configuration validation, and health checks.
 - **Prometheus monitoring:** Scrape HTTP and query metrics at `/metrics`; an admin Bearer JWT is always required. See the [observability guide](docs/observability.md).
 
 ## Data Sources
@@ -174,7 +174,7 @@ See the [API usage guide](docs/api_usage.md) for request fields, response struct
 
 ## Cross-Source Query Engine Integrations
 
-When cross-source SQL is needed, Data Fabric can connect to compatible federation engines through a shared adapter. Trino, Presto, and OpenLooKeng can be registered as data sources; their coordinators use configured catalogs and connectors to plan and execute cross-catalog queries. Applications continue to submit SQL through the Data Fabric query API.
+When cross-source SQL is needed, Data Fabric can connect to compatible federation engines through a shared adapter. Trino, Presto, and OpenLooKeng adapters are implemented and can be registered as data sources. The support catalog classifies them as implementation-present, not end-to-end verified. Current cross-catalog regression coverage uses a simulated coordinator; live coordinator verification is deferred in [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179).
 
 See the [API usage guide](docs/api_usage.md) for connection setup and the [SQL v1 contract](SQL_TRANSLATION_FEATURES.md) for the supported SQL compatibility scope.
 

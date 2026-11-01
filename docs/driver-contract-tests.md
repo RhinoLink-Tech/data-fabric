@@ -63,8 +63,7 @@ and SQL type headers, type normalization, pagination, and write rejection.
 This is not evidence for a Druid server version. TLS behavior, asynchronous
 statements, propagation of gateway cancellation to Druid's cancel endpoint,
 native JSON queries, and coordinator metadata are outside this fixture. The
-adapter remains experimental until a pinned live Druid contract is added under
-[issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
+adapter remains experimental until a pinned live Druid contract is added and recorded in the support catalog.
 
 ## S3 Delta local protocol fixture
 
@@ -481,7 +480,7 @@ docker stop data-fabric-mongodb-contract
 
 MongoDB does not speak SQL. The contract verifies only the gateway's currently implemented single-collection SQL subset; joins, OR predicates, grouping, schema discovery, and transactions remain outside this adapter. CI runs eleven pinned database contracts across six jobs. For the exact support boundary, see [the generated data source support catalog](data-source-support.md).
 
-For additional connector profiles, pinned versions, and deferred cases, see [issue #35](https://github.com/RhinoLink-Tech/data-fabric/issues/35).
+For additional connector profiles, pinned versions, and deferred cases, consult the support catalog and prioritize a focused issue when there is a concrete user need.
 
 ## Run the Oracle contract locally
 
