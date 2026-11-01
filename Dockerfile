@@ -5,7 +5,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /app/main ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/main ./cmd/server
 
 FROM python:3.12-alpine3.22 AS sql-runtime
 COPY requirements-sql-translation.txt /tmp/requirements-sql-translation.txt

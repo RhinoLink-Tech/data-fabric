@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. The latest reviewed mainline commit is [a03e198](https://github.com/RhinoLink-Tech/data-fabric/commit/a03e1988fafd28bce72fae5f7e043b06c30f1c4d) and its [Go CI run passed](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/41291951640).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [11a03ce](https://github.com/RhinoLink-Tech/data-fabric/commit/11a03cec5b2f932e6ae4ffaac11f47f5742915ff).
 
 ### Delivered capabilities
 
@@ -28,25 +28,23 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Prioritized evolution
 
-### 1. Measure and reduce the deployment footprint
+### Completed: establish and reduce deployment footprint
 
-The reproducible [#291 baseline](performance/deployment-footprint.md) is measured on the current mainline. On one WSL2 host, restart-to-health readiness was 0.493 s median, idle process RSS was 82.65 MiB median, and a 50,000-row bounded stream reached 95.64 MiB median process high-water RSS. The release binary was 172.2 MB and the uncompressed image was 326.1 MB. A compile-only stripped build measured 27.2% smaller; it is not yet a release artifact.
+[#291](https://github.com/RhinoLink-Tech/data-fabric/issues/291) established the reproducible deployment baseline, and [#293](https://github.com/RhinoLink-Tech/data-fabric/issues/293) applies stripped Go linker output to the release Docker build. The measured release binary decreased from 164.2 MiB to 119.5 MiB, and the uncompressed image from 311.0 MiB to 236.1 MiB. Restart-to-health remained about 0.49 seconds median; the 50,000-row bounded stream measured 95.09 MiB median process high-water RSS. The report includes before/after samples and limitations. These are local measurements, not production guarantees.
 
-[P2 #293](https://github.com/RhinoLink-Tech/data-fabric/issues/293) tracks applying and validating the low-risk linker-stripping change. Keep the lightweight claim focused on measured startup and runtime memory; do not imply that the current release artifact is small.
-
-### 2. Raise connector confidence from real demand
+### 1. Raise connector confidence from real demand
 
 The initial versioned connector contract baseline in [#35](https://github.com/RhinoLink-Tech/data-fabric/issues/35) is complete. The catalog remains the source of truth: new verified claims require a pinned version and a passing contract for the operations being claimed. Select additional connectors from actual user demand rather than attempting to certify every registered type at once.
 
-### 3. Validate the federation adapter against a real engine when available
+### 2. Validate the federation adapter against a real engine when available
 
 [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179) is intentionally deferred until a real coordinator and deterministic catalogs are available. Its simulated tests verify the gateway request/result path only; they do not establish Trino, Presto, or OpenLooKeng release compatibility.
 
-### 4. Keep operator UI optional
+### 3. Keep operator UI optional
 
 The source-management UI in [#175](https://github.com/RhinoLink-Tech/data-fabric/issues/175) is a convenience feature. The API remains the core management surface; start UI work only when self-hosted operator feedback justifies its maintenance cost.
 
-### 5. Extend governance from concrete policy needs
+### 4. Extend governance from concrete policy needs
 
 OIDC identity, table/column authorization, and durable audit are delivered in [#217](https://github.com/RhinoLink-Tech/data-fabric/issues/217), [#218](https://github.com/RhinoLink-Tech/data-fabric/issues/218), [#219](https://github.com/RhinoLink-Tech/data-fabric/issues/219), and [#220](https://github.com/RhinoLink-Tech/data-fabric/issues/220). Further data classification, masking, or approval workflows should follow specific enterprise policies and documented use cases.
 

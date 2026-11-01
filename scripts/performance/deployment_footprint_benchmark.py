@@ -352,7 +352,7 @@ def main() -> int:
             "cpu_model": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.lower().startswith("model name")), platform.processor()),
             "host_memory_total_bytes": next(int(line.split()[1]) * 1024 for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:")),
             "go_builder": "golang:1.26.1 (Dockerfile)",
-            "build_mode": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath ./cmd/server",
+            "build_mode": "CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags=\'-s -w\' -o /app/main ./cmd/server (builder architecture)",
             "mysql_version": mysql_version, "mysql_image": MYSQL_IMAGE, "mysql_image_id": mysql_image_id,
             "mysql_repo_digests": json.loads(cmd(["docker", "image", "inspect", MYSQL_IMAGE, "--format", "{{json .RepoDigests}}"], "reading MySQL repository digest")),
             "source_rows": ROWS, "payload_bytes": PAYLOAD_BYTES, "stream_batch_size": BATCH_SIZE,

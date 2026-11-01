@@ -141,7 +141,7 @@ Data Fabric is a query gateway, not a query accelerator. Compared with calling a
 
 In a local WSL benchmark using PostgreSQL as the simulated data source, 500 generated rows and 14 query shapes, the in-process Data Fabric query service measured P95 latencies of 0.682–2.159 ms. The P95 percentile-value gap versus direct PostgreSQL was 0.446–0.694 ms; the P50 gap was 0.246–0.450 ms. A separate 5,000-row scale run, including joins, aggregation, a wide projection, and an unindexed sort, is documented with CPU, allocation, and raw sample data. These local serial measurements exclude HTTP, authentication middleware, concurrent traffic, and the client-to-gateway network hop; they are not production guarantees. The custom suite is not a TPC result. See the [reproducible benchmark report](docs/performance/postgres-gateway-benchmark.md) for the full results and limits.
 
-Deployment resource measurements are documented separately: a local WSL2 run recorded a 0.493 s median restart-to-health time and 82.7 MiB median idle RSS. The report includes the bounded 50,000-row stream workload, artifact sizes, raw samples, and reproduction steps. These are single-machine results, not production guarantees. See the [deployment footprint report](docs/performance/deployment-footprint.md).
+Deployment resource measurements are documented separately: a local WSL2 run recorded a 0.488 s median restart-to-health time and 83.6 MiB median idle RSS. The report includes the bounded 50,000-row stream workload, artifact sizes, raw samples, and reproduction steps. These are single-machine results, not production guarantees. See the [deployment footprint report](docs/performance/deployment-footprint.md).
 ## API Overview
 
 | Method | Path | Purpose | Authentication |

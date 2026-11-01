@@ -1,0 +1,30 @@
+metric,scenario,repeat,value,unit,notes
+first_start_to_health,fresh_metadata,1,0.5779492120054783,seconds,Includes initial metadata migrations.
+startup_to_health,migrated_metadata,1,0.5024663449949003,seconds,Container start to healthy /health.
+idle_rss,migrated_metadata,1,87674880,bytes,PID 1 VmRSS after 5s idle.
+startup_to_health,migrated_metadata,2,0.4787718000006862,seconds,Container start to healthy /health.
+idle_rss,migrated_metadata,2,87924736,bytes,PID 1 VmRSS after 5s idle.
+startup_to_health,migrated_metadata,3,0.5245037139975466,seconds,Container start to healthy /health.
+idle_rss,migrated_metadata,3,87752704,bytes,PID 1 VmRSS after 5s idle.
+startup_to_health,migrated_metadata,4,0.48830917900340864,seconds,Container start to healthy /health.
+idle_rss,migrated_metadata,4,86990848,bytes,PID 1 VmRSS after 5s idle.
+startup_to_health,migrated_metadata,5,0.47353103699424537,seconds,Container start to healthy /health.
+idle_rss,migrated_metadata,5,86286336,bytes,PID 1 VmRSS after 5s idle.
+pre_query_rss,small_query,1,87416832,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,small_query,1,89362432,bytes,PID 1 VmHWM after 1 row(s); batch_size=10; batches=1.
+pre_query_rss,small_query,2,88551424,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,small_query,2,90259456,bytes,PID 1 VmHWM after 1 row(s); batch_size=10; batches=1.
+pre_query_rss,small_query,3,86622208,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,small_query,3,88215552,bytes,PID 1 VmHWM after 1 row(s); batch_size=10; batches=1.
+pre_query_rss,bounded_stream,1,87486464,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,bounded_stream,1,99713024,bytes,PID 1 VmHWM after 50000 row(s); batch_size=1000; batches=50.
+pre_query_rss,bounded_stream,2,86462464,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,bounded_stream,2,100352000,bytes,PID 1 VmHWM after 50000 row(s); batch_size=1000; batches=50.
+pre_query_rss,bounded_stream,3,87437312,bytes,PID 1 VmRSS before workload.
+query_process_peak_rss,bounded_stream,3,99676160,bytes,PID 1 VmHWM after 50000 row(s); batch_size=1000; batches=50.
+artifact_size,release_binary,1,125284514,bytes,Extracted from the image built by Dockerfile.
+artifact_size,image_uncompressed,1,247649133,bytes,Image ID sha256:d81c4940a9fb9ff2d2355010b6ab272478225178b6954b27cf6fb0ecf6f5b996.
+startup_median,migrated_metadata,1,0.48830917900340864,seconds,Median of five restarts.
+idle_rss_median,migrated_metadata,1,87674880,bytes,Median after idle settling period.
+query_peak_rss_median,small_query,1,89362432,bytes,Median of three fresh container processes.
+query_peak_rss_median,bounded_stream,1,99713024,bytes,Median of three fresh container processes.
