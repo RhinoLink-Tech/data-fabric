@@ -231,6 +231,22 @@ New middleware can be added to enhance functionality:
     └───────────────────┘
 ```
 
+### Query Continuation and Replicas
+
+Query continuation sessions and live streaming cursors are held in process
+memory. They expire 30 minutes after creation and are not transferred to other
+gateway replicas. The gateway does not issue an affinity cookie or persist
+session state externally. A multi-batch query must remain on the process that
+created it; deploy one replica for reliable continuation, or use a custom
+query-aware router that pins the initial query and every returned continuation
+URI to that process. Ordinary load balancing across replicas can make a
+continuation request fail. A restart also invalidates in-flight sessions.
+
+Expired pagination/native API sessions are swept every five minutes. Streaming
+sessions are swept every minute, and cleanup closes their active cursors. For
+the client-facing expiration and token-rotation contract, see the
+[API usage guide](api_usage.md#fetch-the-next-batch).
+
 ## Monitoring and Observability
 
 ### Metrics Collection

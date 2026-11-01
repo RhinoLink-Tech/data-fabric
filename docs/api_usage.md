@@ -171,9 +171,22 @@ curl -X GET "http://localhost:8080/api/v1/fetch/QUERY_ID/SLUG/TOKEN?batch_size=1
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-The path `token` is a per-session continuation token; it does not replace the Bearer JWT. Use each new `nextUri` returned by the previous response rather than reusing an older token.
+The path `token` is a per-session continuation credential; it does not replace the Bearer JWT.
+Tokens are random UUIDv4 values. Each successful continuation rotates the token, and a previous token
+cannot be replayed to fetch another batch. Follow only the newest `nextUri`. Treat the URI as
+secret and redact its token segment from proxy and access logs.
 
-Query sessions and streaming cursors are held in process memory for up to 30 minutes. Continuation links stop working after a server restart and are not shared across gateway replicas. Until shared session storage or stateless continuation is available, run one instance or route every continuation request to the process that created the query. See [issue #26](https://github.com/RhinoLink-Tech/data-fabric/issues/26).
+A query session expires 30 minutes after it is created; fetching batches does not extend the expiry.
+Requests after expiry are rejected. Pagination and native API sessions are removed by a cleanup sweep
+that runs every 5 minutes. Streaming cursors are swept every minute and closed during cleanup. A
+process restart discards all in-memory sessions and cursors.
+
+Continuation sessions are local to the gateway process and are not shared between replicas. The
+gateway does not provide session affinity or a shared session store. Deploy one gateway replica when
+clients need multi-batch queries. A custom query-aware router may support multiple replicas only if it
+pins both the initial query and every returned continuation URI to the same process. Generic load
+balancing does not guarantee this behavior. See
+[issue #28](https://github.com/RhinoLink-Tech/data-fabric/issues/28).
 
 ## Execution mode selection
 

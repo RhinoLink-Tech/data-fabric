@@ -78,7 +78,7 @@ type StreamingSessionManager struct {
 func NewStreamingSessionManager() *StreamingSessionManager {
 	sm := &StreamingSessionManager{
 		sessions: make(map[string]*StreamingSession),
-		ttl:      30 * time.Minute, // Session TTL: 30 minutes
+		ttl:      defaultQuerySessionTTL,
 	}
 
 	return sm
@@ -909,6 +909,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	}
 
 	// Create a new streaming session
+	createdAt := time.Now()
 	session := &StreamingSession{
 		QueryID:      ss.generateSessionID(),
 		Slug:         ss.generateSlug(),
@@ -918,8 +919,8 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		SQL:          req.SQL,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
-		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
+		CreatedAt:    createdAt,
+		ExpiresAt:    createdAt.Add(ss.streamingSessionManager.ttl),
 	}
 
 	// Execute streaming query to get the stream ID
@@ -1143,7 +1144,7 @@ func (ss *streamingService) generateSlug() string {
 }
 
 func (ss *streamingService) generateToken() string {
-	return uuid.New().String()
+	return newContinuationToken()
 }
 
 // getRowCount gets the total row count for the query

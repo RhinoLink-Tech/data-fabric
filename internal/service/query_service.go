@@ -118,7 +118,7 @@ func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSo
 func NewSessionManager() *SessionManager {
 	sm := &SessionManager{
 		sessions: make(map[string]*QuerySession),
-		ttl:      30 * time.Minute, // Session TTL: 30 minutes
+		ttl:      defaultQuerySessionTTL,
 	}
 
 	// Start cleanup goroutine
@@ -483,6 +483,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	}
 
 	// Create query session
+	createdAt := time.Now()
 	session := &QuerySession{
 		QueryID:      qs.generateSessionID(),
 		Slug:         qs.generateSlug(),
@@ -494,8 +495,8 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		Parameters:   parameters,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
-		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
+		CreatedAt:    createdAt,
+		ExpiresAt:    createdAt.Add(qs.sessionManager.ttl),
 	}
 
 	// Execute query and get first batch
@@ -732,20 +733,24 @@ func (sm *SessionManager) cleanupSessions() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		var expired []*QuerySession
-		sm.mutex.Lock()
-		now := time.Now()
-		for id, session := range sm.sessions {
-			if now.After(session.ExpiresAt) {
-				delete(sm.sessions, id)
-				expired = append(expired, session)
-			}
-		}
-		sm.mutex.Unlock()
-		for _, session := range expired {
-			closeQueryCursor(session)
+		sm.cleanupExpiredSessions(time.Now())
+	}
+}
+
+func (sm *SessionManager) cleanupExpiredSessions(now time.Time) int {
+	var expired []*QuerySession
+	sm.mutex.Lock()
+	for id, session := range sm.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(sm.sessions, id)
+			expired = append(expired, session)
 		}
 	}
+	sm.mutex.Unlock()
+	for _, session := range expired {
+		closeQueryCursor(session)
+	}
+	return len(expired)
 }
 
 func (qs *queryService) buildNextURI(queryID, slug, token string, batchSize int) string {
@@ -1047,7 +1052,7 @@ func (qs *queryService) generateSessionID() string {
 }
 
 func (qs *queryService) generateToken() string {
-	return uuid.New().String()
+	return newContinuationToken()
 }
 
 func (qs *queryService) generateSlug() string {

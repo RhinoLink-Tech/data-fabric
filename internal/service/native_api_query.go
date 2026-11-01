@@ -47,6 +47,7 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 	columns := qs.buildExecutionColumnInfo(sourceColumns, datasource.Type)
 	entries := encodeExecutionRows(batch.Rows, columns)
 
+	createdAt := time.Now()
 	session := &QuerySession{
 		QueryID:      qs.generateSessionID(),
 		Slug:         qs.generateSlug(),
@@ -63,8 +64,8 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		Columns:      columns,
 		Entries:      entries,
 		Cursor:       cursor,
-		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
+		CreatedAt:    createdAt,
+		ExpiresAt:    createdAt.Add(qs.sessionManager.ttl),
 	}
 	response := &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
