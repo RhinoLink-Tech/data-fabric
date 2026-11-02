@@ -385,6 +385,9 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 			releaseAdmission()
 		}
 	}()
+	if !ss.admissionLimiter.AllowQueryRequest(caller) {
+		return "", 0, ErrQueryRateLimitExceeded
+	}
 
 	streamLifetime := ss.streamTimeout
 	if streamLifetime <= 0 {
@@ -493,6 +496,15 @@ func (ss *streamingService) acquireStreamAdmission(caller *security.Caller) (fun
 		}
 	})
 	return ss.admissionLimiter.Acquire(caller)
+}
+
+func (ss *streamingService) allowQueryRequest(caller *security.Caller) bool {
+	ss.admissionInit.Do(func() {
+		if ss.admissionLimiter == nil {
+			ss.admissionLimiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+		}
+	})
+	return ss.admissionLimiter.AllowQueryRequest(caller)
 }
 
 // FetchStreamChunk fetches the next chunk of data from a stream
@@ -1104,6 +1116,9 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	if err != nil {
 		_ = ss.closeSessionStream(session)
 		return nil, ErrQuerySessionUnavailable
+	}
+	if !ss.allowQueryRequest(caller) {
+		return nil, ErrQueryRateLimitExceeded
 	}
 
 	// Fetch the next chunk of data. A disconnected page request cancels the

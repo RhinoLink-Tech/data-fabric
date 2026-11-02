@@ -142,7 +142,12 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize streaming and pagination services with one shared table policy.
 	queryStats := service.NewQueryStatsTracker()
-	queryAdmissionLimiter := service.NewQueryAdmissionLimiter(0, cfg.Query.MaxConcurrentQueriesPerTenant)
+	queryAdmissionLimiter := service.NewQueryAdmissionLimiterWithRateLimit(
+		0,
+		cfg.Query.MaxConcurrentQueriesPerTenant,
+		cfg.Query.RateLimitPerMinutePerTenant,
+		cfg.Query.RateLimitBurstPerTenant,
+	)
 	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 
@@ -363,7 +368,12 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	defer closeGatewayResources(db, connPool)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
 	queryStats := service.NewQueryStatsTracker()
-	queryAdmissionLimiter := service.NewQueryAdmissionLimiter(0, cfg.Query.MaxConcurrentQueriesPerTenant)
+	queryAdmissionLimiter := service.NewQueryAdmissionLimiterWithRateLimit(
+		0,
+		cfg.Query.MaxConcurrentQueriesPerTenant,
+		cfg.Query.RateLimitPerMinutePerTenant,
+		cfg.Query.RateLimitBurstPerTenant,
+	)
 	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)

@@ -96,6 +96,8 @@ query:
   prefer_streaming: true
   execution_mode: "auto"  # auto, streaming, pagination
   max_concurrent_queries_per_tenant: 25
+  rate_limit_per_minute_per_tenant: 120
+  rate_limit_burst_per_tenant: 20
 
 mcp:
   enabled: false
