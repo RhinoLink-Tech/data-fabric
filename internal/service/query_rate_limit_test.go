@@ -37,6 +37,59 @@ func TestQueryRequestRateLimitSharesTenantBucketAndUserFallback(t *testing.T) {
 	}
 }
 
+func TestQueryRequestRateLimitBucketCardinalityIsBounded(t *testing.T) {
+	limiter := NewQueryAdmissionLimiterWithRateLimit(100, 25, 60000, 10)
+	limiter.maxRequestBuckets = 1
+	tenantA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	tenantB := &security.Caller{UserID: "bob", TenantID: "tenant-b"}
+
+	if !limiter.AllowQueryRequest(tenantA) {
+		t.Fatal("first tenant request was rejected")
+	}
+	bucketA := limiter.requestBuckets["tenant:tenant-a"]
+	if bucketA == nil {
+		t.Fatal("tenant-a bucket was not created")
+	}
+	if limiter.AllowQueryRequest(tenantB) {
+		t.Fatal("new tenant was admitted after the bucket table reached capacity")
+	}
+	if limiter.requestBuckets["tenant:tenant-a"] != bucketA {
+		t.Fatal("existing tenant bucket was evicted")
+	}
+	if !limiter.AllowQueryRequest(tenantA) {
+		t.Fatal("existing tenant was rejected while its own budget remained available")
+	}
+	if got := len(limiter.requestBuckets); got != 1 {
+		t.Fatalf("bucket count = %d, want hard cap 1", got)
+	}
+}
+
+func TestQueryRequestRateLimitReclaimsStaleBucketAtCapacity(t *testing.T) {
+	limiter := NewQueryAdmissionLimiterWithRateLimit(100, 25, 60000, 10)
+	limiter.maxRequestBuckets = 1
+	tenantA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	tenantB := &security.Caller{UserID: "bob", TenantID: "tenant-b"}
+
+	if !limiter.AllowQueryRequest(tenantA) {
+		t.Fatal("first tenant request was rejected")
+	}
+	limiter.requestBuckets["tenant:tenant-a"].lastSeen = time.Now().Add(-11 * time.Minute)
+	limiter.lastRequestBucketCleanupAt = time.Now().Add(-time.Minute)
+
+	if !limiter.AllowQueryRequest(tenantB) {
+		t.Fatal("new tenant was rejected after stale bucket cleanup freed capacity")
+	}
+	if _, exists := limiter.requestBuckets["tenant:tenant-a"]; exists {
+		t.Fatal("stale tenant bucket was not removed")
+	}
+	if _, exists := limiter.requestBuckets["tenant:tenant-b"]; !exists {
+		t.Fatal("new tenant bucket was not created")
+	}
+	if got := len(limiter.requestBuckets); got != 1 {
+		t.Fatalf("bucket count = %d, want hard cap 1", got)
+	}
+}
+
 func TestQueryRequestRateLimitRejectsPaginationBeforeSourceConnection(t *testing.T) {
 	source := &model.DataSource{
 		ID: "ds-1", Type: model.DatabaseTypePostgreSQL,

@@ -185,11 +185,15 @@ supported as a deprecated alias.
 Query execution and continuation requests also share a process-local token
 bucket per tenant across HTTP and MCP. The default budget is 120 requests per
 minute with a burst of 20; tenant-less authenticated callers are bucketed by
-user ID. Set `query.rate_limit_per_minute_per_tenant` and
+user ID. The process keeps at most 10,000 tenant/user buckets. A new identity
+without a bucket receives the standard HTTP 429 `QUERY_RATE_LIMIT_EXCEEDED`
+response (or the same stable message through MCP) while the table is full;
+existing identities keep their independent budgets. Idle buckets older than 10
+minutes are pruned at most once per minute, allowing new identities to use the
+freed capacity. Set `query.rate_limit_per_minute_per_tenant` and
 `query.rate_limit_burst_per_tenant` to `0` to disable this query-specific
-budget. Rejected work receives HTTP 429 `QUERY_RATE_LIMIT_EXCEEDED` or the same
-stable message through MCP, before the connector is used. This budget does not
-coordinate across gateway replicas.
+budget. Rejections happen before the connector is used. The bucket table does
+not coordinate across gateway replicas.
 
 
 ## SQL dialect translation runtime
