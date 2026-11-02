@@ -304,6 +304,22 @@ jobs:
       - name: Run openGauss TLS certificate contract
         run: bash scripts/contracts/run_opengauss_tls_contract.sh
 
+  clickhouse-tls-contract:
+    name: ClickHouse TLS certificate contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run ClickHouse TLS certificate contract
+        run: bash scripts/contracts/run_clickhouse_tls_contract.sh
+
   sqlserver-contract:
     name: SQL Server driver contract
     runs-on: ubuntu-latest

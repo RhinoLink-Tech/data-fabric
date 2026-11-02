@@ -2,15 +2,23 @@ package olap
 
 import (
 	"context"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
-	_ "github.com/ClickHouse/clickhouse-go/v2"
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
+
+const clickHouseTLSRootCertParam = "datafabricsslrootcert"
 
 // ClickHouseDriver implements Driver interface for ClickHouse
 type ClickHouseDriver struct {
@@ -35,20 +43,74 @@ func (d *ClickHouseDriver) ApplyBatchPagination(sql string, batchSize, offset in
 
 // Open opens a connection to ClickHouse
 func (d *ClickHouseDriver) Open(dsn string) (*sql.DB, error) {
-	// Use sql.Open with clickhouse driver
-	db, err := sql.Open("clickhouse", dsn)
+	options, rootCertPath, err := parseClickHouseDSN(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open ClickHouse connection: %w", err)
+		return nil, fmt.Errorf("invalid ClickHouse connection configuration: %w", err)
 	}
-	return db, nil
+	if rootCertPath != "" {
+		rootCAs, err := readClickHouseRootCAs(rootCertPath)
+		if err != nil {
+			return nil, err
+		}
+		options.TLS = options.TLS.Clone()
+		options.TLS.RootCAs = rootCAs
+	}
+	return clickhouse.OpenDB(options), nil
 }
 
 // ValidateDSN validates the connection string
 func (d *ClickHouseDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
+	_, rootCertPath, err := parseClickHouseDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid ClickHouse DSN: %w", err)
+	}
+	if rootCertPath != "" {
+		if _, err := readClickHouseRootCAs(rootCertPath); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func parseClickHouseDSN(dsn string) (*clickhouse.Options, string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return nil, "", fmt.Errorf("malformed URL")
+	}
+	query := parsed.Query()
+	rootCertPath := query.Get(clickHouseTLSRootCertParam)
+	if strings.EqualFold(strings.TrimSpace(query.Get("skip_verify")), "true") {
+		return nil, "", fmt.Errorf("ClickHouse TLS certificate verification cannot be disabled")
+	}
+	query.Del(clickHouseTLSRootCertParam)
+	parsed.RawQuery = query.Encode()
+
+	options, err := clickhouse.ParseDSN(parsed.String())
+	if err != nil {
+		return nil, "", err
+	}
+	if options.TLS != nil && options.TLS.InsecureSkipVerify {
+		return nil, "", fmt.Errorf("ClickHouse TLS certificate verification cannot be disabled")
+	}
+	if rootCertPath != "" && options.TLS == nil {
+		return nil, "", fmt.Errorf("ClickHouse sslRootCert requires ssl=true")
+	}
+	return options, rootCertPath, nil
+}
+
+func readClickHouseRootCAs(path string) (*x509.CertPool, error) {
+	certificate, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("ClickHouse sslRootCert must refer to a readable PEM CA certificate")
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(certificate) {
+		return nil, fmt.Errorf("ClickHouse sslRootCert must contain at least one valid PEM CA certificate")
+	}
+	return rootCAs, nil
 }
 
 // GetDefaultPort returns the default ClickHouse port
@@ -58,8 +120,22 @@ func (d *ClickHouseDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *ClickHouseDriver) BuildDSN(config *model.DataSourceConfig) string {
-	return fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s",
-		config.Username, config.Password, config.Host, config.Port, config.Database)
+	connectionURL := url.URL{
+		Scheme: "clickhouse",
+		User:   url.UserPassword(config.Username, config.Password),
+		Host:   net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		Path:   "/" + config.Database,
+	}
+	query := connectionURL.Query()
+	if config.SSL {
+		query.Set("secure", "true")
+		query.Set("skip_verify", "false")
+	}
+	if config.SSLRootCert != "" {
+		query.Set(clickHouseTLSRootCertParam, config.SSLRootCert)
+	}
+	connectionURL.RawQuery = query.Encode()
+	return connectionURL.String()
 }
 
 // GetDatabaseTypeName returns the database type name

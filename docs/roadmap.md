@@ -56,6 +56,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 [#306](https://github.com/RhinoLink-Tech/data-fabric/issues/306) adds private-CA verification for the SQL Server connector. The pinned SQL Server 16.0.4305.5 contract accepts a trusted CA and matching hostname, rejects an untrusted CA and hostname mismatch, and confirms the explicit certificate-bypass compatibility setting and plaintext behavior when TLS is disabled. Other SQL Server versions remain outside this evidence.
 
+### Completed: verify ClickHouse server identity over TLS
+
+[#308](https://github.com/RhinoLink-Tech/data-fabric/issues/308) makes the ClickHouse native-protocol connector honor `ssl` and `sslRootCert`. The pinned ClickHouse 26.8.20.9 contract accepts a trusted private CA and matching host, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private test CA when no custom CA is configured, and keeps certificate verification enabled. Plaintext connections remain supported when TLS is disabled. Other ClickHouse versions remain outside this evidence.
+
 ### 1. Raise connector confidence from real demand
 
 The initial versioned connector contract baseline in [#35](https://github.com/RhinoLink-Tech/data-fabric/issues/35) is complete. The catalog remains the source of truth: new verified claims require a pinned version and a passing contract for the operations being claimed. Select additional connectors from actual user demand rather than attempting to certify every registered type at once.
