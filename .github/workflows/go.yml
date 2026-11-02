@@ -410,6 +410,25 @@ jobs:
       - name: Run MariaDB TLS certificate contract
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
+  mariadb-1011-tls-contract:
+    name: MariaDB 10.11.19 TLS certificate contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_MARIADB_TLS_IMAGE: mariadb:10.11.19@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae
+      DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION: "10.11.19"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MariaDB 10.11.19 TLS certificate contract
+        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+
   tidb-tls-contract:
     name: TiDB TLS certificate contract
     runs-on: ubuntu-latest
