@@ -67,7 +67,7 @@ func TestExecuteStreamQueryHonorsRequestDeadline(t *testing.T) {
 
 	svc, pool := newStreamingTestService(t, server)
 	defer func() { _ = pool.CloseAll() }()
-	svc.maxStreamsPerTenant = 1
+	svc.admissionLimiter = NewQueryAdmissionLimiter(100, 1)
 	_, _, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM slow_table",

@@ -10,31 +10,31 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
-func TestStreamAdmissionLimiterEnforcesTenantAndProcessCaps(t *testing.T) {
-	limiter := newStreamAdmissionLimiter()
+func TestQueryAdmissionLimiterEnforcesTenantAndProcessCaps(t *testing.T) {
+	limiter := NewQueryAdmissionLimiter(2, 1)
 	callerA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
 	callerB := &security.Caller{UserID: "bob", TenantID: "tenant-b"}
 
-	releaseA, ok := limiter.acquire(callerA, 2, 1)
+	releaseA, ok := limiter.Acquire(callerA)
 	if !ok {
 		t.Fatal("first stream for tenant-a was rejected")
 	}
-	if release, ok := limiter.acquire(&security.Caller{UserID: "carol", TenantID: "tenant-a"}, 2, 1); ok {
+	if release, ok := limiter.Acquire(&security.Caller{UserID: "carol", TenantID: "tenant-a"}); ok {
 		release()
 		t.Fatal("second stream for tenant-a was admitted above its limit")
 	}
-	releaseB, ok := limiter.acquire(callerB, 2, 1)
+	releaseB, ok := limiter.Acquire(callerB)
 	if !ok {
 		t.Fatal("tenant-b was blocked by tenant-a's per-tenant limit")
 	}
-	if release, ok := limiter.acquire(&security.Caller{UserID: "dave", TenantID: "tenant-c"}, 2, 1); ok {
+	if release, ok := limiter.Acquire(&security.Caller{UserID: "dave", TenantID: "tenant-c"}); ok {
 		release()
 		t.Fatal("third stream was admitted above the process-wide limit")
 	}
 
 	releaseA()
 	releaseA() // release callbacks are safe when startup cleanup also runs.
-	releaseAgain, ok := limiter.acquire(callerA, 2, 1)
+	releaseAgain, ok := limiter.Acquire(callerA)
 	if !ok {
 		t.Fatal("tenant-a capacity was not restored after release")
 	}
@@ -42,40 +42,40 @@ func TestStreamAdmissionLimiterEnforcesTenantAndProcessCaps(t *testing.T) {
 	releaseB()
 }
 
-func TestStreamAdmissionLimiterUsesUserFallbackAndAnonymousBucket(t *testing.T) {
-	limiter := newStreamAdmissionLimiter()
-	firstUser, ok := limiter.acquire(&security.Caller{UserID: "alice"}, 10, 1)
+func TestQueryAdmissionLimiterUsesUserFallbackAndAnonymousBucket(t *testing.T) {
+	limiter := NewQueryAdmissionLimiter(10, 1)
+	firstUser, ok := limiter.Acquire(&security.Caller{UserID: "alice"})
 	if !ok {
 		t.Fatal("first tenantless user stream was rejected")
 	}
-	if release, ok := limiter.acquire(&security.Caller{UserID: "alice"}, 10, 1); ok {
+	if release, ok := limiter.Acquire(&security.Caller{UserID: "alice"}); ok {
 		release()
 		t.Fatal("tenantless user's second stream exceeded the user fallback limit")
 	}
-	otherUser, ok := limiter.acquire(&security.Caller{UserID: "bob"}, 10, 1)
+	otherUser, ok := limiter.Acquire(&security.Caller{UserID: "bob"})
 	if !ok {
 		t.Fatal("one tenantless user blocked a different user")
 	}
 	firstUser()
 	otherUser()
 
-	anonymous, ok := limiter.acquire(nil, 10, 1)
+	anonymous, ok := limiter.Acquire(nil)
 	if !ok {
 		t.Fatal("first anonymous stream was rejected")
 	}
-	if release, ok := limiter.acquire(nil, 10, 1); ok {
+	if release, ok := limiter.Acquire(nil); ok {
 		release()
 		t.Fatal("anonymous callers did not share the fallback bucket")
 	}
 	anonymous()
 }
 
-func TestStreamAdmissionLimiterConcurrentAdmissionIsAtomic(t *testing.T) {
+func TestQueryAdmissionLimiterConcurrentAdmissionIsAtomic(t *testing.T) {
 	const (
 		goroutines = 64
 		perTenant  = 7
 	)
-	limiter := newStreamAdmissionLimiter()
+	limiter := NewQueryAdmissionLimiter(100, perTenant)
 	start := make(chan struct{})
 	type result struct {
 		release  func()
@@ -88,7 +88,7 @@ func TestStreamAdmissionLimiterConcurrentAdmissionIsAtomic(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			<-start
-			release, admitted := limiter.acquire(&security.Caller{TenantID: "shared"}, 100, perTenant)
+			release, admitted := limiter.Acquire(&security.Caller{TenantID: "shared"})
 			results <- result{release: release, admitted: admitted}
 		}()
 	}
@@ -139,10 +139,8 @@ func TestExecuteStreamQueryRejectsTenantCapBeforeOpeningConnection(t *testing.T)
 
 func TestClosingStreamReleasesTenantAdmission(t *testing.T) {
 	ss := &streamingService{
-		activeStreams:          make(map[string]*ActiveStream),
-		maxStreams:             defaultMaxConcurrentStreams,
-		maxStreamsPerTenant:    1,
-		streamAdmissionLimiter: newStreamAdmissionLimiter(),
+		activeStreams:    make(map[string]*ActiveStream),
+		admissionLimiter: NewQueryAdmissionLimiter(100, 1),
 	}
 	caller := &security.Caller{TenantID: "tenant-a"}
 	release, admitted := ss.acquireStreamAdmission(caller)

@@ -11,8 +11,10 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
 
 type stubPaginationService struct {
@@ -336,6 +338,53 @@ func TestAutoModeFallsBackOnlyBeforeStreamingStarts(t *testing.T) {
 			t.Fatalf("query calls = streaming:%d pagination:%d, want none", streaming.fetchCalls, pagination.fetchCalls)
 		}
 	})
+}
+
+type admissionSourceRepository struct {
+	repository.DataSourceRepository
+	source *model.DataSource
+}
+
+func (r admissionSourceRepository) GetByID(_ context.Context, id string) (*model.DataSource, error) {
+	if id != r.source.ID {
+		return nil, repository.ErrDataSourceNotFound
+	}
+	return r.source, nil
+}
+
+func TestAutoFallbackCannotBypassSharedTenantAdmission(t *testing.T) {
+	caller := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	limiter := service.NewQueryAdmissionLimiter(100, 1)
+	release, admitted := limiter.Acquire(caller)
+	if !admitted {
+		t.Fatal("failed to occupy tenant-a's shared query slot")
+	}
+	defer release()
+
+	pagination := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(
+		admissionSourceRepository{source: &model.DataSource{
+			ID: "source-1", Type: model.DatabaseTypePostgreSQL,
+			OwnerID: "alice", Status: model.DataSourceStatusActive,
+		}}, nil, false, nil, nil, limiter,
+		sql_translator.NewSQLTranslationManager(false),
+	)
+	streaming := &routingStreamingStub{
+		supported: true,
+		fetchErr:  service.ErrMaxConcurrentStreams,
+	}
+	unified := NewUnifiedQueryService(pagination, streaming, &config.Config{
+		Query: config.QueryConfig{ExecutionMode: executionModeAuto, PreferStreaming: true},
+	})
+
+	_, err := unified.FetchQuery(context.Background(), caller, &model.FetchQueryRequest{
+		DataSourceID: "source-1", Type: 2, BatchSize: 100, SQL: "SELECT 1",
+	})
+	if !errors.Is(err, service.ErrQueryAdmissionLimit) {
+		t.Fatalf("auto fallback error = %v, want shared admission rejection", err)
+	}
+	if streaming.fetchCalls != 1 {
+		t.Fatalf("streaming attempts = %d, want one before pagination fallback", streaming.fetchCalls)
+	}
 }
 
 func TestFetchNextBatchAutoDetectsSessionEngine(t *testing.T) {

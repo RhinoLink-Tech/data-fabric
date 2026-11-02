@@ -18,6 +18,7 @@ var (
 	// ErrMaxConcurrentStreams means the stream limit was reached before a
 	// query was started, so auto mode may safely retry through pagination.
 	ErrMaxConcurrentStreams = errors.New("maximum concurrent streams reached")
+	ErrQueryAdmissionLimit  = errors.New("query admission limit reached")
 	// ErrDataSourceInactive rejects query execution against a data source whose
 	// status is not active (#118). Anything but active — inactive, error, or an
 	// unexpected empty status — fails closed.
@@ -58,6 +59,8 @@ func SafeQueryErrorMessage(err error) string {
 		return "The query timed out. Reduce the query scope or increase the request timeout."
 	case errors.Is(err, context.Canceled), isServerSideCancellation(err):
 		return "The query was cancelled before completion."
+	case errors.Is(err, ErrQueryAdmissionLimit), errors.Is(err, ErrMaxConcurrentStreams):
+		return "The gateway is handling the maximum number of queries for this tenant. Retry shortly."
 	case errors.Is(err, repository.ErrDataSourceNotFound):
 		return "The selected data source was not found."
 	case errors.Is(err, security.ErrDataSourceAccessDenied):

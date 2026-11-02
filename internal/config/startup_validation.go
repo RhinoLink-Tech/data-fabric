@@ -122,8 +122,8 @@ func (c ServerConfig) Validate() error {
 }
 
 func (c QueryConfig) Validate() error {
-	if c.MaxConcurrentStreamsPerTenant < 0 {
-		return fmt.Errorf("query.max_concurrent_streams_per_tenant cannot be negative")
+	if c.MaxConcurrentQueriesPerTenant < 0 {
+		return fmt.Errorf("query.max_concurrent_queries_per_tenant cannot be negative")
 	}
 	switch strings.TrimSpace(c.ExecutionMode) {
 	case "auto", "streaming", "pagination":

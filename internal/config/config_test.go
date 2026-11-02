@@ -132,7 +132,7 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 		"LOGGING_FORMAT":                          "text",
 		"QUERY_PREFER_STREAMING":                  "false",
 		"QUERY_EXECUTION_MODE":                    "pagination",
-		"QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT": "7",
+		"QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT": "7",
 		"MCP_ENABLED":                             "true",
 		"MCP_TRANSPORT":                           "stdio",
 		"MCP_ADDRESS":                             "127.0.0.1:9090",
@@ -183,7 +183,7 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	if cfg.Logging.Level != "debug" || cfg.Logging.Format != "text" {
 		t.Errorf("logging settings = %+v, want environment overrides", cfg.Logging)
 	}
-	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentStreamsPerTenant != 7 {
+	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentQueriesPerTenant != 7 {
 		t.Errorf("query settings = %+v, want environment overrides", cfg.Query)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" || cfg.MCP.Address != "127.0.0.1:9090" ||
@@ -198,6 +198,7 @@ func TestLegacyEnvironmentVariableAliases(t *testing.T) {
 	t.Setenv("DATABASE_NAME", "legacy_db")
 	t.Setenv("SECURITY_JWT_SECRET", "")
 	t.Setenv("JWT_SECRET", strings.Repeat("j", 32))
+	t.Setenv("QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT", "6")
 
 	cfg, err := Load()
 	if err != nil {
@@ -208,6 +209,9 @@ func TestLegacyEnvironmentVariableAliases(t *testing.T) {
 	}
 	if cfg.Security.JWTSecret != strings.Repeat("j", 32) {
 		t.Errorf("security.jwt_secret did not use JWT_SECRET compatibility alias")
+	}
+	if cfg.Query.MaxConcurrentQueriesPerTenant != 6 {
+		t.Errorf("query.max_concurrent_queries_per_tenant = %d, want deprecated stream-limit alias value 6", cfg.Query.MaxConcurrentQueriesPerTenant)
 	}
 }
 
