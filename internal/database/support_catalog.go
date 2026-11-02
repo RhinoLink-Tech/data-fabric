@@ -104,14 +104,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 	case model.DatabaseTypePostgreSQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "17.11 only"
-		profile.VerifiedServerVersions = []string{"17.11"}
-		profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
+		profile.SupportedVersionRange = "15.19, 16.15, 17.11, and 18.6 only"
+		profile.VerifiedServerVersions = []string{"15.19", "16.15", "17.11", "18.6"}
+		profile.VersionPolicy = "Only PostgreSQL 15.19, 16.15, 17.11, and 18.6 have pinned driver contract results; no other server version is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the PostgreSQL 17.11 contract test."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 15.19, 16.15, 17.11, and 18.6 driver contracts. TLS certificate/hostname verification is covered by the PostgreSQL 17.11 TLS contract."
 		profile.Limitations = []string{
-			"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
-			"The TLS contract verifies sslmode=verify-full with a trusted CA and rejects an untrusted CA or hostname mismatch; other TLS modes and PostgreSQL versions are not covered.",
+			"The PostgreSQL contract tests cover password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 15.19, 16.15, 17.11, and 18.6.",
+			"The TLS contract verifies sslmode=verify-full with a trusted CA and rejects an untrusted CA or hostname mismatch against PostgreSQL 17.11 only; other TLS modes and versions are not covered.",
 		}
 	case model.DatabaseTypeMySQL:
 		profile.Status = ConnectorStatusEndToEndVerified

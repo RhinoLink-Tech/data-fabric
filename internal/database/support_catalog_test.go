@@ -86,7 +86,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			productRange string
 			server       []string
 		}{
-			model.DatabaseTypePostgreSQL:  {productRange: "17.11", server: []string{"17.11"}},
+			model.DatabaseTypePostgreSQL:  {productRange: "15.19, 16.15, 17.11, and 18.6", server: []string{"15.19", "16.15", "17.11", "18.6"}},
 			model.DatabaseTypeMySQL:       {productRange: "8.0.46", server: []string{"8.0.46"}},
 			model.DatabaseTypeMariaDB:     {productRange: "11.8.9", server: []string{"11.8.9"}},
 			model.DatabaseTypeTiDB:        {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
@@ -376,7 +376,7 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if !ok || postgres.Status != ConnectorStatusEndToEndVerified {
 		t.Fatalf("type endpoint did not expose the verified PostgreSQL catalog profile: %+v", postgres)
 	}
-	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"17.11"}) {
+	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "15.19, 16.15, 17.11, and 18.6 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"15.19", "16.15", "17.11", "18.6"}) {
 		t.Fatalf("type endpoint has missing or overly broad PostgreSQL verification evidence: %+v", postgres)
 	}
 	mysql, ok := info[string(model.DatabaseTypeMySQL)]
