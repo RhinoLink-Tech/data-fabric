@@ -116,14 +116,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 	case model.DatabaseTypeMySQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "8.0.46 only"
-		profile.VerifiedServerVersions = []string{"8.0.46"}
-		profile.VersionPolicy = "Only MySQL 8.0.46 has a pinned driver contract result; no other server version or MySQL-compatible product is implied to be compatible."
+		profile.SupportedVersionRange = "8.0.46 and 8.4.13 only"
+		profile.VerifiedServerVersions = []string{"8.0.46", "8.4.13"}
+		profile.VersionPolicy = "Only MySQL 8.0.46 and 8.4.13 have pinned driver contract results; no other server version or MySQL-compatible product is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MySQL 8.0.46 contract tests."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 and 8.4.13 contracts; TLS certificate/hostname verification is covered by the MySQL 8.0.46 contract only."
 		profile.Limitations = []string{
-			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
-			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MySQL versions are not covered.",
+			"The MySQL contract tests cover password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46 and 8.4.13.",
+			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext against MySQL 8.0.46 only. Other MySQL versions are not covered by the TLS contract.",
 		}
 	case model.DatabaseTypeMariaDB:
 		profile.Status = ConnectorStatusEndToEndVerified

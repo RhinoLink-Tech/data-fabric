@@ -53,6 +53,44 @@ jobs:
       - name: Run PostgreSQL driver contract
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestPostgreSQLDriverContract$'
 
+  mysql-84-version-contract:
+    name: MySQL 8.4.13 driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_MYSQL_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MYSQL_CONTRACT_PORT: "3306"
+      DATA_FABRIC_MYSQL_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.4.13"
+    services:
+      mysql:
+        image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
+        env:
+          MYSQL_ROOT_PASSWORD: root-contract-only
+          MYSQL_USER: data_fabric_contract
+          MYSQL_PASSWORD: contract-test-only
+          MYSQL_DATABASE: data_fabric_contract
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MySQL 8.4.13 driver contract
+        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMySQLDriverContract$'
+
   checks:
     name: Build and checks
     runs-on: ubuntu-latest
