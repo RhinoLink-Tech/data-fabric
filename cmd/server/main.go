@@ -142,7 +142,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize streaming and pagination services with one shared table policy.
 	queryStats := service.NewQueryStatsTracker()
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, tableAuthorizer, queryStats, translationManager)
+	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, tableAuthorizer, queryStats, cfg.Query.MaxConcurrentStreamsPerTenant, translationManager)
 	paginationService := service.NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, translationManager)
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
@@ -362,7 +362,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	defer closeGatewayResources(db, connPool)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
 	queryStats := service.NewQueryStatsTracker()
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, tableAuthorizer, queryStats, translationManager)
+	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, tableAuthorizer, queryStats, cfg.Query.MaxConcurrentStreamsPerTenant, translationManager)
 	paginationService := service.NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)

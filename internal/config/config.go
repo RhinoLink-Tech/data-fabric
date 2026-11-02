@@ -142,6 +142,7 @@ func setDefaults() {
 	// Query defaults
 	viper.SetDefault("query.prefer_streaming", true)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
+	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
 
 	// SQL translation runtime limits and process configuration.
 	viper.SetDefault("sql_translation.enabled", true)
@@ -203,6 +204,7 @@ type MCPConfig struct {
 
 // QueryConfig holds settings related to query execution
 type QueryConfig struct {
-	PreferStreaming bool   `mapstructure:"prefer_streaming"`
-	ExecutionMode   string `mapstructure:"execution_mode"`
+	PreferStreaming               bool   `mapstructure:"prefer_streaming"`
+	ExecutionMode                 string `mapstructure:"execution_mode"`
+	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"`
 }
