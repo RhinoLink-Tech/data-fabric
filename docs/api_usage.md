@@ -40,6 +40,8 @@ For SQL Server, set `ssl: true` to require encrypted query traffic and validate 
 
 For TiDB, set `ssl: true` to require TLS and verify the server certificate and hostname using the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against TiDB v8.5.8.
 
+For ClickHouse native-protocol connections, set `ssl: true` and use the server's secure native port (commonly `9440`; set the data-source port explicitly). The certificate and configured host are verified with system trust roots. For a private CA, set `sslRootCert` to its PEM file path and make it readable inside the Data Fabric process. Certificate verification cannot be disabled through the gateway; `ssl: false` retains plaintext connections. This behavior is contract-tested against ClickHouse 26.8.20.9.
+
 Successful responses use this envelope:
 
 ```json
