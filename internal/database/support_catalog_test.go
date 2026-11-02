@@ -88,7 +88,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}{
 			model.DatabaseTypePostgreSQL:  {productRange: "15.19, 16.15, 17.11, and 18.6", server: []string{"15.19", "16.15", "17.11", "18.6"}},
 			model.DatabaseTypeMySQL:       {productRange: "8.0.46 and 8.4.13", server: []string{"8.0.46", "8.4.13"}},
-			model.DatabaseTypeMariaDB:     {productRange: "10.11.19 and 11.8.9", server: []string{"10.11.19", "11.8.9"}},
+			model.DatabaseTypeMariaDB:     {productRange: "10.11.19, 11.4.13, and 11.8.9", server: []string{"10.11.19", "11.4.13", "11.8.9"}},
 			model.DatabaseTypeTiDB:        {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
 			model.DatabaseTypeOpenGauss:   {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
 			model.DatabaseTypeClickHouse:  {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
@@ -384,7 +384,7 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
 	}
 	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
-	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "10.11.19 and 11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"10.11.19", "11.8.9"}) {
+	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "10.11.19, 11.4.13, and 11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"10.11.19", "11.4.13", "11.8.9"}) {
 		t.Fatalf("type endpoint has missing or overly broad MariaDB verification evidence: %+v", mariaDB)
 	}
 	tiDB, ok := info[string(model.DatabaseTypeTiDB)]
