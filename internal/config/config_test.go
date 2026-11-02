@@ -133,6 +133,8 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 		"QUERY_PREFER_STREAMING":                  "false",
 		"QUERY_EXECUTION_MODE":                    "pagination",
 		"QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT": "7",
+		"QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT":  "240",
+		"QUERY_RATE_LIMIT_BURST_PER_TENANT":       "40",
 		"MCP_ENABLED":                             "true",
 		"MCP_TRANSPORT":                           "stdio",
 		"MCP_ADDRESS":                             "127.0.0.1:9090",
@@ -183,7 +185,8 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	if cfg.Logging.Level != "debug" || cfg.Logging.Format != "text" {
 		t.Errorf("logging settings = %+v, want environment overrides", cfg.Logging)
 	}
-	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentQueriesPerTenant != 7 {
+	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentQueriesPerTenant != 7 ||
+		cfg.Query.RateLimitPerMinutePerTenant != 240 || cfg.Query.RateLimitBurstPerTenant != 40 {
 		t.Errorf("query settings = %+v, want environment overrides", cfg.Query)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" || cfg.MCP.Address != "127.0.0.1:9090" ||

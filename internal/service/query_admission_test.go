@@ -26,15 +26,21 @@ func (e blockingNativeAdmissionExecutor) ExecuteNativeAPI(ctx context.Context, _
 }
 
 func TestStreamingAndPaginationShareAdmissionCapacity(t *testing.T) {
-	limiter := NewQueryAdmissionLimiter(2, 1)
+	limiter := NewQueryAdmissionLimiterWithRateLimit(2, 1, 60, 1)
 	streaming := NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(
 		nil, nil, nil, nil, limiter, newTestSQLTranslationManager(),
 	).(*streamingService)
 	pagination := NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(
 		nil, nil, false, nil, nil, limiter, newTestSQLTranslationManager(),
 	).(*queryService)
-
 	tenantA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	if !streaming.admissionLimiter.AllowQueryRequest(tenantA) {
+		t.Fatal("first streaming request for tenant-a was rejected")
+	}
+	if pagination.admissionLimiter.AllowQueryRequest(&security.Caller{UserID: "bob", TenantID: "tenant-a"}) {
+		t.Fatal("pagination did not share the streaming tenant request budget")
+	}
+
 	releaseStream, admitted := streaming.acquireStreamAdmission(tenantA)
 	if !admitted {
 		t.Fatal("streaming service could not reserve tenant-a's slot")

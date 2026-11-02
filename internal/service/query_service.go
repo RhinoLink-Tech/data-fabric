@@ -493,6 +493,9 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		return nil, ErrQueryAdmissionLimit
 	}
 	defer releaseAdmission()
+	if !qs.admissionLimiter.AllowQueryRequest(caller) {
+		return nil, ErrQueryRateLimitExceeded
+	}
 
 	// Drivers with a native protocol can execute through a typed executor
 	// without manufacturing a database/sql connection.
@@ -623,6 +626,9 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		return nil, ErrQueryAdmissionLimit
 	}
 	defer releaseAdmission()
+	if !qs.admissionLimiter.AllowQueryRequest(caller) {
+		return nil, ErrQueryRateLimitExceeded
+	}
 
 	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {
 		if batchSize <= 0 {

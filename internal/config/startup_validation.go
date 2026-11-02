@@ -125,6 +125,15 @@ func (c QueryConfig) Validate() error {
 	if c.MaxConcurrentQueriesPerTenant < 0 {
 		return fmt.Errorf("query.max_concurrent_queries_per_tenant cannot be negative")
 	}
+	if c.RateLimitPerMinutePerTenant < 0 {
+		return fmt.Errorf("query.rate_limit_per_minute_per_tenant cannot be negative")
+	}
+	if c.RateLimitBurstPerTenant < 0 {
+		return fmt.Errorf("query.rate_limit_burst_per_tenant cannot be negative")
+	}
+	if (c.RateLimitPerMinutePerTenant == 0) != (c.RateLimitBurstPerTenant == 0) {
+		return fmt.Errorf("query.rate_limit_per_minute_per_tenant and query.rate_limit_burst_per_tenant must both be zero to disable query rate limiting")
+	}
 	switch strings.TrimSpace(c.ExecutionMode) {
 	case "auto", "streaming", "pagination":
 		return nil

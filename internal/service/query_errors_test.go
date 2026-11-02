@@ -31,6 +31,12 @@ func TestSafeQueryErrorMessageHidesInternalDetails(t *testing.T) {
 	}
 }
 
+func TestSafeQueryErrorMessageForTenantRateLimit(t *testing.T) {
+	if got, want := SafeQueryErrorMessage(ErrQueryRateLimitExceeded), "The tenant query request rate limit was reached. Retry shortly."; got != want {
+		t.Fatalf("SafeQueryErrorMessage() = %q, want %q", got, want)
+	}
+}
+
 func TestLegacyQueryErrorResponseOmitsSQLAndDriverDetails(t *testing.T) {
 	query := "SELECT 'password=sql-secret' FROM private.customers"
 	internalErr := errors.New("coordinator at db.internal leaked password=driver-secret")

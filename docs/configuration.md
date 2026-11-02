@@ -144,6 +144,8 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `query.execution_mode` | String | `auto` (`auto`, `streaming`, or `pagination`) |
 | `query.max_concurrent_queries_per_tenant` | Integer | `25`; limits combined active streams and in-flight paginated queries per tenant (falls back to user ID when no tenant claim is present) |
 | `query.max_concurrent_streams_per_tenant` | Integer | Deprecated alias for `query.max_concurrent_queries_per_tenant` |
+| `query.rate_limit_per_minute_per_tenant` | Integer | `120`; shared query execution and continuation request budget per tenant |
+| `query.rate_limit_burst_per_tenant` | Integer | `20`; initial burst capacity for the per-tenant query request budget |
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |
@@ -179,6 +181,15 @@ using the source. Limits are process-local and are not shared across replicas.
 Set `query.max_concurrent_queries_per_tenant` to a positive integer to tune the
 tenant cap. The older `query.max_concurrent_streams_per_tenant` key remains
 supported as a deprecated alias.
+
+Query execution and continuation requests also share a process-local token
+bucket per tenant across HTTP and MCP. The default budget is 120 requests per
+minute with a burst of 20; tenant-less authenticated callers are bucketed by
+user ID. Set `query.rate_limit_per_minute_per_tenant` and
+`query.rate_limit_burst_per_tenant` to `0` to disable this query-specific
+budget. Rejected work receives HTTP 429 `QUERY_RATE_LIMIT_EXCEEDED` or the same
+stable message through MCP, before the connector is used. This budget does not
+coordinate across gateway replicas.
 
 
 ## SQL dialect translation runtime
@@ -850,6 +861,8 @@ Every service-config field supports this mapping:
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
 | `query.max_concurrent_queries_per_tenant` | `QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT` |
 | `query.max_concurrent_streams_per_tenant` (deprecated) | `QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT` |
+| `query.rate_limit_per_minute_per_tenant` | `QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT` |
+| `query.rate_limit_burst_per_tenant` | `QUERY_RATE_LIMIT_BURST_PER_TENANT` |
 | `mcp.enabled` | `MCP_ENABLED` |
 | `mcp.transport` | `MCP_TRANSPORT` |
 | <code>mcp.max_concurrent_requests</code> | <code>MCP_MAX_CONCURRENT_REQUESTS</code> |

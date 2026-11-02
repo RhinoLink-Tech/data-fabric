@@ -101,6 +101,9 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 		{"zero body limit", func(c *Config) { c.Server.MaxRequestBodyBytes = 0 }, "server.max_request_body_bytes"},
 		{"invalid query execution mode", func(c *Config) { c.Query.ExecutionMode = "background" }, "query.execution_mode"},
 		{"negative per-tenant query limit", func(c *Config) { c.Query.MaxConcurrentQueriesPerTenant = -1 }, "query.max_concurrent_queries_per_tenant"},
+		{"negative tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = -1 }, "query.rate_limit_per_minute_per_tenant"},
+		{"negative tenant query burst", func(c *Config) { c.Query.RateLimitBurstPerTenant = -1 }, "query.rate_limit_burst_per_tenant"},
+		{"incomplete tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = 120 }, "must both be zero"},
 		{"missing JWT secret", func(c *Config) { c.Security.JWTSecret = "" }, "security.jwt_secret"},
 	}
 	for _, tc := range tests {

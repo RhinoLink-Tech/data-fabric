@@ -81,6 +81,8 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	_ = viper.BindEnv("query.max_concurrent_queries_per_tenant", "QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
 	_ = viper.BindEnv("query.max_concurrent_streams_per_tenant", "QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
+	_ = viper.BindEnv("query.rate_limit_per_minute_per_tenant", "QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT")
+	_ = viper.BindEnv("query.rate_limit_burst_per_tenant", "QUERY_RATE_LIMIT_BURST_PER_TENANT")
 	_ = viper.BindEnv("database.database", "DATABASE_DATABASE", "DATABASE_NAME")
 	_ = viper.BindEnv("database.username", "DATABASE_USERNAME")
 	_ = viper.BindEnv("database.password", "DATABASE_PASSWORD")
@@ -152,6 +154,8 @@ func setDefaults() {
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
 	viper.SetDefault("query.max_concurrent_queries_per_tenant", 25)
 	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
+	viper.SetDefault("query.rate_limit_per_minute_per_tenant", 120)
+	viper.SetDefault("query.rate_limit_burst_per_tenant", 20)
 
 	// SQL translation runtime limits and process configuration.
 	viper.SetDefault("sql_translation.enabled", true)
@@ -217,4 +221,6 @@ type QueryConfig struct {
 	ExecutionMode                 string `mapstructure:"execution_mode"`
 	MaxConcurrentQueriesPerTenant int    `mapstructure:"max_concurrent_queries_per_tenant"`
 	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"` // deprecated compatibility alias
+	RateLimitPerMinutePerTenant   int    `mapstructure:"rate_limit_per_minute_per_tenant"`
+	RateLimitBurstPerTenant       int    `mapstructure:"rate_limit_burst_per_tenant"`
 }

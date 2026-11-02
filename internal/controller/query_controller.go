@@ -344,6 +344,9 @@ func requestingUser(c *gin.Context) string {
 // existence cannot be probed through /fetch either.
 func (qc *QueryController) writeQueryError(c *gin.Context, caller *security.Caller, err error) {
 	slog.ErrorContext(c.Request.Context(), "query request failed", "correlation_id", qc.getCorrelationID(c), "error", err)
+	if errors.Is(err, queryservice.ErrQueryRateLimitExceeded) {
+		c.Header("Retry-After", "1")
+	}
 	if (errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied)) && caller != nil && !caller.IsAdmin() {
 		c.JSON(http.StatusForbidden, response.ErrorResponse(
 			"DATASOURCE_ACCESS_DENIED",
@@ -418,6 +421,8 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusConflict, "DATASOURCE_INACTIVE"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
+	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
+		return http.StatusTooManyRequests, "QUERY_RATE_LIMIT_EXCEEDED"
 	case errors.Is(err, queryservice.ErrExactCountUnavailable):
 		// The statement is valid but its shape cannot be counted exactly (#23)
 		return http.StatusUnprocessableEntity, "COUNT_UNSUPPORTED"
