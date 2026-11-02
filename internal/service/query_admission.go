@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	defaultMaxConcurrentQueries          = 100
-	defaultMaxConcurrentQueriesPerTenant = 25
+	defaultMaxConcurrentQueries            = 100
+	defaultMaxConcurrentQueriesPerTenant   = 25
+	defaultMaxQueryRequestRateLimitBuckets = 10000
 )
 
 // QueryAdmissionLimiter bounds source work shared by streaming and pagination
@@ -24,6 +25,7 @@ type QueryAdmissionLimiter struct {
 	byCallerKey                map[string]int
 	requestsPerMinutePerTenant int
 	requestBurstPerTenant      int
+	maxRequestBuckets          int
 	requestBuckets             map[string]*queryRequestRateBucket
 	lastRequestBucketCleanupAt time.Time
 }
@@ -55,6 +57,7 @@ func NewQueryAdmissionLimiterWithRateLimit(maxConcurrent, maxPerTenant, requests
 		byCallerKey:                make(map[string]int),
 		requestsPerMinutePerTenant: requestsPerMinutePerTenant,
 		requestBurstPerTenant:      requestBurstPerTenant,
+		maxRequestBuckets:          defaultMaxQueryRequestRateLimitBuckets,
 		requestBuckets:             make(map[string]*queryRequestRateBucket),
 	}
 }
@@ -101,7 +104,8 @@ func (limiter *QueryAdmissionLimiter) Acquire(caller *security.Caller) (func(), 
 
 // AllowQueryRequest charges one query execution or continuation request to its
 // validated tenant bucket. Tenant-less callers use their validated user ID;
-// anonymous callers share one process-local bucket.
+// anonymous callers share one process-local bucket. New buckets are rejected
+// when the process-local bucket table reaches its fixed cardinality bound.
 func (limiter *QueryAdmissionLimiter) AllowQueryRequest(caller *security.Caller) bool {
 	if limiter == nil || limiter.requestsPerMinutePerTenant <= 0 || limiter.requestBurstPerTenant <= 0 {
 		return true
@@ -125,6 +129,13 @@ func (limiter *QueryAdmissionLimiter) AllowQueryRequest(caller *security.Caller)
 	}
 
 	bucket := limiter.requestBuckets[key]
+	maxRequestBuckets := limiter.maxRequestBuckets
+	if maxRequestBuckets <= 0 {
+		maxRequestBuckets = defaultMaxQueryRequestRateLimitBuckets
+	}
+	if bucket == nil && len(limiter.requestBuckets) >= maxRequestBuckets {
+		return false
+	}
 	if bucket == nil {
 		bucket = &queryRequestRateBucket{
 			limiter: rate.NewLimiter(
