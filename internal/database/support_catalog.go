@@ -128,14 +128,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 	case model.DatabaseTypeMariaDB:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "11.8.9 only"
-		profile.VerifiedServerVersions = []string{"11.8.9"}
-		profile.VersionPolicy = "Only MariaDB 11.8.9 has a pinned contract result; other MariaDB versions and MySQL are not implied to be compatible."
+		profile.SupportedVersionRange = "10.11.19 and 11.8.9 only"
+		profile.VerifiedServerVersions = []string{"10.11.19", "11.8.9"}
+		profile.VersionPolicy = "Only MariaDB 10.11.19 and 11.8.9 have pinned contract results; other MariaDB versions and MySQL are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MariaDB 11.8.9 contract tests."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 10.11.19 and 11.8.9 driver contracts. TLS certificate/hostname verification is covered by the MariaDB 11.8.9 contract only."
 		profile.Limitations = []string{
-			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
-			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MariaDB versions are not covered.",
+			"The MariaDB contract tests exercise the shared MySQL-protocol driver against MariaDB 10.11.19 and 11.8.9, including database-side read-only sessions.",
+			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext against MariaDB 11.8.9 only. TLS behavior on MariaDB 10.11.19 and other versions is not covered.",
 		}
 	case model.DatabaseTypeTiDB:
 		profile.Status = ConnectorStatusEndToEndVerified

@@ -48,7 +48,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ### Completed: verify MariaDB TLS using the shared MySQL protocol driver
 
-[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. Other MariaDB versions remain outside this evidence.
+[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. [#326](https://github.com/RhinoLink-Tech/data-fabric/issues/326) adds driver-contract coverage for the MariaDB 10.11 LTS baseline; TLS evidence remains specific to 11.8.9.
 
 ### Completed: verify openGauss server identity over TLS
 
