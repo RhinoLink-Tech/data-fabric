@@ -20,7 +20,10 @@ The metrics endpoint stays admin-only regardless of the management API setting. 
 - `data_fabric_query_duration_seconds`: time spent executing the initial query request.
 - `data_fabric_query_rows_read_total`: rows returned in the initial batch.
 - `data_fabric_query_errors_total`: failed initial executions with a bounded error category.
+- `data_fabric_query_admission_rejections_total`: requests rejected by the process-local query admission limits, labeled by the fixed `reason` values `concurrency_limit` or `request_rate_limit` (unexpected values are grouped as `other`).
 
 The initial `/fetch` request records one query observation. Continuation requests are counted as HTTP requests and do not increment the query execution counter again.
 
 Metric labels use route templates and bounded values. The endpoint does not export SQL text, data-source IDs, raw unmatched URL paths, or backend error messages. Unknown HTTP methods, unmatched routes, and unknown driver types are grouped into fixed labels.
+
+Admission rejections are aggregated across tenants and callers. No tenant or user identifiers are included. For example, `rate(data_fabric_query_admission_rejections_total{reason="request_rate_limit"}[5m])` shows the recent per-second rate of requests rejected by the request-rate budget; use `reason="concurrency_limit"` to inspect concurrency pressure.

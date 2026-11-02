@@ -148,6 +148,86 @@ func TestFetchQueryRecordsPrometheusMetricsOnce(t *testing.T) {
 	}
 }
 
+func TestQueryAdmissionRejectionsAreCountedAcrossExecutionPaths(t *testing.T) {
+	middleware.InitMetrics()
+	concurrencyMetric := `data_fabric_query_admission_rejections_total{reason="concurrency_limit"}`
+	rateMetric := `data_fabric_query_admission_rejections_total{reason="request_rate_limit"}`
+
+	assertIncrement := func(metric string, run func() error) {
+		t.Helper()
+		before := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+		if err := run(); err == nil {
+			t.Fatalf("operation unexpectedly succeeded; expected admission rejection for %s", metric)
+		}
+		after := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+		if after != before+1 {
+			t.Fatalf("metric %s = %v, want %v", metric, after, before+1)
+		}
+	}
+
+	assertIncrement(rateMetric, func() error {
+		unified := newTestUnifiedService(nil, service.ErrQueryRateLimitExceeded)
+		_, err := unified.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{DataSourceID: "ds", SQL: "SELECT 1"})
+		return err
+	})
+
+	assertIncrement(concurrencyMetric, func() error {
+		pagination := &routingPaginationStub{}
+		streaming := &routingStreamingStub{fetchErr: service.ErrMaxConcurrentStreams}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModeStreaming}}, pagination, streaming)
+		_, err := unified.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{DataSourceID: "ds", Type: 2, SQL: "SELECT 1"})
+		return err
+	})
+
+	assertIncrement(concurrencyMetric, func() error {
+		pagination := &routingPaginationStub{nextErr: service.ErrQueryAdmissionLimit}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModePagination}}, pagination, &routingStreamingStub{})
+		_, err := unified.FetchNextBatch(context.Background(), nil, "q", "slug", "token", 100)
+		return err
+	})
+
+	assertIncrement(rateMetric, func() error {
+		streaming := &routingStreamingStub{nextErr: service.ErrQueryRateLimitExceeded}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModeStreaming}}, &routingPaginationStub{}, streaming)
+		_, err := unified.FetchNextBatch(context.Background(), nil, "q", "slug", "token", 100)
+		return err
+	})
+}
+
+func prometheusMetricValueOrZero(t *testing.T, exposition, seriesPrefix string) float64 {
+	t.Helper()
+	for _, line := range strings.Split(exposition, "\n") {
+		if strings.HasPrefix(line, seriesPrefix+" ") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				t.Fatalf("malformed metric sample: %q", line)
+			}
+			value, err := strconv.ParseFloat(fields[len(fields)-1], 64)
+			if err != nil {
+				t.Fatalf("parse metric value from %q: %v", line, err)
+			}
+			return value
+		}
+	}
+	return 0
+}
+
+func TestQueryAdmissionMetricUsesBoundedReasonLabels(t *testing.T) {
+	middleware.InitMetrics()
+	metric := `data_fabric_query_admission_rejections_total{reason="other"}`
+	before := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+
+	middleware.RecordQueryAdmissionRejection("tenant-secret-value")
+	body := scrapePrometheusMetrics(t)
+	after := prometheusMetricValueOrZero(t, body, metric)
+	if after != before+1 {
+		t.Fatalf("other rejection metric = %v, want %v", after, before+1)
+	}
+	if strings.Contains(body, "tenant-secret-value") {
+		t.Fatal("admission rejection metric exposed an unbounded reason label")
+	}
+}
+
 func scrapePrometheusMetrics(t *testing.T) string {
 	t.Helper()
 	recorder := httptest.NewRecorder()

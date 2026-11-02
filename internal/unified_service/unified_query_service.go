@@ -68,6 +68,7 @@ func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security
 	var rowsRead int64
 	if err != nil {
 		status = "error"
+		recordQueryAdmissionRejection(err)
 		middleware.RecordQueryError(executionMode, "execution_error")
 	} else if result != nil {
 		rowsRead = int64(len(result.Entries))
@@ -217,7 +218,11 @@ func markExecutionMode(response *model.FetchQueryResponse, mode string) {
 // FetchNextBatch routes continuations using the forced configured mode. In auto
 // mode it probes the streaming session first, then falls back to pagination
 // only when no streaming session exists.
-func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (*model.FetchQueryResponse, error) {
+func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (response *model.FetchQueryResponse, err error) {
+	defer func() {
+		recordQueryAdmissionRejection(err)
+	}()
+
 	switch strings.ToLower(strings.TrimSpace(uqs.getExecutionMode())) {
 	case executionModeStreaming:
 		if uqs.streamingService == nil {
@@ -244,6 +249,15 @@ func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *secu
 		result, err := uqs.paginationService.FetchNextBatch(ctx, caller, queryID, slug, token, batchSize)
 		markExecutionMode(result, executionModePagination)
 		return result, err
+	}
+}
+
+func recordQueryAdmissionRejection(err error) {
+	switch {
+	case errors.Is(err, service.ErrQueryAdmissionLimit), errors.Is(err, service.ErrMaxConcurrentStreams):
+		middleware.RecordQueryAdmissionRejection("concurrency_limit")
+	case errors.Is(err, service.ErrQueryRateLimitExceeded):
+		middleware.RecordQueryAdmissionRejection("request_rate_limit")
 	}
 }
 
