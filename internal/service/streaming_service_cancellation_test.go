@@ -67,6 +67,7 @@ func TestExecuteStreamQueryHonorsRequestDeadline(t *testing.T) {
 
 	svc, pool := newStreamingTestService(t, server)
 	defer func() { _ = pool.CloseAll() }()
+	svc.maxStreamsPerTenant = 1
 	_, _, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM slow_table",
@@ -204,6 +205,11 @@ func TestExecuteStreamQueryCleansUpWhenCountFails(t *testing.T) {
 	if got := len(svc.GetAllStreams()); got != 0 {
 		t.Fatalf("failed query left %d active streams", got)
 	}
+	release, admitted := svc.acquireStreamAdmission(nil)
+	if !admitted {
+		t.Fatal("failed query did not release its stream admission slot")
+	}
+	release()
 }
 
 func serverURL(r *http.Request) string {

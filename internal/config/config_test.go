@@ -105,38 +105,39 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	resetViper(t)
 
 	values := map[string]string{
-		"SERVER_PORT":                    "9081",
-		"SERVER_MODE":                    "test",
-		"SERVER_HOST":                    "127.0.0.1",
-		"SERVER_READ_HEADER_TIMEOUT":     "12s",
-		"SERVER_READ_TIMEOUT":            "45s",
-		"SERVER_WRITE_TIMEOUT":           "32m",
-		"SERVER_IDLE_TIMEOUT":            "90s",
-		"SERVER_MAX_REQUEST_BODY_BYTES":  "2048",
-		"DATABASE_HOST":                  "db.internal",
-		"DATABASE_PORT":                  "5432",
-		"DATABASE_DATABASE":              "analytics",
-		"DATABASE_NAME":                  "legacy-analytics",
-		"DATABASE_USERNAME":              "env-user",
-		"DATABASE_PASSWORD":              "env-pass",
-		"DATABASE_SSL":                   "require",
-		"SECURITY_JWT_SECRET":            strings.Repeat("s", 32),
-		"JWT_SECRET":                     strings.Repeat("j", 32),
-		"SECURITY_JWT_EXPIRATION":        "12h",
-		"SECURITY_RATE_LIMIT_PER_MINUTE": "123",
-		"SECURITY_RATE_LIMIT_BURST":      "24",
-		"SECURITY_ENABLE_AUTH":           "false",
-		"SECURITY_ENABLE_RATE_LIMIT":     "false",
-		"SECURITY_ENFORCE_READ_ONLY":     "false",
-		"LOGGING_LEVEL":                  "debug",
-		"LOGGING_FORMAT":                 "text",
-		"QUERY_PREFER_STREAMING":         "false",
-		"QUERY_EXECUTION_MODE":           "pagination",
-		"MCP_ENABLED":                    "true",
-		"MCP_TRANSPORT":                  "stdio",
-		"MCP_ADDRESS":                    "127.0.0.1:9090",
-		"MCP_TLS_CERT_FILE":              "/tmp/mcp.crt",
-		"MCP_TLS_KEY_FILE":               "/tmp/mcp.key",
+		"SERVER_PORT":                             "9081",
+		"SERVER_MODE":                             "test",
+		"SERVER_HOST":                             "127.0.0.1",
+		"SERVER_READ_HEADER_TIMEOUT":              "12s",
+		"SERVER_READ_TIMEOUT":                     "45s",
+		"SERVER_WRITE_TIMEOUT":                    "32m",
+		"SERVER_IDLE_TIMEOUT":                     "90s",
+		"SERVER_MAX_REQUEST_BODY_BYTES":           "2048",
+		"DATABASE_HOST":                           "db.internal",
+		"DATABASE_PORT":                           "5432",
+		"DATABASE_DATABASE":                       "analytics",
+		"DATABASE_NAME":                           "legacy-analytics",
+		"DATABASE_USERNAME":                       "env-user",
+		"DATABASE_PASSWORD":                       "env-pass",
+		"DATABASE_SSL":                            "require",
+		"SECURITY_JWT_SECRET":                     strings.Repeat("s", 32),
+		"JWT_SECRET":                              strings.Repeat("j", 32),
+		"SECURITY_JWT_EXPIRATION":                 "12h",
+		"SECURITY_RATE_LIMIT_PER_MINUTE":          "123",
+		"SECURITY_RATE_LIMIT_BURST":               "24",
+		"SECURITY_ENABLE_AUTH":                    "false",
+		"SECURITY_ENABLE_RATE_LIMIT":              "false",
+		"SECURITY_ENFORCE_READ_ONLY":              "false",
+		"LOGGING_LEVEL":                           "debug",
+		"LOGGING_FORMAT":                          "text",
+		"QUERY_PREFER_STREAMING":                  "false",
+		"QUERY_EXECUTION_MODE":                    "pagination",
+		"QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT": "7",
+		"MCP_ENABLED":                             "true",
+		"MCP_TRANSPORT":                           "stdio",
+		"MCP_ADDRESS":                             "127.0.0.1:9090",
+		"MCP_TLS_CERT_FILE":                       "/tmp/mcp.crt",
+		"MCP_TLS_KEY_FILE":                        "/tmp/mcp.key",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -182,7 +183,7 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	if cfg.Logging.Level != "debug" || cfg.Logging.Format != "text" {
 		t.Errorf("logging settings = %+v, want environment overrides", cfg.Logging)
 	}
-	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" {
+	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentStreamsPerTenant != 7 {
 		t.Errorf("query settings = %+v, want environment overrides", cfg.Query)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" || cfg.MCP.Address != "127.0.0.1:9090" ||

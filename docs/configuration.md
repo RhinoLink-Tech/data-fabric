@@ -142,6 +142,7 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `logging.format` | String | `json` |
 | `query.prefer_streaming` | Boolean | `true` |
 | `query.execution_mode` | String | `auto` (`auto`, `streaming`, or `pagination`) |
+| `query.max_concurrent_streams_per_tenant` | Integer | `25`; limits active and starting SQL streams per tenant (falls back to user ID when no tenant claim is present) |
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |
@@ -169,6 +170,12 @@ The response includes `executionMode` with the engine that handled the request
 (`streaming` or `pagination`). Explicit `query.execution_mode: streaming` and
 `pagination` force the configured path; `auto` applies the selection rules
 above.
+
+The streaming service also enforces a process-wide cap of 100 concurrent
+streams. The per-tenant limit counts streams while their database query is
+starting as well as while results remain open; it is process-local and is not
+shared across replicas. Set `query.max_concurrent_streams_per_tenant` to a
+positive integer to tune the tenant cap.
 
 
 ## SQL dialect translation runtime
@@ -838,6 +845,7 @@ Every service-config field supports this mapping:
 | `logging.format` | `LOGGING_FORMAT` |
 | `query.prefer_streaming` | `QUERY_PREFER_STREAMING` |
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
+| `query.max_concurrent_streams_per_tenant` | `QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT` |
 | `mcp.enabled` | `MCP_ENABLED` |
 | `mcp.transport` | `MCP_TRANSPORT` |
 | <code>mcp.max_concurrent_requests</code> | <code>MCP_MAX_CONCURRENT_REQUESTS</code> |

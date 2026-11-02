@@ -189,6 +189,9 @@ type streamingService struct {
 	activeStreams           map[string]*ActiveStream
 	streamsMutex            sync.RWMutex
 	maxStreams              int
+	maxStreamsPerTenant     int
+	streamAdmissionLimiter  *streamAdmissionLimiter
+	streamAdmissionInit     sync.Once
 	streamTimeout           time.Duration
 	streamingSessionManager *StreamingSessionManager
 	sqlValidator            *security.SQLValidator
@@ -199,20 +202,21 @@ type streamingService struct {
 
 // ActiveStream represents an active streaming query
 type ActiveStream struct {
-	ID             string
-	DataSourceID   string
-	DatabaseType   model.DatabaseType
-	Rows           *sql.Rows
-	querySQL       string
-	Columns        []model.ColumnInfo
-	Tables         []sqlanalysis.TableReference
-	StartedAt      time.Time
-	LastActivityAt time.Time
-	RowsSent       int64
-	BytesSent      int64
-	CancelFunc     context.CancelFunc
-	mutex          sync.Mutex
-	activityMutex  sync.Mutex
+	ID               string
+	DataSourceID     string
+	DatabaseType     model.DatabaseType
+	Rows             *sql.Rows
+	querySQL         string
+	Columns          []model.ColumnInfo
+	Tables           []sqlanalysis.TableReference
+	StartedAt        time.Time
+	LastActivityAt   time.Time
+	RowsSent         int64
+	BytesSent        int64
+	CancelFunc       context.CancelFunc
+	releaseAdmission func()
+	mutex            sync.Mutex
+	activityMutex    sync.Mutex
 }
 
 func (stream *ActiveStream) touch(at time.Time) {
@@ -278,6 +282,12 @@ func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSource
 // NewStreamingServiceWithTableAuthorizerAndStats creates a streaming service
 // that contributes to the supplied gateway-wide statistics tracker.
 func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, authorizer, stats, defaultMaxConcurrentStreamsPerTenant, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizerAndStatsAndLimits also configures the
+// maximum number of streams one validated tenant may start or keep active.
+func NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, maxStreamsPerTenant int, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -289,11 +299,16 @@ func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.Da
 	if stats == nil {
 		stats = NewQueryStatsTracker()
 	}
+	if maxStreamsPerTenant <= 0 {
+		maxStreamsPerTenant = defaultMaxConcurrentStreamsPerTenant
+	}
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
 		connPool:                connPool,
 		activeStreams:           make(map[string]*ActiveStream),
-		maxStreams:              100, // Max concurrent streams
+		maxStreams:              defaultMaxConcurrentStreams,
+		maxStreamsPerTenant:     maxStreamsPerTenant,
+		streamAdmissionLimiter:  newStreamAdmissionLimiter(),
 		streamTimeout:           5 * time.Minute,
 		streamingSessionManager: NewStreamingSessionManager(),
 		sqlValidator:            validator,
@@ -308,11 +323,6 @@ func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.Da
 func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) (string, int64, error) {
 	requestCtx, requestCancel := withQueryTimeout(ctx, req.Timeout)
 	defer requestCancel()
-
-	// Check stream limit
-	if ss.getActiveStreamCount() >= ss.maxStreams {
-		return "", 0, ErrMaxConcurrentStreams
-	}
 
 	// Bind parameters are validated before any data source is touched and
 	// flow to both the stream statement and its count (#21).
@@ -358,6 +368,20 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
 		}
 	}
+
+	// Reserve capacity atomically before opening a source connection. The
+	// reservation is held through query startup and transferred to ActiveStream
+	// once the result cursor is registered.
+	releaseAdmission, admitted := ss.acquireStreamAdmission(caller)
+	if !admitted {
+		return "", 0, ErrMaxConcurrentStreams
+	}
+	admissionTransferred := false
+	defer func() {
+		if !admissionTransferred {
+			releaseAdmission()
+		}
+	}()
 
 	streamLifetime := ss.streamTimeout
 	if streamLifetime <= 0 {
@@ -420,20 +444,22 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 
 	streamID := ss.generateStreamID()
 	stream := &ActiveStream{
-		ID:             streamID,
-		DataSourceID:   req.DataSourceID,
-		DatabaseType:   dataSource.Type,
-		Rows:           rows,
-		querySQL:       querySQL,
-		Columns:        columnInfo,
-		Tables:         append([]sqlanalysis.TableReference(nil), tables...),
-		StartedAt:      time.Now(),
-		LastActivityAt: time.Now(),
-		CancelFunc:     cancel,
+		ID:               streamID,
+		DataSourceID:     req.DataSourceID,
+		DatabaseType:     dataSource.Type,
+		Rows:             rows,
+		querySQL:         querySQL,
+		Columns:          columnInfo,
+		Tables:           append([]sqlanalysis.TableReference(nil), tables...),
+		StartedAt:        time.Now(),
+		LastActivityAt:   time.Now(),
+		CancelFunc:       cancel,
+		releaseAdmission: releaseAdmission,
 	}
 	ss.streamsMutex.Lock()
 	ss.activeStreams[streamID] = stream
 	ss.streamsMutex.Unlock()
+	admissionTransferred = true
 
 	totalCount, err := ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
 	if err != nil {
@@ -455,6 +481,23 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 
 	streamTransferred = true
 	return streamID, totalCount, nil
+}
+
+func (ss *streamingService) acquireStreamAdmission(caller *security.Caller) (func(), bool) {
+	ss.streamAdmissionInit.Do(func() {
+		if ss.streamAdmissionLimiter == nil {
+			ss.streamAdmissionLimiter = newStreamAdmissionLimiter()
+		}
+	})
+	maxTotal := ss.maxStreams
+	if maxTotal <= 0 {
+		maxTotal = defaultMaxConcurrentStreams
+	}
+	maxPerTenant := ss.maxStreamsPerTenant
+	if maxPerTenant <= 0 {
+		maxPerTenant = defaultMaxConcurrentStreamsPerTenant
+	}
+	return ss.streamAdmissionLimiter.acquire(caller, maxTotal, maxPerTenant)
 }
 
 // FetchStreamChunk fetches the next chunk of data from a stream
@@ -622,11 +665,19 @@ func (ss *streamingService) closeStreamLocked(streamID string, stream *ActiveStr
 		}
 	}
 
+	deleted := false
 	ss.streamsMutex.Lock()
 	if ss.activeStreams[streamID] == stream {
 		delete(ss.activeStreams, streamID)
+		deleted = true
 	}
 	ss.streamsMutex.Unlock()
+	if !deleted {
+		return nil
+	}
+	if stream.releaseAdmission != nil {
+		stream.releaseAdmission()
+	}
 
 	if ss.streamingSessionManager != nil {
 		ss.streamingSessionManager.DeleteByStreamID(streamID)
