@@ -1,6 +1,6 @@
 # Data Fabric Roadmap
 
-**Last reviewed: 2026-11-01**
+**Last reviewed: 2026-11-02**
 
 ## Product direction
 
@@ -51,6 +51,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify openGauss server identity over TLS
 
 [#304](https://github.com/RhinoLink-Tech/data-fabric/issues/304) makes the openGauss connector honor sslMode and sslRootCert. The pinned openGauss 6.0.0 contract verifies a private CA and hostname, rejects an untrusted CA and hostname mismatch, and preserves legacy ssl: true/false behavior. Other openGauss versions remain outside this evidence.
+
+### Completed: verify SQL Server server identity over TLS
+
+[#306](https://github.com/RhinoLink-Tech/data-fabric/issues/306) adds private-CA verification for the SQL Server connector. The pinned SQL Server 16.0.4305.5 contract accepts a trusted CA and matching hostname, rejects an untrusted CA and hostname mismatch, and confirms the explicit certificate-bypass compatibility setting and plaintext behavior when TLS is disabled. Other SQL Server versions remain outside this evidence.
 
 ### 1. Raise connector confidence from real demand
 
