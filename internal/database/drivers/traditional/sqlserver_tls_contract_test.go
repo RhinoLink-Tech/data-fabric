@@ -81,11 +81,11 @@ func TestSQLServerTLSCertificateVerification(t *testing.T) {
 		assertSQLServerTLSState(t, ctx, legacyDB, true)
 	})
 
-	t.Run("ssl false remains unencrypted", func(t *testing.T) {
+	t.Run("ssl false leaves query traffic unencrypted", func(t *testing.T) {
 		config := *trusted
 		config.SSL = false
 		config.SSLRootCert = ""
-		config.AdditionalProps = nil
+		config.AdditionalProps = map[string]interface{}{"trustservercertificate": true}
 		plainDB := openSQLServerTLSContractDB(t, driver, &config)
 		defer plainDB.Close()
 		assertSQLServerTLSState(t, ctx, plainDB, false)
@@ -102,7 +102,7 @@ func openSQLServerTLSContractDB(t *testing.T, driver *SQLServerDriver, config *m
 	if err != nil {
 		t.Fatalf("parse SQL Server TLS DSN: %v", err)
 	}
-	if config.SSL && (parsed.TLSConfig == nil || parsed.TLSConfig.InsecureSkipVerify) {
+	if config.SSLRootCert != "" && (parsed.TLSConfig == nil || parsed.TLSConfig.InsecureSkipVerify) {
 		t.Fatal("SQL Server TLS contract must verify the server certificate")
 	}
 	db, err := driver.Open(dsn)

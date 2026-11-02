@@ -198,7 +198,7 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.AuthenticationDisclosure = "SQL authentication and TLS certificate/hostname verification are covered by the SQL Server 16.0.4305.5 contract tests."
 		profile.Limitations = []string{
 			"The SQL Server 16.0.4305.5 contract covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, query errors, and TLS certificate/hostname verification with a generated CA.",
-			"TLS verification rejects an untrusted CA and hostname mismatch; the contract also confirms the explicit TrustServerCertificate compatibility path and ssl=false plaintext behavior. Other SQL Server versions are not covered.",
+			"TLS verification rejects an untrusted CA and hostname mismatch; the contract also confirms the explicit TrustServerCertificate compatibility path and that ssl=false leaves query traffic unencrypted. Other SQL Server versions are not covered.",
 			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account.",
 		}
 	case model.DatabaseTypeOracle:

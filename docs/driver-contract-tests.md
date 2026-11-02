@@ -439,7 +439,7 @@ On an x86-64 Linux host with Docker, OpenSSL, and Go installed, run:
 bash scripts/contracts/run_sqlserver_tls_contract.sh
 ~~~~
 
-The script builds the pinned SQL Server image with a short-lived test certificate for localhost, runs the SQL Server query contract, and checks verified TLS, untrusted-CA rejection, hostname-mismatch rejection, the explicit TrustServerCertificate compatibility path, and ssl=false plaintext behavior. It removes the temporary container and image when the run finishes.
+The script builds the pinned SQL Server image with a short-lived test certificate for localhost, runs the SQL Server query contract, and checks verified TLS, untrusted-CA rejection, hostname-mismatch rejection, the explicit TrustServerCertificate compatibility path, and that ssl=false leaves query traffic unencrypted (the login packet may still use TLS). It removes the temporary container and image when the run finishes.
 
 Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test-only TrustServerCertificate path deliberately bypasses certificate verification; the separate verified-TLS cases keep that option disabled. Other SQL Server versions remain outside this contract.
 
