@@ -36,6 +36,8 @@ For MySQL, set `ssl: true` to verify the server certificate and hostname with th
 
 MariaDB uses the same MySQL-protocol connector settings. The pinned MariaDB 11.8.9 contract verifies certificate and hostname validation with a private CA; other MariaDB versions are not covered by that test.
 
+For SQL Server, set `ssl: true` to require encryption and validate the server certificate and hostname against the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make it readable inside the Data Fabric process; this setting requires `ssl: true`. The hostname is checked against the configured data-source host. An explicit `additionalProps.trustservercertificate=true` bypasses certificate checks and is intended only for compatibility testing. This TLS contract is verified against SQL Server 16.0.4305.5.
+
 For TiDB, set `ssl: true` to require TLS and verify the server certificate and hostname using the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against TiDB v8.5.8.
 
 Successful responses use this envelope:

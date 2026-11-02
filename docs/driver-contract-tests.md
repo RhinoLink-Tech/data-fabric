@@ -12,7 +12,7 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | MariaDB | 11.8.9 | mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68 | username/password; TLS certificate and hostname validation with private test CA |
 | TiDB | 8.5.8 (server reports 8.0.11-TiDB-v8.5.8) | pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5 | username/password; TLS certificate and hostname validation with test CA |
 | ClickHouse | 26.8.20.9 | clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688 | username and password |
-| SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication |
+| SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication; TLS certificate and hostname validation with generated CA |
 | MongoDB | 8.0.34 | mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b | database-scoped username and password |
 | Oracle | 23.26.3.0.0 | ghcr.io/gvenzl/oracle-free:23.26.3-slim@sha256:366fe85702d764d81a0272b72e94e629290c27aa72a47825fcc45701a0633dac | application schema user; SYSTEM for version probe |
 | Apache Doris | 4.1.3 | apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a | root for fixture setup; database-scoped username and password for the driver |
@@ -433,36 +433,15 @@ bash scripts/contracts/run_opengauss_tls_contract.sh
 
 ## Run the SQL Server contract locally
 
-The image requires an x86-64 Linux host. Start the exact image used by CI on local port 1434:
+On an x86-64 Linux host with Docker, OpenSSL, and Go installed, run:
 
 ~~~~sh
-docker run --rm --detach --name data-fabric-sqlserver-contract \
-  --publish 1434:1433 \
-  --env ACCEPT_EULA=Y \
-  --env MSSQL_PID=Developer \
-  --env MSSQL_SA_PASSWORD='DataFabric_2026!' \
-  mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
+bash scripts/contracts/run_sqlserver_tls_contract.sh
 ~~~~
 
-Wait for SQL Server to accept connections, then run:
+The script builds the pinned SQL Server image with a short-lived test certificate for localhost, runs the SQL Server query contract, and checks verified TLS, untrusted-CA rejection, hostname-mismatch rejection, the explicit TrustServerCertificate compatibility path, and ssl=false plaintext behavior. It removes the temporary container and image when the run finishes.
 
-~~~~sh
-export DATA_FABRIC_SQLSERVER_CONTRACT_HOST='127.0.0.1'
-export DATA_FABRIC_SQLSERVER_CONTRACT_PORT='1434'
-export DATA_FABRIC_SQLSERVER_CONTRACT_USERNAME='sa'
-export DATA_FABRIC_SQLSERVER_CONTRACT_PASSWORD='DataFabric_2026!'
-export DATA_FABRIC_SQLSERVER_CONTRACT_DATABASE='master'
-export DATA_FABRIC_SQLSERVER_EXPECTED_VERSION='16.0.4305.5'
-go test ./internal/database/drivers/traditional -run '^TestSQLServerDriverContract$' -count=1 -v
-~~~~
-
-Stop the test service when finished:
-
-~~~~sh
-docker stop data-fabric-sqlserver-contract
-~~~~
-
-Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test trusts the container's self-signed TLS certificate; production certificate validation and other SQL Server versions are not covered by this baseline.
+Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test-only TrustServerCertificate path deliberately bypasses certificate verification; the separate verified-TLS cases keep that option disabled. Other SQL Server versions remain outside this contract.
 
 TiDB 8.5.8 does not implement the generic session read-only statement; configure server-side permissions for read-only accounts. ClickHouse uses the native protocol and also does not use the gateway read-only session initializer.
 

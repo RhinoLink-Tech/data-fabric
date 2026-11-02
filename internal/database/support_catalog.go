@@ -195,10 +195,11 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"16.0.4305.5"}
 		profile.VersionPolicy = "Only SQL Server 16.0.4305.5 has a pinned contract result; other SQL Server versions are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "SQL authentication is covered by the SQL Server 16.0.4305.5 contract test; the test trusts the container's self-signed TLS certificate, so production certificate validation is not covered."
+		profile.AuthenticationDisclosure = "SQL authentication and TLS certificate/hostname verification are covered by the SQL Server 16.0.4305.5 contract tests."
 		profile.Limitations = []string{
-			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
-			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. Production TLS certificate validation and other SQL Server versions are not covered by this baseline.",
+			"The SQL Server 16.0.4305.5 contract covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, query errors, and TLS certificate/hostname verification with a generated CA.",
+			"TLS verification rejects an untrusted CA and hostname mismatch; the contract also confirms the explicit TrustServerCertificate compatibility path and ssl=false plaintext behavior. Other SQL Server versions are not covered.",
+			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account.",
 		}
 	case model.DatabaseTypeOracle:
 		profile.Status = ConnectorStatusEndToEndVerified
