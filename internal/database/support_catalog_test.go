@@ -87,7 +87,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			server       []string
 		}{
 			model.DatabaseTypePostgreSQL:  {productRange: "15.19, 16.15, 17.11, and 18.6", server: []string{"15.19", "16.15", "17.11", "18.6"}},
-			model.DatabaseTypeMySQL:       {productRange: "8.0.46", server: []string{"8.0.46"}},
+			model.DatabaseTypeMySQL:       {productRange: "8.0.46 and 8.4.13", server: []string{"8.0.46", "8.4.13"}},
 			model.DatabaseTypeMariaDB:     {productRange: "11.8.9", server: []string{"11.8.9"}},
 			model.DatabaseTypeTiDB:        {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
 			model.DatabaseTypeOpenGauss:   {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
@@ -380,7 +380,7 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 		t.Fatalf("type endpoint has missing or overly broad PostgreSQL verification evidence: %+v", postgres)
 	}
 	mysql, ok := info[string(model.DatabaseTypeMySQL)]
-	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46"}) {
+	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 and 8.4.13 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46", "8.4.13"}) {
 		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
 	}
 	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
