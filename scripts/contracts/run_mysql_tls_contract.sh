@@ -5,7 +5,8 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-mysql-tls-$RANDOM-$RANDOM"
 image_tag="data-fabric-mysql-tls:$RANDOM-$RANDOM"
-mysql_image="mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b"
+mysql_image="${DATA_FABRIC_MYSQL_TLS_IMAGE:-mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b}"
+expected_version="${DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION:-8.0.46}"
 
 cleanup() {
   docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -88,7 +89,7 @@ DATA_FABRIC_MYSQL_TLS_CONTRACT_HOST=localhost \
   DATA_FABRIC_MYSQL_TLS_CONTRACT_DATABASE=data_fabric_contract \
   DATA_FABRIC_MYSQL_TLS_ROOT_CA="$work_dir/ca.crt" \
   DATA_FABRIC_MYSQL_TLS_BAD_CA="$work_dir/bad-ca.crt" \
-  DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION=8.0.46 \
+  DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION="$expected_version" \
   go test ./internal/database/drivers/traditional -run '^TestMySQLTLSVerification$' -count=1 -v || {
     docker logs "$container_name" 2>&1 | grep -iE 'error|server is ready|ready for connections|ssl' | tail -40 || true
     exit 1

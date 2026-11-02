@@ -337,6 +337,25 @@ jobs:
       - name: Run MySQL TLS certificate contract
         run: bash scripts/contracts/run_mysql_tls_contract.sh
 
+  mysql-84-tls-contract:
+    name: MySQL 8.4.13 TLS certificate contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MySQL 8.4.13 TLS certificate contract
+        env:
+          DATA_FABRIC_MYSQL_TLS_IMAGE: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
+          DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION: "8.4.13"
+        run: bash scripts/contracts/run_mysql_tls_contract.sh
+
   mariadb-tls-contract:
     name: MariaDB TLS certificate contract
     runs-on: ubuntu-latest

@@ -8,7 +8,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ## Released baseline
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap update was prepared against mainline commit [37593b8](https://github.com/RhinoLink-Tech/data-fabric/commit/37593b86a9c7e8492c897615fe50fa8c9f8d83ac).
+[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap reflects the current mainline; the [support catalog](data-source-support.md) and [contract report](driver-contract-tests.md) are the exact source for connector evidence.
 
 ### Delivered capabilities
 
@@ -17,7 +17,9 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 - Structured access audit events persist in the metadata database, with admin-only review, retention, and redaction.
 - Read-only SQL validation is backed by database-side read-only sessions where supported.
 - Query execution, pagination, cancellation, and connector support are exposed through documented contracts.
+- Query admission bounds concurrent work, applies per-tenant request-rate limits, and exposes rejection metrics; limiter state is bounded in memory.
 - A runtime support catalog distinguishes registered implementations, end-to-end verified versions, experimental adapters, and unsupported boundaries.
+- Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, plus MySQL 8.0.46 and 8.4.13. TLS evidence is version-specific and remains narrower than query-driver evidence.
 
 ### Current support limits
 
@@ -59,6 +61,18 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify ClickHouse server identity over TLS
 
 [#308](https://github.com/RhinoLink-Tech/data-fabric/issues/308) makes the ClickHouse native-protocol connector honor `ssl` and `sslRootCert`. The pinned ClickHouse 26.8.20.9 contract accepts a trusted private CA and matching host, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private test CA when no custom CA is configured, and keeps certificate verification enabled. Plaintext connections remain supported when TLS is disabled. Other ClickHouse versions remain outside this evidence.
+
+### Completed: verify PostgreSQL driver versions 15 through 18
+
+[#320](https://github.com/RhinoLink-Tech/data-fabric/issues/320) adds repeatable driver contracts against PostgreSQL 15.19, 16.15, 17.11, and 18.6. This verifies the shared query contract across those exact releases; TLS certificate verification remains separately covered against PostgreSQL 17.11 only.
+
+### Completed: verify MySQL 8.4 LTS driver compatibility
+
+[#322](https://github.com/RhinoLink-Tech/data-fabric/issues/322) adds the MySQL 8.4.13 driver contract alongside the existing MySQL 8.0.46 contract. Both pinned versions verify the same connection, authentication, query, pagination, read-only session, cancellation, and error-handling behaviors.
+
+### Completed: verify MySQL 8.4 LTS TLS identity
+
+[#325](https://github.com/RhinoLink-Tech/data-fabric/issues/325) adds private-CA and hostname-verification evidence for MySQL 8.4.13. Both MySQL 8.0.46 and 8.4.13 now reject untrusted certificates and hostname mismatches; other releases and MySQL-compatible products remain outside this evidence.
 
 ### 1. Raise connector confidence from real demand
 
