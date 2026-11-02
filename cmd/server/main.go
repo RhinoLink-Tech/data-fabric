@@ -142,8 +142,9 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize streaming and pagination services with one shared table policy.
 	queryStats := service.NewQueryStatsTracker()
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, tableAuthorizer, queryStats, cfg.Query.MaxConcurrentStreamsPerTenant, translationManager)
-	paginationService := service.NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, translationManager)
+	queryAdmissionLimiter := service.NewQueryAdmissionLimiter(0, cfg.Query.MaxConcurrentQueriesPerTenant)
+	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
+	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
 	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
@@ -362,8 +363,9 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	defer closeGatewayResources(db, connPool)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
 	queryStats := service.NewQueryStatsTracker()
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, tableAuthorizer, queryStats, cfg.Query.MaxConcurrentStreamsPerTenant, translationManager)
-	paginationService := service.NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, translationManager)
+	queryAdmissionLimiter := service.NewQueryAdmissionLimiter(0, cfg.Query.MaxConcurrentQueriesPerTenant)
+	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
+	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)

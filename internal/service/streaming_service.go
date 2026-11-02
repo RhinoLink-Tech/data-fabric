@@ -188,10 +188,8 @@ type streamingService struct {
 	connPool                *database.ConnectionPool
 	activeStreams           map[string]*ActiveStream
 	streamsMutex            sync.RWMutex
-	maxStreams              int
-	maxStreamsPerTenant     int
-	streamAdmissionLimiter  *streamAdmissionLimiter
-	streamAdmissionInit     sync.Once
+	admissionLimiter        *QueryAdmissionLimiter
+	admissionInit           sync.Once
 	streamTimeout           time.Duration
 	streamingSessionManager *StreamingSessionManager
 	sqlValidator            *security.SQLValidator
@@ -282,12 +280,19 @@ func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSource
 // NewStreamingServiceWithTableAuthorizerAndStats creates a streaming service
 // that contributes to the supplied gateway-wide statistics tracker.
 func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) StreamingService {
-	return NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, authorizer, stats, defaultMaxConcurrentStreamsPerTenant, translators...)
+	return NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, authorizer, stats, defaultMaxConcurrentQueriesPerTenant, translators...)
 }
 
 // NewStreamingServiceWithTableAuthorizerAndStatsAndLimits also configures the
 // maximum number of streams one validated tenant may start or keep active.
 func NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, maxStreamsPerTenant int, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	limiter := NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, maxStreamsPerTenant)
+	return NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, authorizer, stats, limiter, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
+// streaming service using a shared process-level query admission limiter.
+func NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -299,16 +304,14 @@ func NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo repo
 	if stats == nil {
 		stats = NewQueryStatsTracker()
 	}
-	if maxStreamsPerTenant <= 0 {
-		maxStreamsPerTenant = defaultMaxConcurrentStreamsPerTenant
+	if limiter == nil {
+		limiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
 	}
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
 		connPool:                connPool,
 		activeStreams:           make(map[string]*ActiveStream),
-		maxStreams:              defaultMaxConcurrentStreams,
-		maxStreamsPerTenant:     maxStreamsPerTenant,
-		streamAdmissionLimiter:  newStreamAdmissionLimiter(),
+		admissionLimiter:        limiter,
 		streamTimeout:           5 * time.Minute,
 		streamingSessionManager: NewStreamingSessionManager(),
 		sqlValidator:            validator,
@@ -484,20 +487,12 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 }
 
 func (ss *streamingService) acquireStreamAdmission(caller *security.Caller) (func(), bool) {
-	ss.streamAdmissionInit.Do(func() {
-		if ss.streamAdmissionLimiter == nil {
-			ss.streamAdmissionLimiter = newStreamAdmissionLimiter()
+	ss.admissionInit.Do(func() {
+		if ss.admissionLimiter == nil {
+			ss.admissionLimiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
 		}
 	})
-	maxTotal := ss.maxStreams
-	if maxTotal <= 0 {
-		maxTotal = defaultMaxConcurrentStreams
-	}
-	maxPerTenant := ss.maxStreamsPerTenant
-	if maxPerTenant <= 0 {
-		maxPerTenant = defaultMaxConcurrentStreamsPerTenant
-	}
-	return ss.streamAdmissionLimiter.acquire(caller, maxTotal, maxPerTenant)
+	return ss.admissionLimiter.Acquire(caller)
 }
 
 // FetchStreamChunk fetches the next chunk of data from a stream

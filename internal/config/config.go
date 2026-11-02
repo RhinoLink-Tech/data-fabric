@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -78,6 +79,8 @@ func Load() (*Config, error) {
 	// spellings as aliases for their canonical keys.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	_ = viper.BindEnv("query.max_concurrent_queries_per_tenant", "QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
+	_ = viper.BindEnv("query.max_concurrent_streams_per_tenant", "QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
 	_ = viper.BindEnv("database.database", "DATABASE_DATABASE", "DATABASE_NAME")
 	_ = viper.BindEnv("database.username", "DATABASE_USERNAME")
 	_ = viper.BindEnv("database.password", "DATABASE_PASSWORD")
@@ -92,12 +95,17 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
+	legacyQueryLimitEnv, legacyQueryLimitEnvSet := os.LookupEnv("QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
+	_, canonicalQueryLimitEnvSet := os.LookupEnv("QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
+	if !viper.InConfig("query.max_concurrent_queries_per_tenant") && !canonicalQueryLimitEnvSet &&
+		(viper.InConfig("query.max_concurrent_streams_per_tenant") || (legacyQueryLimitEnvSet && strings.TrimSpace(legacyQueryLimitEnv) != "")) {
+		viper.Set("query.max_concurrent_queries_per_tenant", viper.GetInt("query.max_concurrent_streams_per_tenant"))
+	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
-
 	return &config, nil
 }
 
@@ -142,6 +150,7 @@ func setDefaults() {
 	// Query defaults
 	viper.SetDefault("query.prefer_streaming", true)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
+	viper.SetDefault("query.max_concurrent_queries_per_tenant", 25)
 	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
 
 	// SQL translation runtime limits and process configuration.
@@ -206,5 +215,6 @@ type MCPConfig struct {
 type QueryConfig struct {
 	PreferStreaming               bool   `mapstructure:"prefer_streaming"`
 	ExecutionMode                 string `mapstructure:"execution_mode"`
-	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"`
+	MaxConcurrentQueriesPerTenant int    `mapstructure:"max_concurrent_queries_per_tenant"`
+	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"` // deprecated compatibility alias
 }

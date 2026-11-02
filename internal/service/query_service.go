@@ -65,15 +65,17 @@ type SessionManager struct {
 }
 
 type queryService struct {
-	datasourceRepo  repository.DataSourceRepository
-	connPool        *database.ConnectionPool
-	sqlValidator    *security.SQLValidator
-	typeMapper      *utils.DataTypeMapper
-	stats           *QueryStatsTracker
-	sessionManager  *SessionManager
-	preferStreaming bool
-	sqlTranslator   *sql_translator.SQLTranslationManager // Added SQL translator
-	tableAuthorizer *security.TableAuthorizer
+	datasourceRepo   repository.DataSourceRepository
+	connPool         *database.ConnectionPool
+	admissionLimiter *QueryAdmissionLimiter
+	admissionInit    sync.Once
+	sqlValidator     *security.SQLValidator
+	typeMapper       *utils.DataTypeMapper
+	stats            *QueryStatsTracker
+	sessionManager   *SessionManager
+	preferStreaming  bool
+	sqlTranslator    *sql_translator.SQLTranslationManager // Added SQL translator
+	tableAuthorizer  *security.TableAuthorizer
 }
 
 // NewQueryService creates a new instance of QueryService
@@ -90,6 +92,13 @@ func NewQueryServiceWithTableAuthorizer(datasourceRepo repository.DataSourceRepo
 // NewQueryServiceWithTableAuthorizerAndStats creates a pagination service that
 // contributes to the supplied gateway-wide statistics tracker.
 func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) QueryService {
+	limiter := NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+	return NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, translators...)
+}
+
+// NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
+// pagination service using a shared process-level query admission limiter.
+func NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) QueryService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -101,17 +110,30 @@ func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSo
 	if stats == nil {
 		stats = NewQueryStatsTracker()
 	}
-	return &queryService{
-		datasourceRepo:  datasourceRepo,
-		connPool:        connPool,
-		sqlValidator:    validator,
-		typeMapper:      utils.NewDataTypeMapper(),
-		stats:           stats,
-		sessionManager:  NewSessionManager(),
-		preferStreaming: preferStreaming,
-		sqlTranslator:   translator,
-		tableAuthorizer: authorizer,
+	if limiter == nil {
+		limiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
 	}
+	return &queryService{
+		datasourceRepo:   datasourceRepo,
+		connPool:         connPool,
+		admissionLimiter: limiter,
+		sqlValidator:     validator,
+		typeMapper:       utils.NewDataTypeMapper(),
+		stats:            stats,
+		sessionManager:   NewSessionManager(),
+		preferStreaming:  preferStreaming,
+		sqlTranslator:    translator,
+		tableAuthorizer:  authorizer,
+	}
+}
+
+func (qs *queryService) acquireQueryAdmission(caller *security.Caller) (func(), bool) {
+	qs.admissionInit.Do(func() {
+		if qs.admissionLimiter == nil {
+			qs.admissionLimiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+		}
+	})
+	return qs.admissionLimiter.Acquire(caller)
 }
 
 // NewSessionManager creates a new session manager
@@ -466,6 +488,12 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		return nil, fmt.Errorf("SQL validation failed: %w", err)
 	}
 
+	releaseAdmission, admitted := qs.acquireQueryAdmission(caller)
+	if !admitted {
+		return nil, ErrQueryAdmissionLimit
+	}
+	defer releaseAdmission()
+
 	// Drivers with a native protocol can execute through a typed executor
 	// without manufacturing a database/sql connection.
 	nativeExecutor, supported, err := qs.connPool.GetNativeSQLAPIExecutor(ctx, datasource)
@@ -589,6 +617,12 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 			TotalCount: int(session.TotalRows),
 		}, nil
 	}
+
+	releaseAdmission, admitted := qs.acquireQueryAdmission(caller)
+	if !admitted {
+		return nil, ErrQueryAdmissionLimit
+	}
+	defer releaseAdmission()
 
 	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {
 		if batchSize <= 0 {
