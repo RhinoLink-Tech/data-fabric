@@ -24,10 +24,11 @@ type PrometheusMetrics struct {
 	HttpRequestSize     *prometheus.HistogramVec
 	HttpResponseSize    *prometheus.HistogramVec
 
-	QueryTotal    *prometheus.CounterVec
-	QueryDuration *prometheus.HistogramVec
-	QueryRowsRead *prometheus.CounterVec
-	QueryErrors   *prometheus.CounterVec
+	QueryTotal               *prometheus.CounterVec
+	QueryDuration            *prometheus.HistogramVec
+	QueryRowsRead            *prometheus.CounterVec
+	QueryErrors              *prometheus.CounterVec
+	QueryAdmissionRejections *prometheus.CounterVec
 
 	ConnectionPoolActive *prometheus.GaugeVec
 	ConnectionPoolIdle   *prometheus.GaugeVec
@@ -112,6 +113,13 @@ func InitMetrics() {
 					Help: "Number of failed initial query executions by bounded error category",
 				},
 				[]string{"execution_mode", "error_type"},
+			),
+			QueryAdmissionRejections: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_query_admission_rejections_total",
+					Help: "Number of query requests rejected by process-local admission limits",
+				},
+				[]string{"reason"},
 			),
 			ConnectionPoolActive: promauto.NewGaugeVec(
 				prometheus.GaugeOpts{
@@ -253,6 +261,14 @@ func RecordQueryError(executionMode, errorType string) {
 	metrics.QueryErrors.WithLabelValues(normalizeExecutionMode(executionMode), normalizeQueryErrorType(errorType)).Inc()
 }
 
+// RecordQueryAdmissionRejection records a quota rejection with a bounded reason label.
+func RecordQueryAdmissionRejection(reason string) {
+	if metrics == nil {
+		return
+	}
+	metrics.QueryAdmissionRejections.WithLabelValues(normalizeQueryAdmissionReason(reason)).Inc()
+}
+
 // UpdateConnectionPoolMetrics updates aggregate connection pool gauges by driver type.
 func UpdateConnectionPoolMetrics(_ string, databaseType string, active, idle int) {
 	if metrics == nil {
@@ -352,6 +368,17 @@ func normalizeQueryErrorType(errorType string) string {
 		return "validation"
 	case "access_denied":
 		return "access_denied"
+	default:
+		return "other"
+	}
+}
+
+func normalizeQueryAdmissionReason(reason string) string {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "concurrency_limit":
+		return "concurrency_limit"
+	case "request_rate_limit":
+		return "request_rate_limit"
 	default:
 		return "other"
 	}
