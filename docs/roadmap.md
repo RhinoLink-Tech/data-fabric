@@ -19,7 +19,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 - Query execution, pagination, cancellation, and connector support are exposed through documented contracts.
 - Query admission bounds concurrent work, applies per-tenant request-rate limits, and exposes rejection metrics; limiter state is bounded in memory.
 - A runtime support catalog distinguishes registered implementations, end-to-end verified versions, experimental adapters, and unsupported boundaries.
-- Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, plus MySQL 8.0.46 and 8.4.13. TLS evidence is version-specific and remains narrower than query-driver evidence.
+- Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, MySQL 8.0.46 and 8.4.13, and MariaDB 10.11.19 and 11.8.9. TLS evidence is version-specific and remains narrower than query-driver evidence.
 
 ### Current support limits
 
@@ -73,6 +73,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify MySQL 8.4 LTS TLS identity
 
 [#325](https://github.com/RhinoLink-Tech/data-fabric/issues/325) adds private-CA and hostname-verification evidence for MySQL 8.4.13. Both MySQL 8.0.46 and 8.4.13 now reject untrusted certificates and hostname mismatches; other releases and MySQL-compatible products remain outside this evidence.
+
+### Completed: verify MariaDB 10.11 LTS driver compatibility
+
+[#326](https://github.com/RhinoLink-Tech/data-fabric/issues/326) adds a pinned MariaDB 10.11.19 driver contract alongside the existing 11.8.9 baseline. Both exact releases verify password authentication, query and value scanning, pagination, database-side read-only enforcement, cancellation, and error handling. TLS certificate validation remains verified for 11.8.9 only.
 
 ### 1. Raise connector confidence from real demand
 
