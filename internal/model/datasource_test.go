@@ -56,6 +56,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeOzoneAvro, "object_storage", false},
 		{DatabaseTypeOzoneJSON, "object_storage", false},
 		{DatabaseTypeOzoneCSV, "object_storage", false},
+		{DatabaseTypeOSSCSV, "object_storage", false},
 		{DatabaseTypeHDFSJSON, "filesystems", false},
 		{DatabaseTypeHDFSText, "filesystems", false},
 		{DatabaseTypeHDFSParquetCompressed, "filesystems", false},

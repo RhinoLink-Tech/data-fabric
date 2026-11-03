@@ -143,4 +143,8 @@ func TestOzoneParquetTextAndAvroUseS3GatewayAdapters(t *testing.T) {
 	if err != nil || csvDriver.GetCategory() != "object_storage" || !csvDriver.GetCapabilities().SupportsSQL {
 		t.Fatalf("Ozone CSV driver = %v, error = %v; want registered object-storage SQL adapter", csvDriver, err)
 	}
+	ossCSVDriver, err := registry.GetDriver(model.DatabaseTypeOSSCSV)
+	if err != nil || ossCSVDriver.GetCategory() != "object_storage" || !ossCSVDriver.GetCapabilities().SupportsSQL {
+		t.Fatalf("OSS CSV driver = %v, error = %v; want registered object-storage SQL adapter", ossCSVDriver, err)
+	}
 }

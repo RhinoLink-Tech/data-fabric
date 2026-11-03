@@ -581,6 +581,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
+	case model.DatabaseTypeOSSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
+			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
 	case model.DatabaseTypeAlibabaOSSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}

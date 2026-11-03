@@ -210,6 +210,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
 		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
 	}
+	ossCSV := profiles[string(model.DatabaseTypeOSSCSV)]
+	if !ossCSV.Registered || !ossCSV.Supported || ossCSV.Status != ConnectorStatusExperimental || !ossCSV.Capabilities.SupportsSQL {
+		t.Errorf("OSS CSV must expose its experimental read-only SQL path: %+v", ossCSV)
+	}
+	if !containsSupportLimitation(ossCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(ossCSV.Limitations, "100,000 rows") {
+		t.Errorf("OSS CSV catalog must disclose its object and row limits: %+v", ossCSV.Limitations)
+	}
 	ozoneCSV := profiles[string(model.DatabaseTypeOzoneCSV)]
 	if !ozoneCSV.Registered || !ozoneCSV.Supported || ozoneCSV.Status != ConnectorStatusExperimental || !ozoneCSV.Capabilities.SupportsSQL {
 		t.Errorf("Ozone CSV must expose its experimental S3 Gateway SQL path: %+v", ozoneCSV)

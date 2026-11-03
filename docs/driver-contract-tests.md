@@ -322,6 +322,16 @@ go test ./internal/database/drivers/object_storage ./internal/service -run 'OSSD
 These fixtures do not run against Alibaba Cloud and do not establish a live OSS
 release contract. The adapter remains experimental.
 
+## Alibaba OSS CSV protocol fixture
+
+The OSS CSV adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. The deterministic test verifies access-key signing, path-style object
+addressing, metadata HEAD, bounded GET (including an object whose HEAD size is
+deliberately inaccurate), filtered and paginated read-only SQL, COUNT, write
+rejection, a 100,000-row cap, and unified table/column metadata discovery. This
+is protocol simulation only; it does not establish compatibility with a live
+Alibaba OSS service release.
+
 ## Alibaba OSS Parquet protocol fixture
 
 The OSS Parquet adapter has deterministic protocol-fixture coverage using the
