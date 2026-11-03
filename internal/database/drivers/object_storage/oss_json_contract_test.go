@@ -201,6 +201,7 @@ func TestOSSJSONProtocolFixture(t *testing.T) {
 	limitedConfig := source.Config
 	limitedConfig.AdditionalProps = map[string]interface{}{
 		"object_key": objectKey, "endpoint_url": server.URL, "force_path_style": true, "max_file_bytes": 64,
+		"session_token": "test-session-token",
 	}
 	limited, err := (&object_storage.OSSJSONDriver{}).OpenWithConfig(context.Background(), &limitedConfig)
 	if err != nil {
@@ -219,6 +220,7 @@ func TestOSSJSONProtocolFixture(t *testing.T) {
 	rowLimitedConfig := source.Config
 	rowLimitedConfig.AdditionalProps = map[string]interface{}{
 		"object_key": objectKey, "endpoint_url": server.URL, "force_path_style": true,
+		"session_token": "test-session-token",
 	}
 	rowLimited, err := (&object_storage.OSSJSONDriver{}).OpenWithConfig(context.Background(), &rowLimitedConfig)
 	if err != nil {
