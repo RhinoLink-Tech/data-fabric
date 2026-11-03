@@ -128,14 +128,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 	case model.DatabaseTypeMariaDB:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "10.11.19 and 11.8.9 only"
-		profile.VerifiedServerVersions = []string{"10.11.19", "11.8.9"}
-		profile.VersionPolicy = "Only MariaDB 10.11.19 and 11.8.9 have pinned contract results; other MariaDB versions and MySQL are not implied to be compatible."
+		profile.SupportedVersionRange = "10.11.19, 11.4.13, and 11.8.9 only"
+		profile.VerifiedServerVersions = []string{"10.11.19", "11.4.13", "11.8.9"}
+		profile.VersionPolicy = "Only MariaDB 10.11.19, 11.4.13, and 11.8.9 have pinned contract results; other MariaDB versions and MySQL are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 10.11.19 and 11.8.9 driver contracts. TLS certificate/hostname verification is covered by the MariaDB 10.11.19 and 11.8.9 contracts."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 10.11.19, 11.4.13, and 11.8.9 driver contracts. TLS certificate/hostname verification is covered by the MariaDB 10.11.19, 11.4.13, and 11.8.9 contracts."
 		profile.Limitations = []string{
-			"The MariaDB contract tests exercise the shared MySQL-protocol driver against MariaDB 10.11.19 and 11.8.9, including database-side read-only sessions.",
-			"The TLS contracts verify a trusted private CA and hostname, reject an untrusted CA or hostname mismatch, and confirm ssl=false remains plaintext against MariaDB 10.11.19 and 11.8.9. Other MariaDB versions are not covered.",
+			"The MariaDB contract tests exercise the shared MySQL-protocol driver against MariaDB 10.11.19, 11.4.13, and 11.8.9, including database-side read-only sessions.",
+			"The TLS contracts verify a trusted private CA and hostname, reject an untrusted CA or hostname mismatch, and confirm ssl=false remains plaintext against MariaDB 10.11.19, 11.4.13, and 11.8.9. Other MariaDB versions are not covered.",
 		}
 	case model.DatabaseTypeTiDB:
 		profile.Status = ConnectorStatusEndToEndVerified

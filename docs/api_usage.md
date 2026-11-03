@@ -34,7 +34,7 @@ For openGauss, use the same **sslMode** and **sslRootCert** fields. Set **sslMod
 
 For MySQL, set `ssl: true` to verify the server certificate and hostname with the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against MySQL 8.0.46.
 
-MariaDB uses the same MySQL-protocol connector settings. The pinned MariaDB 10.11.19 and 11.8.9 TLS contracts verify certificate and hostname validation with a private CA; other MariaDB versions remain unverified.
+MariaDB uses the same MySQL-protocol connector settings. Pinned driver and TLS contracts cover MariaDB 10.11.19, 11.4.13, and 11.8.9. TLS contracts verify certificate and hostname validation with a private CA; other MariaDB versions remain unverified.
 
 For SQL Server, set `ssl: true` to require encrypted query traffic and validate the server certificate and hostname against the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make it readable inside the Data Fabric process; this setting requires `ssl: true`. The hostname is checked against the configured data-source host. `ssl: false` leaves query traffic unencrypted; the SQL Server protocol may still use TLS for the login packet. An explicit `additionalProps.trustservercertificate=true` bypasses certificate checks and is intended only for compatibility testing. This TLS contract is verified against SQL Server 16.0.4305.5.
 
