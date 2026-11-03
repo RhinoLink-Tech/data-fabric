@@ -252,6 +252,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeAzureBlobCSV, func() drivers.Driver {
 		return &object_storage.AzureBlobCSVDriver{}
 	})
+	dr.register(model.DatabaseTypeAzureBlobJSON, func() drivers.Driver {
+		return &object_storage.AzureBlobJSONDriver{}
+	})
 	dr.register(model.DatabaseTypeAzureBlobParquet, func() drivers.Driver {
 		return &object_storage.AzureBlobParquetDriver{}
 	})

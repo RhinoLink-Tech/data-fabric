@@ -680,6 +680,32 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Azure Blob JSON source
+
+The azure_blob_json source type exposes one configured JSON blob as a read-only
+SQL table. It accepts a single JSON object, an array of objects, or JSON Lines
+(`.jsonl` and `.ndjson`). The adapter uses the shared JSON parser and query
+path; directory scans, multiple blobs, and streaming are not supported. Objects
+are downloaded into gateway memory and limited to 64 MiB and 100,000 records.
+The default object-size limit is 16 MiB and can be raised up to the 64 MiB hard
+cap.
+
+| Data-source field or property | Azure Blob JSON meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint; use for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | JSON blob name; accepts `.json`, `.jsonl`, and `.ndjson`; host is a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_records | Maximum records; defaults to 100,000 and cannot exceed 100,000. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Queryable fields must be top-level
+scalars; nested values and writes are rejected.
+
 ## Azure Blob CSV source
 
 The azure_blob_csv source type exposes one configured CSV blob as a read-only

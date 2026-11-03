@@ -189,7 +189,7 @@ func azureBlobCSVMaxFileBytes(config *model.DataSourceConfig) (int64, error) {
 	if !exists || value == nil {
 		return defaultAzureBlobCSVMaxFileBytes, nil
 	}
-	parsed, err := parseAzureBlobCSVInt64(value)
+	parsed, err := parseAzureBlobConfigInt64(value)
 	if err != nil {
 		return 0, errors.New("azure-blob-csv max_file_bytes must be an integer")
 	}
@@ -204,14 +204,14 @@ func azureBlobCSVNonNegativeInt(props map[string]interface{}, key string) (int, 
 	if !exists || value == nil {
 		return 0, nil
 	}
-	parsed, err := parseAzureBlobCSVInt64(value)
+	parsed, err := parseAzureBlobConfigInt64(value)
 	if err != nil || parsed < 0 || uint64(parsed) > uint64(^uint(0)>>1) {
 		return 0, errors.New("invalid value")
 	}
 	return int(parsed), nil
 }
 
-func parseAzureBlobCSVInt64(value interface{}) (int64, error) {
+func parseAzureBlobConfigInt64(value interface{}) (int64, error) {
 	switch number := value.(type) {
 	case int:
 		return int64(number), nil

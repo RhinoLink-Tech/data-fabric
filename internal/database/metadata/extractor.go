@@ -340,7 +340,7 @@ func isAvroObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isJSONSQLSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeHDFSJSON || dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON || dbType == model.DatabaseTypeOzoneJSON
+	return dbType == model.DatabaseTypeHDFSJSON || dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON || dbType == model.DatabaseTypeOzoneJSON || dbType == model.DatabaseTypeAzureBlobJSON
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
@@ -379,6 +379,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSParquetTableName(config)
 	case model.DatabaseTypeTencentCOSParquet:
 		return object_storage.COSParquetTableName(config)
+	case model.DatabaseTypeAzureBlobJSON:
+		return object_storage.AzureBlobJSONTableName(config)
 	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
 		return object_storage.AzureBlobParquetTableName(config)
 	case model.DatabaseTypeOzoneParquet:

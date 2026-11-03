@@ -59,6 +59,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeOSSCSV, "object_storage", false},
 		{DatabaseTypeTencentCOSCSV, "object_storage", false},
 		{DatabaseTypeAzureBlobCSV, "object_storage", false},
+		{DatabaseTypeAzureBlobJSON, "object_storage", false},
 		{DatabaseTypeHDFSJSON, "filesystems", false},
 		{DatabaseTypeHDFSText, "filesystems", false},
 		{DatabaseTypeHDFSParquetCompressed, "filesystems", false},

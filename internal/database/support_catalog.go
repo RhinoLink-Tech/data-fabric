@@ -621,6 +621,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV blob; directory scans, multiple blobs, compression, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
 			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
+	case model.DatabaseTypeAzureBlobJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array, or JSON Lines blob; directory scans, multiple blobs, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are queryable.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
 	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
