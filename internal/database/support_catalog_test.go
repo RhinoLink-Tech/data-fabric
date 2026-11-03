@@ -224,6 +224,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ossJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(ossJSON.Limitations, "100,000 records") || !containsSupportLimitation(ossJSON.Limitations, "flatten_nested=true") {
 		t.Errorf("OSS JSON catalog must disclose object, row, and nested-field limits: %+v", ossJSON.Limitations)
 	}
+	ossAvro := profiles[string(model.DatabaseTypeAlibabaOSSAvro)]
+	if !ossAvro.Registered || !ossAvro.Supported || ossAvro.Status != ConnectorStatusExperimental || !ossAvro.Capabilities.SupportsSQL || !ossAvro.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("OSS Avro must expose its experimental read-only SQL path: %+v", ossAvro)
+	}
+	if !containsSupportLimitation(ossAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(ossAvro.Limitations, "100,000 rows") || !containsSupportLimitation(ossAvro.Limitations, "nullable primitive unions") {
+		t.Errorf("OSS Avro catalog must disclose object, row, and schema limits: %+v", ossAvro.Limitations)
+	}
 	cosCSV := profiles[string(model.DatabaseTypeTencentCOSCSV)]
 	if !cosCSV.Registered || !cosCSV.Supported || cosCSV.Status != ConnectorStatusExperimental || !cosCSV.Capabilities.SupportsSQL {
 		t.Errorf("COS CSV must expose its experimental read-only SQL path: %+v", cosCSV)
