@@ -480,6 +480,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeOSSCSV {
+			return object_storage.ValidateOSSCSVConfig(config)
+		}
 		if dbType == model.DatabaseTypeOSSDelta {
 			return hc.validateOSSDeltaConfig(config)
 		}

@@ -141,6 +141,42 @@ func (c *OSSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// GetObjectLimited reads at most maxBytes plus one sentinel byte so callers can
+// enforce memory bounds even when the object metadata advertises a smaller size.
+func (c *OSSClient) GetObjectLimited(ctx context.Context, key string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, fmt.Errorf("maximum OSS object size must be positive and representable")
+	}
+	if c == nil || c.bucket == nil {
+		return nil, fmt.Errorf("OSS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("OSS object key is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	reader, err := c.bucket.GetObject(key, oss.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read object data: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("OSS object exceeds configured maximum of %d bytes", maxBytes)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // GetObjectMetadata retrieves object metadata without downloading the content
 func (c *OSSClient) GetObjectMetadata(ctx context.Context, key string) (*OSSObjectMetadata, error) {
 	if c == nil || c.bucket == nil {

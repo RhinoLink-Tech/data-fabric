@@ -240,6 +240,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeAlibabaOSSParquet, func() drivers.Driver {
 		return &object_storage.OSSParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeOSSCSV, func() drivers.Driver {
+		return &object_storage.OSSCSVDriver{}
+	})
 	dr.register(model.DatabaseTypeTencentCOSParquet, func() drivers.Driver {
 		return &object_storage.COSParquetDriver{}
 	})
