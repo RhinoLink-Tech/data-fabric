@@ -688,13 +688,14 @@ docker stop data-fabric-starrocks-contract
 
 The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
 
-## HDFS CSV live cluster contract
+## HDFS CSV and Avro live cluster contracts
 
 The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
-cluster from the pinned official image, writes a deterministic header-based CSV
-fixture to HDFS, then runs the Data Fabric adapter against the HDFS RPC endpoint.
-It checks the exact Hadoop version, connection and metadata probes, CSV type
-inference, a filtered and ordered query, COUNT(*), and write rejection.
+cluster from the pinned official image, writes deterministic CSV and Avro OCF
+fixtures to separate HDFS paths, then runs both Data Fabric adapters against the
+HDFS RPC endpoint. It checks the exact Hadoop version, connection and metadata
+probes, CSV type inference, Avro primitive and nullable-field decoding, filtered
+and ordered queries, COUNT(*), and write rejection.
 
 Run it with:
 
@@ -702,10 +703,22 @@ Run it with:
 bash scripts/contracts/run_hdfs_csv_contract.sh
 ~~~~
 
-The contract covers HDFS simple-user access on one single-node cluster. It does
+The contracts cover HDFS simple-user access on one single-node cluster. The Avro
+fixture uses uncompressed OCF with flat primitive and nullable fields. They do
 not verify Kerberos, authorization policies, HA, other Hadoop releases, or other
-HDFS formats. The adapter remains bounded to one configured CSV file and its
-documented byte and row limits.
+HDFS formats. Each adapter remains bounded to one configured file and its
+documented byte and row limits; the Avro adapter does not support nested or
+non-primitive fields.
+
+## HDFS Avro local file-client fixture
+
+The HDFS Avro adapter exposes one configured Avro Object Container File through
+the shared read-only query service. Its deterministic local fixture covers
+bounded reads, primitive and nullable fields, filtering, ordering, pagination,
+COUNT(*), metadata discovery, and write rejection. The live HDFS contract above
+verifies the adapter against Apache Hadoop 3.5.0 only; it does not establish
+compatibility with other Hadoop releases, security modes, or Avro compression
+codecs.
 
 ## HDFS CSV local file-client fixture
 

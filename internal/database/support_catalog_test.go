@@ -98,6 +98,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
 			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSAvro:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 		}
 		if dbType == model.DatabaseTypeS3Delta {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
@@ -251,11 +252,14 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("HDFS Parquet catalog must disclose its file, memory, and security boundaries: %+v", hdfsParquet.Limitations)
 	}
 	hdfsAvro := profiles[string(model.DatabaseTypeHDFSAvro)]
-	if !hdfsAvro.Registered || !hdfsAvro.Supported || hdfsAvro.Status != ConnectorStatusExperimental || !hdfsAvro.Capabilities.SupportsSQL {
-		t.Errorf("HDFS Avro must expose its experimental read-only SQL path: %+v", hdfsAvro)
+	if !hdfsAvro.Registered || !hdfsAvro.Supported || hdfsAvro.Status != ConnectorStatusEndToEndVerified || !hdfsAvro.EndToEndVerified || !hdfsAvro.Capabilities.SupportsSQL {
+		t.Errorf("HDFS Avro must expose its verified read-only SQL path: %+v", hdfsAvro)
 	}
-	if !containsSupportLimitation(hdfsAvro.Limitations, "one configured Avro OCF file") || !containsSupportLimitation(hdfsAvro.Limitations, "64 MiB") {
-		t.Errorf("HDFS Avro catalog must disclose its file and schema boundaries: %+v", hdfsAvro.Limitations)
+	if hdfsAvro.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsAvro.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS Avro contract must be limited to Hadoop 3.5.0: %+v", hdfsAvro)
+	}
+	if !containsSupportLimitation(hdfsAvro.Limitations, "one configured Avro OCF file") || !containsSupportLimitation(hdfsAvro.Limitations, "64 MiB") || !containsSupportLimitation(hdfsAvro.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS Avro catalog must disclose its file, memory, and security boundaries: %+v", hdfsAvro.Limitations)
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {
