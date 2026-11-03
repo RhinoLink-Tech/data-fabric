@@ -308,6 +308,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"Only primitive top-level columns and uncompressed, ZLIB, and Snappy stripes are supported. Nested/repeated types, other codecs, partition scans, multiple objects, and stripe-statistics pushdown are not supported.",
 			"The ORC decoder currently has a restricted compatibility baseline; compatibility with additional ORC writers and S3 providers has not been established.",
 		}
+	case model.DatabaseTypeS3Delta:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Garage v2.4.1 only"
+		profile.VerifiedServerVersions = []string{"Garage v2.4.1"}
+		profile.VersionPolicy = "The S3 Delta adapter has a pinned live contract against Garage v2.4.1 only; AWS S3 and other S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed S3 access-key requests are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authorization are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Garage v2.4.1 contract covers signed Parquet and Delta log upload, snapshot discovery, health and schema checks, filtered and paginated read-only SQL, counts, and write rejection; cancellation remains covered by a local protocol fixture.",
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"The Garage result does not establish compatibility with AWS S3, other S3-compatible providers, or other Garage releases.",
+		}
 	case model.DatabaseTypeMinIOCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true

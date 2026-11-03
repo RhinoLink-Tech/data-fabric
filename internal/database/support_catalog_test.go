@@ -99,6 +99,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 		}
+		if dbType == model.DatabaseTypeS3Delta {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
+				t.Errorf("S3 Delta contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeS3CSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
 				t.Errorf("S3 CSV contract evidence must remain provider-specific and experimental: %+v", profile)
@@ -345,11 +351,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("OSS Delta catalog must disclose its snapshot and memory boundaries: %+v", ossDelta.Limitations)
 	}
 	s3Delta := profiles[string(model.DatabaseTypeS3Delta)]
-	if s3Delta.Status != ConnectorStatusExperimental || !s3Delta.Capabilities.SupportsSQL || s3Delta.EndToEndVerified {
-		t.Errorf("S3 Delta must expose an experimental SQL adapter without claiming a live version contract: %+v", s3Delta)
+	if s3Delta.Status != ConnectorStatusExperimental || !s3Delta.Capabilities.SupportsSQL || !s3Delta.EndToEndVerified ||
+		s3Delta.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(s3Delta.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
+		t.Errorf("S3 Delta must expose experimental SQL with its exact pinned Garage contract: %+v", s3Delta)
 	}
-	if !containsSupportLimitation(s3Delta.Limitations, "checkpoints") || !containsSupportLimitation(s3Delta.Limitations, "100,000 decoded rows") || !containsSupportLimitation(s3Delta.Limitations, "does not establish compatibility with AWS S3") {
-		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, and provider boundaries: %+v", s3Delta.Limitations)
+	if !containsSupportLimitation(s3Delta.Limitations, "checkpoints") || !containsSupportLimitation(s3Delta.Limitations, "100,000 decoded rows") ||
+		!containsSupportLimitation(s3Delta.Limitations, "AWS S3") || !containsSupportLimitation(s3Delta.Limitations, "cancellation remains covered by a local protocol fixture") {
+		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, provider, and cancellation boundaries: %+v", s3Delta.Limitations)
 	}
 	minioDelta := profiles[string(model.DatabaseTypeMinIODelta)]
 	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || !minioDelta.EndToEndVerified ||
