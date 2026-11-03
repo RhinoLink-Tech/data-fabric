@@ -562,9 +562,9 @@ Data Fabric does not run an Iceberg catalog for this source.
 The adapter exposes only the configured table and supports the shared Iceberg
 read-only SQL subset: projections, supported AND filters, LIMIT/OFFSET, and
 COUNT(*). Writes, catalog-wide table enumeration, ORDER BY, and direct
-metadata-file discovery are not supported. Local fixtures verify REST catalog
-query routing and MinIO FileIO property mapping; they do not establish
-compatibility with a live MinIO or REST Catalog release.
+metadata-file discovery are not supported. A pinned live MinIO contract verifies S3 FileIO metadata/data object reads and the configured query path through a local REST catalog fixture. It does not
+establish compatibility with an external REST Catalog server; see the driver
+contract test report.
 
 ## MinIO Parquet source
 

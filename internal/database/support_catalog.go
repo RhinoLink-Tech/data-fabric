@@ -579,10 +579,11 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	case model.DatabaseTypeMinIOIceberg:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Iceberg REST catalog credentials and MinIO S3-compatible access key/secret key"}
-		profile.AuthenticationDisclosure = "Local REST catalog and configuration fixtures cover query routing and MinIO FileIO property mapping; no live MinIO or REST Catalog release contract is recorded."
+		profile.AuthenticationDisclosure = "A pinned live MinIO contract writes and reads Iceberg metadata and data files through S3 FileIO using a local REST catalog fixture; external REST Catalog server compatibility is not covered."
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured table through an Iceberg REST catalog and MinIO S3 FileIO; catalog_uri, warehouse, namespace, table_name, endpoint, and MinIO credentials are required.",
-			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.")
+			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.",
+			"The live contract pins MinIO and covers S3 FileIO object access plus the configured read path; its REST catalog is simulated and does not establish compatibility with an external catalog server.")
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}

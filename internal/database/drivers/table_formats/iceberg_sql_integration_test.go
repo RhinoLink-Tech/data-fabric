@@ -16,8 +16,18 @@ import (
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/catalog/hadoop"
+	icebergio "github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
 )
+
+func TestIcebergSQLRegistersS3FileIO(t *testing.T) {
+	for _, scheme := range icebergio.GetRegisteredSchemes() {
+		if scheme == "s3" {
+			return
+		}
+	}
+	t.Fatal("Iceberg SQL adapter did not register S3-compatible FileIO")
+}
 
 func TestIcebergSQLQueryUsesCurrentSnapshotThroughREST(t *testing.T) {
 	ctx := context.Background()

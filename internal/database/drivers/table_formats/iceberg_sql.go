@@ -21,6 +21,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog/rest"
+	_ "github.com/apache/iceberg-go/io/gocloud/s3"
 	"github.com/apache/iceberg-go/table"
 	"vitess.io/vitess/go/vt/sqlparser"
 )
