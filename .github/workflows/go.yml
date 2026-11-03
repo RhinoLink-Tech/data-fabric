@@ -205,6 +205,22 @@ jobs:
       - name: Run MariaDB driver contract
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
+  hdfs-csv-contract:
+    name: HDFS CSV Hadoop 3.5.0 live contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run HDFS CSV live contract
+        run: bash scripts/contracts/run_hdfs_csv_contract.sh
+
   hdfs-parquet-contract:
     name: HDFS Parquet Hadoop 3.5.0 live contract
     runs-on: ubuntu-latest
