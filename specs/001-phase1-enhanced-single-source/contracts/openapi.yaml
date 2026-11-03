@@ -725,6 +725,7 @@ components:
         - azure_delta
         - azure_parquet
         - cos_parquet
+        - cos_orc
         - minio_avro
         - minio_csv
         - minio_delta
