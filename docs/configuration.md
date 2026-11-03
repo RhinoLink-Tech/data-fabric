@@ -32,6 +32,33 @@ limit, and results with more than 100,000 CSV rows. The local OSS protocol
 fixture validates the signed SDK request path; it does not claim a live OSS
 service version contract.
 
+## Tencent COS CSV data source
+
+The `cos_csv` connector exposes one configured Tencent COS `.csv` object as a
+read-only SQL table. Set the bucket in `database`, SecretId and SecretKey in
+`username` and `password`, the region in `additionalProps.region`, and the
+object key in `additionalProps.object_key` (or the legacy `host` field).
+`additionalProps.endpoint_url` is an optional HTTP(S) endpoint override.
+COS uses HTTPS for the standard regional endpoint. When `endpoint_url` is set,
+its scheme controls whether the connection uses TLS.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `https` | `true` | TLS for the standard regional endpoint; `endpoint_url` takes precedence |
+| `delimiter` | `,` | One-character CSV delimiter |
+| `has_header` | `true` | Treat the first non-skipped record as column names |
+| `skip_header_rows` | `0` | Number of initial records to skip |
+| `null_values` | — | CSV values treated as SQL NULL |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+
+The adapter reads one object into gateway memory and supports the shared
+read-only CSV SQL subset. It rejects writes, objects over the configured byte
+limit, and results with more than 100,000 rows. The local COS protocol fixture
+checks signed requests but does not claim a live COS service version contract.
+
 ## Access audit events
 
 REST API and MCP access outcomes are stored in the metadata database when

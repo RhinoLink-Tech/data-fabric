@@ -309,7 +309,7 @@ func isHDFSParquetSource(dbType model.DatabaseType) bool {
 }
 
 func isCSVObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeOzoneCSV || dbType == model.DatabaseTypeOSSCSV
+	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeOzoneCSV || dbType == model.DatabaseTypeOSSCSV || dbType == model.DatabaseTypeTencentCOSCSV
 }
 
 func csvTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
@@ -318,6 +318,8 @@ func csvTableNameForSource(dbType model.DatabaseType, config *model.DataSourceCo
 		return file_system.OzoneCSVTableName(config)
 	case model.DatabaseTypeOSSCSV:
 		return object_storage.OSSCSVTableName(config)
+	case model.DatabaseTypeTencentCOSCSV:
+		return object_storage.COSCSVTableName(config)
 	default:
 		return object_storage.CSVTableName(config)
 	}
