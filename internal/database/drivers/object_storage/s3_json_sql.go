@@ -74,7 +74,7 @@ func (d *S3JSONDriver) openWithConfig(ctx context.Context, config *model.DataSou
 			if err != nil {
 				return nil, err
 			}
-			return objectSQLSchemaFromJSON(schema)
+			return objectSQLSchemaFromJSON(schema, driverName)
 		},
 		readRows: func(ctx context.Context, key string) (*objectSQLSchema, []map[string]interface{}, error) {
 			if err := ctx.Err(); err != nil {
@@ -84,7 +84,7 @@ func (d *S3JSONDriver) openWithConfig(ctx context.Context, config *model.DataSou
 			if err != nil {
 				return nil, nil, err
 			}
-			schema, err := objectSQLSchemaFromJSON(result.Schema)
+			schema, err := objectSQLSchemaFromJSON(result.Schema, driverName)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -94,9 +94,9 @@ func (d *S3JSONDriver) openWithConfig(ctx context.Context, config *model.DataSou
 	}), nil
 }
 
-func objectSQLSchemaFromJSON(schema *JSONSchema) (*objectSQLSchema, error) {
+func objectSQLSchemaFromJSON(schema *JSONSchema, driverName string) (*objectSQLSchema, error) {
 	if schema == nil || len(schema.Fields) == 0 {
-		return nil, errors.New("s3-json object has no fields")
+		return nil, fmt.Errorf("%s object has no fields", driverName)
 	}
 	result := &objectSQLSchema{Columns: make([]objectSQLColumn, len(schema.Fields))}
 	for i, field := range schema.Fields {
@@ -111,7 +111,7 @@ func objectSQLSchemaFromJSON(schema *JSONSchema) (*objectSQLSchema, error) {
 		case "string":
 			standardType = "string"
 		default:
-			return nil, fmt.Errorf("s3-json field %q has unsupported SQL type %q; use top-level scalar JSON fields", field.Name, field.Type)
+			return nil, fmt.Errorf("%s field %q has unsupported SQL type %q; use top-level scalar JSON fields", driverName, field.Name, field.Type)
 		}
 		result.Columns[i] = objectSQLColumn{
 			Name: field.Name, StandardType: standardType, Nullable: field.Nullable,

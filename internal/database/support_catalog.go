@@ -101,6 +101,15 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
 	switch dbType {
+	case model.DatabaseTypeHDFSJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "Only the local file-client adapter path is covered; no live Hadoop release, Kerberos, or HDFS authorization policy has been contract-tested."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array of objects, or JSON Lines file, capped at 64 MiB and 100,000 records; directory scans, multiple files, compression, and streaming are not supported.",
+			"Only flat top-level scalar fields are exposed as SQL columns; nested objects and arrays are rejected.",
+			"The complete file and decoded records are held in gateway memory before filtering and pagination.",
+			"The local file-client fixture does not establish compatibility with a live HDFS release.")
 	case model.DatabaseTypeHDFSText:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true

@@ -20,6 +20,7 @@ type JSONParserConfig struct {
 	DetectTypes   bool   // Auto-detect types from values
 	FlattenNested bool   // Flatten nested structures
 	Separator     string // Separator for flattened keys (default: "_")
+	MaxRecords    int    // Maximum records to decode; zero means unlimited
 }
 
 // NewJSONParser creates a new JSON parser
@@ -106,6 +107,9 @@ func (p *JSONParser) ParseJSONLinesContext(ctx context.Context, data []byte) (*P
 				return nil, fmt.Errorf("flatten JSON Lines record on line %d: %w", lineNumber, err)
 			}
 		}
+		if p.config.MaxRecords > 0 && len(records) >= p.config.MaxRecords {
+			return nil, fmt.Errorf("JSON Lines record limit exceeded: maximum %d", p.config.MaxRecords)
+		}
 		records = append(records, record)
 	}
 	schema := p.InferSchemaFromRecords(records)
@@ -155,6 +159,9 @@ func (p *JSONParser) ParseJSONArrayContext(ctx context.Context, data []byte) (*P
 			if err != nil {
 				return nil, fmt.Errorf("flatten JSON array element %d: %w", len(records), err)
 			}
+		}
+		if p.config.MaxRecords > 0 && len(records) >= p.config.MaxRecords {
+			return nil, fmt.Errorf("JSON array record limit exceeded: maximum %d", p.config.MaxRecords)
 		}
 		records = append(records, record)
 	}

@@ -57,6 +57,7 @@ const (
 	DatabaseTypeOzoneText             DatabaseType = "ozone_text"
 	DatabaseTypeOzoneAvro             DatabaseType = "ozone_avro"
 	DatabaseTypeAzureParquet          DatabaseType = "azure_parquet"
+	DatabaseTypeHDFSJSON              DatabaseType = "hdfs_json"
 	DatabaseTypeHDFSText              DatabaseType = "hdfs_text"
 	DatabaseTypeHDFSParquetCompressed DatabaseType = "hdfs_parquet_compressed"
 	DatabaseTypeMinIODelta            DatabaseType = "minio_delta"
@@ -212,7 +213,7 @@ func IsValidDatabaseType(dbType string) bool {
 		DatabaseTypeGaussDBMySQL, DatabaseTypeGaussDBPostgres, DatabaseTypeDaMeng, DatabaseTypeKingbaseES,
 		DatabaseTypeGBase8s, DatabaseTypeGBase8t, DatabaseTypeOscar, DatabaseTypeOpenGauss,
 		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeOzoneText,
-		DatabaseTypeOzoneAvro, DatabaseTypeAzureParquet, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed,
+		DatabaseTypeOzoneAvro, DatabaseTypeAzureParquet, DatabaseTypeHDFSJSON, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed,
 		DatabaseTypeMinIODelta, DatabaseTypeApacheHive, DatabaseTypeSQLServer, DatabaseTypeHologres, DatabaseTypeMongoDB, DatabaseTypeMaxCompute:
 		return true
 	default:
@@ -234,7 +235,7 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
-		DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
+		DatabaseTypeHDFSJSON, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:
 		return "filesystems"
 	case DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid, DatabaseTypeHologres:
 		return "olap"
