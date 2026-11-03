@@ -101,6 +101,20 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
 	switch dbType {
+	case model.DatabaseTypeHDFSCSV:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS CSV adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, file metadata and reads, header-based CSV parsing, restricted read-only SQL, and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter is limited to one configured CSV file up to 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; only flat row-oriented data is supported.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
 	case model.DatabaseTypeHDFSParquet:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true

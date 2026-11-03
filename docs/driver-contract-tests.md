@@ -2,7 +2,7 @@
 
 ## Verified baselines
 
-The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, and MinIO Parquet drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
+The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS CSV, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, and MinIO Parquet drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
 
 | Driver | Exact server version | Pinned runtime artifact | Authentication |
 | --- | --- | --- | --- |
@@ -25,6 +25,7 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | Apache Doris | 4.1.3 | apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a | root for fixture setup; database-scoped username and password for the driver |
 | StarRocks | 4.1.6 | starrocks/allin1-ubuntu:4.1.6@sha256:88d1192620d03cf7ae8d5ece0b02da1024372d33bc411e5a51e2d3b003c551b3 | root for fixture setup; table-scoped username and password for the driver |
 | HDFS Parquet | Apache Hadoop 3.5.0 | apache/hadoop:3.5.0@sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | HDFS simple user identity; Kerberos not covered |
+| HDFS CSV | Apache Hadoop 3.5.0 | apache/hadoop:3.5.0@sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | HDFS simple user identity; Kerberos not covered |
 | S3 CSV | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | S3 Parquet | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | S3 ORC | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
@@ -50,7 +51,7 @@ The openGauss TLS contract starts the pinned 6.0.0 image with a generated server
 
 The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol; its separate TLS contract verifies trusted private-CA connections and rejects untrusted certificates and hostname mismatches. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate both CSV and flat-schema Parquet unified query adapters against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
 
-These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 15.19, 16.15, 17.11, and 18.6; MySQL 8.0.46 and 8.4.13; MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3; and HDFS Parquet on Apache Hadoop 3.5.0 are covered by driver contracts. TLS certificate validation is covered for PostgreSQL 17.11; MySQL 8.0.46 and 8.4.13; and MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. openGauss 6.0.0, TiDB v8.5.8, and ClickHouse 26.8.20.9 certificate validation are also covered by pinned TLS contracts. TLS validation for other MariaDB versions, other listed baselines, and PostgreSQL versions remains unverified.
+These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 15.19, 16.15, 17.11, and 18.6; MySQL 8.0.46 and 8.4.13; MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3; and HDFS CSV and Parquet on Apache Hadoop 3.5.0 are covered by driver contracts. TLS certificate validation is covered for PostgreSQL 17.11; MySQL 8.0.46 and 8.4.13; and MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. openGauss 6.0.0, TiDB v8.5.8, and ClickHouse 26.8.20.9 certificate validation are also covered by pinned TLS contracts. TLS validation for other MariaDB versions, other listed baselines, and PostgreSQL versions remains unverified.
 
 The MinIO contracts build the pinned upstream source archive locally because the historical upstream container image is no longer published. The script verifies the archive SHA-256, checks the built binary's release identifier, then runs the CSV and Parquet fixtures against that MinIO process. The S3 CSV, Parquet, ORC, Avro OCF, and JSON contracts run against the pinned Garage v2.4.1 image.
 
@@ -71,7 +72,7 @@ The script needs Bash, `curl`, `tar`, `sha256sum`, and the Go version declared i
 bash scripts/contracts/run_minio_object_storage_contract.sh
 ~~~~
 
-The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, HDFS Parquet on Apache Hadoop 3.5.0, PostgreSQL 15.19, 16.15, 17.11, and 18.6, openGauss 6.0.0, MySQL 8.0.46 and 8.4.13, MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, and MinIO Parquet as versioned contract evidence. MongoDB and both MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, HDFS CSV and Parquet on Apache Hadoop 3.5.0, PostgreSQL 15.19, 16.15, 17.11, and 18.6, openGauss 6.0.0, MySQL 8.0.46 and 8.4.13, MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, and MinIO Parquet as versioned contract evidence. MongoDB and both MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Apache Druid protocol fixture
 
@@ -599,16 +600,32 @@ docker stop data-fabric-starrocks-contract
 
 The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
 
+## HDFS CSV live cluster contract
+
+The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
+cluster from the pinned official image, writes a deterministic header-based CSV
+fixture to HDFS, then runs the Data Fabric adapter against the HDFS RPC endpoint.
+It checks the exact Hadoop version, connection and metadata probes, CSV type
+inference, a filtered and ordered query, COUNT(*), and write rejection.
+
+Run it with:
+
+~~~~sh
+bash scripts/contracts/run_hdfs_csv_contract.sh
+~~~~
+
+The contract covers HDFS simple-user access on one single-node cluster. It does
+not verify Kerberos, authorization policies, HA, other Hadoop releases, or other
+HDFS formats. The adapter remains bounded to one configured CSV file and its
+documented byte and row limits.
+
 ## HDFS CSV local file-client fixture
 
 The HDFS CSV adapter exposes one configured CSV file through the shared
-read-only query service. Its deterministic local file-client fixture covers
-bounded file reads, a simple projection/filter/order/page query, COUNT(*),
-metadata discovery, and write rejection without requiring a running HDFS
-cluster. It does not certify NameNode/DataNode interoperability, HDFS release
-compatibility, authorization behavior, Kerberos, HA failover, or large-file
-performance. Keep HDFS CSV experimental until a versioned live-cluster contract
-is available.
+read-only query service. Its deterministic local fixture covers bounded file
+reads, projection/filter/order/page queries, COUNT(*), metadata discovery, and
+write rejection. A separate live contract verifies this adapter only against
+Apache Hadoop 3.5.0; other releases and HDFS formats remain unverified.
 
 ## HDFS Parquet live cluster contract
 

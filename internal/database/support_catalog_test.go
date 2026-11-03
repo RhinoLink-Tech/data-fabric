@@ -96,6 +96,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
 			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
+			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 		}
 		if dbType == model.DatabaseTypeS3CSV {
@@ -187,11 +188,14 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("HDFS text catalog must disclose its file and line boundaries: %+v", hdfsText.Limitations)
 	}
 	hdfsCSV := profiles[string(model.DatabaseTypeHDFSCSV)]
-	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusExperimental || !hdfsCSV.Capabilities.SupportsSQL {
-		t.Errorf("HDFS CSV must expose its experimental read-only SQL path: %+v", hdfsCSV)
+	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusEndToEndVerified || !hdfsCSV.EndToEndVerified || !hdfsCSV.Capabilities.SupportsSQL {
+		t.Errorf("HDFS CSV must expose only its verified read-only SQL path: %+v", hdfsCSV)
 	}
-	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") {
-		t.Errorf("HDFS CSV catalog must disclose its file and memory boundaries: %+v", hdfsCSV.Limitations)
+	if hdfsCSV.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsCSV.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS CSV contract must be limited to Hadoop 3.5.0: %+v", hdfsCSV)
+	}
+	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") || !containsSupportLimitation(hdfsCSV.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS CSV catalog must disclose its file, memory, and security boundaries: %+v", hdfsCSV.Limitations)
 	}
 	hdfsParquetCompressed := profiles[string(model.DatabaseTypeHDFSParquetCompressed)]
 	if !hdfsParquetCompressed.Registered || !hdfsParquetCompressed.Supported || hdfsParquetCompressed.Status != ConnectorStatusExperimental || !hdfsParquetCompressed.Capabilities.SupportsSQL {
