@@ -688,14 +688,15 @@ docker stop data-fabric-starrocks-contract
 
 The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
 
-## HDFS CSV and Avro live cluster contracts
+## HDFS CSV, Avro, and Text live cluster contracts
 
 The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
-cluster from the pinned official image, writes deterministic CSV and Avro OCF
-fixtures to separate HDFS paths, then runs both Data Fabric adapters against the
-HDFS RPC endpoint. It checks the exact Hadoop version, connection and metadata
-probes, CSV type inference, Avro primitive and nullable-field decoding, filtered
-and ordered queries, COUNT(*), and write rejection.
+cluster from the pinned official image, writes deterministic CSV, Avro OCF,
+and UTF-8 text fixtures to separate HDFS paths, then runs all three Data Fabric
+adapters against the HDFS RPC endpoint. It checks the exact Hadoop version,
+connection and metadata probes, CSV type inference, Avro primitive and nullable
+field decoding, text LF/CRLF parsing with blank and unterminated final lines,
+filtered and ordered queries, COUNT(*), and write rejection.
 
 Run it with:
 
@@ -703,12 +704,22 @@ Run it with:
 bash scripts/contracts/run_hdfs_csv_contract.sh
 ~~~~
 
-The contracts cover HDFS simple-user access on one single-node cluster. The Avro
-fixture uses uncompressed OCF with flat primitive and nullable fields. They do
-not verify Kerberos, authorization policies, HA, other Hadoop releases, or other
-HDFS formats. Each adapter remains bounded to one configured file and its
-documented byte and row limits; the Avro adapter does not support nested or
+The contracts cover HDFS simple-user access on one single-node cluster. The
+Avro fixture uses uncompressed OCF with flat primitive and nullable fields.
+They do not verify Kerberos, authorization policies, HA, other Hadoop releases,
+or other HDFS formats. Each adapter remains bounded to one configured file and
+its documented byte and row limits; the Avro adapter does not support nested or
 non-primitive fields.
+
+## HDFS Text local file-client fixture
+
+The HDFS Text adapter exposes one configured UTF-8 .txt or .log file through the
+shared read-only query service. Its deterministic local fixture covers LF/CRLF,
+blank lines, a final line without a newline, stable line numbers, filtering,
+ordering, pagination, COUNT(*), metadata discovery, and write rejection. The
+live HDFS contract above verifies the adapter against Apache Hadoop 3.5.0 only;
+directory scans, compression, multiline parsing, other releases, and HDFS
+security modes are outside that result.
 
 ## HDFS Avro local file-client fixture
 

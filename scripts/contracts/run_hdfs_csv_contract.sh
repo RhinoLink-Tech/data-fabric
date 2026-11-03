@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 chmod 755 "$work_dir"
 compose_file="$work_dir/compose.yaml"
-compose_project="data-fabric-hdfs-csv-avro-contract-$RANDOM-$RANDOM"
+compose_project="data-fabric-hdfs-csv-avro-text-contract-$RANDOM-$RANDOM"
 hadoop_image="${DATA_FABRIC_HDFS_IMAGE:-apache/hadoop:3.5.0@sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12}"
 expected_version="${DATA_FABRIC_HDFS_EXPECTED_VERSION:-3.5.0}"
 compose=(docker compose --project-name "$compose_project" --file "$compose_file")
@@ -29,8 +29,8 @@ done
 docker compose version >/dev/null
 
 cd "$repo_root"
-CGO_ENABLED=0 go test -c -o "$work_dir/hdfs-csv-avro-contract.test" ./internal/database/drivers/file_system
-chmod 755 "$work_dir/hdfs-csv-avro-contract.test"
+CGO_ENABLED=0 go test -c -o "$work_dir/hdfs-csv-avro-text-contract.test" ./internal/database/drivers/file_system
+chmod 755 "$work_dir/hdfs-csv-avro-text-contract.test"
 
 cat >"$compose_file" <<COMPOSE
 services:
@@ -53,14 +53,14 @@ services:
       HDFS-SITE.XML_dfs.replication: "1"
   contract:
     image: "$hadoop_image"
-    entrypoint: ["/hdfs-csv-avro-contract.test"]
-    command: ["-test.run=^TestHDFS(CSVDriver|AvroDriver)Contract$", "-test.count=1", "-test.v"]
+    entrypoint: ["/hdfs-csv-avro-text-contract.test"]
+    command: ["-test.run=^TestHDFS(CSVDriver|AvroDriver|TextDriver)Contract$", "-test.count=1", "-test.v"]
     environment:
       DATA_FABRIC_HDFS_CONTRACT_HOST: "namenode"
       DATA_FABRIC_HDFS_CONTRACT_PORT: "8020"
       DATA_FABRIC_HDFS_CONTRACT_USERNAME: "hadoop"
     volumes:
-      - "$work_dir/hdfs-csv-avro-contract.test:/hdfs-csv-avro-contract.test:ro"
+      - "$work_dir/hdfs-csv-avro-text-contract.test:/hdfs-csv-avro-text-contract.test:ro"
 COMPOSE
 
 "${compose[@]}" config >/dev/null

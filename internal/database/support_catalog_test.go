@@ -96,6 +96,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
 			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
+			model.DatabaseTypeHDFSText:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSAvro:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
@@ -218,11 +219,14 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
-	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusExperimental || !hdfsText.Capabilities.SupportsSQL {
-		t.Errorf("HDFS text must expose its experimental read-only SQL path: %+v", hdfsText)
+	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusEndToEndVerified || !hdfsText.EndToEndVerified || !hdfsText.Capabilities.SupportsSQL {
+		t.Errorf("HDFS text must expose its verified read-only SQL path: %+v", hdfsText)
 	}
-	if !containsSupportLimitation(hdfsText.Limitations, "one configured UTF-8 text file") || !containsSupportLimitation(hdfsText.Limitations, "100,000 lines") {
-		t.Errorf("HDFS text catalog must disclose its file and line boundaries: %+v", hdfsText.Limitations)
+	if hdfsText.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsText.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS text contract must be limited to Hadoop 3.5.0: %+v", hdfsText)
+	}
+	if !containsSupportLimitation(hdfsText.Limitations, "one configured UTF-8 text file") || !containsSupportLimitation(hdfsText.Limitations, "100,000 lines") || !containsSupportLimitation(hdfsText.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS text catalog must disclose its file, line, and security boundaries: %+v", hdfsText.Limitations)
 	}
 	hdfsCSV := profiles[string(model.DatabaseTypeHDFSCSV)]
 	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusEndToEndVerified || !hdfsCSV.EndToEndVerified || !hdfsCSV.Capabilities.SupportsSQL {
