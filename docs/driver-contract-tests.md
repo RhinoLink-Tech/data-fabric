@@ -2,7 +2,7 @@
 
 ## Verified baselines
 
-The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS CSV, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, and MinIO Parquet drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
+The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS CSV, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, MinIO Parquet, and MinIO JSON drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
 
 | Driver | Exact server version | Pinned runtime artifact | Authentication |
 | --- | --- | --- | --- |
@@ -33,6 +33,7 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | S3 JSON | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | MinIO CSV | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
 | MinIO Parquet | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
+| MinIO JSON | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
 
 The main CI job publishes pass, skip, failure, and version/product-mismatch results for its six configured live database contracts in the GitHub Actions step summary. Its configured baselines must all run and pass; a missing endpoint or skipped contract cannot satisfy the CI check. A separate PostgreSQL matrix runs the same driver contract against PostgreSQL 15.19, 16.15, and 18.6; the main job covers PostgreSQL 17.11. A separate MySQL job covers 8.4.13; the main job covers MySQL 8.0.46 and MariaDB 11.8.9. A separate MariaDB driver job covers 10.11.19; the MariaDB TLS jobs cover 11.8.9 and 10.11.19. Isolated SQL Server, MongoDB, Oracle, Doris, StarRocks, Garage, and MinIO jobs print verbose per-contract outcomes. Locally, an unconfigured endpoint is reported as skipped. A server outside the exact baseline fails the version assertion; other versions and compatibility modes remain unverified unless listed here.
 
@@ -49,7 +50,7 @@ The TiDB TLS contract starts the same pinned TiDB v8.5.8 release with an ephemer
 
 The openGauss TLS contract starts the pinned 6.0.0 image with a generated server certificate. It verifies a trusted CA with verify-full and verify-ca, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private CA, and checks that legacy ssl: true still requires encryption while ssl: false disables TLS. Run it with bash scripts/contracts/run_opengauss_tls_contract.sh; it creates and removes its temporary container and certificates.
 
-The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol; its separate TLS contract verifies trusted private-CA connections and rejects untrusted certificates and hostname mismatches. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate both CSV and flat-schema Parquet unified query adapters against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
+The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol; its separate TLS contract verifies trusted private-CA connections and rejects untrusted certificates and hostname mismatches. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate CSV, flat-schema Parquet, and JSON object, array, and JSON Lines adapters against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
 
 These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 15.19, 16.15, 17.11, and 18.6; MySQL 8.0.46 and 8.4.13; MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3; and HDFS CSV and Parquet on Apache Hadoop 3.5.0 are covered by driver contracts. TLS certificate validation is covered for PostgreSQL 17.11; MySQL 8.0.46 and 8.4.13; and MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. openGauss 6.0.0, TiDB v8.5.8, and ClickHouse 26.8.20.9 certificate validation are also covered by pinned TLS contracts. TLS validation for other MariaDB versions, other listed baselines, and PostgreSQL versions remains unverified.
 
@@ -72,7 +73,7 @@ The script needs Bash, `curl`, `tar`, `sha256sum`, and the Go version declared i
 bash scripts/contracts/run_minio_object_storage_contract.sh
 ~~~~
 
-The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, HDFS CSV and Parquet on Apache Hadoop 3.5.0, PostgreSQL 15.19, 16.15, 17.11, and 18.6, openGauss 6.0.0, MySQL 8.0.46 and 8.4.13, MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, and MinIO Parquet as versioned contract evidence. MongoDB and both MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, HDFS CSV and Parquet on Apache Hadoop 3.5.0, PostgreSQL 15.19, 16.15, 17.11, and 18.6, openGauss 6.0.0, MySQL 8.0.46 and 8.4.13, MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, MinIO Parquet, and MinIO JSON as versioned contract evidence. MongoDB and the MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Apache Druid protocol fixture
 
@@ -134,15 +135,30 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO JSON live contract
+
+The live MinIO contract runs against the pinned MinIO source build and uploads
+JSON object, array, and JSON Lines fixtures through the signed S3 API. It checks
+the exact MinIO release and commit, bucket and object access, health and schema
+discovery, filtered read-only queries, counts, and write rejection.
+
+Run all MinIO object-storage contracts with:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
+~~~~
+
+This verifies the pinned MinIO release only; it does not establish compatibility
+with AWS S3, other S3-compatible providers, or other MinIO releases.
+
 ## MinIO JSON local S3-compatible fixture
 
-The MinIO JSON fixture serves a JSON object, a JSON array, and JSON Lines from a
-local HTTP server that checks SigV4 authorization, bucket-in-path addressing,
-object metadata requests, and full-object reads. It exercises source validation,
+The local fixture serves a JSON object, a JSON array, and JSON Lines from an HTTP
+server that checks SigV4 authorization, bucket-in-path addressing, object
+metadata requests, and full-object reads. It exercises source validation,
 health, metadata discovery, schema inference, read-only filtering, ordering,
 COUNT(*), schema-only queries, and write rejection through the configured
-database/sql adapter. It is local protocol coverage, not a live MinIO release
-contract. Run it with:
+database/sql adapter. Run it with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOJSON' -count=1 -v
