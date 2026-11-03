@@ -96,6 +96,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
 			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
+			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 		}
 		if dbType == model.DatabaseTypeS3CSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
@@ -200,11 +201,14 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("HDFS compressed Parquet catalog must disclose codec and file limits: %+v", hdfsParquetCompressed.Limitations)
 	}
 	hdfsParquet := profiles[string(model.DatabaseTypeHDFSParquet)]
-	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusExperimental || !hdfsParquet.Capabilities.SupportsSQL {
-		t.Errorf("HDFS Parquet must expose its experimental read-only SQL path: %+v", hdfsParquet)
+	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusEndToEndVerified || !hdfsParquet.EndToEndVerified || !hdfsParquet.Capabilities.SupportsSQL {
+		t.Errorf("HDFS Parquet must expose only its verified read-only SQL path: %+v", hdfsParquet)
 	}
-	if !containsSupportLimitation(hdfsParquet.Limitations, "one configured Parquet file") || !containsSupportLimitation(hdfsParquet.Limitations, "64 MiB") {
-		t.Errorf("HDFS Parquet catalog must disclose its file and memory boundaries: %+v", hdfsParquet.Limitations)
+	if hdfsParquet.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsParquet.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS Parquet contract must be limited to Hadoop 3.5.0: %+v", hdfsParquet)
+	}
+	if !containsSupportLimitation(hdfsParquet.Limitations, "one configured Parquet file") || !containsSupportLimitation(hdfsParquet.Limitations, "64 MiB") || !containsSupportLimitation(hdfsParquet.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS Parquet catalog must disclose its file, memory, and security boundaries: %+v", hdfsParquet.Limitations)
 	}
 	hdfsAvro := profiles[string(model.DatabaseTypeHDFSAvro)]
 	if !hdfsAvro.Registered || !hdfsAvro.Supported || hdfsAvro.Status != ConnectorStatusExperimental || !hdfsAvro.Capabilities.SupportsSQL {

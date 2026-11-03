@@ -101,6 +101,19 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
 	switch dbType {
+	case model.DatabaseTypeHDFSParquet:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS Parquet adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, file metadata and reads, restricted read-only Parquet SQL, and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter is limited to one configured Parquet file up to 64 MiB and 100,000 rows; directory and partition scans, multiple files, column pruning, predicate pushdown, and row-group pruning are not supported.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
 	case model.DatabaseTypePostgreSQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
@@ -355,7 +368,16 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
 			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; flat row-oriented data only is supported.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed:
+	case model.DatabaseTypeHDFSParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The Hadoop 3.5.0 live contract covers HDFS simple-user RPC only; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Parquet file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
+			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
+			"The live contract uses a single-node NameNode/DataNode cluster and does not cover Kerberos, HDFS authorization policies, HA, or large-file performance.")
+	case model.DatabaseTypeHDFSParquetCompressed:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
 		profile.AuthenticationDisclosure = "The local file-client fixture covers configured user forwarding only; Kerberos and HDFS authorization behavior are not covered."
