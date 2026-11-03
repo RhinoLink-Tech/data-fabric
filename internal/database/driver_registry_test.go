@@ -149,6 +149,17 @@ func TestOzoneParquetTextAndAvroUseS3GatewayAdapters(t *testing.T) {
 	}
 }
 
+func TestAzureBlobJSONDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobJSON)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_json) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob JSON driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
 func TestAzureBlobCSVDriverIsRegistered(t *testing.T) {
 	registry := NewDriverRegistry()
 	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobCSV)

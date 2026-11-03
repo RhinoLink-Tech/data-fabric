@@ -501,6 +501,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeAzureBlobCSV {
 			return object_storage.ValidateAzureBlobCSVConfig(config)
 		}
+		if dbType == model.DatabaseTypeAzureBlobJSON {
+			return object_storage.ValidateAzureBlobJSONConfig(config)
+		}
 		if dbType == model.DatabaseTypeAzureBlobParquet || dbType == model.DatabaseTypeAzureParquet {
 			return hc.validateAzureParquetConfig(config)
 		}
