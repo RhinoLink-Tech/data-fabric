@@ -61,7 +61,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 	var tables map[string]*TableSchema
 	if isCSVObjectSource(dataSource.Type) {
 		var table *TableSchema
-		table, err = extractCSVTable(ctx, db, &dataSource.Config)
+		table, err = extractCSVTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
@@ -106,14 +106,14 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		return nil, err
 	}
 	if isCSVObjectSource(dataSource.Type) {
-		name, err := object_storage.CSVTableName(&dataSource.Config)
+		name, err := csvTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		if requestedSchema != "" || tableName != name {
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
-		return extractCSVTable(ctx, db, &dataSource.Config)
+		return extractCSVTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
 	if isMinIOIcebergSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
@@ -252,7 +252,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		return nil, err
 	}
 	if isCSVObjectSource(dataSource.Type) {
-		name, err := object_storage.CSVTableName(&dataSource.Config)
+		name, err := csvTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -309,7 +309,14 @@ func isHDFSParquetSource(dbType model.DatabaseType) bool {
 }
 
 func isCSVObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV
+	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeOzoneCSV
+}
+
+func csvTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	if dbType == model.DatabaseTypeOzoneCSV {
+		return file_system.OzoneCSVTableName(config)
+	}
+	return object_storage.CSVTableName(config)
 }
 
 func isParquetObjectSource(dbType model.DatabaseType) bool {
@@ -400,8 +407,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 // extractCSVTable asks the configured adapter for column metadata. CSV has no
 // declared schema, so the reported types are inferred from the object using
 // the same parser and rules as SELECT queries; no row values are returned.
-func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig) (*TableSchema, error) {
-	name, err := object_storage.CSVTableName(config)
+func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
+	name, err := csvTableNameForSource(dbType, config)
 	if err != nil {
 		return nil, err
 	}

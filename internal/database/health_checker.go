@@ -430,7 +430,7 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 				return err
 			}
 		}
-		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneText || dbType == model.DatabaseTypeOzoneAvro || dbType == model.DatabaseTypeOzoneJSON {
+		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneText || dbType == model.DatabaseTypeOzoneAvro || dbType == model.DatabaseTypeOzoneJSON || dbType == model.DatabaseTypeOzoneCSV {
 			switch dbType {
 			case model.DatabaseTypeOzoneText:
 				return file_system.ValidateOzoneTextConfig(config)
@@ -438,6 +438,8 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 				return file_system.ValidateOzoneAvroConfig(config)
 			case model.DatabaseTypeOzoneJSON:
 				return file_system.ValidateOzoneJSONConfig(config)
+			case model.DatabaseTypeOzoneCSV:
+				return file_system.ValidateOzoneCSVConfig(config)
 			default:
 				return file_system.ValidateOzoneParquetConfig(config)
 			}
