@@ -210,6 +210,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
 		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
 	}
+	ozoneCSV := profiles[string(model.DatabaseTypeOzoneCSV)]
+	if !ozoneCSV.Registered || !ozoneCSV.Supported || ozoneCSV.Status != ConnectorStatusExperimental || !ozoneCSV.Capabilities.SupportsSQL {
+		t.Errorf("Ozone CSV must expose its experimental S3 Gateway SQL path: %+v", ozoneCSV)
+	}
+	if !containsSupportLimitation(ozoneCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(ozoneCSV.Limitations, "100,000 rows") {
+		t.Errorf("Ozone CSV catalog must disclose its object and row limits: %+v", ozoneCSV.Limitations)
+	}
 	ozoneAvro := profiles[string(model.DatabaseTypeOzoneAvro)]
 	if !ozoneAvro.Registered || !ozoneAvro.Supported || ozoneAvro.Status != ConnectorStatusExperimental || !ozoneAvro.Capabilities.SupportsSQL {
 		t.Errorf("Ozone Avro must expose its experimental S3 Gateway SQL path: %+v", ozoneAvro)
@@ -480,11 +487,17 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if ozone, ok := info[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
 		t.Fatalf("type endpoint must advertise the experimental Ozone JSON adapter: %+v", ozone)
 	}
+	if ozone, ok := info[string(model.DatabaseTypeOzoneCSV)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("type endpoint must advertise the experimental Ozone CSV adapter: %+v", ozone)
+	}
 	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental {
 		t.Fatalf("compatibility endpoint must report Ozone Parquet as experimental: %+v", ozone)
 	}
 	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental {
 		t.Fatalf("compatibility endpoint must report Ozone JSON as experimental: %+v", ozone)
+	}
+	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneCSV)]; !ok || ozone.Status != ConnectorStatusExperimental {
+		t.Fatalf("compatibility endpoint must report Ozone CSV as experimental: %+v", ozone)
 	}
 	if len(compatibility) != len(catalog) {
 		t.Fatalf("compatibility profiles = %d, catalog = %d", len(compatibility), len(catalog))
