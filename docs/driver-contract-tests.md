@@ -155,6 +155,21 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Azure Blob Avro protocol fixture
+
+The Azure Blob Avro fixture uses the Azure SDK against a local HTTP server and
+a generated Avro OCF. It covers Shared Key signing, SAS query-token propagation,
+embedded-schema discovery, filtered and paginated read-only SQL, counts, write
+rejection, object-size and row limits, and size-limit enforcement despite
+inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestAzureBlobAvro' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
 ## Azure Blob JSON protocol fixture
 
 The Azure Blob JSON fixture uses the Azure SDK against a local HTTP server. It

@@ -369,7 +369,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	for _, dbType := range []model.DatabaseType{
 		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
-		model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeAzureBlobAvro, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]
 		if profile.Status != ConnectorStatusExperimental || !profile.Capabilities.SupportsSQL {

@@ -613,6 +613,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"The deterministic SDK protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeAzureBlobAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Avro Object Container File (OCF); directory scans, multiple blobs, raw datum streams, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested Avro fields and unsupported unions are rejected.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
 	case model.DatabaseTypeAzureBlobCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
