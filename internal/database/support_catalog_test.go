@@ -147,6 +147,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOAvro {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Avro contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -349,11 +355,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("MinIO ORC catalog must disclose its object and schema boundaries: %+v", minioORC.Limitations)
 	}
 	minioAvro := profiles[string(model.DatabaseTypeMinIOAvro)]
-	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || minioAvro.EndToEndVerified {
-		t.Errorf("MinIO Avro must expose its experimental SQL adapter without claiming a live version contract: %+v", minioAvro)
+	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || !minioAvro.EndToEndVerified ||
+		minioAvro.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioAvro.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Avro must expose experimental SQL with its exact pinned live contract: %+v", minioAvro)
 	}
-	if !containsSupportLimitation(minioAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(minioAvro.Limitations, "Nested records") {
-		t.Errorf("MinIO Avro catalog must disclose its object and schema boundaries: %+v", minioAvro.Limitations)
+	if !containsSupportLimitation(minioAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(minioAvro.Limitations, "Nested records") ||
+		!containsSupportLimitation(minioAvro.Limitations, "AWS S3") || !containsSupportLimitation(minioAvro.Limitations, "deflate") {
+		t.Errorf("MinIO Avro catalog must disclose its contract and format boundaries: %+v", minioAvro.Limitations)
 	}
 	minioJSON := profiles[string(model.DatabaseTypeMinIOJSON)]
 	if minioJSON.Status != ConnectorStatusExperimental || !minioJSON.Capabilities.SupportsSQL || !minioJSON.EndToEndVerified ||

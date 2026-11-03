@@ -335,6 +335,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are outside the adapter boundary.",
 			"TLS, STS, distributed MinIO deployments, AWS S3, and other MinIO releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIOAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has an Avro OCF contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "MinIO root access key and secret key authentication are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed Avro OCF upload and reads, health checks, schema discovery, filtered and ordered read-only SQL, pagination, counts, and write rejection.",
+			"The adapter exposes one configured Avro OCF object as one SQL table and downloads the full object into gateway memory before decoding and applying filters or pagination.",
+			"Only flat records with primitive fields or nullable unions of null and one primitive type are supported. Nested records, arrays, maps, named unions, schema registries, multiple objects, and partition scans are not supported.",
+			"Only null, deflate, and Snappy OCF codecs are supported by the current decoder. TLS, STS, AWS S3, distributed MinIO deployments, and other releases are not covered.",
+		}
 	case model.DatabaseTypeMinIOParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true

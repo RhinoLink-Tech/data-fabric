@@ -19,7 +19,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 - Query execution, pagination, cancellation, and connector support are exposed through documented contracts.
 - Query admission bounds concurrent work, applies per-tenant request-rate limits, and exposes rejection metrics; limiter state is bounded in memory.
 - A runtime support catalog distinguishes registered implementations, end-to-end verified versions, experimental adapters, and unsupported boundaries.
-- The HDFS CSV and Parquet adapters have pinned live contracts against Apache Hadoop 3.5.0; MinIO JSON has a pinned contract against the MinIO 2025-04-22 source build. Other HDFS releases, MinIO releases, and S3-compatible providers remain outside those results.
+- The HDFS CSV and Parquet adapters have pinned live contracts against Apache Hadoop 3.5.0; MinIO JSON and Avro OCF have pinned contracts against the MinIO 2025-04-22 source build. Other HDFS releases, MinIO releases, and S3-compatible providers remain outside those results.
 - Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, plus MySQL 8.0.46 and 8.4.13. TLS evidence is version-specific and remains narrower than query-driver evidence.
 
 ### Current support limits
@@ -74,6 +74,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify MySQL 8.4 LTS TLS identity
 
 [#325](https://github.com/RhinoLink-Tech/data-fabric/issues/325) adds private-CA and hostname-verification evidence for MySQL 8.4.13. Both MySQL 8.0.46 and 8.4.13 now reject untrusted certificates and hostname mismatches; other releases and MySQL-compatible products remain outside this evidence.
+
+### Completed: verify MinIO Avro OCF against the pinned MinIO source build
+
+[#342](https://github.com/RhinoLink-Tech/data-fabric/issues/342) adds a live contract for signed Avro OCF upload/read, nullable schema discovery, filtered and paginated queries, counts, and write rejection. Evidence is limited to MinIO RELEASE.2025-04-22T22-12-26Z; it does not imply compatibility with AWS S3 or other MinIO releases.
 
 ### Completed: verify MinIO JSON against the pinned MinIO source build
 
