@@ -11,6 +11,7 @@ import (
 
 type hdfsCSVFileClientFixture struct {
 	data       []byte
+	files      []HDFSFileInfo
 	info       HDFSFileInfo
 	readErr    error
 	statErr    error
@@ -37,8 +38,8 @@ func (f *hdfsCSVFileClientFixture) GetFileInfo(context.Context, string) (*HDFSFi
 	info := f.info
 	return &info, nil
 }
-func (*hdfsCSVFileClientFixture) ListFiles(context.Context, string) ([]HDFSFileInfo, error) {
-	return nil, nil
+func (f *hdfsCSVFileClientFixture) ListFiles(context.Context, string) ([]HDFSFileInfo, error) {
+	return append([]HDFSFileInfo(nil), f.files...), nil
 }
 func (*hdfsCSVFileClientFixture) GetCapacity(context.Context) (*HDFSCapacity, error) {
 	return &HDFSCapacity{}, nil

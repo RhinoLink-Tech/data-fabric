@@ -711,6 +711,15 @@ or other HDFS formats. Each adapter remains bounded to one configured file and
 its documented byte and row limits; the Avro adapter does not support nested or
 non-primitive fields.
 
+## HDFS JSON local file-client fixture
+
+The HDFS JSON adapter supports one bounded object, array of objects, or JSON
+Lines file through the shared read-only SQL service. Its deterministic fixture
+covers schema inference, flat scalar decoding, filtering, ordering, pagination,
+COUNT(*), metadata discovery, and write rejection. HDFS JSON has no live Hadoop
+release contract yet; the local fixture does not verify NameNode interoperability,
+HDFS security modes, large files, or memory use at the configured limits.
+
 ## HDFS Text local file-client fixture
 
 The HDFS Text adapter exposes one configured UTF-8 .txt or .log file through the

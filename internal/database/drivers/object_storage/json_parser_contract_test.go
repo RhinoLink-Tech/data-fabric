@@ -96,3 +96,16 @@ func TestJSONParserRejectsOutOfRangeIntegersAndHonorsCancellation(t *testing.T) 
 		t.Fatalf("cancelled array parse error = %v, want context.Canceled", err)
 	}
 }
+
+func TestJSONParserEnforcesConfiguredRecordLimit(t *testing.T) {
+	parser := object_storage.NewJSONParser(&object_storage.JSONParserConfig{MaxRecords: 2})
+	if _, err := parser.ParseJSONArray([]byte(`[{"id":1},{"id":2}]`)); err != nil {
+		t.Fatalf("ParseJSONArray() at limit error = %v", err)
+	}
+	if _, err := parser.ParseJSONArray([]byte(`[{"id":1},{"id":2},{"id":3}]`)); err == nil || !strings.Contains(err.Error(), "record limit") {
+		t.Fatalf("ParseJSONArray() over limit error = %v, want record limit rejection", err)
+	}
+	if _, err := parser.ParseJSONLines([]byte("{\"id\":1}\n{\"id\":2}\n{\"id\":3}\n")); err == nil || !strings.Contains(err.Error(), "record limit") {
+		t.Fatalf("ParseJSONLines() over limit error = %v, want record limit rejection", err)
+	}
+}

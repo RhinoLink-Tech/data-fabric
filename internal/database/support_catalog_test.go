@@ -218,6 +218,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("Ozone Avro catalog must disclose its object and record limits: %+v", ozoneAvro.Limitations)
 	}
 
+	hdfsJSON := profiles[string(model.DatabaseTypeHDFSJSON)]
+	if !hdfsJSON.Registered || !hdfsJSON.Supported || hdfsJSON.Status != ConnectorStatusExperimental || !hdfsJSON.Capabilities.SupportsSQL || hdfsJSON.EndToEndVerified {
+		t.Errorf("HDFS JSON must expose its experimental bounded read-only SQL path without a live Hadoop claim: %+v", hdfsJSON)
+	}
+	if !containsSupportLimitation(hdfsJSON.Limitations, "one configured JSON object, array of objects, or JSON Lines file") || !containsSupportLimitation(hdfsJSON.Limitations, "100,000 records") || !containsSupportLimitation(hdfsJSON.Limitations, "does not establish compatibility with a live HDFS release") {
+		t.Errorf("HDFS JSON catalog must disclose its input, record, and verification boundaries: %+v", hdfsJSON.Limitations)
+	}
 	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
 	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusEndToEndVerified || !hdfsText.EndToEndVerified || !hdfsText.Capabilities.SupportsSQL {
 		t.Errorf("HDFS text must expose its verified read-only SQL path: %+v", hdfsText)

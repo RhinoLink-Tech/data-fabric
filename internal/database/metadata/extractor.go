@@ -65,7 +65,7 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil && isMinIOIcebergSource(dataSource.Type) {
@@ -134,7 +134,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		table.Schema = namespace
 		return table, nil
 	}
-	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -258,7 +258,7 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -324,8 +324,8 @@ func isAvroObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeOzoneAvro
 }
 
-func isS3JSONObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON
+func isJSONSQLSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeHDFSJSON || dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
@@ -342,6 +342,8 @@ func isMinIOORCSource(dbType model.DatabaseType) bool {
 
 func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
+	case model.DatabaseTypeHDFSJSON:
+		return file_system.HDFSJSONTableName(config)
 	case model.DatabaseTypeHDFSText:
 		return file_system.HDFSTextTableName(config)
 	case model.DatabaseTypeOzoneText:

@@ -83,6 +83,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeOzoneAvro, func() drivers.Driver {
 		return &file_system.OzoneAvroDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSJSON, func() drivers.Driver {
+		return &file_system.HDFSJSONDriver{}
+	})
 	dr.register(model.DatabaseTypeHDFSText, func() drivers.Driver {
 		return &file_system.HDFSTextDriver{}
 	})

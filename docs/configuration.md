@@ -1002,6 +1002,23 @@ multiple files, partition pruning, row-group or column pruning, streaming,
 Kerberos, and HDFS HA guarantees are outside this adapter's contract. The
 configured username is forwarded as the HDFS simple-user identity.
 
+## HDFS JSON data sources
+
+An HDFS JSON source reads one configured .json, .jsonl, .ndjson, or
+.jsonlines file as a read-only SQL table. Supported document forms are one JSON
+object, an array of objects, or JSON Lines records. Use the NameNode host, RPC
+port (8020 by default), HDFS simple-user identity, and absolute file path
+conventions described above. The table name defaults to the file name without
+its extension and can be overridden with additionalProps.table_name.
+
+The max_file_bytes property defaults to 16 MiB and can be raised to 64 MiB;
+files with more than 100,000 records are rejected. Only flat top-level scalar
+fields are queryable. Nested objects, arrays as field values, directory scans,
+multiple files, compression, writes, Kerberos, and HDFS HA are not supported.
+Filtering, ordering, pagination, and COUNT(*) use the shared bounded read-only
+SQL subset. The complete file is decoded into gateway memory before SQL
+filtering, and no live Hadoop release compatibility is claimed yet.
+
 ## HDFS Avro OCF data sources
 
 An HDFS Avro source exposes one configured Avro Object Container File as one
