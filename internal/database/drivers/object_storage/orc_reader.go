@@ -1,8 +1,10 @@
 package object_storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -10,11 +12,31 @@ import (
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-// ORCReader reads flat-schema ORC files from S3-compatible object storage.
+// ORCReader reads flat-schema ORC files from object storage.
 type ORCReader struct {
-	s3Client *S3Client
-	config   *ORCReaderConfig
+	s3Client   *S3Client
+	config     *ORCReaderConfig
+	readObject ORCObjectReadFunc
 }
+
+// ORCObjectReadFunc reads one ORC object from a configured storage backend.
+type ORCObjectReadFunc func(context.Context, string) ([]byte, error)
+
+// ORCFile provides the random-access operations required by the ORC decoder.
+type ORCFile interface {
+	io.ReaderAt
+	Size() int64
+	Close() error
+}
+
+type memoryORCFile struct {
+	reader *bytes.Reader
+	size   int64
+}
+
+func (f *memoryORCFile) ReadAt(p []byte, off int64) (int, error) { return f.reader.ReadAt(p, off) }
+func (f *memoryORCFile) Size() int64                             { return f.size }
+func (*memoryORCFile) Close() error                              { return nil }
 
 // ORCReaderConfig holds ORC reader configuration.
 type ORCReaderConfig struct {
@@ -33,25 +55,51 @@ func NewORCReader(s3Client *S3Client, config *ORCReaderConfig) *ORCReader {
 	return &ORCReader{s3Client: s3Client, config: config}
 }
 
-// ORCFileReader wraps the ORC decoder and its ranged S3 object reader.
+// NewORCReaderWithReadFunc creates an ORC reader for a bounded object source
+// that supplies complete objects instead of ranged S3 files.
+func NewORCReaderWithReadFunc(config *ORCReaderConfig, read ORCObjectReadFunc) *ORCReader {
+	if config == nil {
+		config = &ORCReaderConfig{BatchSize: 1000}
+	}
+	if config.BatchSize <= 0 {
+		config.BatchSize = 1000
+	}
+	return &ORCReader{config: config, readObject: read}
+}
+
+// ORCFileReader wraps the ORC decoder and its random-access object reader.
 type ORCFileReader struct {
 	reader *orc.Reader
-	file   *S3File
+	file   ORCFile
 	ctx    context.Context
 	key    string
 	schema *ORCSchema
 }
 
 func (r *ORCReader) Read(ctx context.Context, key string) (*ORCFileReader, error) {
-	if r == nil || r.s3Client == nil {
-		return nil, fmt.Errorf("S3 client is required")
+	if r == nil || (r.s3Client == nil && r.readObject == nil) {
+		return nil, fmt.Errorf("S3 client or ORC object reader is required")
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("ORC object key is required")
 	}
-	file, err := NewS3FileWithContext(ctx, r.s3Client, key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ranged S3 file: %w", err)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var file ORCFile
+	if r.readObject != nil {
+		data, err := r.readObject(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("read ORC object: %w", err)
+		}
+		file = &memoryORCFile{reader: bytes.NewReader(data), size: int64(len(data))}
+	} else {
+		var err error
+		file, err = NewS3FileWithContext(ctx, r.s3Client, key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ranged S3 file: %w", err)
+		}
 	}
 	decoder, err := orc.NewReader(file)
 	if err != nil {
@@ -62,9 +110,6 @@ func (r *ORCReader) Read(ctx context.Context, key string) (*ORCFileReader, error
 	if err != nil {
 		_ = file.Close()
 		return nil, err
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	return &ORCFileReader{reader: decoder, file: file, ctx: ctx, key: key, schema: schema}, nil
 }

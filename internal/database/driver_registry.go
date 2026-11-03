@@ -250,6 +250,7 @@ func (dr *DriverRegistry) registerDrivers() {
 		return &object_storage.COSCSVDriver{}
 	})
 	dr.register(model.DatabaseTypeAzureBlobAvro, func() drivers.Driver { return &object_storage.AzureBlobAvroDriver{} })
+	dr.register(model.DatabaseTypeAzureBlobORC, func() drivers.Driver { return &object_storage.AzureBlobORCDriver{} })
 	dr.register(model.DatabaseTypeAzureBlobCSV, func() drivers.Driver {
 		return &object_storage.AzureBlobCSVDriver{}
 	})

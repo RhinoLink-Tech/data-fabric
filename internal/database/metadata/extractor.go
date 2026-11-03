@@ -332,7 +332,7 @@ func isParquetObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isORCObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3ORC
+	return dbType == model.DatabaseTypeS3ORC || dbType == model.DatabaseTypeAzureBlobORC
 }
 
 func isAvroObjectSource(dbType model.DatabaseType) bool {
@@ -379,6 +379,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSParquetTableName(config)
 	case model.DatabaseTypeTencentCOSParquet:
 		return object_storage.COSParquetTableName(config)
+	case model.DatabaseTypeAzureBlobORC:
+		return object_storage.AzureBlobORCTableName(config)
 	case model.DatabaseTypeAzureBlobAvro:
 		return object_storage.AzureBlobAvroTableName(config)
 	case model.DatabaseTypeAzureBlobJSON:
