@@ -736,7 +736,7 @@ jobs:
         run: bash scripts/contracts/run_s3_csv_contract.sh
 
   minio-csv-contract:
-    name: MinIO CSV, Parquet, and JSON driver contracts
+    name: MinIO CSV, Parquet, JSON, and Avro driver contracts
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -748,7 +748,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run MinIO CSV, Parquet, and JSON contracts
+      - name: Run MinIO CSV, Parquet, JSON, and Avro contracts
         run: bash scripts/contracts/run_minio_object_storage_contract.sh
 
   doris-contract:
