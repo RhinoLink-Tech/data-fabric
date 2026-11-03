@@ -9,11 +9,12 @@ import (
 )
 
 type JSONSQLDatabaseConfig struct {
-	DriverName   string
-	ObjectKey    string
-	TableName    string
-	MaxFileBytes int64
-	MaxRecords   int
+	DriverName    string
+	ObjectKey     string
+	TableName     string
+	MaxFileBytes  int64
+	MaxRecords    int
+	FlattenNested bool
 }
 
 // NewJSONSQLDatabase exposes one bounded JSON object, array, or JSON Lines
@@ -32,7 +33,9 @@ func NewJSONSQLDatabase(config JSONSQLDatabaseConfig, ping func(context.Context,
 		return nil, errors.New("JSON SQL object access callbacks are required")
 	}
 
-	parser := NewJSONParser(&JSONParserConfig{DetectTypes: true, MaxRecords: config.MaxRecords})
+	parser := NewJSONParser(&JSONParserConfig{
+		DetectTypes: true, FlattenNested: config.FlattenNested, MaxRecords: config.MaxRecords,
+	})
 	parse := func(ctx context.Context, key string) (*objectSQLSchema, []map[string]interface{}, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err

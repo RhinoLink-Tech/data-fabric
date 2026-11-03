@@ -224,6 +224,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(cosCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(cosCSV.Limitations, "100,000 rows") {
 		t.Errorf("COS CSV catalog must disclose its object and row limits: %+v", cosCSV.Limitations)
 	}
+	cosJSON := profiles[string(model.DatabaseTypeTencentCOSJSON)]
+	if !cosJSON.Registered || !cosJSON.Supported || cosJSON.Status != ConnectorStatusExperimental || !cosJSON.Capabilities.SupportsSQL || !cosJSON.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("COS JSON must expose its experimental read-only SQL path: %+v", cosJSON)
+	}
+	if !containsSupportLimitation(cosJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(cosJSON.Limitations, "100,000 records") || !containsSupportLimitation(cosJSON.Limitations, "flatten_nested=true") {
+		t.Errorf("COS JSON catalog must disclose object, row, and nested-field limits: %+v", cosJSON.Limitations)
+	}
 	ozoneCSV := profiles[string(model.DatabaseTypeOzoneCSV)]
 	if !ozoneCSV.Registered || !ozoneCSV.Supported || ozoneCSV.Status != ConnectorStatusExperimental || !ozoneCSV.Capabilities.SupportsSQL {
 		t.Errorf("Ozone CSV must expose its experimental S3 Gateway SQL path: %+v", ozoneCSV)

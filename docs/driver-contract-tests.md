@@ -361,6 +361,22 @@ filtered and paginated read-only SQL, COUNT, write rejection, a 100,000-row
 cap, and unified table/column metadata discovery. This is protocol simulation
 only; it does not establish compatibility with a live COS service release.
 
+## Tencent COS JSON protocol fixture
+
+The COS JSON adapter uses the Tencent COS SDK against a local HTTP protocol
+fixture. The fixture covers signed requests, object/array/JSON Lines parsing,
+schema discovery (including optional nested-field flattening), bounded reads
+when HEAD reports an inaccurate size, the record cap, read-only SQL, COUNT,
+cancellation/error paths, write rejection, and unified table/column metadata
+discovery. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSJSONProtocolFixture$' -count=1 -v
+~~~~
+
+This is protocol simulation only and does not establish compatibility with a
+live Tencent COS service release.
+
 ## Tencent COS Parquet protocol fixture
 
 The COS Parquet adapter has deterministic protocol-fixture coverage using the

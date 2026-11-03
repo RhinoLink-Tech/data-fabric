@@ -49,6 +49,7 @@ const (
 	DatabaseTypeOSSCSV            DatabaseType = "oss_csv"
 	DatabaseTypeTencentCOSParquet DatabaseType = "cos_parquet"
 	DatabaseTypeTencentCOSCSV     DatabaseType = "cos_csv"
+	DatabaseTypeTencentCOSJSON    DatabaseType = "cos_json"
 	DatabaseTypeAzureBlobAvro     DatabaseType = "azure_blob_avro"
 	DatabaseTypeAzureBlobORC      DatabaseType = "azure_blob_orc"
 	DatabaseTypeAzureBlobCSV      DatabaseType = "azure_blob_csv"
@@ -214,7 +215,7 @@ func IsValidDatabaseType(dbType string) bool {
 		DatabaseTypeApacheIceberg, DatabaseTypeDeltaLake, DatabaseTypeApacheHudi,
 		DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery,
 		DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
-		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
+		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
 		DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV, DatabaseTypeOzoneParquet,
 		DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid,
 		DatabaseTypeOceanBaseMySQL, DatabaseTypeOceanBaseOracle, DatabaseTypeTiDB, DatabaseTypeTDSQL,
@@ -239,7 +240,7 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 	case DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery, DatabaseTypeApacheHive, DatabaseTypeMaxCompute:
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
-		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
+		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
 		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeOzoneJSON, DatabaseTypeOzoneCSV:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
