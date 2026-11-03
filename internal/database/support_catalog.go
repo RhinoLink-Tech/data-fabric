@@ -362,6 +362,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The adapter exposes one configured flat-schema Parquet object as one SQL table; it uses ranged object reads but currently decodes the object's rows before applying the supported SQL filters and page.",
 			"Nested or repeated fields, partition scans, multiple objects, schema evolution, TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIOORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has an ORC contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed MinIO root access key and secret key requests are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed ORC upload and reads, health checks, flat-schema metadata, filtered and ordered read-only SQL, pagination, COUNT(*), LIMIT 0 schema discovery, and write rejection.",
+			"The adapter exposes one configured ORC object as one SQL table and reads object ranges but decodes the full object into gateway memory before SQL filtering and pagination.",
+			"Only primitive top-level columns and the codecs supported by the shared ORC decoder are available; nested/repeated columns, multi-object scans, partition discovery, and write operations are not supported.",
+			"TLS, STS, AWS S3, distributed MinIO deployments, other MinIO releases, and additional ORC writer compatibility are not covered by this baseline.",
+		}
 	case model.DatabaseTypeApacheDoris:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true

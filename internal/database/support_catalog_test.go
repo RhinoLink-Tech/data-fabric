@@ -153,6 +153,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOORC {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO ORC contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -348,11 +354,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("MinIO Iceberg catalog must disclose its table and read-only boundaries: %+v", minioIceberg.Limitations)
 	}
 	minioORC := profiles[string(model.DatabaseTypeMinIOORC)]
-	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || minioORC.EndToEndVerified {
-		t.Errorf("MinIO ORC must expose its experimental SQL adapter without claiming a live version contract: %+v", minioORC)
+	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || !minioORC.EndToEndVerified ||
+		minioORC.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioORC.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO ORC must expose experimental SQL with its exact pinned live contract: %+v", minioORC)
 	}
-	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") {
-		t.Errorf("MinIO ORC catalog must disclose its object and schema boundaries: %+v", minioORC.Limitations)
+	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") ||
+		!containsSupportLimitation(minioORC.Limitations, "AWS S3") || !containsSupportLimitation(minioORC.Limitations, "LIMIT 0") {
+		t.Errorf("MinIO ORC catalog must disclose its contract, provider, and schema boundaries: %+v", minioORC.Limitations)
 	}
 	minioAvro := profiles[string(model.DatabaseTypeMinIOAvro)]
 	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || !minioAvro.EndToEndVerified ||
