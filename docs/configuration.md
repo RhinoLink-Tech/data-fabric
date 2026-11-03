@@ -60,6 +60,32 @@ and streaming are not supported. The local OSS SDK fixture covers signed
 requests and STS token propagation; it does not establish a live OSS version
 contract.
 
+## Alibaba OSS Avro data source
+
+The oss_avro connector exposes one configured Alibaba OSS Avro Object
+Container File (OCF) as a read-only SQL table. Set the bucket in database,
+the access key ID and secret in username and password, the object key in
+additionalProps.object_key (or the legacy host field), and the required
+HTTP(S) endpoint origin in additionalProps.endpoint_url. The endpoint
+property is accepted as an alias. Object keys must end in .avro.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| session_token | - | Optional STS token (security_token is an alias) |
+| force_path_style | false | Use path-style bucket addressing |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded rows; this is also the hard maximum |
+
+The adapter reads one OCF object into gateway memory and supports the shared
+read-only SQL subset over top-level primitive fields and nullable primitive
+unions. Nested and other complex Avro field types, directory scans, multiple
+objects, raw datum streams, writes, and streaming are not supported. The local
+OSS protocol fixture covers signed requests and STS token propagation; it does
+not establish a live OSS version contract.
+
 ## Tencent COS CSV data source
 
 The `cos_csv` connector exposes one configured Tencent COS `.csv` object as a

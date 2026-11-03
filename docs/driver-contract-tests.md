@@ -434,6 +434,22 @@ go test ./internal/database/drivers/object_storage -run '^TestOSSJSONProtocolFix
 This fixture does not run against Alibaba Cloud and does not establish a live
 OSS service version contract.
 
+## Alibaba OSS Avro protocol fixture
+
+The OSS Avro adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. It verifies signed access-key requests, STS token propagation,
+metadata and health checks, Avro OCF schema discovery and SQL queries, bounded
+reads when HEAD reports an inaccurate size, the row cap, cancellation, malformed
+OCF errors, write rejection, and unified table/column metadata discovery. Run it
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestOSSAvroProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture simulates the OSS protocol locally; it does not establish
+compatibility with a live Alibaba OSS service release.
+
 ## Alibaba OSS Parquet protocol fixture
 
 The OSS Parquet adapter has deterministic protocol-fixture coverage using the

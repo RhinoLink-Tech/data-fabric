@@ -246,6 +246,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeAlibabaOSSJSON, func() drivers.Driver {
 		return &object_storage.OSSJSONDriver{}
 	})
+	dr.register(model.DatabaseTypeAlibabaOSSAvro, func() drivers.Driver {
+		return &object_storage.OSSAvroDriver{}
+	})
 	dr.register(model.DatabaseTypeTencentCOSParquet, func() drivers.Driver {
 		return &object_storage.COSParquetDriver{}
 	})
