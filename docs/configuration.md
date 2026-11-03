@@ -680,6 +680,34 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Azure Blob CSV source
+
+The azure_blob_csv source type exposes one configured CSV blob as a read-only
+SQL table. It reuses the shared CSV parser and query path; directory scans,
+multiple blobs, compression, and streaming are not supported. Objects are
+downloaded into gateway memory and limited to 64 MiB and 100,000 rows by
+default. The default object-size limit is 16 MiB and can be raised up to the
+64 MiB hard cap.
+
+| Data-source field or property | Azure Blob CSV meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint; use this for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | CSV blob name; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum CSV object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.delimiter | One-character field delimiter; defaults to a comma. |
+| additionalProps.has_header | Whether the first non-skipped row contains column names; defaults to true. |
+| additionalProps.skip_header_rows | Number of leading rows to skip before CSV parsing; defaults to 0. |
+| additionalProps.null_values | Optional string array of values exposed as SQL NULL. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL,
+IN, LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Writes and unsupported SQL
+are rejected.
+
 ## Azure Blob Parquet source
 
 The azure_blob_parquet and azure_parquet source types use the same adapter.

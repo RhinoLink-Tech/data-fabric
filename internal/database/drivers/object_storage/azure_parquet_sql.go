@@ -87,7 +87,7 @@ func validateAzureBlobEndpoint(endpoint string) error {
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("azure-parquet endpoint_url must be an HTTP(S) URL without credentials, query, or fragment")
+		return errors.New("Azure Blob endpoint_url must be an HTTP(S) URL without credentials, query, or fragment")
 	}
 	return nil
 }
