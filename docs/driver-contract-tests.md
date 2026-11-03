@@ -418,6 +418,22 @@ rejection, a 100,000-row cap, and unified table/column metadata discovery. This
 is protocol simulation only; it does not establish compatibility with a live
 Alibaba OSS service release.
 
+## Alibaba OSS JSON protocol fixture
+
+The OSS JSON adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. It covers access-key signing, optional STS token propagation,
+object/array/JSON Lines parsing, schema discovery and nested-field flattening,
+bounded reads when HEAD reports an inaccurate size, the record cap,
+cancellation/error handling, read-only SQL, COUNT, write rejection, and unified
+table/column metadata discovery. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestOSSJSONProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture does not run against Alibaba Cloud and does not establish a live
+OSS service version contract.
+
 ## Alibaba OSS Parquet protocol fixture
 
 The OSS Parquet adapter has deterministic protocol-fixture coverage using the

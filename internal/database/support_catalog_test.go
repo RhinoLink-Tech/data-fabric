@@ -217,6 +217,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ossCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(ossCSV.Limitations, "100,000 rows") {
 		t.Errorf("OSS CSV catalog must disclose its object and row limits: %+v", ossCSV.Limitations)
 	}
+	ossJSON := profiles[string(model.DatabaseTypeAlibabaOSSJSON)]
+	if !ossJSON.Registered || !ossJSON.Supported || ossJSON.Status != ConnectorStatusExperimental || !ossJSON.Capabilities.SupportsSQL || !ossJSON.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("OSS JSON must expose its experimental read-only SQL path: %+v", ossJSON)
+	}
+	if !containsSupportLimitation(ossJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(ossJSON.Limitations, "100,000 records") || !containsSupportLimitation(ossJSON.Limitations, "flatten_nested=true") {
+		t.Errorf("OSS JSON catalog must disclose object, row, and nested-field limits: %+v", ossJSON.Limitations)
+	}
 	cosCSV := profiles[string(model.DatabaseTypeTencentCOSCSV)]
 	if !cosCSV.Registered || !cosCSV.Supported || cosCSV.Status != ConnectorStatusExperimental || !cosCSV.Capabilities.SupportsSQL {
 		t.Errorf("COS CSV must expose its experimental read-only SQL path: %+v", cosCSV)

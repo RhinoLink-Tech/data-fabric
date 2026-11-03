@@ -193,7 +193,7 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 		model.DatabaseTypeMinIODelta:
 		return "spark", true
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeMinIOParquet,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeMinIOParquet,
 		model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
@@ -832,7 +832,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 
 	// Object Storage - No SQL, API-based
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
 		model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro,
 		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta:

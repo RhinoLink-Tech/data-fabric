@@ -32,6 +32,34 @@ limit, and results with more than 100,000 CSV rows. The local OSS protocol
 fixture validates the signed SDK request path; it does not claim a live OSS
 service version contract.
 
+## Alibaba OSS JSON data source
+
+The `oss_json` connector exposes one configured OSS JSON object as a read-only
+SQL table. Set the bucket in `database`, the access key ID and secret in
+`username` and `password`, and the object key in `additionalProps.object_key`
+(or the legacy `host` field). Set the required endpoint origin in
+`additionalProps.endpoint_url`; `additionalProps.endpoint` is an alias. Object
+keys must end in `.json`, `.jsonl`, or `.ndjson`.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `session_token` | — | Optional STS token (`security_token` is an alias) |
+| `force_path_style` | `false` | Use path-style bucket addressing |
+| `flatten_nested` | `false` | Expose supported nested scalar fields as underscore-separated columns; collisions and arrays are rejected |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| `max_records` | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+JSON objects, arrays of records, and JSON Lines are supported. By default only
+top-level scalar fields are queryable; `flatten_nested=true` enables supported
+nested scalar fields. The adapter downloads one object into gateway memory and
+uses the shared read-only SQL subset. Prefix scans, multiple objects, writes,
+and streaming are not supported. The local OSS SDK fixture covers signed
+requests and STS token propagation; it does not establish a live OSS version
+contract.
+
 ## Tencent COS CSV data source
 
 The `cos_csv` connector exposes one configured Tencent COS `.csv` object as a

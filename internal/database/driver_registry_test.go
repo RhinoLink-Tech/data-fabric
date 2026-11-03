@@ -147,6 +147,10 @@ func TestOzoneParquetTextAndAvroUseS3GatewayAdapters(t *testing.T) {
 	if err != nil || ossCSVDriver.GetCategory() != "object_storage" || !ossCSVDriver.GetCapabilities().SupportsSQL {
 		t.Fatalf("OSS CSV driver = %v, error = %v; want registered object-storage SQL adapter", ossCSVDriver, err)
 	}
+	ossJSONDriver, err := registry.GetDriver(model.DatabaseTypeAlibabaOSSJSON)
+	if err != nil || ossJSONDriver.GetCategory() != "object_storage" || !ossJSONDriver.GetCapabilities().SupportsSQL || !ossJSONDriver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("OSS JSON driver = %v, error = %v; want registered object-storage SQL adapter", ossJSONDriver, err)
+	}
 }
 
 func TestAzureBlobJSONDriverIsRegistered(t *testing.T) {
