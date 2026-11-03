@@ -153,6 +153,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIODelta {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Delta contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMinIOORC {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
 				t.Errorf("MinIO ORC contract evidence must remain provider-specific and experimental: %+v", profile)
@@ -340,11 +346,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, and provider boundaries: %+v", s3Delta.Limitations)
 	}
 	minioDelta := profiles[string(model.DatabaseTypeMinIODelta)]
-	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || minioDelta.EndToEndVerified {
-		t.Errorf("MinIO Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", minioDelta)
+	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || !minioDelta.EndToEndVerified ||
+		minioDelta.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioDelta.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Delta must expose experimental SQL with its exact pinned live contract: %+v", minioDelta)
 	}
-	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") {
-		t.Errorf("MinIO Delta catalog must disclose its snapshot and memory boundaries: %+v", minioDelta.Limitations)
+	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") ||
+		!containsSupportLimitation(minioDelta.Limitations, "AWS S3") || !containsSupportLimitation(minioDelta.Limitations, "cancellation remains covered by a local protocol fixture") {
+		t.Errorf("MinIO Delta catalog must disclose its contract, limits, provider boundary, and cancellation evidence: %+v", minioDelta.Limitations)
 	}
 	minioIceberg := profiles[string(model.DatabaseTypeMinIOIceberg)]
 	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || minioIceberg.EndToEndVerified {

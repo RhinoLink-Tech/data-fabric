@@ -362,6 +362,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The adapter exposes one configured flat-schema Parquet object as one SQL table; it uses ranged object reads but currently decodes the object's rows before applying the supported SQL filters and page.",
 			"Nested or repeated fields, partition scans, multiple objects, schema evolution, TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIODelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has a Delta contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed MinIO access-key requests are covered by the pinned source-build contract; session tokens, TLS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The live MinIO contract covers snapshot discovery for one simple Delta log, signed Parquet and log upload, health checks, schema metadata, restricted read-only SQL, pagination, counts, and write rejection; cancellation remains covered by a local protocol fixture.",
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"TLS, session-token authentication, AWS S3, other S3-compatible providers, and other MinIO releases are not covered by this baseline.",
+		}
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true
