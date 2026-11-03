@@ -589,6 +589,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
 			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
+	case model.DatabaseTypeAlibabaOSSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests and STS token propagation; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
+			"Only uncompressed, ZLIB, and Snappy ORC stripes are supported by the current decoder. The deterministic protocol fixture does not establish compatibility with a live Alibaba OSS release.")
 	case model.DatabaseTypeAlibabaOSSAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}

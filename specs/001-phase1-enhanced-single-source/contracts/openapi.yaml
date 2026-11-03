@@ -734,6 +734,7 @@ components:
         - minio_parquet
         - oss_delta
         - oss_parquet
+        - oss_orc
         - s3_avro
         - s3_csv
         - s3_delta

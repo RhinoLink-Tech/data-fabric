@@ -489,6 +489,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeAlibabaOSSAvro {
 			return object_storage.ValidateOSSAvroConfig(config)
 		}
+		if dbType == model.DatabaseTypeAlibabaOSSORC {
+			return object_storage.ValidateOSSORCConfig(config)
+		}
 		if dbType == model.DatabaseTypeOSSDelta {
 			return hc.validateOSSDeltaConfig(config)
 		}

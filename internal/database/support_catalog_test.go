@@ -224,6 +224,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ossJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(ossJSON.Limitations, "100,000 records") || !containsSupportLimitation(ossJSON.Limitations, "flatten_nested=true") {
 		t.Errorf("OSS JSON catalog must disclose object, row, and nested-field limits: %+v", ossJSON.Limitations)
 	}
+	ossORC := profiles[string(model.DatabaseTypeAlibabaOSSORC)]
+	if !ossORC.Registered || !ossORC.Supported || ossORC.Status != ConnectorStatusExperimental || !ossORC.Capabilities.SupportsSQL || !ossORC.Capabilities.SupportsSchemaDiscovery || ossORC.EndToEndVerified {
+		t.Errorf("OSS ORC must expose an experimental read-only SQL path without claiming a live service contract: %+v", ossORC)
+	}
+	if !containsSupportLimitation(ossORC.Limitations, "one configured ORC object") || !containsSupportLimitation(ossORC.Limitations, "100,000 rows") || !containsSupportLimitation(ossORC.Limitations, "Nested and repeated ORC fields") {
+		t.Errorf("OSS ORC catalog must disclose object, row, and schema limits: %+v", ossORC.Limitations)
+	}
 	ossAvro := profiles[string(model.DatabaseTypeAlibabaOSSAvro)]
 	if !ossAvro.Registered || !ossAvro.Supported || ossAvro.Status != ConnectorStatusExperimental || !ossAvro.Capabilities.SupportsSQL || !ossAvro.Capabilities.SupportsSchemaDiscovery {
 		t.Errorf("OSS Avro must expose its experimental read-only SQL path: %+v", ossAvro)
@@ -389,7 +396,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet,
 		model.DatabaseTypeAzureBlobAvro, model.DatabaseTypeAzureBlobORC, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]
