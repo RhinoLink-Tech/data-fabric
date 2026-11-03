@@ -150,6 +150,44 @@ func (c *AzureBlobClient) GetBlob(ctx context.Context, name string) ([]byte, err
 	return data, nil
 }
 
+// GetBlobLimited downloads at most maxBytes+1 bytes and rejects blobs that
+// exceed maxBytes. The extra byte distinguishes an exactly-sized blob from a
+// truncated oversized response without trusting the blob's HEAD metadata.
+func (c *AzureBlobClient) GetBlobLimited(ctx context.Context, name string, maxBytes int64) ([]byte, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("Azure Blob client is not initialized")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("blob name is required")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if maxBytes <= 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, fmt.Errorf("maximum blob size must be a positive value below MaxInt64")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	resp, err := c.client.DownloadStream(ctx, c.container, name, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download blob: %w", err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read blob data: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("blob exceeds configured maximum of %d bytes", maxBytes)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // GetBlobMetadata retrieves blob metadata
 func (c *AzureBlobClient) GetBlobMetadata(ctx context.Context, name string) (*AzureBlobMetadata, error) {
 	if c == nil || c.client == nil {

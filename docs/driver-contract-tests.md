@@ -155,6 +155,22 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Azure Blob CSV protocol fixture
+
+The Azure Blob CSV fixture uses the Azure SDK against a local HTTP server. It
+covers Shared Key signing, SAS query-token propagation, configuration and
+health checks, unified schema discovery, delimited/header/null handling,
+filtered read-only queries, counts, pagination, write rejection, object-size
+limits even when HEAD metadata is inaccurate, and the row cap. Run it directly
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'Test(AzureBlobCSVProtocolFixture|AzureBlobCSVDriverConfigurationAndDSN|AzureBlobCSVConfigRejectsInvalidSettings)$' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
 ## Azure Blob Parquet protocol fixture
 
 The Azure Blob Parquet fixture uses the Azure SDK against a local HTTP server.
