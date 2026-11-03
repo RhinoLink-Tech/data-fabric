@@ -165,6 +165,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOIceberg {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Iceberg must record only its pinned object-store contract evidence: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -355,11 +361,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("MinIO Delta catalog must disclose its contract, limits, provider boundary, and cancellation evidence: %+v", minioDelta.Limitations)
 	}
 	minioIceberg := profiles[string(model.DatabaseTypeMinIOIceberg)]
-	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || minioIceberg.EndToEndVerified {
-		t.Errorf("MinIO Iceberg must expose its experimental SQL adapter without claiming a live version contract: %+v", minioIceberg)
+	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || !minioIceberg.EndToEndVerified ||
+		minioIceberg.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioIceberg.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Iceberg must record its exact pinned MinIO object-store contract: %+v", minioIceberg)
 	}
-	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") {
-		t.Errorf("MinIO Iceberg catalog must disclose its table and read-only boundaries: %+v", minioIceberg.Limitations)
+	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") ||
+		!containsSupportLimitation(minioIceberg.Limitations, "external REST catalog servers") {
+		t.Errorf("MinIO Iceberg catalog must disclose its table, read-only, and catalog compatibility boundaries: %+v", minioIceberg.Limitations)
 	}
 	minioORC := profiles[string(model.DatabaseTypeMinIOORC)]
 	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || !minioORC.EndToEndVerified ||

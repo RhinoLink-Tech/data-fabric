@@ -233,18 +233,31 @@ with:
 go test ./internal/database/drivers/object_storage -run 'MinIOORC' -count=1 -v
 ~~~~
 
-## MinIO Iceberg local catalog fixture
+## MinIO Iceberg contract
 
-The MinIO Iceberg fixture routes a configured source through a local Iceberg
-REST catalog and an Iceberg table stored in a temporary local warehouse. It
-covers catalog health, configured-table metadata, schema discovery, read-only
-filtering and pagination, and table-boundary enforcement. A separate config
-fixture verifies how MinIO endpoint and credentials map into S3 FileIO
-properties. These fixtures do not call a MinIO service or establish live
-MinIO/REST Catalog compatibility. Run them with:
+The local MinIO Iceberg fixture uses a temporary local warehouse and a local
+REST catalog. It covers catalog health, configured-table metadata, schema
+discovery, read-only filtering and pagination, and table-boundary enforcement.
+
+The live MinIO contract uses the pinned MinIO build above and writes an Iceberg
+table's metadata, manifests, and Parquet data files into an isolated bucket
+prefix using the production S3 FileIO. A local REST catalog fixture then serves
+the table metadata while Data Fabric reads and queries the files from MinIO.
+The test also checks path-style addressing, credentials, and write rejection.
+It removes only its generated prefix. The REST catalog is simulated, so this
+contract does not establish compatibility with an external REST catalog server.
+
+Run the local fixtures with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOIceberg' -count=1 -v
+~~~~
+
+The GitHub Actions contract starts its own pinned MinIO service and runs the
+same live test through:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
 ~~~~
 
 ## Azure Blob Delta protocol fixture

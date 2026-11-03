@@ -578,11 +578,17 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The local protocol fixture does not establish compatibility with a live Azure Storage release.")
 	case model.DatabaseTypeMinIOIceberg:
 		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "The pinned contract verifies MinIO S3 FileIO object access and the configured read path; the REST catalog is simulated, so external catalog implementations are not covered."
 		profile.AuthenticationMethods = []string{"Iceberg REST catalog credentials and MinIO S3-compatible access key/secret key"}
-		profile.AuthenticationDisclosure = "Local REST catalog and configuration fixtures cover query routing and MinIO FileIO property mapping; no live MinIO or REST Catalog release contract is recorded."
-		profile.Limitations = append(profile.Limitations,
+		profile.AuthenticationDisclosure = "MinIO access key and secret key use is covered by the pinned live contract; external REST catalog authentication is not exercised."
+		profile.Limitations = []string{
 			"The adapter exposes one configured table through an Iceberg REST catalog and MinIO S3 FileIO; catalog_uri, warehouse, namespace, table_name, endpoint, and MinIO credentials are required.",
-			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.")
+			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.",
+			"The pinned live contract verifies MinIO object access and the configured read path using a local REST fixture; it does not establish compatibility with external REST catalog servers.",
+		}
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}

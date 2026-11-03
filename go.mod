@@ -52,6 +52,7 @@ require (
 	github.com/ClickHouse/ch-go v0.74.0 // indirect
 	github.com/RoaringBitmap/roaring/v2 v2.26.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.4.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
@@ -61,6 +62,7 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/goccy/go-yaml v1.17.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/wire v0.7.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-sqlite3 v1.14.34 // indirect
