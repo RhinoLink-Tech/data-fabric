@@ -59,6 +59,33 @@ read-only CSV SQL subset. It rejects writes, objects over the configured byte
 limit, and results with more than 100,000 rows. The local COS protocol fixture
 checks signed requests but does not claim a live COS service version contract.
 
+## Tencent COS JSON data source
+
+The `cos_json` connector exposes one configured Tencent COS JSON object as a
+read-only SQL table. Set the bucket in `database`, SecretId and SecretKey in
+`username` and `password`, the region in `additionalProps.region`, and the
+object key in `additionalProps.object_key` (or the legacy `host` field). The
+object key must end in `.json`, `.jsonl`, or `.ndjson`. An optional
+`additionalProps.endpoint_url` overrides the regional COS endpoint.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `https` | `true` | TLS for the standard regional endpoint; `endpoint_url` takes precedence |
+| `flatten_nested` | `false` | Expose supported nested scalar fields as underscore-separated columns; collisions and arrays are rejected |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| `max_records` | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+JSON objects, arrays of records, and JSON Lines are supported. By default only
+top-level scalar fields are queryable; `flatten_nested=true` enables supported
+nested scalar fields. The adapter downloads one object into gateway memory and
+uses the shared read-only SQL subset. Prefix scans, multiple objects, writes,
+and streaming are not supported. Local SDK fixtures cover signed COS requests
+and the configured limits; they do not establish a live Tencent COS version
+contract.
+
 ## Access audit events
 
 REST API and MCP access outcomes are stored in the metadata database when

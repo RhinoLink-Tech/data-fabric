@@ -605,6 +605,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
 			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array of records, or JSON Lines object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are supported by default; flatten_nested=true enables supported nested scalar fields.",
+			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
 	case model.DatabaseTypeTencentCOSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
