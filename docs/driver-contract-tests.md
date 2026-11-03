@@ -155,6 +155,21 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Azure Blob ORC protocol fixture
+
+The Azure Blob ORC fixture uses the Azure SDK against a local HTTP server and
+the existing ORC fixture file. It covers Shared Key signing, SAS query-token
+propagation, schema discovery, filtered read-only queries and counts, write
+rejection, object-size and row limits, and size-limit enforcement despite
+inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestAzureBlobORC' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
 ## Azure Blob Avro protocol fixture
 
 The Azure Blob Avro fixture uses the Azure SDK against a local HTTP server and

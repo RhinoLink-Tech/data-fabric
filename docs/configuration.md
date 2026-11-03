@@ -680,6 +680,29 @@ against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
 
+## Azure Blob ORC source
+
+The azure_blob_orc source type exposes one configured ORC object as a
+read-only SQL table. It supports the existing flat primitive ORC schema subset;
+nested and repeated fields are rejected. The object is downloaded into gateway
+memory and limited to 64 MiB and 100,000 rows. The default object-size limit is
+16 MiB and can be raised up to the 64 MiB hard cap.
+
+| Data-source field or property | Azure Blob ORC meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | ORC blob name ending in .orc; host is a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_rows | Maximum rows; defaults to 100,000 and cannot exceed 100,000. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Writes are not supported.
+
 ## Azure Blob Avro source
 
 The azure_blob_avro source type exposes one configured Avro Object Container

@@ -87,7 +87,7 @@ func (d *S3ORCDriver) openWithConfig(ctx context.Context, config *model.DataSour
 
 func objectSQLSchemaFromORC(schema *ORCSchema) (*objectSQLSchema, error) {
 	if schema == nil {
-		return nil, errors.New("s3-orc returned an empty schema")
+		return nil, errors.New("ORC source returned an empty schema")
 	}
 	result := &objectSQLSchema{Columns: make([]objectSQLColumn, len(schema.Columns))}
 	for i, column := range schema.Columns {
