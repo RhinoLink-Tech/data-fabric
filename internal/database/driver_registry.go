@@ -246,6 +246,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeTencentCOSParquet, func() drivers.Driver {
 		return &object_storage.COSParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeTencentCOSCSV, func() drivers.Driver {
+		return &object_storage.COSCSVDriver{}
+	})
 	dr.register(model.DatabaseTypeAzureBlobParquet, func() drivers.Driver {
 		return &object_storage.AzureBlobParquetDriver{}
 	})

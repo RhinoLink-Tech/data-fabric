@@ -291,6 +291,15 @@ go test ./internal/database/drivers/object_storage ./internal/service -run 'Azur
 These fixtures do not run against Azure Storage and do not establish a live
 Azure version contract. The adapter remains experimental.
 
+## Tencent COS CSV protocol fixture
+
+The COS CSV adapter uses the Tencent COS SDK against a local HTTP protocol
+fixture. The deterministic test verifies signed requests, metadata HEAD,
+bounded GET (including an object whose HEAD size is deliberately inaccurate),
+filtered and paginated read-only SQL, COUNT, write rejection, a 100,000-row
+cap, and unified table/column metadata discovery. This is protocol simulation
+only; it does not establish compatibility with a live COS service release.
+
 ## Tencent COS Parquet protocol fixture
 
 The COS Parquet adapter has deterministic protocol-fixture coverage using the
