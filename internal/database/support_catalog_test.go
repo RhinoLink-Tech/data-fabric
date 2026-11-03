@@ -477,8 +477,14 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if ozone, ok := info[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
 		t.Fatalf("type endpoint must advertise the experimental Ozone Parquet adapter: %+v", ozone)
 	}
+	if ozone, ok := info[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("type endpoint must advertise the experimental Ozone JSON adapter: %+v", ozone)
+	}
 	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental {
 		t.Fatalf("compatibility endpoint must report Ozone Parquet as experimental: %+v", ozone)
+	}
+	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental {
+		t.Fatalf("compatibility endpoint must report Ozone JSON as experimental: %+v", ozone)
 	}
 	if len(compatibility) != len(catalog) {
 		t.Fatalf("compatibility profiles = %d, catalog = %d", len(compatibility), len(catalog))
