@@ -107,6 +107,22 @@ This local fixture does not run against AWS S3 or an S3-compatible service and
 does not establish a live provider version contract. The adapter remains
 experimental.
 
+## S3 Delta live contract
+
+The S3 Delta contract runs against the pinned Garage v2.4.1 service used by the
+other S3-compatible contracts. It writes one Parquet data file and a version-0
+Delta transaction log under a unique bucket prefix, then verifies snapshot and
+schema discovery, health, filtered/paginated read-only SQL, counts, and write
+rejection. It removes only the two objects created by the test. Cancellation
+remains covered by the local protocol fixture. This result does not imply AWS
+S3, other S3-compatible providers, or other Garage versions are compatible.
+
+The GitHub Actions S3 contract runner executes it with:
+
+~~~~sh
+bash scripts/contracts/run_s3_csv_contract.sh
+~~~~
+
 ## MinIO Delta live contract
 
 The live contract uploads a Parquet object and its version-0 Delta log through
