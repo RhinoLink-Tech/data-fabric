@@ -48,7 +48,7 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 
 ### Completed: verify MariaDB TLS using the shared MySQL protocol driver
 
-[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. [#326](https://github.com/RhinoLink-Tech/data-fabric/issues/326) adds driver-contract coverage for the MariaDB 10.11 LTS baseline. [#330](https://github.com/RhinoLink-Tech/data-fabric/issues/330) adds TLS identity evidence for MariaDB 10.11.19, alongside the 11.8.9 TLS baseline. [#332](https://github.com/RhinoLink-Tech/data-fabric/issues/332) adds driver and TLS contract coverage for MariaDB 11.4.13.
+[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. [#326](https://github.com/RhinoLink-Tech/data-fabric/issues/326) adds driver-contract coverage for the MariaDB 10.11 LTS baseline. [#330](https://github.com/RhinoLink-Tech/data-fabric/issues/330) adds TLS identity evidence for MariaDB 10.11.19, alongside the 11.8.9 TLS baseline. [#332](https://github.com/RhinoLink-Tech/data-fabric/issues/332) adds driver and TLS contract coverage for MariaDB 11.4.13. [#334](https://github.com/RhinoLink-Tech/data-fabric/issues/334) adds the same version-pinned evidence for MariaDB 12.3.3.
 
 ### Completed: verify openGauss server identity over TLS
 

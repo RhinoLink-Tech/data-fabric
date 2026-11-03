@@ -167,6 +167,44 @@ jobs:
       - name: Run MariaDB driver contract
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
+  mariadb-123-contract:
+    name: MariaDB 12.3.3 driver contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_MARIADB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MARIADB_CONTRACT_PORT: "3306"
+      DATA_FABRIC_MARIADB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MARIADB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MARIADB_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MARIADB_EXPECTED_VERSION: "12.3.3"
+    services:
+      mariadb:
+        image: mariadb:12.3.3@sha256:d46e102fa8b9b72bfcdeb56f9dd538742092119dc8b11f31fe662605cd234cd9
+        env:
+          MARIADB_ROOT_PASSWORD: root-contract-only
+          MARIADB_USER: data_fabric_contract
+          MARIADB_PASSWORD: contract-test-only
+          MARIADB_DATABASE: data_fabric_contract
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MariaDB driver contract
+        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
+
   checks:
     name: Build and checks
     runs-on: ubuntu-latest
@@ -484,6 +522,25 @@ jobs:
           cache: true
 
       - name: Run MariaDB 11.4.13 TLS certificate contract
+        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+
+  mariadb-123-tls-contract:
+    name: MariaDB 12.3.3 TLS certificate contract
+    runs-on: ubuntu-latest
+    env:
+      DATA_FABRIC_MARIADB_TLS_IMAGE: mariadb:12.3.3@sha256:d46e102fa8b9b72bfcdeb56f9dd538742092119dc8b11f31fe662605cd234cd9
+      DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION: "12.3.3"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run MariaDB 12.3.3 TLS certificate contract
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
   tidb-tls-contract:
