@@ -1,6 +1,6 @@
 # Data Fabric Roadmap
 
-**Last reviewed: 2026-11-02**
+**Last reviewed: 2026-11-03**
 
 ## Product direction
 
@@ -19,11 +19,12 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 - Query execution, pagination, cancellation, and connector support are exposed through documented contracts.
 - Query admission bounds concurrent work, applies per-tenant request-rate limits, and exposes rejection metrics; limiter state is bounded in memory.
 - A runtime support catalog distinguishes registered implementations, end-to-end verified versions, experimental adapters, and unsupported boundaries.
+- The HDFS Parquet adapter has a pinned live contract against Apache Hadoop 3.5.0; other HDFS formats and releases remain outside that evidence.
 - Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, plus MySQL 8.0.46 and 8.4.13. TLS evidence is version-specific and remains narrower than query-driver evidence.
 
 ### Current support limits
 
-- The support catalog lists **62 registered types**: 10 are classified as `end_to_end_verified`, 20 as `implementation_present`, and 32 as `experimental`. Some experimental adapters have bounded protocol-fixture evidence; that does not establish a live provider/version contract. Use the [catalog](data-source-support.md) for the exact operations, authentication notes, tested versions, and limits.
+- The support catalog lists **62 registered types**: 11 are classified as `end_to_end_verified`, 20 as `implementation_present`, and 31 as `experimental`. Some experimental adapters have bounded protocol-fixture evidence; that does not establish a live provider/version contract. Use the [catalog](data-source-support.md) for the exact operations, authentication notes, tested versions, and limits.
 - Trino, Presto, and OpenLooKeng adapters share the query-engine protocol family. The cross-catalog gateway path is covered with a simulated coordinator; live coordinator compatibility remains deferred in [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179).
 - Query continuation sessions remain process-local. A multi-batch query requires one gateway replica or query-aware routing that pins all continuation requests to the process that created the session. The limitation and token behavior are documented; shared session storage is not implemented.
 - SQL v1 is a documented, read-only compatibility subset. Translation success does not guarantee equivalent type, time-zone, NULL-ordering, or function semantics on every engine.
@@ -73,6 +74,10 @@ Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enter
 ### Completed: verify MySQL 8.4 LTS TLS identity
 
 [#325](https://github.com/RhinoLink-Tech/data-fabric/issues/325) adds private-CA and hostname-verification evidence for MySQL 8.4.13. Both MySQL 8.0.46 and 8.4.13 now reject untrusted certificates and hostname mismatches; other releases and MySQL-compatible products remain outside this evidence.
+
+### Completed: verify HDFS Parquet against Apache Hadoop 3.5.0
+
+[#336](https://github.com/RhinoLink-Tech/data-fabric/issues/336) adds a pinned single-node NameNode/DataNode contract for the HDFS Parquet adapter. It verifies HDFS RPC, file metadata and reads, bounded read-only SQL, COUNT(*), and write rejection. This evidence applies only to Hadoop 3.5.0 and the simple-user Parquet path; it does not cover Kerberos, HA, other formats, or other Hadoop releases.
 
 ### 1. Raise connector confidence from real demand
 

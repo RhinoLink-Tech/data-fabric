@@ -205,6 +205,22 @@ jobs:
       - name: Run MariaDB driver contract
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
+  hdfs-parquet-contract:
+    name: HDFS Parquet Hadoop 3.5.0 live contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run HDFS Parquet live contract
+        run: bash scripts/contracts/run_hdfs_parquet_contract.sh
+
   checks:
     name: Build and checks
     runs-on: ubuntu-latest
