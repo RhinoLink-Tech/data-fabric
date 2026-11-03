@@ -27,7 +27,7 @@ func createHDFSAvroFixture(t *testing.T) []byte {
 	}
 	records := []interface{}{
 		map[string]interface{}{"id": int64(1), "name": goavro.Union("string", "Ada"), "active": false},
-		map[string]interface{}{"id": int64(2), "name": goavro.Union("string", "Lin"), "active": true},
+		map[string]interface{}{"id": int64(2), "name": goavro.Union("null", nil), "active": true},
 		map[string]interface{}{"id": int64(3), "name": goavro.Union("string", "Mei"), "active": true},
 	}
 	if err := writer.Append(records); err != nil {
