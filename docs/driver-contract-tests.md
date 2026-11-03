@@ -155,6 +155,21 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Alibaba OSS ORC protocol fixture
+
+The Alibaba OSS ORC fixture exercises the OSS SDK against a local HTTP
+protocol server and the shared ORC fixture. It covers signed access-key
+requests, STS token propagation, health checks, metadata discovery, filtered
+read-only queries and counts, write rejection, object-size and row limits, and
+size-limit enforcement despite inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestOSSORC' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Alibaba OSS and
+is not a live service-version contract.
+
 ## Azure Blob ORC protocol fixture
 
 The Azure Blob ORC fixture uses the Azure SDK against a local HTTP server and

@@ -86,6 +86,32 @@ objects, raw datum streams, writes, and streaming are not supported. The local
 OSS protocol fixture covers signed requests and STS token propagation; it does
 not establish a live OSS version contract.
 
+## Alibaba OSS ORC data source
+
+The oss_orc connector exposes one configured Alibaba OSS .orc object as a
+read-only SQL table. Set the bucket in database, the access key ID and secret
+in username and password, and the object key in
+additionalProps.object_key (or the legacy host field). Set the required
+HTTP(S) endpoint origin in additionalProps.endpoint_url; endpoint is an
+alias. Object keys must end in .orc.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| session_token |  | Optional STS token (security_token is an alias) |
+| force_path_style | false | Use path-style bucket addressing |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded rows; this is also the hard maximum |
+
+The adapter reads one ORC object into gateway memory and supports the shared
+read-only SQL subset over top-level primitive columns. Nested and repeated ORC
+fields, directory scans, multiple objects, writes, and streaming are not
+supported. The local OSS protocol fixture covers signed requests, STS token
+propagation, schema discovery, bounded reads, and SQL behavior; it does not
+establish a live OSS version contract.
+
 ## Tencent COS CSV data source
 
 The `cos_csv` connector exposes one configured Tencent COS `.csv` object as a
