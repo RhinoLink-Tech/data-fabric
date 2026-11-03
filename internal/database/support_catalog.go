@@ -321,6 +321,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"MinIO CSV uses the same config-aware, read-only S3 CSV SQL adapter as S3-compatible sources. It supports one configured CSV object and a limited SELECT subset, and downloads the full object into gateway memory.",
 			"Set additionalProps.endpoint_url to the MinIO endpoint and force_path_style to true. TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIOJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has a JSON contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "MinIO root access key and secret key authentication are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed upload and read of JSON objects, arrays, and JSON Lines; metadata and health checks; schema discovery; filtered read-only SQL; counts; and write rejection.",
+			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
+			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are outside the adapter boundary.",
+			"TLS, STS, distributed MinIO deployments, AWS S3, and other MinIO releases are not covered by this baseline.",
+		}
 	case model.DatabaseTypeMinIOParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true

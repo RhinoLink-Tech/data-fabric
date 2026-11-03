@@ -141,6 +141,12 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOJSON {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO JSON contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -350,11 +356,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("MinIO Avro catalog must disclose its object and schema boundaries: %+v", minioAvro.Limitations)
 	}
 	minioJSON := profiles[string(model.DatabaseTypeMinIOJSON)]
-	if minioJSON.Status != ConnectorStatusExperimental || !minioJSON.Capabilities.SupportsSQL || minioJSON.EndToEndVerified {
-		t.Errorf("MinIO JSON must expose its experimental SQL adapter without claiming a live version contract: %+v", minioJSON)
+	if minioJSON.Status != ConnectorStatusExperimental || !minioJSON.Capabilities.SupportsSQL || !minioJSON.EndToEndVerified ||
+		minioJSON.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioJSON.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO JSON must expose experimental SQL with its exact pinned live contract: %+v", minioJSON)
 	}
-	if !containsSupportLimitation(minioJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(minioJSON.Limitations, "flatten_nested=true") {
-		t.Errorf("MinIO JSON catalog must disclose its object and schema boundaries: %+v", minioJSON.Limitations)
+	if !containsSupportLimitation(minioJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(minioJSON.Limitations, "flatten_nested=true") ||
+		!containsSupportLimitation(minioJSON.Limitations, "JSON Lines") || !containsSupportLimitation(minioJSON.Limitations, "AWS S3") {
+		t.Errorf("MinIO JSON catalog must disclose its contract and adapter boundaries: %+v", minioJSON.Limitations)
 	}
 	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
 	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
