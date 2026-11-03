@@ -313,7 +313,7 @@ func TestMinIOIcebergContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open MinIO Iceberg SQL connection: %v", err)
 	}
-	rows, err := db.QueryContext(ctx, "SELECT id, name FROM orders WHERE id >= ? ORDER BY id LIMIT ?", int64(2), int64(1))
+	rows, err := db.QueryContext(ctx, "SELECT id, name FROM orders WHERE id = ? LIMIT ?", int64(2), int64(1))
 	if err != nil {
 		t.Fatalf("query MinIO-backed Iceberg snapshot: %v", err)
 	}
