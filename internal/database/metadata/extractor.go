@@ -336,7 +336,7 @@ func isORCObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isAvroObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeOzoneAvro
+	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeOzoneAvro || dbType == model.DatabaseTypeAzureBlobAvro
 }
 
 func isJSONSQLSource(dbType model.DatabaseType) bool {
@@ -379,6 +379,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSParquetTableName(config)
 	case model.DatabaseTypeTencentCOSParquet:
 		return object_storage.COSParquetTableName(config)
+	case model.DatabaseTypeAzureBlobAvro:
+		return object_storage.AzureBlobAvroTableName(config)
 	case model.DatabaseTypeAzureBlobJSON:
 		return object_storage.AzureBlobJSONTableName(config)
 	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:

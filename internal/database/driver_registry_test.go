@@ -160,6 +160,17 @@ func TestAzureBlobJSONDriverIsRegistered(t *testing.T) {
 	}
 }
 
+func TestAzureBlobAvroDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobAvro)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_avro) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob Avro driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
 func TestAzureBlobCSVDriverIsRegistered(t *testing.T) {
 	registry := NewDriverRegistry()
 	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobCSV)

@@ -717,6 +717,7 @@ components:
         - delta_lake
         - hudi
         # Object storage and file formats
+        - azure_blob_avro
         - azure_blob_csv
         - azure_blob_json
         - azure_blob_parquet

@@ -154,6 +154,7 @@ const (
     DatabaseTypeMinIOJSON        DatabaseType = "minio_json"
     DatabaseTypeAlibabaOSSParquet DatabaseType = "oss_parquet"
     DatabaseTypeTencentCOSParquet DatabaseType = "cos_parquet"
+    DatabaseTypeAzureBlobAvro DatabaseType = "azure_blob_avro"
     DatabaseTypeAzureBlobCSV DatabaseType = "azure_blob_csv"
     DatabaseTypeAzureBlobJSON DatabaseType = "azure_blob_json"
     DatabaseTypeAzureBlobParquet DatabaseType = "azure_blob_parquet"
@@ -1007,7 +1008,7 @@ const (
      'mysql', 'mariadb', 'postgresql', 'oracle',
      'iceberg', 'delta_lake', 'hudi',
      'snowflake', 'databricks', 'redshift', 'bigquery',
-     's3_parquet', 'minio_parquet', 'oss_parquet', 'cos_parquet', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
+     's3_parquet', 'minio_parquet', 'oss_parquet', 'cos_parquet', 'azure_blob_avro', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
      'hdfs_avro', 'ozone_parquet',
      'clickhouse', 'doris', 'starrocks', 'druid',
      'oceanbase_mysql', 'oceanbase_oracle', 'tidb', 'tdsql',
