@@ -120,6 +120,8 @@ func TestCreateAndUpdateOzoneS3GatewayDataSources(t *testing.T) {
 		t.Run(string(dbType), func(t *testing.T) {
 			extension := "parquet"
 			switch dbType {
+			case model.DatabaseTypeOzoneORC:
+				extension = "orc"
 			case model.DatabaseTypeOzoneText:
 				extension = "log"
 			case model.DatabaseTypeOzoneAvro:
