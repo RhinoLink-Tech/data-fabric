@@ -77,6 +77,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeOzoneParquet, func() drivers.Driver {
 		return &file_system.OzoneParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeOzoneORC, func() drivers.Driver {
+		return &file_system.OzoneORCDriver{}
+	})
 	dr.register(model.DatabaseTypeOzoneText, func() drivers.Driver {
 		return &file_system.OzoneTextDriver{}
 	})

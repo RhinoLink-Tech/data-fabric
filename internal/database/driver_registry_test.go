@@ -248,3 +248,14 @@ func TestCOSAvroDriverIsRegistered(t *testing.T) {
 		t.Fatalf("COS Avro driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
 	}
 }
+
+func TestOzoneORCDriverUsesS3GatewayAdapter(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeOzoneORC)
+	if err != nil {
+		t.Fatalf("GetDriver(ozone_orc) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Ozone ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}

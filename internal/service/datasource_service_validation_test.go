@@ -116,7 +116,7 @@ func TestUpdateDataSourceValidatesExistingTypeAndFinalConfigBeforePersistence(t 
 }
 
 func TestCreateAndUpdateOzoneS3GatewayDataSources(t *testing.T) {
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro} {
 		t.Run(string(dbType), func(t *testing.T) {
 			extension := "parquet"
 			switch dbType {

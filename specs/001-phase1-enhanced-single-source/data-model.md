@@ -168,6 +168,7 @@ const (
     DatabaseTypeHDFSParquet DatabaseType = "hdfs_parquet"
     DatabaseTypeHDFSCSV     DatabaseType = "hdfs_csv"
     DatabaseTypeOzoneParquet DatabaseType = "ozone_parquet"
+     DatabaseTypeOzoneORC DatabaseType = "ozone_orc"
 )
 
 // OLAP Engines
@@ -1010,7 +1011,7 @@ const (
      'iceberg', 'delta_lake', 'hudi',
      'snowflake', 'databricks', 'redshift', 'bigquery',
      's3_parquet', 'minio_parquet', 'oss_parquet', 'oss_orc', 'cos_parquet', 'cos_orc', 'cos_avro', 'azure_blob_avro', 'azure_blob_orc', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
-     'hdfs_avro', 'ozone_parquet',
+     'hdfs_avro', 'ozone_parquet', 'ozone_orc',
      'clickhouse', 'doris', 'starrocks', 'druid',
      'oceanbase_mysql', 'oceanbase_oracle', 'tidb', 'tdsql',
      'gaussdb_mysql', 'gaussdb_postgres', 'dameng', 'kingbasees',

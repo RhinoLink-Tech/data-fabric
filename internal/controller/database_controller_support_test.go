@@ -66,4 +66,8 @@ func TestDatabaseTypeAPIsUseSharedSupportCatalog(t *testing.T) {
 	if !ok || avroProfile.Status != database.ConnectorStatusExperimental || !avroProfile.Capabilities.SupportsSQL {
 		t.Errorf("compatibility response should report Ozone Avro as experimental: %+v", avroProfile)
 	}
+	orcProfile, ok := response.Data[string(model.DatabaseTypeOzoneORC)]
+	if !ok || orcProfile.Status != database.ConnectorStatusExperimental || !orcProfile.Capabilities.SupportsSQL {
+		t.Errorf("compatibility response should report Ozone ORC as experimental: %+v", orcProfile)
+	}
 }

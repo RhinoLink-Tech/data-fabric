@@ -196,6 +196,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 
+	ozoneORC := profiles[string(model.DatabaseTypeOzoneORC)]
+	if !ozoneORC.Registered || !ozoneORC.Supported || ozoneORC.Status != ConnectorStatusExperimental || !ozoneORC.Capabilities.SupportsSQL || !ozoneORC.Capabilities.SupportsSchemaDiscovery || ozoneORC.EndToEndVerified {
+		t.Errorf("Ozone ORC must expose an experimental S3 Gateway SQL path without a live compatibility claim: %+v", ozoneORC)
+	}
+	if !containsSupportLimitation(ozoneORC.Limitations, "one configured ORC object") || !containsSupportLimitation(ozoneORC.Limitations, "100,000 rows") || !containsSupportLimitation(ozoneORC.Limitations, "Nested and repeated fields") {
+		t.Errorf("Ozone ORC catalog must disclose object, row, and schema limits: %+v", ozoneORC.Limitations)
+	}
 	ozoneParquet := profiles[string(model.DatabaseTypeOzoneParquet)]
 	if !ozoneParquet.Registered || !ozoneParquet.Supported || ozoneParquet.Status != ConnectorStatusExperimental || !ozoneParquet.Capabilities.SupportsSQL {
 		t.Errorf("Ozone Parquet must expose its experimental S3 Gateway SQL path: %+v", ozoneParquet)
