@@ -25,7 +25,9 @@ func (cannedConnector) Driver() driver.Driver { return cannedDriver{} }
 
 type cannedDriver struct{}
 
-func (cannedDriver) Open(string) (driver.Conn, error) { return nil, errors.New("open via connector only") }
+func (cannedDriver) Open(string) (driver.Conn, error) {
+	return nil, errors.New("open via connector only")
+}
 
 type cannedConn struct {
 	lookup func(string) driver.Rows
@@ -42,8 +44,8 @@ type cannedStmt struct {
 	lookup func(string) driver.Rows
 }
 
-func (s *cannedStmt) Close() error              { return nil }
-func (s *cannedStmt) NumInput() int             { return -1 }
+func (s *cannedStmt) Close() error  { return nil }
+func (s *cannedStmt) NumInput() int { return -1 }
 func (s *cannedStmt) Query([]driver.Value) (driver.Rows, error) {
 	return s.lookup(s.query), nil
 }
