@@ -155,6 +155,21 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Tencent COS Avro protocol fixture
+
+The Tencent COS Avro fixture exercises the COS SDK against a local HTTP
+protocol server and a generated Avro OCF object. It covers signed SecretId and
+SecretKey requests, health checks, schema discovery, filtered read-only queries
+and counts, cancellation, write rejection, object-size and row limits, and
+malformed OCF rejection. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestCOSAvro' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Tencent COS and
+is not a live service-version contract.
+
 ## Tencent COS ORC protocol fixture
 
 The Tencent COS ORC fixture exercises the COS SDK against a local HTTP

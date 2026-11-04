@@ -158,6 +158,7 @@ func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 		model.DatabaseTypeMinIOORC:              "mysql",
 		model.DatabaseTypeAlibabaOSSORC:         "mysql",
 		model.DatabaseTypeTencentCOSORC:         "mysql",
+		model.DatabaseTypeTencentCOSAvro:        "mysql",
 		model.DatabaseTypeMinIOAvro:             "mysql",
 		model.DatabaseTypeMinIOJSON:             "mysql",
 	}
