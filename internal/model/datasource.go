@@ -54,6 +54,7 @@ const (
 	DatabaseTypeTencentCOSCSV     DatabaseType = "cos_csv"
 	DatabaseTypeTencentCOSJSON    DatabaseType = "cos_json"
 	DatabaseTypeTencentCOSORC     DatabaseType = "cos_orc"
+	DatabaseTypeTencentCOSAvro    DatabaseType = "cos_avro"
 	DatabaseTypeAzureBlobAvro     DatabaseType = "azure_blob_avro"
 	DatabaseTypeAzureBlobORC      DatabaseType = "azure_blob_orc"
 	DatabaseTypeAzureBlobCSV      DatabaseType = "azure_blob_csv"
@@ -130,7 +131,7 @@ const (
 type DataSource struct {
 	ID        string           `gorm:"type:char(36);primaryKey" json:"id"`
 	Name      string           `gorm:"size:255;not null;uniqueIndex:idx_datasources_tenant_name,priority:2" json:"name"`
-	Type      DatabaseType     `gorm:"type:enum('mysql','mariadb','postgresql','oracle','trino','presto','openlookeng','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_delta','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','minio_orc','minio_avro','minio_json','oss_parquet','oss_csv','oss_json','oss_avro','oss_orc','cos_parquet','cos_csv','cos_json','cos_orc','azure_blob_parquet','azure_blob_avro','azure_blob_orc','azure_blob_csv','azure_blob_json','hdfs_avro','hdfs_parquet','hdfs_csv','ozone_parquet','ozone_csv','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','ozone_json','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute');not null" json:"type"`
+	Type      DatabaseType     `gorm:"type:enum('mysql','mariadb','postgresql','oracle','trino','presto','openlookeng','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_delta','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','minio_orc','minio_avro','minio_json','oss_parquet','oss_csv','oss_json','oss_avro','oss_orc','cos_parquet','cos_csv','cos_json','cos_orc','cos_avro','azure_blob_parquet','azure_blob_avro','azure_blob_orc','azure_blob_csv','azure_blob_json','hdfs_avro','hdfs_parquet','hdfs_csv','ozone_parquet','ozone_csv','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','ozone_json','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute');not null" json:"type"`
 	Config    DataSourceConfig `gorm:"type:json;not null" json:"config"`
 	Status    DataSourceStatus `gorm:"type:enum('active','inactive','error');default:'active'" json:"status"`
 	OwnerID   string           `gorm:"size:255;not null;default:'';index" json:"ownerId"`
@@ -219,7 +220,7 @@ func IsValidDatabaseType(dbType string) bool {
 		DatabaseTypeApacheIceberg, DatabaseTypeDeltaLake, DatabaseTypeApacheHudi,
 		DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery,
 		DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
-		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeAlibabaOSSJSON, DatabaseTypeAlibabaOSSAvro, DatabaseTypeAlibabaOSSORC, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeTencentCOSORC, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
+		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeAlibabaOSSJSON, DatabaseTypeAlibabaOSSAvro, DatabaseTypeAlibabaOSSORC, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeTencentCOSORC, DatabaseTypeTencentCOSAvro, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
 		DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV, DatabaseTypeOzoneParquet,
 		DatabaseTypeClickHouse, DatabaseTypeApacheDoris, DatabaseTypeStarRocks, DatabaseTypeApacheDruid,
 		DatabaseTypeOceanBaseMySQL, DatabaseTypeOceanBaseOracle, DatabaseTypeTiDB, DatabaseTypeTDSQL,
@@ -244,7 +245,7 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 	case DatabaseTypeSnowflake, DatabaseTypeDatabricks, DatabaseTypeRedshift, DatabaseTypeBigQuery, DatabaseTypeApacheHive, DatabaseTypeMaxCompute:
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
-		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeAlibabaOSSJSON, DatabaseTypeAlibabaOSSAvro, DatabaseTypeAlibabaOSSORC, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeTencentCOSORC, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
+		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeAlibabaOSSJSON, DatabaseTypeAlibabaOSSAvro, DatabaseTypeAlibabaOSSORC, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeTencentCOSORC, DatabaseTypeTencentCOSAvro, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
 		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeOzoneJSON, DatabaseTypeOzoneCSV:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,

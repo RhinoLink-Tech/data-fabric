@@ -252,6 +252,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(cosORC.Limitations, "one configured ORC object") || !containsSupportLimitation(cosORC.Limitations, "100,000 rows") || !containsSupportLimitation(cosORC.Limitations, "Nested and repeated ORC fields") {
 		t.Errorf("COS ORC catalog must disclose object, row, and schema limits: %+v", cosORC.Limitations)
 	}
+	cosAvro := profiles[string(model.DatabaseTypeTencentCOSAvro)]
+	if !cosAvro.Registered || !cosAvro.Supported || cosAvro.Status != ConnectorStatusExperimental || !cosAvro.Capabilities.SupportsSQL || !cosAvro.Capabilities.SupportsSchemaDiscovery || cosAvro.EndToEndVerified {
+		t.Errorf("COS Avro must expose an experimental read-only SQL path without claiming a live service contract: %+v", cosAvro)
+	}
+	if !containsSupportLimitation(cosAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(cosAvro.Limitations, "100,000 rows") || !containsSupportLimitation(cosAvro.Limitations, "nullable primitive unions") {
+		t.Errorf("COS Avro catalog must disclose object, row, and schema limits: %+v", cosAvro.Limitations)
+	}
 	cosJSON := profiles[string(model.DatabaseTypeTencentCOSJSON)]
 	if !cosJSON.Registered || !cosJSON.Supported || cosJSON.Status != ConnectorStatusExperimental || !cosJSON.Capabilities.SupportsSQL || !cosJSON.Capabilities.SupportsSchemaDiscovery {
 		t.Errorf("COS JSON must expose its experimental read-only SQL path: %+v", cosJSON)
@@ -403,7 +410,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeTencentCOSORC,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro,
 		model.DatabaseTypeAzureBlobAvro, model.DatabaseTypeAzureBlobORC, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]

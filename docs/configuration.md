@@ -4,6 +4,34 @@
 
 Data Fabric is configured primarily through a YAML configuration file located at `configs/config.yaml`. This document explains all available configuration options and their purposes.
 
+## Tencent COS Avro data source
+
+The cos_avro connector exposes one configured Tencent COS Avro Object
+Container File (OCF) as a read-only SQL table. Set the bucket in database,
+SecretId and SecretKey in username and password, region in
+additionalProps.region, and the object key in additionalProps.object_key (or
+the legacy host field). An HTTP(S) endpoint origin can be provided in
+additionalProps.endpoint_url; otherwise the COS SDK uses the regional endpoint.
+The https option defaults to true for the regional endpoint.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| https | true | Use HTTPS with the default regional endpoint |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+The adapter uses SecretId and SecretKey credentials; temporary COS credentials
+and STS session tokens are not supported. It reads one OCF object into gateway
+memory and supports the shared read-only SQL subset over top-level primitive
+fields and nullable primitive unions. Nested and complex Avro fields, raw datum
+streams, schema registries, directory scans, multiple objects, writes, and
+streaming are not supported. The local COS protocol fixture covers signed
+requests, schema discovery, bounded reads, cancellation, and SQL behavior; it
+does not establish a live Tencent COS version contract.
+
 ## Tencent COS ORC data source
 
 The cos_orc connector exposes one configured Tencent COS .orc object as a

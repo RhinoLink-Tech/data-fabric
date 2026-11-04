@@ -237,3 +237,14 @@ func TestCOSORCDriverIsRegistered(t *testing.T) {
 		t.Fatalf("COS ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
 	}
 }
+
+func TestCOSAvroDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSAvro)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_avro) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS Avro driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}

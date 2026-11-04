@@ -645,6 +645,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured ORC object from one bucket; directory scans, multiple objects, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
 			"Only uncompressed, ZLIB, and Snappy ORC stripes are supported by the current decoder. The deterministic protocol fixture does not establish compatibility with a live Tencent COS release.")
+	case model.DatabaseTypeTencentCOSAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; temporary credentials/STS token propagation and live COS release compatibility are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Avro OCF object from one bucket; directory scans, multiple objects, raw datum streams, schema registries, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level primitive fields and nullable primitive unions are supported.",
+			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
 	case model.DatabaseTypeTencentCOSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
