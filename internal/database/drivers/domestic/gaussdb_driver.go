@@ -198,10 +198,12 @@ func (d *GaussDBDriver) GetDatabaseInfo(ctx context.Context, db *sql.DB) (*Gauss
 		Version: version,
 	}
 
-	// Get node count
+	// Get node count. A failed replica-count query must surface as an error,
+	// not be masked as a silent ReplicaCount=0 (which callers read as "no
+	// replicas available").
 	err = db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_replication").Scan(&info.ReplicaCount)
 	if err != nil {
-		info.ReplicaCount = 0
+		return nil, fmt.Errorf("failed to get replica count: %w", err)
 	}
 
 	return info, nil
@@ -225,28 +227,30 @@ func (d *GaussDBDriver) IsPrimaryNode(ctx context.Context, db *sql.DB) (bool, er
 	return !isInRecovery, nil
 }
 
-// SwitchToStandby switches connection to a standby node
-func (d *GaussDBDriver) SwitchToStandby(ctx context.Context, db *sql.DB) error {
+// SwitchToStandby opens a connection to a standby node and returns it to the
+// caller. It deliberately does NOT close the caller's pool (db): *sql.DB is a
+// reference used by many goroutines, and closing it here would tear down a
+// connection this method does not own. The caller adopts the returned handle
+// instead.
+func (d *GaussDBDriver) SwitchToStandby(ctx context.Context, db *sql.DB) (*sql.DB, error) {
+	if d.config == nil {
+		return nil, fmt.Errorf("driver not configured")
+	}
 	if len(d.config.StandbyNodes) == 0 {
-		return fmt.Errorf("no standby nodes configured")
+		return nil, fmt.Errorf("no standby nodes configured")
 	}
 
-	// Close current connection
-	db.Close()
-
-	// Open connection to first standby node
+	// Open connection to first standby node.
 	standbyHost := d.config.StandbyNodes[0]
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s",
 		standbyHost, d.config.Port, d.config.Database, d.config.Username, d.config.Password)
 
-	newDB, err := d.Open(dsn)
+	standby, err := d.Open(dsn)
 	if err != nil {
-		return fmt.Errorf("failed to connect to standby: %w", err)
+		return nil, fmt.Errorf("failed to connect to standby: %w", err)
 	}
 
-	// Note: In real implementation, you'd update the connection pool
-	_ = newDB
-	return nil
+	return standby, nil
 }
 
 // ApplyBatchPagination applies pagination to a SQL query for batch processing
