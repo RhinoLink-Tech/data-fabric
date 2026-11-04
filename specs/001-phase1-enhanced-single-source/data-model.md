@@ -1009,7 +1009,7 @@ const (
      'mysql', 'mariadb', 'postgresql', 'oracle',
      'iceberg', 'delta_lake', 'hudi',
      'snowflake', 'databricks', 'redshift', 'bigquery',
-     's3_parquet', 'minio_parquet', 'oss_parquet', 'oss_orc', 'cos_parquet', 'azure_blob_avro', 'azure_blob_orc', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
+     's3_parquet', 'minio_parquet', 'oss_parquet', 'oss_orc', 'cos_parquet', 'cos_orc', 'azure_blob_avro', 'azure_blob_orc', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
      'hdfs_avro', 'ozone_parquet',
      'clickhouse', 'doris', 'starrocks', 'druid',
      'oceanbase_mysql', 'oceanbase_oracle', 'tidb', 'tdsql',

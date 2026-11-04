@@ -62,6 +62,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeAlibabaOSSORC, "object_storage", false},
 		{DatabaseTypeTencentCOSCSV, "object_storage", false},
 		{DatabaseTypeTencentCOSJSON, "object_storage", false},
+		{DatabaseTypeTencentCOSORC, "object_storage", false},
 		{DatabaseTypeAzureBlobAvro, "object_storage", false},
 		{DatabaseTypeAzureBlobORC, "object_storage", false},
 		{DatabaseTypeAzureBlobCSV, "object_storage", false},

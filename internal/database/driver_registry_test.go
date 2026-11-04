@@ -226,3 +226,14 @@ func TestCOSJSONDriverIsRegistered(t *testing.T) {
 		t.Fatalf("COS JSON driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
 	}
 }
+
+func TestCOSORCDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSORC)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_orc) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}

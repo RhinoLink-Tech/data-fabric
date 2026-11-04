@@ -510,6 +510,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeTencentCOSJSON {
 			return object_storage.ValidateCOSJSONConfig(config)
 		}
+		if dbType == model.DatabaseTypeTencentCOSORC {
+			return object_storage.ValidateCOSORCConfig(config)
+		}
 		if dbType == model.DatabaseTypeAzureBlobORC {
 			return object_storage.ValidateAzureBlobORCConfig(config)
 		}

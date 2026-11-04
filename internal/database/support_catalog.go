@@ -624,7 +624,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	case model.DatabaseTypeTencentCOSCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
-		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release contract is recorded."
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; temporary credentials/STS token propagation and live COS release compatibility are not covered."
 		profile.Limitations = append(profile.Limitations,
 			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
@@ -637,6 +637,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured JSON object, array of records, or JSON Lines object from one bucket; directory scans, multiple objects, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are supported by default; flatten_nested=true enables supported nested scalar fields.",
 			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
+			"Only uncompressed, ZLIB, and Snappy ORC stripes are supported by the current decoder. The deterministic protocol fixture does not establish compatibility with a live Tencent COS release.")
 	case model.DatabaseTypeTencentCOSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}

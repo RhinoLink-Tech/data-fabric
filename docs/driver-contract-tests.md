@@ -155,6 +155,22 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Tencent COS ORC protocol fixture
+
+The Tencent COS ORC fixture exercises the COS SDK against a local HTTP
+protocol server and the shared ORC fixture. It covers signed SecretId and
+SecretKey requests, health checks, metadata discovery, filtered read-only
+queries and counts, cancellation, write rejection, object-size and row limits,
+and size-limit enforcement despite inaccurate HEAD metadata. Run it directly
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestCOSORC' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Tencent COS and
+is not a live service-version contract.
+
 ## Alibaba OSS ORC protocol fixture
 
 The Alibaba OSS ORC fixture exercises the OSS SDK against a local HTTP
