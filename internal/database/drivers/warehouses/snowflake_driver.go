@@ -81,10 +81,15 @@ func (d *SnowflakeDriver) GetDefaultPort() int {
 	return 443
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a gosnowflake DSN (user:password@host/database) from the
+// supplied config. It deliberately does NOT touch d.config: the driver registry
+// hands back a zero-value SnowflakeDriver (d.config == nil), and dereferencing
+// it here panicked every BuildDSN call for registry-created Snowflake sources.
 func (d *SnowflakeDriver) BuildDSN(config *model.DataSourceConfig) string {
-	// Build connection URL in format: user:password@account/database/schema?warehouse=wh
-	return d.config.BuildConnectionURL()
+	if config == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%s@%s/%s", config.Username, config.Password, config.Host, config.Database)
 }
 
 // GetDatabaseTypeName returns the database type name
