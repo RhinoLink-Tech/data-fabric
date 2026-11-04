@@ -74,18 +74,27 @@ func (d *GaussDBDriver) GetDefaultPort() int {
 	return 8000
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value GaussDBDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only HA/SSL fields are consulted defensively.
 func (d *GaussDBDriver) BuildDSN(config *model.DataSourceConfig) string {
-	sslMode := d.config.SSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+	if config == nil {
+		return ""
+	}
+
+	sslMode := "disable"
+	if d.config != nil && d.config.SSLMode != "" {
+		sslMode = d.config.SSLMode
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
 		config.Host, config.Port, config.Database, config.Username, config.Password, sslMode)
 
 	// Add fallback hosts for HA
-	if d.config.EnableHA && len(d.config.StandbyNodes) > 0 {
+	if d.config != nil && d.config.EnableHA && len(d.config.StandbyNodes) > 0 {
 		for _, node := range d.config.StandbyNodes {
 			dsn += " host=" + node
 		}

@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
 // --- canned SQL scaffolding (no network): routes statements by query text ---
@@ -109,6 +111,29 @@ func TestGaussDBGetDatabaseInfoCountsReplicas(t *testing.T) {
 
 // --- H1: SwitchToStandby must hand back the standby handle and never close
 // the caller's pool ---
+
+// A zero-value GaussDBDriver is what the driver registry hands back (nil
+// config). BuildDSN must build the DSN from the supplied *model.DataSourceConfig
+// and not dereference a nil d.config (which panicked every registry-sourced
+// GaussDB BuildDSN call, mirroring the snowflake bug).
+func TestGaussDBBuildDSNFromConfig(t *testing.T) {
+	d := &GaussDBDriver{} // zero value, exactly as registered
+	cfg := &model.DataSourceConfig{
+		Host:     "gauss",
+		Port:     8000,
+		Database: "prod",
+		Username: "app",
+		Password: "secret",
+	}
+
+	dsn := d.BuildDSN(cfg) // must not panic
+	if !strings.Contains(dsn, "host=gauss port=8000 dbname=prod user=app password=secret") {
+		t.Errorf("BuildDSN(cfg) = %q, want values sourced from the passed config", dsn)
+	}
+	if !strings.Contains(dsn, "sslmode=disable") {
+		t.Errorf("BuildDSN(cfg) = %q, want sslmode=disable default when driver has no config", dsn)
+	}
+}
 
 func TestGaussDBSwitchToStandbyWithoutStandbyNodes(t *testing.T) {
 	d := &GaussDBDriver{config: &GaussDBConfig{StandbyNodes: []string{}}}
