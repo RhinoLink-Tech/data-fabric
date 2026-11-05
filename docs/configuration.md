@@ -1356,6 +1356,22 @@ comparisons and IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory
 scans, multiple files, streaming, Kerberos, and HDFS HA guarantees are not
 provided. HDFS files and decoded records are held in gateway memory.
 
+## HDFS ORC data sources
+
+An HDFS ORC source exposes one configured `.orc` file as a read-only SQL table.
+Configure the NameNode host, RPC port (8020 by default), HDFS simple-user
+identity, and an absolute HDFS file path. The table name defaults to the file
+name without its extension and can be overridden with
+`additionalProps.table_name`. `max_file_bytes` defaults to 16 MiB and can be
+raised to 64 MiB. Queries reject files that decode to more than 100,000 rows.
+
+The adapter reuses the shared ORC reader and SQL subset. Flat primitive columns
+are supported; nested and repeated fields are rejected. The file is read into
+gateway memory before SQL evaluation, so this connector does not provide
+predicate or column pushdown, directory scans, multi-file reads, streaming,
+Kerberos, or HDFS HA. Its live integration contract covers Apache Hadoop 3.5.0
+with simple-user access on a single-node cluster.
+
 ## HDFS plain-text data sources
 
 An HDFS text source exposes one configured UTF-8 .txt or .log file as a

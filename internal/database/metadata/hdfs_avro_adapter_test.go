@@ -3,6 +3,8 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
@@ -81,6 +83,52 @@ func TestHDFSAvroAdapterSupportsUnifiedMetadataDiscovery(t *testing.T) {
 		t.Fatalf("ExtractTableSchema() columns = %+v, want id and name", table.Columns)
 	}
 	schema, _, err := extractor.ExtractSchema(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("ExtractSchema() error = %v", err)
+	}
+	if len(schema.Tables) != 1 || schema.Tables["events"] == nil {
+		t.Fatalf("ExtractSchema() tables = %+v, want events", schema.Tables)
+	}
+}
+
+func TestHDFSORCAdapterSupportsUnifiedMetadataDiscovery(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "drivers", "object_storage", "testdata", "orc_split_elim.orc"))
+	if err != nil {
+		t.Fatalf("read ORC fixture: %v", err)
+	}
+	source := &model.DataSource{
+		ID: "hdfs-orc-events", Type: model.DatabaseTypeHDFSORC,
+		Config: model.DataSourceConfig{
+			Host: "namenode.local", Port: 8020, Database: "/warehouse/events.orc", Username: "hdfs",
+			AdditionalProps: map[string]interface{}{"table_name": "events"},
+		},
+	}
+	registry := database.NewDriverRegistry()
+	registry.RegisterDriver(model.DatabaseTypeHDFSORC, file_system.NewHDFSORCDriverWithFileClient(
+		&hdfsAvroMetadataClient{data: data},
+	))
+	pool := database.NewConnectionPool(registry, nil, nil, false)
+	defer func() { _ = pool.CloseAll() }()
+	extractor := &MetadataExtractor{
+		connPool: pool,
+		sources:  &dataSourceLookupStub{dataSource: source},
+		registry: registry,
+	}
+	tables, err := extractor.ListTables(context.Background(), source.ID)
+	if err != nil {
+		t.Fatalf("ListTables() error = %v", err)
+	}
+	if len(tables) != 1 || tables[0].Name != "events" {
+		t.Fatalf("ListTables() = %+v, want events", tables)
+	}
+	table, err := extractor.ExtractTableSchema(context.Background(), source.ID, "events")
+	if err != nil {
+		t.Fatalf("ExtractTableSchema() error = %v", err)
+	}
+	if len(table.Columns) == 0 {
+		t.Fatal("ExtractTableSchema() returned no ORC columns")
+	}
+	schema, _, err := extractor.ExtractSchema(context.Background(), source.ID)
 	if err != nil {
 		t.Fatalf("ExtractSchema() error = %v", err)
 	}

@@ -100,6 +100,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 			model.DatabaseTypeHDFSAvro:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSORC:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
 		}
 		if dbType == model.DatabaseTypeS3Delta {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
@@ -341,6 +342,16 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 	if !containsSupportLimitation(hdfsAvro.Limitations, "one configured Avro OCF file") || !containsSupportLimitation(hdfsAvro.Limitations, "64 MiB") || !containsSupportLimitation(hdfsAvro.Limitations, "does not cover Kerberos") {
 		t.Errorf("HDFS Avro catalog must disclose its file, memory, and security boundaries: %+v", hdfsAvro.Limitations)
+	}
+	hdfsORC := profiles[string(model.DatabaseTypeHDFSORC)]
+	if !hdfsORC.Registered || !hdfsORC.Supported || hdfsORC.Status != ConnectorStatusEndToEndVerified || !hdfsORC.EndToEndVerified || !hdfsORC.Capabilities.SupportsSQL {
+		t.Errorf("HDFS ORC must expose its verified read-only SQL path: %+v", hdfsORC)
+	}
+	if hdfsORC.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsORC.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS ORC contract must be limited to Hadoop 3.5.0: %+v", hdfsORC)
+	}
+	if !containsSupportLimitation(hdfsORC.Limitations, "one configured ORC file") || !containsSupportLimitation(hdfsORC.Limitations, "100,000 rows") || !containsSupportLimitation(hdfsORC.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS ORC catalog must disclose its file, row, and security boundaries: %+v", hdfsORC.Limitations)
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {

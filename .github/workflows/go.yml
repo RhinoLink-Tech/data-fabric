@@ -222,7 +222,7 @@ jobs:
         run: bash scripts/contracts/run_hdfs_csv_contract.sh
 
   hdfs-parquet-contract:
-    name: HDFS Parquet Hadoop 3.5.0 live contract
+    name: HDFS Parquet and ORC Hadoop 3.5.0 live contracts
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -234,7 +234,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run HDFS Parquet live contract
+      - name: Run HDFS Parquet and ORC live contracts
         run: bash scripts/contracts/run_hdfs_parquet_contract.sh
 
   checks:

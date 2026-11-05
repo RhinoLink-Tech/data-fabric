@@ -560,9 +560,12 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 			}
 			return file_system.ValidateHDFSParquetConfig(config)
 		}
-		if dbType == model.DatabaseTypeHDFSAvro {
+		if dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeHDFSORC {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err
+			}
+			if dbType == model.DatabaseTypeHDFSORC {
+				return file_system.ValidateHDFSORCConfig(config)
 			}
 			return file_system.ValidateHDFSAvroConfig(config)
 		}
