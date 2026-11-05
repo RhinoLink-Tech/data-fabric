@@ -39,6 +39,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeBigQuery, "warehouses", false},
 		{DatabaseTypeS3CSV, "object_storage", false},
 		{DatabaseTypeHDFSParquet, "filesystems", false},
+		{DatabaseTypeHDFSORC, "filesystems", false},
 		{DatabaseTypeClickHouse, "olap", false},
 		{DatabaseTypeMongoDB, "nosql", false},
 		// These later additions must retain their storage-family category.

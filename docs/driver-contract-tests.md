@@ -936,13 +936,13 @@ reads, projection/filter/order/page queries, COUNT(*), metadata discovery, and
 write rejection. A separate live contract verifies this adapter only against
 Apache Hadoop 3.5.0; other releases and HDFS formats remain unverified.
 
-## HDFS Parquet live cluster contract
+## HDFS Parquet and ORC live cluster contracts
 
 The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
-cluster from the pinned official image, writes a deterministic Parquet fixture
-to HDFS, then runs the Data Fabric adapter against the HDFS RPC endpoint. It
-checks the exact Hadoop version, connection and metadata probes, row decoding,
-a restricted filtered query, COUNT(*), and write rejection.
+cluster from the pinned official image, writes deterministic Parquet and ORC
+fixtures to HDFS, then runs both Data Fabric adapters against the HDFS RPC
+endpoint. It checks the exact Hadoop version, connection and metadata probes,
+row decoding, restricted filtered queries, COUNT(*), and write rejection.
 
 Run it with:
 
@@ -952,8 +952,8 @@ bash scripts/contracts/run_hdfs_parquet_contract.sh
 
 The contract covers HDFS simple-user access on one single-node cluster. It does
 not verify Kerberos, authorization policies, HA, other Hadoop releases, or
-other HDFS formats. The adapter remains bounded to one configured flat Parquet
-file and its documented byte and row limits.
+other HDFS formats. Each adapter remains bounded to one configured file and its
+documented byte and row limits.
 
 ## HDFS Parquet local file-client fixture
 
@@ -963,18 +963,26 @@ Parquet fixture and injected file client cover projected and filtered SQL,
 ordering and pagination, COUNT(*), metadata discovery, configured file bounds,
 and write rejection. The local fixture does not certify NameNode/DataNode interoperability, HDFS
 authorization, Kerberos, HA behavior, or large-file performance. A separate live
-contract now verifies this adapter only against Apache Hadoop 3.5.0; other Hadoop
-releases and HDFS formats remain unverified.
+contract now verifies the Parquet and ORC adapters only against Apache Hadoop
+3.5.0; other Hadoop releases and HDFS formats remain unverified.
+
+## HDFS ORC local file-client fixture
+
+A deterministic ORC fixture and injected HDFS file client cover primitive-field
+decoding, filtered SQL, COUNT(*), file and row bounds, cancellation and read
+errors, metadata discovery, and write rejection. The fixture uses the same ORC
+decoder as object-storage adapters; only the HDFS transport path is specific to
+this connector.
 
 ## HDFS Avro OCF local file-client fixture
 
 A deterministic Avro OCF fixture and injected local file client cover record
 decoding, nullable fields, read-only projection/filter/order/page queries,
 COUNT(*), metadata discovery, file and record limits, cancellation/error
-handling, and write rejection without requiring HDFS. The fixture does not
-certify NameNode/DataNode interoperability, a live HDFS release, authorization,
-Kerberos, HA behavior, or large-file performance. Keep the connector
-experimental until a pinned live HDFS contract is available.
+handling, and write rejection without requiring HDFS. A separate live contract
+covers the adapter against Apache Hadoop 3.5.0 using HDFS simple-user access; it
+does not establish compatibility with other Hadoop releases, authorization,
+Kerberos, HA, or large-file performance.
 
 ## HDFS plain-text local file-client fixture
 
@@ -984,8 +992,8 @@ projection/filter/order/page queries, COUNT(*), metadata discovery, byte and
 line limits, invalid UTF-8, cancellation, I/O errors, and write rejection
 without an HDFS service. The fixture does not establish compatibility with a
 live HDFS release, authorization, Kerberos, HA behavior, or large-file
-performance. The connector remains experimental until a pinned live HDFS
-contract is available.
+performance. The live contract above verifies the text adapter against Apache
+Hadoop 3.5.0 only; other releases and security modes are not covered.
 
 ## HDFS compressed Parquet local file-client fixture
 

@@ -15,6 +15,7 @@ func TestDriverRegistryGetDriverAndIsSupported(t *testing.T) {
 	}{
 		{name: "mysql", dbType: model.DatabaseTypeMySQL, supported: true},
 		{name: "postgresql", dbType: model.DatabaseTypePostgreSQL, supported: true},
+		{name: "hdfs_orc", dbType: model.DatabaseTypeHDFSORC, supported: true},
 		{name: "unknown", dbType: model.DatabaseType("unknown")},
 		{name: "empty", dbType: model.DatabaseType("")},
 	}

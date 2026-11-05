@@ -15,6 +15,7 @@ func TestApplyBatchPaginationDoesNotPanic(t *testing.T) {
 
 	driversUnderTest := map[string]drivers.SQLQueryPaginater{
 		"hdfs-avro":                &HDFSAvroDriver{},
+		"hdfs-orc":                 &HDFSORCDriver{},
 		"hdfs-parquet":             &HDFSParquetDriver{},
 		"hdfs-csv":                 &HDFSCSVDriver{},
 		"hdfs-text":                &HDFSTextDriver{},

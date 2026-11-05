@@ -165,6 +165,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"Only flat records with supported primitive or nullable primitive fields are queryable; nested, named, and non-primitive fields are rejected. The live fixture uses uncompressed OCF.",
 			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
 		}
+	case model.DatabaseTypeHDFSORC:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS ORC adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, ORC file metadata and reads, primitive-column decoding, restricted read-only SQL, COUNT(*), and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter reads one configured ORC file up to 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Only flat primitive fields supported by the shared ORC reader are queryable; nested and repeated fields are rejected. The complete file is read into gateway memory before SQL evaluation.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
 	case model.DatabaseTypePostgreSQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
@@ -542,6 +556,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 				"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through the restricted read-only Avro SQL subset.",
 				"Only flat records with supported primitive or nullable primitive fields are queryable. Path-style S3 requests are used; native Ozone Kerberos, volume/bucket administration, multiple-object scans, nested schemas, and live Ozone compatibility are not covered.")
 		}
+	case model.DatabaseTypeHDFSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The adapter uses HDFS simple-user RPC; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Only flat primitive fields supported by the shared ORC reader are queryable; nested and repeated fields are rejected, and data is read into gateway memory.",
+			"The Hadoop 3.5.0 live contract covers one single-node cluster and does not establish Kerberos, HDFS authorization, HA, or compatibility with other Hadoop releases.")
 	case model.DatabaseTypeHDFSAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}

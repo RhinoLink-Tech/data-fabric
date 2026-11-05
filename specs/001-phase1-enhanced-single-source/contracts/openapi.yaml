@@ -745,6 +745,7 @@ components:
         - s3_parquet
         # Distributed file systems
         - hdfs_avro
+        - hdfs_orc
         - hdfs_parquet
         - hdfs_csv
         - hdfs_text

@@ -74,6 +74,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeHDFSAvro, func() drivers.Driver {
 		return &file_system.HDFSAvroDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSORC, func() drivers.Driver {
+		return &file_system.HDFSORCDriver{}
+	})
 	dr.register(model.DatabaseTypeOzoneParquet, func() drivers.Driver {
 		return &file_system.OzoneParquetDriver{}
 	})
