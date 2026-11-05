@@ -479,6 +479,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeMinIOIceberg {
 			return hc.validateMinIOIcebergConfig(config)
 		}
+		if dbType == model.DatabaseTypeTencentCOSIceberg {
+			return object_storage.ValidateCOSIcebergConfig(config)
+		}
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}

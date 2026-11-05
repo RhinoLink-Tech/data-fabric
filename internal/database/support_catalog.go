@@ -786,6 +786,16 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.",
 			"The pinned live contract verifies MinIO object access and the configured read path using a local REST fixture; it does not establish compatibility with external REST catalog servers.",
 		}
+	case model.DatabaseTypeTencentCOSIceberg:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey plus Iceberg REST catalog credentials"}
+		profile.AuthenticationDisclosure = "The pinned MinIO S3-compatible contract exercises COS adapter credential mapping; no live Tencent COS release or external REST catalog contract is recorded."
+		profile.Limitations = []string{
+			"The adapter exposes one configured table via an external Iceberg REST catalog and COS S3-compatible storage; the catalog must return COS-readable s3:// table locations and the configured region must match the bucket region.",
+			"Queries use the shared read-only Iceberg SQL subset and row limit. Writes, built-in catalog management, catalog-wide enumeration, and Iceberg time travel are not supported.",
+			"COS compatibility is not implied by the S3-compatible API; virtual-hosted addressing is enabled by default and can be overridden for compatible environments.",
+			"The pinned MinIO contract exercises the COS wrapper against MinIO S3 FileIO, not against a live Tencent COS service or external catalog.",
+		}
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}

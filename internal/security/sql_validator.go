@@ -189,7 +189,7 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 	case model.DatabaseTypeApacheDruid:
 		return "druid", true
 	case model.DatabaseTypeApacheIceberg, model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeAzureDelta,
 		model.DatabaseTypeMinIODelta, model.DatabaseTypeOzoneDelta, model.DatabaseTypeTencentCOSDelta:
 		return "spark", true
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
@@ -835,7 +835,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeAlibabaOSSAvro, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
 		model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet,
 		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSORC,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta, model.DatabaseTypeOzoneDelta, model.DatabaseTypeTencentCOSDelta:
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeAzureDelta, model.DatabaseTypeOzoneDelta, model.DatabaseTypeTencentCOSDelta:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,
