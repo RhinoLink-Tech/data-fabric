@@ -274,6 +274,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(cosAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(cosAvro.Limitations, "100,000 rows") || !containsSupportLimitation(cosAvro.Limitations, "nullable primitive unions") {
 		t.Errorf("COS Avro catalog must disclose object, row, and schema limits: %+v", cosAvro.Limitations)
 	}
+	cosDelta := profiles[string(model.DatabaseTypeTencentCOSDelta)]
+	if !cosDelta.Registered || !cosDelta.Supported || cosDelta.Status != ConnectorStatusExperimental || !cosDelta.Capabilities.SupportsSQL || !cosDelta.Capabilities.SupportsSchemaDiscovery || cosDelta.EndToEndVerified {
+		t.Errorf("COS Delta must expose an experimental read-only SQL path without claiming live service compatibility: %+v", cosDelta)
+	}
+	if !containsSupportLimitation(cosDelta.Limitations, "one configured unpartitioned Delta table") || !containsSupportLimitation(cosDelta.Limitations, "64 MiB of data") || !containsSupportLimitation(cosDelta.Limitations, "live Tencent COS release") {
+		t.Errorf("COS Delta catalog must disclose its table, size, and compatibility limits: %+v", cosDelta.Limitations)
+	}
 	cosJSON := profiles[string(model.DatabaseTypeTencentCOSJSON)]
 	if !cosJSON.Registered || !cosJSON.Supported || cosJSON.Status != ConnectorStatusExperimental || !cosJSON.Capabilities.SupportsSQL || !cosJSON.Capabilities.SupportsSchemaDiscovery {
 		t.Errorf("COS JSON must expose its experimental read-only SQL path: %+v", cosJSON)
@@ -435,7 +442,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeTencentCOSDelta,
 		model.DatabaseTypeAzureBlobAvro, model.DatabaseTypeAzureBlobORC, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]

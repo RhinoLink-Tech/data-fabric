@@ -693,6 +693,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"The deterministic SDK protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSDelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live Tencent COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured unpartitioned Delta table from one bucket through Tencent COS; it uses the latest supported JSON transaction-log snapshot and Parquet data files.",
+			"Checkpoint-based logs, partitioning, deletion vectors, time travel, writes, and streaming are not supported. Active data files and transaction logs are downloaded into gateway memory within these bounds: at most 256 active files, 64 MiB of data (16 MiB by default), and 100,000 decoded rows.",
+			"The deterministic local COS protocol fixture does not establish compatibility with a live Tencent COS release.")
 	case model.DatabaseTypeAzureBlobORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}

@@ -157,6 +157,7 @@ func TestSQLDialectForDataSourceCompatibilityMap(t *testing.T) {
 		model.DatabaseTypeHDFSORC:               "mysql",
 		model.DatabaseTypeS3Delta:               "spark",
 		model.DatabaseTypeOzoneDelta:            "spark",
+		model.DatabaseTypeTencentCOSDelta:       "spark",
 		model.DatabaseTypeMinIOORC:              "mysql",
 		model.DatabaseTypeAlibabaOSSORC:         "mysql",
 		model.DatabaseTypeTencentCOSORC:         "mysql",

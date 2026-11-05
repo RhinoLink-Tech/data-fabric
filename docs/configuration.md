@@ -32,6 +32,36 @@ streaming are not supported. The local COS protocol fixture covers signed
 requests, schema discovery, bounded reads, cancellation, and SQL behavior; it
 does not establish a live Tencent COS version contract.
 
+## Tencent COS Delta Lake data source
+
+The cos_delta connector exposes the latest supported snapshot of one
+unpartitioned Delta Lake table stored in Tencent COS through a read-only SQL
+interface. Set the bucket in database, SecretId and SecretKey in username and
+password, the COS region in additionalProps.region, and the table directory in
+additionalProps.table_path (or the legacy host field). The directory must
+contain _delta_log. An HTTP(S) endpoint origin can be provided in
+additionalProps.endpoint_url; otherwise the COS SDK uses the regional endpoint.
+The https option defaults to true.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Last table-path segment | SQL table name |
+| batch_size | 1,000 | Parquet rows decoded per batch; maximum 10,000 |
+| max_table_bytes | 16 MiB | Active data-file limit; configurable up to 64 MiB |
+| https | true | Use HTTPS with the default regional endpoint |
+
+The adapter reads JSON transaction-log commits and Parquet data files, supports
+reader protocol version 1, and rejects checkpoints, partitioned tables,
+deletion vectors, time travel, writes, and streaming. It accepts at most 256
+active data files and 100,000 rows. The data and transaction logs are downloaded
+into gateway memory within the configured limits. The deterministic local COS
+protocol fixture covers request signing, bounded reads, SQL, metadata,
+cancellation, and write rejection; it does not establish compatibility with a
+live Tencent COS release. The connector remains experimental until a pinned
+live-service contract is recorded.
+
 ## Tencent COS ORC data source
 
 The cos_orc connector exposes one configured Tencent COS .orc object as a
