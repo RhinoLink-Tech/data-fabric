@@ -26,7 +26,7 @@ func TestCOSDeltaProtocolFixture(t *testing.T) {
 	)
 	logBody := strings.Join([]string{
 		`{"protocol":{"minReaderVersion":1,"minWriterVersion":2}}`,
-		`{"metaData":{"id":"fixture","format":{"provider":"parquet","options":{}},"schemaString":"{}","partitionColumns":[],"configuration":{}}`,
+		`{"metaData":{"id":"fixture","format":{"provider":"parquet","options":{}},"schemaString":"{}","partitionColumns":[],"configuration":{}}}`,
 		fmt.Sprintf(`{"add":{"path":"part-00000.parquet","size":%d,"partitionValues":{},"modificationTime":1,"dataChange":true}}`, len(data)),
 	}, "\n") + "\n"
 
