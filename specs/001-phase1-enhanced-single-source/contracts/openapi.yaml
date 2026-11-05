@@ -727,6 +727,7 @@ components:
         - cos_parquet
         - cos_orc
         - cos_avro
+        - cos_delta
         - minio_avro
         - minio_csv
         - minio_delta

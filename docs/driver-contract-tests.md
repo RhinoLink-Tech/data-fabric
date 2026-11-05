@@ -453,6 +453,22 @@ This fixture does not run against Tencent Cloud and does not establish
 compatibility with a live COS release or temporary credentials. The connector
 remains experimental pending a version-pinned live contract.
 
+## Tencent COS Delta protocol fixture
+
+The COS Delta adapter uses the Tencent COS SDK and request-signing transport
+against a local HTTP protocol fixture. The fixture covers transaction-log
+listing and replay, active Parquet reads, health and schema metadata, restricted
+read-only SQL filtering/order/pagination/count, cancellation, configured byte
+limits, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSDeltaProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture is protocol simulation only. It does not establish compatibility
+with a live Tencent COS release; the connector remains experimental pending a
+pinned live-service contract.
+
 ## Alibaba OSS Delta protocol fixture
 
 The OSS Delta fixture exercises the SDK against a local HTTP object-store

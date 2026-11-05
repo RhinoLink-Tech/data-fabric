@@ -344,7 +344,7 @@ func isJSONSQLSource(dbType model.DatabaseType) bool {
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta || dbType == model.DatabaseTypeOzoneDelta
+	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta || dbType == model.DatabaseTypeOzoneDelta || dbType == model.DatabaseTypeTencentCOSDelta
 }
 
 func isMinIOIcebergSource(dbType model.DatabaseType) bool {
@@ -427,6 +427,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.AzureDeltaTableName(config)
 	case model.DatabaseTypeOzoneDelta:
 		return object_storage.OzoneDeltaTableName(config)
+	case model.DatabaseTypeTencentCOSDelta:
+		return object_storage.COSDeltaTableName(config)
 	case model.DatabaseTypeMinIOIceberg:
 		return object_storage.MinIOIcebergTableName(config)
 	case model.DatabaseTypeMinIOORC:
