@@ -38,6 +38,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeApacheIceberg, "table_formats", false},
 		{DatabaseTypeBigQuery, "warehouses", false},
 		{DatabaseTypeS3CSV, "object_storage", false},
+		{DatabaseTypeGCSCSV, "object_storage", false},
 		{DatabaseTypeHDFSParquet, "filesystems", false},
 		{DatabaseTypeHDFSORC, "filesystems", false},
 		{DatabaseTypeClickHouse, "olap", false},

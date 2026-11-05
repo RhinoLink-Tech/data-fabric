@@ -146,6 +146,7 @@ const (
     DatabaseTypeS3Delta          DatabaseType = "s3_delta"
     DatabaseTypeS3Avro           DatabaseType = "s3_avro"
     DatabaseTypeS3CSV            DatabaseType = "s3_csv"
+    DatabaseTypeGCSCSV            DatabaseType = "gcs_csv"
     DatabaseTypeS3JSON           DatabaseType = "s3_json"
     DatabaseTypeMinIOParquet     DatabaseType = "minio_parquet"
     DatabaseTypeMinIOCSV         DatabaseType = "minio_csv"

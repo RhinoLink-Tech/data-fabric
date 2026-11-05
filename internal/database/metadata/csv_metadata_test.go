@@ -37,6 +37,11 @@ func TestCSVObjectMetadataDiscovery(t *testing.T) {
 			sourceType: model.DatabaseTypeS3CSV, props: map[string]interface{}{"has_header": false, "delimiter": ";"},
 			columns: []ColumnSchema{{Name: "column_1", Type: "BIGINT", Nullable: true}, {Name: "column_2", Type: "VARCHAR", Nullable: true}},
 		},
+		{
+			name: "gcs without header and custom delimiter", csv: "1;Ada\n2;Lin\n", tableName: "records",
+			sourceType: model.DatabaseTypeGCSCSV, props: map[string]interface{}{"has_header": false, "delimiter": ";", "region": "us-east-1"},
+			columns: []ColumnSchema{{Name: "column_1", Type: "BIGINT", Nullable: true}, {Name: "column_2", Type: "VARCHAR", Nullable: true}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

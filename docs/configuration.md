@@ -225,6 +225,40 @@ read-only CSV SQL subset. It rejects writes, objects over the configured byte
 limit, and results with more than 100,000 rows. The local COS protocol fixture
 checks signed requests but does not claim a live COS service version contract.
 
+## Google Cloud Storage CSV data source
+
+The gcs_csv connector exposes one configured Google Cloud Storage .csv
+object as a bounded, read-only SQL table through the Cloud Storage XML API
+interoperability endpoint. Set the bucket in database, the HMAC access ID
+and secret in username and password, and the object key in
+additionalProps.object_key (or the legacy host field). HMAC credentials are
+distinct from service-account JSON keys and OAuth credentials. The default
+endpoint is https://storage.googleapis.com; path-style requests are enabled
+by default. Set additionalProps.region to the bucket location for the
+Signature V4 credential scope; it defaults to us-east-1.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| region | us-east-1 | Signature V4 region scope; configure the bucket location where appropriate |
+| endpoint_url | https://storage.googleapis.com | HTTP(S) XML API endpoint override |
+| force_path_style | true | Use storage.googleapis.com/bucket/object addressing |
+| table_name | Object filename without extension | SQL table name |
+| delimiter | , | One-character CSV delimiter |
+| has_header | true | Treat the first non-skipped record as column names |
+| skip_header_rows | 0 | Number of initial records to skip |
+| null_values | — | CSV values treated as SQL NULL |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+
+The adapter requires permissions to read object metadata and object contents.
+It reads one object into gateway memory and supports the shared restricted
+read-only CSV SQL subset. It rejects writes, objects over the configured byte
+limit, and results with more than 100,000 rows. OAuth/ADC, service-account
+JSON, directory or multi-object scans, and streaming are not supported by this
+baseline. The deterministic protocol fixture does not establish compatibility
+with a live Google Cloud Storage deployment.
+
 ## Tencent COS JSON data source
 
 The `cos_json` connector exposes one configured Tencent COS JSON object as a
