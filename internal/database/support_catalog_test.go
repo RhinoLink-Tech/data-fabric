@@ -218,6 +218,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
 		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
 	}
+	ozoneDelta := profiles[string(model.DatabaseTypeOzoneDelta)]
+	if !ozoneDelta.Registered || !ozoneDelta.Supported || ozoneDelta.Status != ConnectorStatusExperimental || !ozoneDelta.Capabilities.SupportsSQL || !ozoneDelta.Capabilities.SupportsSchemaDiscovery || ozoneDelta.EndToEndVerified {
+		t.Errorf("Ozone Delta must expose its experimental S3 Gateway SQL path without a live compatibility claim: %+v", ozoneDelta)
+	}
+	if !containsSupportLimitation(ozoneDelta.Limitations, "one configured unpartitioned Delta table") || !containsSupportLimitation(ozoneDelta.Limitations, "256 active data files") || !containsSupportLimitation(ozoneDelta.Limitations, "Checkpoint") {
+		t.Errorf("Ozone Delta catalog must disclose snapshot, file, and protocol limits: %+v", ozoneDelta.Limitations)
+	}
 	ossCSV := profiles[string(model.DatabaseTypeOSSCSV)]
 	if !ossCSV.Registered || !ossCSV.Supported || ossCSV.Status != ConnectorStatusExperimental || !ossCSV.Capabilities.SupportsSQL {
 		t.Errorf("OSS CSV must expose its experimental read-only SQL path: %+v", ossCSV)

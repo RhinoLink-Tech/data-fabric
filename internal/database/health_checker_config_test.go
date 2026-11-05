@@ -181,6 +181,25 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 	if ozoneAvroConfig.Port != 9878 {
 		t.Fatalf("Ozone Avro S3 Gateway default port = %d, want 9878", ozoneAvroConfig.Port)
 	}
+	ozoneDeltaConfig := &model.DataSourceConfig{
+		Host: "warehouse/events", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test", "table_path": "warehouse/events"},
+	}
+	if !checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneDelta) {
+		t.Fatal("Ozone Delta should be registered through its S3 Gateway adapter")
+	}
+	if err := checker.ValidateDataSourceConfiguration(ozoneDeltaConfig, model.DatabaseTypeOzoneDelta); err != nil {
+		t.Fatalf("Ozone Delta config should validate through its S3 Gateway adapter: %v", err)
+	}
+	if ozoneDeltaConfig.Port != 9878 {
+		t.Fatalf("Ozone Delta S3 Gateway default port = %d, want 9878", ozoneDeltaConfig.Port)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "warehouse/events", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"table_path": "warehouse/events"},
+	}, model.DatabaseTypeOzoneDelta); err == nil || !strings.Contains(err.Error(), "endpoint_url") {
+		t.Fatalf("Ozone Delta config without endpoint error = %v, want endpoint_url validation error", err)
+	}
 
 	invalidPort := &model.DataSourceConfig{
 		Host: "sql.example.test", Port: 70000, Database: "analytics", Username: "gateway",

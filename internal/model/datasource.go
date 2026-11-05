@@ -68,6 +68,7 @@ const (
 	DatabaseTypeAzureDelta            DatabaseType = "azure_delta"
 	DatabaseTypeOzoneText             DatabaseType = "ozone_text"
 	DatabaseTypeOzoneAvro             DatabaseType = "ozone_avro"
+	DatabaseTypeOzoneDelta            DatabaseType = "ozone_delta"
 	DatabaseTypeOzoneJSON             DatabaseType = "ozone_json"
 	DatabaseTypeOzoneCSV              DatabaseType = "ozone_csv"
 	DatabaseTypeAzureParquet          DatabaseType = "azure_parquet"
@@ -133,7 +134,7 @@ const (
 type DataSource struct {
 	ID        string           `gorm:"type:char(36);primaryKey" json:"id"`
 	Name      string           `gorm:"size:255;not null;uniqueIndex:idx_datasources_tenant_name,priority:2" json:"name"`
-	Type      DatabaseType     `gorm:"type:enum('mysql','mariadb','postgresql','oracle','trino','presto','openlookeng','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_delta','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','minio_orc','minio_avro','minio_json','oss_parquet','oss_csv','oss_json','oss_avro','oss_orc','cos_parquet','cos_csv','cos_json','cos_orc','cos_avro','azure_blob_parquet','azure_blob_avro','azure_blob_orc','azure_blob_csv','azure_blob_json','hdfs_avro','hdfs_orc','hdfs_parquet','hdfs_csv','hdfs_json','ozone_parquet','ozone_orc','ozone_csv','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','ozone_json','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute');not null" json:"type"`
+	Type      DatabaseType     `gorm:"type:enum('mysql','mariadb','postgresql','oracle','trino','presto','openlookeng','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_delta','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','minio_orc','minio_avro','minio_json','oss_parquet','oss_csv','oss_json','oss_avro','oss_orc','cos_parquet','cos_csv','cos_json','cos_orc','cos_avro','azure_blob_parquet','azure_blob_avro','azure_blob_orc','azure_blob_csv','azure_blob_json','hdfs_avro','hdfs_orc','hdfs_parquet','hdfs_csv','hdfs_json','ozone_parquet','ozone_orc','ozone_csv','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','ozone_json','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute','ozone_delta');not null" json:"type"`
 	Config    DataSourceConfig `gorm:"type:json;not null" json:"config"`
 	Status    DataSourceStatus `gorm:"type:enum('active','inactive','error');default:'active'" json:"status"`
 	OwnerID   string           `gorm:"size:255;not null;default:'';index" json:"ownerId"`
@@ -228,7 +229,7 @@ func IsValidDatabaseType(dbType string) bool {
 		DatabaseTypeOceanBaseMySQL, DatabaseTypeOceanBaseOracle, DatabaseTypeTiDB, DatabaseTypeTDSQL,
 		DatabaseTypeGaussDBMySQL, DatabaseTypeGaussDBPostgres, DatabaseTypeDaMeng, DatabaseTypeKingbaseES,
 		DatabaseTypeGBase8s, DatabaseTypeGBase8t, DatabaseTypeOscar, DatabaseTypeOpenGauss,
-		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeOzoneText,
+		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeOzoneText, DatabaseTypeOzoneDelta,
 		DatabaseTypeOzoneAvro, DatabaseTypeOzoneJSON, DatabaseTypeOzoneCSV, DatabaseTypeAzureParquet, DatabaseTypeHDFSJSON, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed,
 		DatabaseTypeMinIODelta, DatabaseTypeApacheHive, DatabaseTypeSQLServer, DatabaseTypeHologres, DatabaseTypeMongoDB, DatabaseTypeMaxCompute:
 		return true
@@ -248,7 +249,7 @@ func GetDatabaseCategory(dbType DatabaseType) string {
 		return "warehouses"
 	case DatabaseTypeS3Parquet, DatabaseTypeS3ORC, DatabaseTypeS3Delta, DatabaseTypeS3Avro, DatabaseTypeS3CSV, DatabaseTypeS3JSON,
 		DatabaseTypeMinIOParquet, DatabaseTypeMinIOCSV, DatabaseTypeMinIOORC, DatabaseTypeMinIOAvro, DatabaseTypeMinIOJSON, DatabaseTypeAlibabaOSSParquet, DatabaseTypeOSSCSV, DatabaseTypeAlibabaOSSJSON, DatabaseTypeAlibabaOSSAvro, DatabaseTypeAlibabaOSSORC, DatabaseTypeTencentCOSParquet, DatabaseTypeTencentCOSCSV, DatabaseTypeTencentCOSJSON, DatabaseTypeTencentCOSORC, DatabaseTypeTencentCOSAvro, DatabaseTypeAzureBlobAvro, DatabaseTypeAzureBlobORC, DatabaseTypeAzureBlobCSV, DatabaseTypeAzureBlobJSON, DatabaseTypeAzureBlobParquet,
-		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneORC, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeOzoneJSON, DatabaseTypeOzoneCSV:
+		DatabaseTypeOSSDelta, DatabaseTypeMinIOIceberg, DatabaseTypeAzureDelta, DatabaseTypeAzureParquet, DatabaseTypeMinIODelta, DatabaseTypeOzoneParquet, DatabaseTypeOzoneORC, DatabaseTypeOzoneText, DatabaseTypeOzoneAvro, DatabaseTypeOzoneJSON, DatabaseTypeOzoneCSV, DatabaseTypeOzoneDelta:
 		return "object_storage"
 	case DatabaseTypeHDFSAvro, DatabaseTypeHDFSORC, DatabaseTypeHDFSParquet, DatabaseTypeHDFSCSV,
 		DatabaseTypeHDFSJSON, DatabaseTypeHDFSText, DatabaseTypeHDFSParquetCompressed:

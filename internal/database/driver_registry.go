@@ -95,6 +95,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeOzoneCSV, func() drivers.Driver {
 		return &file_system.OzoneCSVDriver{}
 	})
+	dr.register(model.DatabaseTypeOzoneDelta, func() drivers.Driver {
+		return &object_storage.OzoneDeltaDriver{}
+	})
 	dr.register(model.DatabaseTypeHDFSJSON, func() drivers.Driver {
 		return &file_system.HDFSJSONDriver{}
 	})

@@ -1398,22 +1398,26 @@ max_file_bytes setting described in the HDFS Parquet section.
 
 ## Apache Ozone object formats through S3 Gateway
 
-The experimental ozone_parquet, ozone_orc, ozone_text, ozone_avro, ozone_json, and ozone_csv sources read one configured object by using Apache Ozone's S3-compatible gateway. Configure the bucket in database, the object key in additionalProps.object_key (or host), and the gateway origin in additionalProps.endpoint_url. Keys must end in .parquet, .orc, .txt or .log, .avro, .json/.jsonl/.ndjson/.jsonlines, or .csv for the selected source type. The endpoint defaults to port 9878 when the URL has no explicit port.
+The experimental ozone_parquet, ozone_orc, ozone_text, ozone_avro, ozone_json, ozone_csv, and ozone_delta sources use Apache Ozone's S3-compatible gateway. File adapters read one configured object; ozone_delta reads one configured Delta Lake table snapshot. Configure the bucket in database, the object key in additionalProps.object_key (or host) for file adapters, the table path in additionalProps.table_path (or host) for Delta, and the gateway origin in additionalProps.endpoint_url. File keys must end in .parquet, .orc, .txt or .log, .avro, .json/.jsonl/.ndjson/.jsonlines, or .csv for the selected source type. The endpoint defaults to port 9878 when the URL has no explicit port.
 
 | Data-source field | Ozone meaning |
 | --- | --- |
 | database | Bucket name. |
 | host or additionalProps.object_key | One relative object key for the selected format; object_key takes precedence. |
+| additionalProps.table_path | Required for ozone_delta unless host supplies the table path; a relative unpartitioned Delta table root. |
 | username and password | Required S3 access key and secret key; signed with SigV4. |
 | additionalProps.session_token | Optional session token paired with the access key and secret key. |
 | additionalProps.endpoint_url | Required S3 Gateway HTTP(S) origin without a path, credentials, query, or fragment. |
 | additionalProps.region | S3 signing region; defaults to us-east-1. |
 | additionalProps.table_name | SQL table name; defaults from the object key. |
 | additionalProps.max_file_bytes | Maximum object bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_table_bytes | Delta data-byte limit; defaults to 16 MiB and cannot exceed 64 MiB. |
 | additionalProps.delimiter | CSV field separator; defaults to a comma and must be one character. |
 | additionalProps.has_header | Whether the first non-skipped CSV row contains column names; defaults to true. |
 | additionalProps.skip_header_rows | Number of leading CSV rows to skip before optional header parsing; defaults to 0. |
 | additionalProps.null_values | CSV field values treated as SQL NULL; accepts a list or comma-separated string. |
 | additionalProps.quote_char | CSV quoting character; only the standard double quote is supported. |
+
+For `ozone_delta`, set `additionalProps.table_path` to a relative, unpartitioned Delta table path and optionally set `additionalProps.table_name`. The adapter reads the latest supported version-1 transaction-log snapshot and Parquet files. `additionalProps.max_table_bytes` defaults to 16 MiB and can be set up to 64 MiB; at most 256 active data files and 100,000 rows are supported. Checkpoints, partitioning, deletion vectors, time travel, writes, and native Ozone RPC are not supported.
 
 Requests use path-style addressing. The Parquet and ORC adapters expose one object as a bounded read-only SQL table; the text adapter exposes each physical line as line_number BIGINT and line VARCHAR; Avro exposes one OCF object through the restricted flat-record SQL subset; JSON exposes one object, object array, or JSON Lines file with top-level scalar fields through the restricted read-only SQL subset; CSV exposes one row-oriented file with configurable header, delimiter, skipped header rows, and null markers. Each format caps objects at 64 MiB and results at 100,000 rows, lines, or records. The adapters do not implement native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.
