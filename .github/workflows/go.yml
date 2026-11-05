@@ -5,12 +5,21 @@ on:
   push:
     branches:
       - master
+  schedule:
+    # 02:17 China Standard Time; full provider/version matrix runs once daily.
+    - cron: "17 18 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: go-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   postgres-version-contracts:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: PostgreSQL ${{ matrix.version }} driver contract
     runs-on: ubuntu-latest
     strategy:
@@ -54,6 +63,7 @@ jobs:
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestPostgreSQLDriverContract$'
 
   mysql-lts-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MySQL 8.4.13 driver contract
     runs-on: ubuntu-latest
     env:
@@ -92,6 +102,7 @@ jobs:
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMySQLDriverContract$'
 
   mariadb-lts-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 10.11.19 driver contract
     runs-on: ubuntu-latest
     env:
@@ -130,6 +141,7 @@ jobs:
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
   mariadb-114-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 11.4.13 driver contract
     runs-on: ubuntu-latest
     env:
@@ -168,6 +180,7 @@ jobs:
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
   mariadb-123-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 12.3.3 driver contract
     runs-on: ubuntu-latest
     env:
@@ -206,6 +219,7 @@ jobs:
         run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
 
   hdfs-csv-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: HDFS CSV, Avro, and Text Hadoop 3.5.0 live contracts
     runs-on: ubuntu-latest
     steps:
@@ -222,6 +236,7 @@ jobs:
         run: bash scripts/contracts/run_hdfs_csv_contract.sh
 
   hdfs-parquet-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: HDFS Parquet and ORC Hadoop 3.5.0 live contracts
     runs-on: ubuntu-latest
     steps:
@@ -239,6 +254,84 @@ jobs:
 
   checks:
     name: Build and checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install SQL translation dependency
+        run: python -m pip install --requirement requirements-sql-translation.txt
+
+      - name: Install OpenAPI validator
+        run: python -m pip install --requirement requirements-api-validation.txt
+
+      - name: Install Agent Skills validator
+        run: python -m pip install --requirement requirements-agent-skills.txt
+
+      - name: Install DeepSeek example dependencies
+        run: python -m pip install --requirement examples/deepseek-agent/requirements.txt
+
+      - name: Validate Agent Skill
+        run: skills-ref validate skills/data-fabric-query
+
+      - name: Validate OpenAPI contract
+        run: openapi-spec-validator specs/001-phase1-enhanced-single-source/contracts/openapi.yaml
+
+      - name: Test DeepSeek function-calling bridge
+        run: python -m unittest discover -s examples/deepseek-agent -p "test_*.py"
+
+      - name: Run SQL translation regression tests
+        run: python -m unittest discover -s scripts -p "test_sql_translate.py"
+
+      - name: Test contract result summary
+        run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
+
+      - name: Check formatting
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            mapfile -t files < <(git diff --name-only --diff-filter=ACMRT "$BASE_SHA"...HEAD -- '*.go')
+          else
+            mapfile -t files < <(git ls-files '*.go')
+          fi
+          if [ "${#files[@]}" -gt 0 ]; then
+            unformatted="$(gofmt -l "${files[@]}")"
+            if [ -n "$unformatted" ]; then
+              printf 'Go files need gofmt:\n%s\n' "$unformatted"
+              exit 1
+            fi
+          fi
+
+      - name: Run static analysis
+        run: go vet ./...
+
+      - name: Run unit and protocol-fixture tests
+        run: go test ./...
+
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Build public Makefile target
+        run: make build
+
+  full-checks:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Full build and checks
     runs-on: ubuntu-latest
     env:
       DATA_FABRIC_POSTGRES_CONTRACT_DSN: postgres://data_fabric_contract:contract-test-only@localhost:5432/data_fabric_contract?sslmode=disable
@@ -468,6 +561,7 @@ jobs:
           docker run --rm --entrypoint /bin/sh -v "$config_dir:/app/configs:ro" data-fabric:ci -c "test -r /app/configs/mount-smoke"
 
   mysql-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MySQL TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -484,6 +578,7 @@ jobs:
         run: bash scripts/contracts/run_mysql_tls_contract.sh
 
   mysql-84-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MySQL 8.4.13 TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -503,6 +598,7 @@ jobs:
         run: bash scripts/contracts/run_mysql_tls_contract.sh
 
   mariadb-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -519,6 +615,7 @@ jobs:
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
   mariadb-1011-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 10.11.19 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -538,6 +635,7 @@ jobs:
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
   mariadb-114-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 11.4.13 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -557,6 +655,7 @@ jobs:
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
   mariadb-123-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MariaDB 12.3.3 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -576,6 +675,7 @@ jobs:
         run: bash scripts/contracts/run_mariadb_tls_contract.sh
 
   tidb-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: TiDB TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -592,6 +692,7 @@ jobs:
         run: bash scripts/contracts/run_tidb_tls_contract.sh
 
   opengauss-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: openGauss TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -608,6 +709,7 @@ jobs:
         run: bash scripts/contracts/run_opengauss_tls_contract.sh
 
   clickhouse-tls-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: ClickHouse TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -624,6 +726,7 @@ jobs:
         run: bash scripts/contracts/run_clickhouse_tls_contract.sh
 
   sqlserver-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: SQL Server driver contract
     runs-on: ubuntu-latest
     steps:
@@ -640,6 +743,7 @@ jobs:
         run: bash scripts/contracts/run_sqlserver_tls_contract.sh
 
   mongodb-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MongoDB driver contract
     # MongoDB 8.0.34 cannot start on Linux kernels 6.19+; keep this contract on the Ubuntu 22.04 runner.
     runs-on: ubuntu-22.04
@@ -680,6 +784,7 @@ jobs:
         run: go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v
 
   oracle-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Oracle driver contract
     runs-on: ubuntu-latest
     env:
@@ -720,6 +825,7 @@ jobs:
         run: go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v
 
   s3-csv-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: S3 CSV driver contract
     runs-on: ubuntu-latest
     steps:
@@ -736,6 +842,7 @@ jobs:
         run: bash scripts/contracts/run_s3_csv_contract.sh
 
   minio-csv-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: MinIO CSV, Parquet, JSON, Avro, ORC, Delta, and Iceberg driver contracts
     runs-on: ubuntu-latest
     steps:
@@ -752,6 +859,7 @@ jobs:
         run: bash scripts/contracts/run_minio_object_storage_contract.sh
 
   doris-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Apache Doris driver contract
     runs-on: ubuntu-latest
     env:
@@ -783,6 +891,7 @@ jobs:
         run: go test ./internal/database/metadata -run '^TestDorisMetadataExtractorContract$' -count=1 -v
 
   starrocks-contract:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: StarRocks driver and metadata contract
     runs-on: ubuntu-latest
     env:
