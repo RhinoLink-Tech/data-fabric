@@ -232,7 +232,7 @@ func TestExtractTableSchemaScansMySQLInformationSchema(t *testing.T) {
 					{"customers", "BASE TABLE", "sample"},
 				},
 			}
-		case strings.Contains(query, "SHOW COLUMNS FROM orders"):
+		case strings.Contains(query, "SHOW COLUMNS FROM `orders`"):
 			return &cannedRows{
 				columns: []string{"Field", "Type", "Null", "Key", "Default", "Extra"},
 				values: [][]driver.Value{

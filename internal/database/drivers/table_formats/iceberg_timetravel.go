@@ -98,7 +98,7 @@ func (tt *IcebergTimeTravel) GetSnapshotHistory(ctx context.Context, namespace, 
 	return snapshots, nil
 }
 
-// GetSchemaAtSnapshot retrieves schema at a specific snapshot
+// GetSchemaAtSnapshot retrieves the schema a snapshot was written with.
 func (tt *IcebergTimeTravel) GetSchemaAtSnapshot(ctx context.Context, namespace, table string, snapshotID int64) (*IcebergSchema, error) {
 	snapshot, err := tt.driver.GetSnapshotInfo(ctx, namespace, table, snapshotID)
 	if err != nil {
@@ -110,20 +110,16 @@ func (tt *IcebergTimeTravel) GetSchemaAtSnapshot(ctx context.Context, namespace,
 		return nil, err
 	}
 
-	// Find schema by ID
-	for _, schema := range metadata.Snapshots {
-		if schema.SnapshotID == snapshot.SnapshotID {
-			// Return schema at this snapshot
-			if schema.SchemaID == snapshot.SchemaID {
-				// Schema ID matches
-				break
-			}
+	// A snapshot records which schema version it was written with. Resolve that
+	// snapshot's schema-id against the table's schema history instead of
+	// silently handing back the current schema, which misrepresents the data.
+	for i := range metadata.Schemas {
+		if metadata.Schemas[i].SchemaID == snapshot.SchemaID {
+			return &metadata.Schemas[i], nil
 		}
 	}
 
-	// For now, return current schema
-	// In production, we'd need to track schema history
-	return &metadata.Schema, nil
+	return nil, fmt.Errorf("Iceberg snapshot %d references schema %d, which was not found in the schema history", snapshotID, snapshot.SchemaID)
 }
 
 // CompareSnapshots compares two snapshots and returns differences

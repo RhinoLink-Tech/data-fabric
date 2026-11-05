@@ -673,6 +673,13 @@ func postgresRegclassLiteral(schemaName, tableName string) string {
 	return "'" + escapeSQLStringLiteral(qualifiedName) + "'"
 }
 
+// mysqlIdentifier wraps a MySQL/MariaDB table name in backticks, doubling any
+// embedded backtick, so a user-supplied name cannot break out of the identifier
+// position in SHOW COLUMNS / SHOW INDEX.
+func mysqlIdentifier(value string) string {
+	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
 func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
@@ -698,35 +705,35 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
-		return fmt.Sprintf("SHOW COLUMNS FROM %s", tableName)
+		return fmt.Sprintf("SHOW COLUMNS FROM %s", mysqlIdentifier(tableName))
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", tableName, schemaName)
+		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	case model.DatabaseTypeOracle:
 		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	default:
-		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", tableName)
+		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}
 }
 
 func (e *MetadataExtractor) getIndexQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return fmt.Sprintf("SHOW INDEX FROM %s", tableName)
+		return fmt.Sprintf("SHOW INDEX FROM %s", mysqlIdentifier(tableName))
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), '\"', ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", tableName, schemaName)
+		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), '\"', ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	default:
-		return fmt.Sprintf("SELECT index_name, column_name, not non_unique FROM information_schema.statistics WHERE table_name = '%s'", tableName)
+		return fmt.Sprintf("SELECT index_name, column_name, not non_unique FROM information_schema.statistics WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}
 }
 
 func (e *MetadataExtractor) getPrimaryKeyQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name = 'PRIMARY'", tableName)
+		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name = 'PRIMARY'", escapeSQLStringLiteral(tableName))
 	case model.DatabaseTypePostgreSQL:
 		return fmt.Sprintf("SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indrelid = %s::regclass AND i.indisprimary", postgresRegclassLiteral(schemaName, tableName))
 	default:
-		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name LIKE '%%PRIMARY%%'", tableName)
+		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name LIKE '%%PRIMARY%%'", escapeSQLStringLiteral(tableName))
 	}
 }
 
