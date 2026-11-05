@@ -814,6 +814,34 @@ metadata-file discovery are not supported. A pinned live MinIO contract verifies
 establish compatibility with an external REST Catalog server; see the driver
 contract test report.
 
+## Tencent COS Iceberg source
+
+The `cos_iceberg` source exposes one configured Iceberg table through an
+external Iceberg REST catalog. Data Fabric does not run a catalog or query
+engine for this source. The catalog must return a COS-readable `s3://` table
+location.
+
+| Data-source field or property | Tencent COS Iceberg meaning |
+| --- | --- |
+| `host` or `additionalProps.catalog_uri` | HTTP(S) Iceberg REST catalog URL. A URL path is allowed; credentials, query strings, and fragments are not. |
+| `database` or `additionalProps.warehouse` | Iceberg warehouse name. |
+| `schema` or `additionalProps.namespace` | Iceberg namespace; defaults to schema. |
+| `additionalProps.table_name` | Required, unqualified SQL table name exposed by this source. |
+| `username` and `password` | Tencent COS SecretId and SecretKey used by Iceberg S3 FileIO. |
+| `additionalProps.region` | Required COS signing and bucket region. It must match the bucket's region. |
+| `additionalProps.endpoint_url` or `s3.endpoint` | Optional HTTP(S) COS S3-compatible endpoint origin. Defaults to `https://cos.<region>.myqcloud.com`. |
+| `additionalProps.force_path_style` | Defaults to false, enabling virtual-hosted addressing. Set true only for compatible test or service endpoints. |
+| `additionalProps.session_token` | Optional S3-compatible session token. |
+| `additionalProps.catalog_token` or `catalog_credential` | Optional REST catalog bearer token or credential, separate from COS storage credentials. |
+| `additionalProps.max_rows` | Iceberg SQL scan limit; defaults to 10000 and can be configured up to 100000. |
+
+The adapter exposes only the configured table and supports the shared Iceberg
+read-only SQL subset. Writes, built-in catalog management, catalog-wide table
+enumeration, ORDER BY, and Iceberg time travel are not supported. The local
+fixture verifies the shared query path and COS settings mapping; it does not
+establish compatibility with a live Tencent COS release or an external catalog
+implementation. See the [support catalog](data-source-support.md).
+
 ## MinIO Parquet source
 
 Register a `minio_parquet` source to expose one configured Parquet object as a

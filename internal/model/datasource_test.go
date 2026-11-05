@@ -46,6 +46,7 @@ func TestDatabaseTypeMetadata(t *testing.T) {
 		{DatabaseTypeOSSDelta, "object_storage", false},
 		{DatabaseTypeS3Delta, "object_storage", false},
 		{DatabaseTypeMinIOIceberg, "object_storage", false},
+		{DatabaseTypeTencentCOSIceberg, "object_storage", false},
 		{DatabaseTypeAzureDelta, "object_storage", false},
 		{DatabaseTypeAzureParquet, "object_storage", false},
 		{DatabaseTypeOzoneParquet, "object_storage", false},

@@ -335,4 +335,46 @@ func TestMinIOIcebergContract(t *testing.T) {
 	if _, err := db.QueryContext(ctx, "DELETE FROM orders"); err == nil {
 		t.Fatal("MinIO Iceberg source accepted a write")
 	}
+
+	cosSource := *source
+	cosSource.ID = "cos-iceberg-s3-compatible-contract"
+	cosSource.Type = model.DatabaseTypeTencentCOSIceberg
+	cosSource.Config = source.Config
+	cosSource.Config.AdditionalProps = make(map[string]interface{}, len(source.Config.AdditionalProps))
+	for key, value := range source.Config.AdditionalProps {
+		cosSource.Config.AdditionalProps[key] = value
+	}
+	if err := checker.ValidateDataSourceConfiguration(&cosSource.Config, cosSource.Type); err != nil {
+		t.Fatalf("validate COS Iceberg adapter against MinIO S3 compatibility endpoint: %v", err)
+	}
+	cosHealth, err := checker.CheckDataSourceConnectivity(ctx, &cosSource.Config, cosSource.Type)
+	if err != nil || cosHealth.Status != "healthy" {
+		t.Fatalf("COS Iceberg health against MinIO S3 compatibility endpoint = %+v, error = %v", cosHealth, err)
+	}
+	cosDB, err := pool.GetConnection(ctx, &cosSource)
+	if err != nil {
+		t.Fatalf("open COS Iceberg S3-compatible SQL connection: %v", err)
+	}
+	cosRows, err := cosDB.QueryContext(ctx, "SELECT id, name FROM orders WHERE id = ? LIMIT ?", int64(2), int64(1))
+	if err != nil {
+		t.Fatalf("query COS Iceberg through MinIO S3 compatibility endpoint: %v", err)
+	}
+	if !cosRows.Next() {
+		t.Fatalf("expected one COS Iceberg row; rows error: %v", cosRows.Err())
+	}
+	var cosID int64
+	var cosName string
+	if err := cosRows.Scan(&cosID, &cosName); err != nil {
+		t.Fatalf("scan COS Iceberg result: %v", err)
+	}
+	if cosID != 2 || cosName != "beta" {
+		t.Fatalf("COS Iceberg row = (%d, %q), want (2, beta)", cosID, cosName)
+	}
+	if cosRows.Next() || cosRows.Err() != nil {
+		t.Fatalf("COS Iceberg query returned extra rows or error: %v", cosRows.Err())
+	}
+	_ = cosRows.Close()
+	if _, err := cosDB.QueryContext(ctx, "DELETE FROM orders"); err == nil {
+		t.Fatal("COS Iceberg adapter accepted a write")
+	}
 }

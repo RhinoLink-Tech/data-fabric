@@ -487,6 +487,15 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		!containsSupportLimitation(minioIceberg.Limitations, "external REST catalog servers") {
 		t.Errorf("MinIO Iceberg catalog must disclose its table, read-only, and catalog compatibility boundaries: %+v", minioIceberg.Limitations)
 	}
+	cosIceberg := profiles[string(model.DatabaseTypeTencentCOSIceberg)]
+	if cosIceberg.Status != ConnectorStatusExperimental || cosIceberg.EndToEndVerified ||
+		!cosIceberg.Capabilities.SupportsSQL || !cosIceberg.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("COS Iceberg must be experimental with bounded SQL and metadata capabilities: %+v", cosIceberg)
+	}
+	if !containsSupportLimitation(cosIceberg.Limitations, "external Iceberg REST catalog") ||
+		!containsSupportLimitation(cosIceberg.Limitations, "virtual-hosted addressing") {
+		t.Errorf("COS Iceberg catalog must disclose its catalog and object addressing boundary: %+v", cosIceberg.Limitations)
+	}
 	minioORC := profiles[string(model.DatabaseTypeMinIOORC)]
 	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || !minioORC.EndToEndVerified ||
 		minioORC.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioORC.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {

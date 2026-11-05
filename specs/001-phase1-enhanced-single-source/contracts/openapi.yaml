@@ -728,6 +728,7 @@ components:
         - cos_orc
         - cos_avro
         - cos_delta
+        - cos_iceberg
         - minio_avro
         - minio_csv
         - minio_delta

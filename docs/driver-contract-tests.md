@@ -469,6 +469,24 @@ This fixture is protocol simulation only. It does not establish compatibility
 with a live Tencent COS release; the connector remains experimental pending a
 pinned live-service contract.
 
+## Tencent COS Iceberg adapter fixture
+
+The COS Iceberg fixture creates a temporary local Iceberg table and serves its
+metadata through a simulated Iceberg REST catalog. It verifies COS-specific
+configuration mapping, health, metadata discovery, the shared read-only query
+path, configured-table scope, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSIcebergConfiguredReadPath$' -count=1 -v
+go test ./internal/database/drivers/object_storage -run '^TestCOSIcebergConfig' -count=1 -v
+~~~~
+
+The local fixture does not issue requests to Tencent COS or an external catalog.
+The MinIO contract workflow also runs the COS wrapper against its pinned
+S3-compatible MinIO service, but this does not establish compatibility with a
+live COS release or external catalog. The adapter remains experimental pending
+a version-pinned COS contract.
+
 ## Alibaba OSS Delta protocol fixture
 
 The OSS Delta fixture exercises the SDK against a local HTTP object-store

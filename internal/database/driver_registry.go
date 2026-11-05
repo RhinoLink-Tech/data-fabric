@@ -296,6 +296,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeMinIOIceberg, func() drivers.Driver {
 		return &object_storage.MinIOIcebergDriver{}
 	})
+	dr.register(model.DatabaseTypeTencentCOSIceberg, func() drivers.Driver {
+		return &object_storage.COSIcebergDriver{}
+	})
 	dr.register(model.DatabaseTypeAzureDelta, func() drivers.Driver {
 		return &object_storage.AzureDeltaDriver{}
 	})

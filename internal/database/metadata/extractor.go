@@ -65,11 +65,11 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isIcebergRESTSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
-		if err == nil && isMinIOIcebergSource(dataSource.Type) {
-			table.Schema, err = object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		if err == nil && isIcebergRESTSource(dataSource.Type) {
+			table.Schema, err = icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 		}
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
@@ -115,12 +115,12 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		}
 		return extractCSVTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
-	if isMinIOIcebergSource(dataSource.Type) {
+	if isIcebergRESTSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
-		namespace, err := object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		namespace, err := icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -258,14 +258,14 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isIcebergRESTSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		namespace := ""
-		if isMinIOIcebergSource(dataSource.Type) {
-			namespace, err = object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		if isIcebergRESTSource(dataSource.Type) {
+			namespace, err = icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 			if err != nil {
 				return nil, err
 			}
@@ -347,8 +347,26 @@ func isDeltaObjectSource(dbType model.DatabaseType) bool {
 	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta || dbType == model.DatabaseTypeOzoneDelta || dbType == model.DatabaseTypeTencentCOSDelta
 }
 
-func isMinIOIcebergSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOIceberg
+func isIcebergRESTSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeMinIOIceberg || dbType == model.DatabaseTypeTencentCOSIceberg
+}
+
+func icebergRESTNamespace(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeTencentCOSIceberg:
+		return object_storage.COSIcebergNamespace(config)
+	default:
+		return object_storage.MinIOIcebergNamespace(config)
+	}
+}
+
+func icebergRESTTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeTencentCOSIceberg:
+		return object_storage.COSIcebergTableName(config)
+	default:
+		return object_storage.MinIOIcebergTableName(config)
+	}
 }
 
 func isMinIOORCSource(dbType model.DatabaseType) bool {
@@ -429,8 +447,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OzoneDeltaTableName(config)
 	case model.DatabaseTypeTencentCOSDelta:
 		return object_storage.COSDeltaTableName(config)
-	case model.DatabaseTypeMinIOIceberg:
-		return object_storage.MinIOIcebergTableName(config)
+	case model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg:
+		return icebergRESTTableName(dbType, config)
 	case model.DatabaseTypeMinIOORC:
 		return object_storage.MinIOORCTableName(config)
 	default:
