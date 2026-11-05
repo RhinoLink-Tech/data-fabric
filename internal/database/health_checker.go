@@ -497,6 +497,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeOSSDelta {
 			return hc.validateOSSDeltaConfig(config)
 		}
+		if dbType == model.DatabaseTypeOzoneDelta {
+			return object_storage.ValidateOzoneDeltaConfig(config)
+		}
 		if dbType == model.DatabaseTypeMinIODelta {
 			return hc.validateMinIODeltaConfig(config)
 		}

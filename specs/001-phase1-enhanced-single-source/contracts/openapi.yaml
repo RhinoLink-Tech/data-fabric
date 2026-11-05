@@ -750,7 +750,13 @@ components:
         - hdfs_csv
         - hdfs_text
         - hdfs_parquet_compressed
+        - ozone_avro
+        - ozone_csv
+        - ozone_delta
+        - ozone_json
+        - ozone_parquet
         - ozone_orc
+        - ozone_text
       description: Data source types with a driver registered in the current runtime
 
     DataSourceStatus:

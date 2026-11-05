@@ -521,7 +521,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneJSON, model.DatabaseTypeOzoneCSV:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneJSON, model.DatabaseTypeOzoneCSV, model.DatabaseTypeOzoneDelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
 		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
@@ -550,6 +550,11 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 				"The adapter reads one configured UTF-8 text object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 lines, downloaded into gateway memory, and exposed through the restricted read-only text SQL subset.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, multiline parsing, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneDelta {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured unpartitioned Delta table through the explicitly configured Ozone S3 Gateway endpoint; it uses the latest supported JSON transaction-log snapshot and Parquet data files.",
+				"The table must use reader protocol version 1, fewer than 1,000 JSON log objects, at most 256 active data files, and no more than 100,000 decoded rows. The default data limit is 16 MiB and can be raised to 64 MiB.",
+				"Checkpoints, partitioning, deletion vectors, time travel, writes, native Ozone RPC, Kerberos, and live Ozone compatibility are not supported or covered.")
 		} else {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured Avro OCF object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
