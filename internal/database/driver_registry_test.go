@@ -221,6 +221,17 @@ func TestCOSCSVDriverIsRegistered(t *testing.T) {
 	}
 }
 
+func TestGCSCSVDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeGCSCSV)
+	if err != nil {
+		t.Fatalf("GetDriver(gcs_csv) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("GCS CSV driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
 func TestCOSJSONDriverIsRegistered(t *testing.T) {
 	registry := NewDriverRegistry()
 	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSJSON)

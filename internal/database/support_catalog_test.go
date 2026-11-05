@@ -390,6 +390,10 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 
 	s3CSV := profiles[string(model.DatabaseTypeS3CSV)]
+	gcsCSV := profiles[string(model.DatabaseTypeGCSCSV)]
+	if !gcsCSV.Registered || gcsCSV.Category != "object_storage" || gcsCSV.Status != ConnectorStatusExperimental || gcsCSV.EndToEndVerified || !gcsCSV.Capabilities.SupportsSQL || !gcsCSV.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("GCS CSV support must be registered as experimental without live verification: %+v", gcsCSV)
+	}
 	if s3CSV.Status != ConnectorStatusExperimental || !s3CSV.EndToEndVerified || s3CSV.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(s3CSV.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
 		t.Errorf("S3 CSV must remain experimental while recording its pinned Garage contract: %+v", s3CSV)
 	}

@@ -613,6 +613,14 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
+	case model.DatabaseTypeGCSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Google Cloud Storage HMAC access ID and secret (XML API interoperability)"}
+		profile.AuthenticationDisclosure = "A deterministic local S3-compatible protocol fixture covers AWS Signature V4 request construction; no live Google Cloud Storage contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV object through the Cloud Storage XML API interoperability endpoint; OAuth/ADC, service-account JSON, directory scans, multi-object scans, and writes are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset.",
+			"The local protocol fixture does not establish compatibility with a live Google Cloud Storage deployment or bucket configuration.")
 	case model.DatabaseTypeOSSCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}

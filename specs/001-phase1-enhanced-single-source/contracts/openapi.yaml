@@ -741,6 +741,7 @@ components:
         - oss_orc
         - s3_avro
         - s3_csv
+        - gcs_csv
         - s3_delta
         - s3_json
         - s3_orc

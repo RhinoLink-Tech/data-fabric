@@ -446,6 +446,9 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 				return file_system.ValidateOzoneParquetConfig(config)
 			}
 		}
+		if dbType == model.DatabaseTypeGCSCSV {
+			return object_storage.ValidateGCSCSVConfig(config)
+		}
 		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
 		}

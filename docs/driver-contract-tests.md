@@ -421,6 +421,21 @@ filtered and paginated read-only SQL, COUNT, write rejection, a 100,000-row
 cap, and unified table/column metadata discovery. This is protocol simulation
 only; it does not establish compatibility with a live COS service release.
 
+## Google Cloud Storage CSV protocol fixture
+
+The GCS CSV adapter uses the existing S3-compatible client against the Cloud
+Storage XML API interoperability endpoint and authenticates with HMAC access
+ID/secret credentials. Its deterministic local HTTP fixture checks Signature
+V4 request construction, metadata HEAD, bounded object reads, SQL/schema
+behavior, row limits, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestGCSCSV' -count=1 -v
+~~~~
+
+The fixture does not contact Google Cloud Storage and does not establish a live
+GCS compatibility or bucket-configuration contract.
+
 ## Tencent COS JSON protocol fixture
 
 The COS JSON adapter uses the Tencent COS SDK against a local HTTP protocol

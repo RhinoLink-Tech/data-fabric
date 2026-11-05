@@ -564,7 +564,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("data source is not active"), nil
 	}
 	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
-	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV
+	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV || dataSource.Type == model.DatabaseTypeGCSCSV
 	if tablePolicyEnabled || csvObjectSource {
 		lister, ok := m.tableDescriber.(TableLister)
 		if !ok {

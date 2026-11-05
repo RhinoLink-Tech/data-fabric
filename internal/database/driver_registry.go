@@ -225,6 +225,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeS3CSV, func() drivers.Driver {
 		return &object_storage.S3CSVDriver{}
 	})
+	dr.register(model.DatabaseTypeGCSCSV, func() drivers.Driver {
+		return &object_storage.GCSCSVDriver{}
+	})
 	dr.register(model.DatabaseTypeS3JSON, func() drivers.Driver {
 		return &object_storage.S3JSONDriver{}
 	})
