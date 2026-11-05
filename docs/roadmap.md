@@ -1,124 +1,95 @@
 # Data Fabric Roadmap
 
-**Last reviewed: 2026-11-03**
+**Last reviewed: 2026-11-05**
 
 ## Product direction
 
-Data Fabric is a lightweight, self-hosted access gateway for heterogeneous enterprise data. It centralizes connection management and gives applications a bounded, read-only SQL/API surface. Single-source requests use gateway drivers; cross-source planning and execution remain with an optional external federation engine. The project does not aim to become a warehouse, ETL platform, or general-purpose AI workbench.
+Data Fabric is a lightweight, self-hosted data access gateway for AI applications. Teams register and govern sources once and reuse a documented, read-only access contract across applications. Single-source queries use gateway drivers. An optional external federation engine owns cross-source planning and execution.
 
-## Released baseline
+The next milestones establish repeatable deployment, public API correctness, and reliable shared operation. Real-team pilots are deferred until the maintainer schedules them. Engineering reference results and customer value evidence are tracked separately.
 
-[v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0) was published on 2026-10-21. The post-release mainline has since added identity, authorization, audit, connector, and query-lifecycle improvements. This roadmap reflects the current mainline; the [support catalog](data-source-support.md) and [contract report](driver-contract-tests.md) are the exact source for connector evidence.
+## Delivered foundation
 
-### Delivered capabilities
+- Source lifecycle, connection diagnostics, credential handling, shared query services, and REST/MCP interfaces.
+- Remote MCP enterprise OIDC verification; the management HTTP API retains its documented JWT authentication contract.
+- Source ownership and tenant checks, optional table/column policies, and persisted redacted access audit events (#217–#220).
+- Parameter binding, schema discovery, read-only validation, query continuation, cancellation, and bounded admission controls.
+- A generated connector support catalog and repeatable, version-pinned driver contracts.
+- Existing Compose and remote MCP deployment guides (#180 and #186), plus deployment-footprint and upgrade-rehearsal evidence.
 
-- Remote MCP can validate enterprise OIDC tokens and carry the verified caller into shared authorization.
-- Data-source, table, and column access policies apply to query and metadata paths, including REST and MCP.
-- Structured access audit events persist in the metadata database, with admin-only review, retention, and redaction.
-- Read-only SQL validation is backed by database-side read-only sessions where supported.
-- Query execution, pagination, cancellation, and connector support are exposed through documented contracts.
-- Query admission bounds concurrent work, applies per-tenant request-rate limits, and exposes rejection metrics; limiter state is bounded in memory.
-- A runtime support catalog distinguishes registered implementations, end-to-end verified versions, experimental adapters, and unsupported boundaries.
-- The HDFS CSV and Parquet adapters have pinned live contracts against Apache Hadoop 3.5.0; MinIO JSON, Avro OCF, ORC, and bounded Delta snapshots have pinned contracts against the MinIO 2025-04-22 source build. Other HDFS releases, MinIO releases, and S3-compatible providers remain outside those results.
-- Versioned SQL driver contracts cover PostgreSQL 15.19, 16.15, 17.11, and 18.6, plus MySQL 8.0.46 and 8.4.13. TLS evidence is version-specific and remains narrower than query-driver evidence.
+The [support catalog](data-source-support.md) and [driver contract report](driver-contract-tests.md) define exact connector evidence. Registered code, restricted experimental adapters, and verified operations remain distinct. Connector counts are not duplicated in this roadmap.
 
-### Current support limits
+## Current operating limits
 
-- The support catalog lists **62 registered types**: 12 are classified as `end_to_end_verified`, 20 as `implementation_present`, and 30 as `experimental`. Some experimental adapters have bounded protocol-fixture evidence; that does not establish a live provider/version contract. Use the [catalog](data-source-support.md) for the exact operations, authentication notes, tested versions, and limits.
-- Trino, Presto, and OpenLooKeng adapters share the query-engine protocol family. The cross-catalog gateway path is covered with a simulated coordinator; live coordinator compatibility remains deferred in [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179).
-- Query continuation sessions remain process-local. A multi-batch query requires one gateway replica or query-aware routing that pins all continuation requests to the process that created the session. The limitation and token behavior are documented; shared session storage is not implemented.
-- SQL v1 is a documented, read-only compatibility subset. Translation success does not guarantee equivalent type, time-zone, NULL-ordering, or function semantics on every engine.
+- Query cursors and continuation sessions are process-local. Restart loses active sessions; ordinary load balancing does not provide query ownership routing. #365 defines the next design.
+- Admission limits are per process. A multi-replica continuation increment does not establish globally precise tenant quotas.
+- Table/column policies are loaded at startup. Versioned updates and revocation propagation require an explicit contract in #99.
+- Persisted audit is available, but the current failure policy does not guarantee durable evidence for every access when audit storage fails.
+- REST and MCP run in separate service processes in the reference deployment. Shared source metadata does not make live query cursors interchangeable between them.
+- SQL translation covers the documented compatibility subset and does not guarantee identical execution semantics across engines.
+- Real Trino coordinator compatibility remains explicitly deferred in #179. Simulated coordinator coverage is not real-engine compatibility evidence.
 
-## Prioritized evolution
+## M0 Product scope and engineering acceptance
 
-### Completed: establish and reduce deployment footprint
+Tracking: [#402](https://github.com/RhinoLink-Tech/data-fabric/issues/402). Detailed tasks and the reference acceptance matrix are in the [gateway delivery plan](plans/gateway-delivery.md).
 
-[#291](https://github.com/RhinoLink-Tech/data-fabric/issues/291) established the reproducible deployment baseline, and [#293](https://github.com/RhinoLink-Tech/data-fabric/issues/293) applies stripped Go linker output to the release Docker build. The measured release binary decreased from 164.2 MiB to 119.5 MiB, and the uncompressed image from 311.0 MiB to 236.1 MiB. Restart-to-health remained about 0.49 seconds median; the 50,000-row bounded stream measured 95.09 MiB median process high-water RSS. The report includes before/after samples and limitations. These are local measurements, not production guarantees.
+Reconcile the historical Phase 2–5 issues with the gateway direction. Retain their history, explain scope changes, and move current work into outcome-based milestones. Retired directions must not be described as delivered capabilities.
 
-### Completed: verify PostgreSQL server identity over TLS
+Define the reference profile in #81: pinned PostgreSQL and MySQL, synthetic data, two application identities, two tenants, and explicit expected results and denials. An existing MinIO format may be added for object-storage coverage. Real customer work remains deferred.
 
-[#296](https://github.com/RhinoLink-Tech/data-fabric/issues/296) adds explicit PostgreSQL `sslMode` and `sslRootCert` settings. The pinned PostgreSQL 17.11 contract validates `verify-full` with a trusted CA and rejects an untrusted CA or hostname mismatch. Existing `ssl: true` and `ssl: false` behavior remains compatible. TLS evidence is connector-specific; this does not claim certificate verification for other connectors.
+**Exit:** the issue disposition is complete, the reference scope is documented, and public-interface acceptance cases have fixed expectations.
 
-### Completed: verify TiDB server identity over TLS
+## M1 Reproducible public access
 
-[#298](https://github.com/RhinoLink-Tech/data-fabric/issues/298) honors the TiDB `ssl` setting and supports a mounted PEM CA for private trust roots. The pinned TiDB v8.5.8 TLS contract verifies the server certificate and hostname, rejects an untrusted CA and hostname mismatch, and confirms `ssl: false` retains plaintext behavior. Other TiDB versions and TLS behavior for other connectors remain outside this evidence.
+- [#404](https://github.com/RhinoLink-Tech/data-fabric/issues/404): follow the completed #400/#401 CI split with affected reference and connector validation before merge. Preserve the fast required check and complete scheduled/manual matrix; releases require commit-matched full evidence.
+- #81: extend the existing reference deployment to register both reference databases and support independent application identities.
+- [#403](https://github.com/RhinoLink-Tech/data-fabric/issues/403): add public REST/MCP task acceptance by extending existing validation assets. Exercise identity, source discovery, metadata, parameter binding, results, continuation, denied access, cancellation, errors, and audit correlation.
+- #365: deliver the continuation ADR and a two-replica verification matrix. Cover REST routing and MCP tool/session behavior explicitly.
 
-### Completed: verify MySQL server identity with private CA roots
+**Exit:** every declared deterministic reference case passes, unauthorized access succeeds zero times, setup is repeatable, and measurements include source/configuration versions and relevant dependencies. Fixed-SQL results are not reported as model task success rates.
 
-[#300](https://github.com/RhinoLink-Tech/data-fabric/issues/300) adds `sslRootCert` support to the MySQL connector while retaining system trust roots for `ssl: true` and plaintext behavior for `ssl: false`. The pinned MySQL 8.0.46 contract validates the certificate and hostname with a trusted private CA and rejects an untrusted CA or hostname mismatch. Other MySQL versions and MariaDB TLS behavior remain outside this evidence.
+## M2 Reliable shared operation
 
-### Completed: verify MariaDB TLS using the shared MySQL protocol driver
+Create implementation issues only after the corresponding contract or design is ready.
 
-[#302](https://github.com/RhinoLink-Tech/data-fabric/issues/302) verifies the shared private-CA TLS configuration against MariaDB 11.8.9. The pinned contract validates the server certificate and hostname, rejects an untrusted CA or hostname mismatch, and confirms `ssl: false` remains plaintext. [#326](https://github.com/RhinoLink-Tech/data-fabric/issues/326) adds driver-contract coverage for the MariaDB 10.11 LTS baseline. [#330](https://github.com/RhinoLink-Tech/data-fabric/issues/330) adds TLS identity evidence for MariaDB 10.11.19, alongside the 11.8.9 TLS baseline. [#332](https://github.com/RhinoLink-Tech/data-fabric/issues/332) adds driver and TLS contract coverage for MariaDB 11.4.13. [#334](https://github.com/RhinoLink-Tech/data-fabric/issues/334) adds the same version-pinned evidence for MariaDB 12.3.3.
+- Implement the #365 decision: query owner routing, owner generation, token and identity binding, bounded drain, and explicit owner-loss behavior. Keep live database cursors with their owner; do not implicitly rerun SQL after owner failure.
+- Add cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. Define COUNT overhead and partial-result behavior. These controls do not represent universal scan-cost or cloud-spend limits.
+- #99: select and implement a bounded strategy for validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and documented cross-replica propagation limits.
+- Preserve a lightweight single-replica mode without a new mandatory infrastructure service.
 
-### Completed: verify openGauss server identity over TLS
+**Exit:** the two-replica routing/failure matrix, cumulative-budget cases, and policy revocation cases pass. Partial results, stale policy, and lost owners have explicit behavior. Transparent recovery of a lost live cursor is outside this increment.
 
-[#304](https://github.com/RhinoLink-Tech/data-fabric/issues/304) makes the openGauss connector honor sslMode and sslRootCert. The pinned openGauss 6.0.0 contract verifies a private CA and hostname, rejects an untrusted CA and hostname mismatch, and preserves legacy ssl: true/false behavior. Other openGauss versions remain outside this evidence.
+## M3 Repeatable delivery
 
-### Completed: verify SQL Server server identity over TLS
+Use failures from the same task set to decide which task-context improvements to implement:
 
-[#306](https://github.com/RhinoLink-Tech/data-fabric/issues/306) adds private-CA verification for the SQL Server connector. The pinned SQL Server 16.0.4305.5 contract accepts a trusted CA and matching hostname, rejects an untrusted CA and hostname mismatch, and confirms the explicit certificate-bypass compatibility setting and plaintext behavior when TLS is disabled. Other SQL Server versions remain outside this evidence.
+- #66: bounded, authorization-aware schema search when table selection or context size causes failures.
+- #67: versioned business terms, confirmed relationships, examples, or approved parameterized query assets when schema alone is insufficient.
+- #68: schema-change detection and affected-asset invalidation when those assets depend on persistent schema context.
 
-### Completed: verify ClickHouse server identity over TLS
+Prepare a fixed release candidate and reproduce deployment, second-application reuse, upgrade, backup/restore, and draining behavior. Release evidence must match the candidate commit. Existing support and upgrade assets should be extended rather than rebuilt.
 
-[#308](https://github.com/RhinoLink-Tech/data-fabric/issues/308) makes the ClickHouse native-protocol connector honor `ssl` and `sslRootCert`. The pinned ClickHouse 26.8.20.9 contract accepts a trusted private CA and matching host, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private test CA when no custom CA is configured, and keeps certificate verification enabled. Plaintext connections remain supported when TLS is disabled. Other ClickHouse versions remain outside this evidence.
+**Exit:** another operator can repeat setup and upgrade from the documentation; the second application reuses registered sources and policies; full candidate checks pass; capability claims match the support evidence.
 
-### Completed: verify PostgreSQL driver versions 15 through 18
+## M4 Real-team validation
 
-[#320](https://github.com/RhinoLink-Tech/data-fabric/issues/320) adds repeatable driver contracts against PostgreSQL 15.19, 16.15, 17.11, and 18.6. This verifies the shared query contract across those exact releases; TLS certificate verification remains separately covered against PostgreSQL 17.11 only.
+Start when the maintainer resumes real-team work. Select one actual task and source profile, then measure first integration effort, second-application reuse, task correctness, authorization outcomes, manual intervention, and ongoing support effort against the team's existing approach.
 
-### Completed: verify MySQL 8.4 LTS driver compatibility
+Use this evidence to choose additional supported source/version combinations and define the commercial reason to adopt the product. Reference environments alone do not establish willingness to pay or production fit.
 
-[#322](https://github.com/RhinoLink-Tech/data-fabric/issues/322) adds the MySQL 8.4.13 driver contract alongside the existing MySQL 8.0.46 contract. Both pinned versions verify the same connection, authentication, query, pagination, read-only session, cancellation, and error-handling behaviors.
+## Demand-triggered work
 
-### Completed: verify MySQL 8.4 LTS TLS identity
+- #175: add the bounded source-management UI when observed operator friction justifies it.
+- #73: scope result masking when column denial and source-side restricted views do not satisfy a concrete use case.
+- #83: document specific data-flow and residency boundaries when a deployment has explicit requirements.
+- #179: resume real Trino verification only when the maintainer schedules it and a deterministic coordinator/catalog environment is available.
 
-[#325](https://github.com/RhinoLink-Tech/data-fabric/issues/325) adds private-CA and hostname-verification evidence for MySQL 8.4.13. Both MySQL 8.0.46 and 8.4.13 now reject untrusted certificates and hostname mismatches; other releases and MySQL-compatible products remain outside this evidence.
+New connectors require an identified use case, an operation/identity/version boundary, and a repeatable verification plan. Existing experimental code and tests remain available under their documented status.
 
-### Completed: verify MinIO Delta against the pinned MinIO source build
+## Planning and release records
 
-[#346](https://github.com/RhinoLink-Tech/data-fabric/issues/346) adds a live contract for one version-0 Delta snapshot stored in MinIO. It verifies signed Parquet/log upload, snapshot discovery, schema and health checks, bounded SQL, pagination, counts, and write rejection; cancellation remains covered by the local protocol fixture. Evidence is limited to MinIO RELEASE.2025-04-22T22-12-26Z and the existing single-table, unpartitioned Delta boundary.
+The [previous roadmap snapshot](https://github.com/RhinoLink-Tech/data-fabric/blob/bc0973d1557d75020ef2db252c9e0811f99ee7ca/docs/roadmap.md) preserves the earlier priorities and completed-work record. Its support counts are historical; use the generated catalog for current support.
 
-### Completed: verify MinIO ORC against the pinned MinIO source build
+GitHub issues track execution. The historical Phase 2–5 milestones are retired planning records, not feature commitments. Keep at most two major implementation items in progress and create follow-up issues when their dependencies are ready.
 
-[#344](https://github.com/RhinoLink-Tech/data-fabric/issues/344) adds a live contract for signed ORC upload/read, flat-schema metadata, filtered and ordered SQL, pagination, counts, LIMIT 0 schema discovery, and write rejection. Evidence is limited to MinIO RELEASE.2025-04-22T22-12-26Z; nested/repeated schemas, other codecs or ORC writers, AWS S3, and other MinIO releases are not implied.
-
-### Completed: verify MinIO Avro OCF against the pinned MinIO source build
-
-[#342](https://github.com/RhinoLink-Tech/data-fabric/issues/342) adds a live contract for signed Avro OCF upload/read, nullable schema discovery, filtered and paginated queries, counts, and write rejection. Evidence is limited to MinIO RELEASE.2025-04-22T22-12-26Z; it does not imply compatibility with AWS S3 or other MinIO releases.
-
-### Completed: verify MinIO JSON against the pinned MinIO source build
-
-[#340](https://github.com/RhinoLink-Tech/data-fabric/issues/340) adds a live contract for MinIO JSON object, array, and JSON Lines reads, metadata, schema discovery, filtered SQL, counts, and write rejection. Evidence is limited to MinIO RELEASE.2025-04-22T22-12-26Z; it does not imply compatibility with AWS S3 or other MinIO releases.
-
-### Completed: verify HDFS CSV against Apache Hadoop 3.5.0
-
-[#338](https://github.com/RhinoLink-Tech/data-fabric/issues/338) adds a pinned single-node NameNode/DataNode contract for the HDFS CSV adapter. It verifies HDFS RPC, file metadata and reads, header parsing, bounded read-only SQL, COUNT(*), and write rejection. This evidence applies only to Hadoop 3.5.0 and the simple-user CSV path; it does not cover Kerberos, HA, other formats, or other Hadoop releases.
-
-### Completed: verify HDFS Parquet against Apache Hadoop 3.5.0
-
-[#336](https://github.com/RhinoLink-Tech/data-fabric/issues/336) adds a pinned single-node NameNode/DataNode contract for the HDFS Parquet adapter. It verifies HDFS RPC, file metadata and reads, bounded read-only SQL, COUNT(*), and write rejection. This evidence applies only to Hadoop 3.5.0 and the simple-user Parquet path; it does not cover Kerberos, HA, other formats, or other Hadoop releases.
-
-### 1. Raise connector confidence from real demand
-
-The initial versioned connector contract baseline in [#35](https://github.com/RhinoLink-Tech/data-fabric/issues/35) is complete. The catalog remains the source of truth: new verified claims require a pinned version and a passing contract for the operations being claimed. Select additional connectors from actual user demand rather than attempting to certify every registered type at once.
-
-### 2. Validate the federation adapter against a real engine when available
-
-[#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179) is intentionally deferred until a real coordinator and deterministic catalogs are available. Its simulated tests verify the gateway request/result path only; they do not establish Trino, Presto, or OpenLooKeng release compatibility.
-
-### 3. Keep operator UI optional
-
-The source-management UI in [#175](https://github.com/RhinoLink-Tech/data-fabric/issues/175) is a convenience feature. The API remains the core management surface; start UI work only when self-hosted operator feedback justifies its maintenance cost.
-
-### 4. Extend governance from concrete policy needs
-
-OIDC identity, table/column authorization, and durable audit are delivered in [#217](https://github.com/RhinoLink-Tech/data-fabric/issues/217), [#218](https://github.com/RhinoLink-Tech/data-fabric/issues/218), [#219](https://github.com/RhinoLink-Tech/data-fabric/issues/219), and [#220](https://github.com/RhinoLink-Tech/data-fabric/issues/220). Further data classification, masking, or approval workflows should follow specific enterprise policies and documented use cases.
-
-## Backlog and sequencing
-
-GitHub issues remain the source of truth for task status. The remaining broad Phase 2–5 roadmap issues include exploratory ideas and are not an implementation commitment until they are re-triaged into bounded, testable work. Keep active sequencing focused on connector evidence, operational fit, and secure AI access.
-
-## Release records
-
-[The v2.0.0 candidate review](releases/v2.0.0-candidate.md) is a historical snapshot of release gates and evidence at publication time. Use the current support catalog and this roadmap for post-release status.
+Completed connector/TLS details remain in support, contract, and release documentation. [The v2.0.0 candidate review](releases/v2.0.0-candidate.md) records the published baseline; it does not replace current mainline evidence.

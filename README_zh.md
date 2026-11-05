@@ -167,6 +167,8 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 - [API 使用指南](docs/api_usage.md)
 - [DeepSeek API 函数调用示例](examples/deepseek-agent/README.md)
 - [架构设计](docs/architecture.md)
+- [产品路线图](docs/roadmap.md)
+- [工程执行计划](docs/plans/gateway-delivery.md)
 - [配置指南](docs/configuration.md)
 - [开发指南](docs/development.md)
 - [贡献指南](CONTRIBUTING.md)
