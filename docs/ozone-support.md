@@ -1,14 +1,15 @@
 # Apache Ozone support status
 
-Data Fabric exposes one bounded Ozone Parquet, line-oriented text, Avro OCF, JSON, or CSV object through Apache Ozone S3 Gateway. The adapters use the gateway S3-compatible HTTP API and shared read-only SQL paths. They do not use the native Ozone Manager RPC client.
+Data Fabric exposes one bounded Ozone Parquet, ORC, line-oriented text, Avro OCF, JSON, or CSV object through Apache Ozone S3 Gateway. The adapters use the gateway S3-compatible HTTP API and shared read-only SQL paths. They do not use the native Ozone Manager RPC client.
 
 ## Current operation status
 
 | Operation | Current status |
 | --- | --- |
-| Create or update an ozone_parquet, ozone_text, ozone_avro, ozone_json, or ozone_csv data source | Supported by the registered experimental adapter when endpoint, bucket, object key, and credentials validate |
-| Advertise Ozone Parquet, text, Avro, JSON, and CSV through the database type API | Registered and reported as experimental |
+| Create or update an ozone_parquet, ozone_orc, ozone_text, ozone_avro, ozone_json, or ozone_csv data source | Supported by the registered experimental adapter when endpoint, bucket, object key, and credentials validate |
+| Advertise Ozone Parquet, ORC, text, Avro, JSON, and CSV through the database type API | Registered and reported as experimental |
 | Query one Ozone Parquet object | Read-only SQL over a single configured Parquet object |
+| Query one Ozone ORC object | Read-only SQL over one configured ORC object with flat primitive columns |
 | Query one Ozone text object | Read-only SQL over one UTF-8 .txt or .log object, with line_number and line columns |
 | Query one Ozone Avro object | Read-only SQL over one Avro OCF object, limited to flat records with supported primitive or nullable primitive fields |
 | Query one Ozone JSON object | Read-only SQL over one object, object array, or JSON Lines file with top-level scalar fields |

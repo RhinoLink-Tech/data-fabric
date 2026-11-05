@@ -137,6 +137,24 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 	}, model.DatabaseTypeOzoneParquet); err == nil || !strings.Contains(err.Error(), "endpoint_url") {
 		t.Fatalf("Ozone config without endpoint error = %v, want endpoint_url validation error", err)
 	}
+	ozoneORCConfig := &model.DataSourceConfig{
+		Host: "warehouse/events.orc", Database: "analytics", Username: "access", Password: "secret",
+		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},
+	}
+	if !checker.IsSupportedDataSourceType(model.DatabaseTypeOzoneORC) {
+		t.Fatal("Ozone ORC should be registered through its S3 Gateway adapter")
+	}
+	if err := checker.ValidateDataSourceConfiguration(ozoneORCConfig, model.DatabaseTypeOzoneORC); err != nil {
+		t.Fatalf("Ozone ORC config should validate through its S3 Gateway adapter: %v", err)
+	}
+	if ozoneORCConfig.Port != 9878 {
+		t.Fatalf("Ozone ORC S3 Gateway default port = %d, want 9878", ozoneORCConfig.Port)
+	}
+	if err := checker.ValidateDataSourceConfiguration(&model.DataSourceConfig{
+		Host: "warehouse/events.orc", Database: "analytics", Username: "access", Password: "secret",
+	}, model.DatabaseTypeOzoneORC); err == nil || !strings.Contains(err.Error(), "endpoint_url") {
+		t.Fatalf("Ozone ORC config without endpoint error = %v, want endpoint_url validation error", err)
+	}
 	ozoneTextConfig := &model.DataSourceConfig{
 		Host: "warehouse/events.log", Database: "analytics", Username: "access", Password: "secret",
 		AdditionalProps: map[string]interface{}{"endpoint_url": "http://ozone.example.test"},

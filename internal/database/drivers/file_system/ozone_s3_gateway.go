@@ -22,6 +22,9 @@ const (
 	defaultOzoneParquetMaxFileBytes = defaultOzoneS3MaxFileBytes
 	maxOzoneParquetMaxFileBytes     = maxOzoneS3MaxFileBytes
 	ozoneParquetMaxRows             = ozoneS3MaxRows
+	defaultOzoneORCMaxFileBytes     = defaultOzoneS3MaxFileBytes
+	maxOzoneORCMaxFileBytes         = maxOzoneS3MaxFileBytes
+	ozoneORCMaxRows                 = ozoneS3MaxRows
 	defaultOzoneTextMaxFileBytes    = defaultOzoneS3MaxFileBytes
 	maxOzoneTextMaxFileBytes        = maxOzoneS3MaxFileBytes
 	ozoneTextMaxRows                = ozoneS3MaxRows

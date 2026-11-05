@@ -507,7 +507,7 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneJSON, model.DatabaseTypeOzoneCSV:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneJSON, model.DatabaseTypeOzoneCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
 		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
@@ -525,6 +525,11 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
+				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneORC {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured ORC object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only ORC SQL subset. Nested and repeated fields are rejected.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
 		} else if dbType == model.DatabaseTypeOzoneText {
 			profile.Limitations = append(profile.Limitations,

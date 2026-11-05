@@ -155,6 +155,20 @@ The local protocol fixture remains the deterministic cancellation check. The
 pinned MinIO live contract described below adds release-specific query evidence;
 the adapter remains experimental and other releases/providers are not implied.
 
+## Ozone S3 Gateway ORC protocol fixture
+
+The Ozone ORC fixture signs path-style requests through the S3 Gateway and
+checks bounded metadata and object reads, schema discovery, filtered read-only
+queries and counts, cancellation, write rejection, and configured size and row
+limits. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/file_system -run 'TestOzoneORC' -count=1 -v
+~~~~
+
+The deterministic fixture does not establish compatibility with a live Ozone
+release or its native RPC interface.
+
 ## Tencent COS Avro protocol fixture
 
 The Tencent COS Avro fixture exercises the COS SDK against a local HTTP
