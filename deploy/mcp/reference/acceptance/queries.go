@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,11 +164,38 @@ func interleavedBatches(ctx context.Context, w wire) error {
 }
 
 func finishThirdRow(ctx context.Context, w wire, page batch, queryID string) error {
-	last, err := readBatch(w.next(ctx, reader, page))
-	if err != nil {
-		return err
+	current := page
+	for {
+		if current.QueryID == "" || (queryID != "" && current.QueryID != queryID) ||
+			current.TotalCount != 3 || len(current.Entries) != 1 || len(current.Entries[0]) != 1 {
+			return fmt.Errorf("unexpected query identity or page while finishing the fixture")
+		}
+		value, ok := current.Entries[0][0].(json.Number)
+		if !ok {
+			return fmt.Errorf("fixture row id is not numeric")
+		}
+		row, err := strconv.Atoi(value.String())
+		if err != nil || row < 1 || row > 3 {
+			return fmt.Errorf("fixture row id is outside the expected range")
+		}
+		if row == 3 {
+			if current.NextURI != "" {
+				return fmt.Errorf("terminal fixture row retained a continuation")
+			}
+			return nil
+		}
+		if current.NextURI == "" {
+			return fmt.Errorf("query ended before the final fixture row")
+		}
+		next, err := readBatch(w.next(ctx, reader, current))
+		if err != nil {
+			return err
+		}
+		if err := expectPage(next, current.QueryID, strconv.Itoa(row+1), 3, row+1 < 3); err != nil {
+			return err
+		}
+		current = next
 	}
-	return expectPage(last, queryID, "3", 3, false)
 }
 
 func rejectReplay(ctx context.Context, w wire) error {
@@ -209,20 +237,6 @@ func concurrentFetch(ctx context.Context, w wire) error {
 		}
 		fetch := func() (reply, error) { return w.next(ctx, reader, first) }
 		fetches := []func() (reply, error){fetch, fetch}
-		if w.kind == mcpHTTP {
-			// Complete both protocol handshakes before releasing the tool
-			// requests together, so initialization does not order the fetches.
-			for i := range fetches {
-				client, err := w.openMCP(ctx, reader, "")
-				if err != nil {
-					return err
-				}
-				defer client.Close()
-				fetches[i] = func() (reply, error) {
-					return callTool(ctx, client, "fetch_next_batch", nextArguments(first))
-				}
-			}
-		}
 		start := make(chan struct{})
 		finished := make(chan attempt, len(fetches))
 		for _, fetch := range fetches {

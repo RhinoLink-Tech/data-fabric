@@ -41,6 +41,50 @@ func (env *Environment) registerSources(ctx context.Context) error {
 	return nil
 }
 
+// EnsureTenantBSource creates a deterministic source for a second tenant
+// only when the routed acceptance matrix reaches its principal-binding case.
+func (env *Environment) EnsureTenantBSource(ctx context.Context, sourceKey string) error {
+	if _, ok := env.TenantBSources[sourceKey]; ok {
+		return nil
+	}
+	var definition *sourceDefinition
+	for index := range sourceDefinitions {
+		if sourceDefinitions[index].key == sourceKey {
+			definition = &sourceDefinitions[index]
+			break
+		}
+	}
+	if definition == nil {
+		return fmt.Errorf("unknown reference source")
+	}
+	body := map[string]any{
+		"name": "reference-" + definition.key + "-tenant-b", "type": definition.key,
+		"config": map[string]any{
+			"host": definition.service, "port": definition.port, "database": "sample", "schema": definition.schema,
+			"username": "sample_reader", "password": env.stack.env[definition.readerEnv],
+		},
+	}
+	var created sourceRecord
+	if err := env.rest(ctx, "app-a-tenant-b", http.MethodPost, "/api/v1/datasources", body, http.StatusCreated, &created); err != nil {
+		return fmt.Errorf("register tenant-b %s: %w", sourceKey, err)
+	}
+	if created.ID == "" {
+		return fmt.Errorf("register tenant-b %s returned an empty ID", sourceKey)
+	}
+	env.TenantBSources[sourceKey] = Source{ID: created.ID, Type: definition.key, Schema: definition.schema}
+	if err := env.writePolicy(); err != nil {
+		return fmt.Errorf("publish tenant-b source policy: %w", err)
+	}
+	if env.replica != nil {
+		for _, slot := range []string{"rest-a", "rest-b", "mcp-a", "mcp-b"} {
+			if err := env.RestartReplica(ctx, slot); err != nil {
+				return fmt.Errorf("reload tenant-b policy on %s: %w", slot, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (env *Environment) verifyReuse(ctx context.Context) error {
 	var restSources struct {
 		DataSources []sourceRecord `json:"dataSources"`

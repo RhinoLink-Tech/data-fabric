@@ -16,6 +16,8 @@ const (
 
 // OwnerStatus is exposed through the replica's private admin routes.
 type OwnerStatus struct {
+	OwnerSlot       string     `json:"ownerSlot,omitempty"`
+	BootID          string     `json:"bootId,omitempty"`
 	PolicyRevision  string     `json:"policyRevision,omitempty"`
 	State           string     `json:"state"`
 	DrainDeadline   *time.Time `json:"drainDeadline,omitempty"`
@@ -27,17 +29,19 @@ type OwnerStatus struct {
 // OwnerLifecycle gates local query work while an operator drains a replica.
 // Its mutex serializes admission, retirement, and the idle snapshot.
 type OwnerLifecycle struct {
-	mu       sync.Mutex
-	state    string
-	deadline time.Time
-	inFlight int
-	idle     chan struct{}
-	lifetime context.Context
-	cancel   context.CancelFunc
-	cleaned  chan struct{}
-	timeout  time.Duration
-	pending  func(time.Time) int
-	cleanup  func()
+	mu        sync.Mutex
+	ownerSlot string
+	bootID    string
+	state     string
+	deadline  time.Time
+	inFlight  int
+	idle      chan struct{}
+	lifetime  context.Context
+	cancel    context.CancelFunc
+	cleaned   chan struct{}
+	timeout   time.Duration
+	pending   func(time.Time) int
+	cleanup   func()
 }
 
 func NewOwnerLifecycle(timeout time.Duration, pending func(time.Time) int, cleanup func()) *OwnerLifecycle {
@@ -48,6 +52,12 @@ func NewOwnerLifecycle(timeout time.Duration, pending func(time.Time) int, clean
 		state: ownerReady, idle: idle, lifetime: lifetime, cancel: cancel,
 		cleaned: make(chan struct{}), timeout: timeout, pending: pending, cleanup: cleanup,
 	}
+}
+
+func (o *OwnerLifecycle) SetIdentity(slot, bootID string) {
+	o.mu.Lock()
+	o.ownerSlot, o.bootID = slot, bootID
+	o.mu.Unlock()
 }
 
 func (o *OwnerLifecycle) Status() OwnerStatus {
@@ -74,7 +84,10 @@ func (o *OwnerLifecycle) Drain() OwnerStatus {
 }
 
 func (o *OwnerLifecycle) statusLocked() OwnerStatus {
-	status := OwnerStatus{State: o.state, InFlight: o.inFlight, PendingSessions: o.pending(time.Now())}
+	status := OwnerStatus{
+		OwnerSlot: o.ownerSlot, BootID: o.bootID, State: o.state,
+		InFlight: o.inFlight, PendingSessions: o.pending(time.Now()),
+	}
 	if !o.deadline.IsZero() {
 		deadline := o.deadline
 		status.DrainDeadline = &deadline

@@ -82,7 +82,11 @@ func Check(ctx context.Context, env *reference.Environment, out io.Writer, smoke
 				record.Result, record.Reason = "unsupported", test.restUnsupported
 			} else {
 				started := time.Now()
-				if err := test.check(ctx, wire{kind: kind, env: env, http: httpClient}); err != nil {
+				w := (wire{kind: kind, env: env, http: httpClient}).withMCPState()
+				err := test.check(ctx, w)
+				cleanupErr := w.releaseMCPSessions(ctx)
+				err = errors.Join(err, cleanupErr)
+				if err != nil {
 					record.Result, record.Reason = "fail", err.Error()
 					failures = append(failures, fmt.Errorf("%s %s: %w", test.id, kind, err))
 				}

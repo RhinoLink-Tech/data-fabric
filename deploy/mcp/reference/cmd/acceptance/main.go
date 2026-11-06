@@ -21,13 +21,21 @@ func main() {
 	flag.Parse()
 	options.Output = os.Stderr
 	options.MultiReplica = *multiReplica
-	if !*smoke {
+	if !*smoke || *multiReplica {
 		options.SessionTTLSeconds = acceptance.SessionTTLSeconds
 		options.MaxConcurrentQueriesPerTenant = acceptance.TenantCapacity
-		fmt.Fprintf(os.Stderr, "Public acceptance profile full: query session TTL %ds, tenant capacity %d\n",
-			options.SessionTTLSeconds, options.MaxConcurrentQueriesPerTenant)
-	} else {
-		fmt.Fprintln(os.Stderr, "Public acceptance profile smoke with default reference query settings")
+		if !*smoke {
+			fmt.Fprintf(os.Stderr, "Public acceptance profile full: query session TTL %ds, tenant capacity %d\n",
+				options.SessionTTLSeconds, options.MaxConcurrentQueriesPerTenant)
+		}
+	}
+	if *smoke {
+		if *multiReplica {
+			fmt.Fprintf(os.Stderr, "Public acceptance profile smoke: query session TTL %ds, tenant capacity %d\n",
+				options.SessionTTLSeconds, options.MaxConcurrentQueriesPerTenant)
+		} else {
+			fmt.Fprintln(os.Stderr, "Public acceptance profile smoke with default reference query settings")
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)

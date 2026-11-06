@@ -18,18 +18,27 @@ import (
 )
 
 type replicaEvidence struct {
-	Case       string
-	Transport  surface
-	Result     string
-	DurationMS int64
-	OwnerSlots string
-	Reason     string
+	Case          string
+	Transport     surface
+	Result        string
+	DurationMS    int64
+	OwnerSlots    string
+	BootIDs       map[string]string
+	OwnerStatuses map[string]ownerStatus
+	QueryDeltas   map[string]float64
+	SessionDeltas map[string]int
+	HTTPDeltas    map[string]map[string]float64
+	CounterResets map[string]bool
+	Reason        string
 }
 
 func (r replicaEvidence) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"case": r.Case, "transport": r.Transport, "result": r.Result,
-		"duration_ms": r.DurationMS, "owner_slots": r.OwnerSlots, "reason": r.Reason,
+		"duration_ms": r.DurationMS, "owner_slots": r.OwnerSlots,
+		"owner_boot_ids": r.BootIDs, "owner_statuses": r.OwnerStatuses,
+		"query_counter_delta": r.QueryDeltas, "session_counter_delta": r.SessionDeltas,
+		"http_counter_delta": r.HTTPDeltas, "counter_reset": r.CounterResets, "reason": r.Reason,
 	})
 }
 
@@ -46,18 +55,93 @@ func CheckMultiReplica(ctx context.Context, env *reference.Environment, out io.W
 		{"R1", string(rest), "rest-a->rest-b", func(ctx context.Context) error {
 			return checkRESTOwnerSwitch(ctx, env, httpClient)
 		}},
+		{"R2", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTConcurrentReplay(ctx, env, httpClient)
+		}},
+		{"R3", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTDroppedResponse(ctx, env, httpClient)
+		}},
+		{"R4", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTMarkerRejection(ctx, env, httpClient)
+		}},
+		{"R5", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTPrincipalBindingExtended(ctx, env, httpClient)
+		}},
+		{"R6", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTAbsoluteExpiry(ctx, env, httpClient)
+		}},
+		{"R7", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkRESTOwnerRestart(ctx, env, httpClient)
+		}},
+		{"R8", string(rest), "rest-a", func(ctx context.Context) error {
+			return checkRESTOwnerDrain(ctx, env, httpClient)
+		}},
+		{"R9", string(rest), "rest-a", func(ctx context.Context) error {
+			return checkRESTDrainCutoff(ctx, env, httpClient)
+		}},
+		{"R10", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkQueryCancellationAndBudget(ctx, env, httpClient, rest)
+		}},
+		{"R10", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkQueryCancellationAndBudget(ctx, env, httpClient, mcpHTTP)
+		}},
 		{"M1", string(mcpHTTP), "mcp-a->mcp-b", func(ctx context.Context) error {
 			return checkMCPOwnerSwitch(ctx, env, httpClient)
 		}},
+		{"M2", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkMCPPrincipalBinding(ctx, env, httpClient)
+		}},
+		{"M4", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkMCPSessionTermination(ctx, env, httpClient)
+		}},
+		{"M5", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkMCPTransportCapacity(ctx, env, httpClient)
+		}},
+		{"M3", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkMCPOwnerDrain(ctx, env, httpClient)
+		}},
+		{"A1", string(rest), "rest-b", func(ctx context.Context) error {
+			return checkSourceRevocation(ctx, env, httpClient, rest)
+		}},
+		{"A1", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
+			return checkSourceRevocation(ctx, env, httpClient, mcpHTTP)
+		}},
+		{"O1", "rest+mcp-http", "rest-a->rest-b;mcp-a->mcp-b", func(ctx context.Context) error {
+			return checkRoutingKeyRotation(ctx, env, httpClient)
+		}},
+		{"O3", string(rest), "rest-a/rest-b", func(ctx context.Context) error {
+			return checkOperationalEvidence(ctx, env, httpClient, rest)
+		}},
+		{"O3", string(mcpHTTP), "mcp-a/mcp-b", func(ctx context.Context) error {
+			return checkOperationalEvidence(ctx, env, httpClient, mcpHTTP)
+		}},
+	}
+	if err := checkOwnerTopology(ctx, env, out); err != nil {
+		return fmt.Errorf("owner topology evidence: %w", err)
 	}
 	encoder := json.NewEncoder(out)
 	var failures []error
 	for _, test := range cases {
+		before, evidenceErr := captureOwnerEvidence(ctx, env)
+		if evidenceErr != nil {
+			return fmt.Errorf("capture owner counters before %s: %w", test.id, evidenceErr)
+		}
 		started := time.Now()
 		err := test.check(ctx)
 		record := replicaEvidence{
 			Case: test.id, Transport: surface(test.transport), Result: "pass",
 			DurationMS: time.Since(started).Milliseconds(), OwnerSlots: test.slots,
+		}
+		after, afterErr := captureOwnerEvidence(ctx, env)
+		if afterErr != nil {
+			err = errors.Join(err, fmt.Errorf("capture owner counters after %s: %w", test.id, afterErr))
+		} else {
+			statuses, queries, sessions, requests, resets := before.results(after)
+			record.OwnerStatuses, record.QueryDeltas, record.SessionDeltas, record.HTTPDeltas, record.CounterResets = statuses, queries, sessions, requests, resets
+			record.BootIDs = make(map[string]string, len(statuses))
+			for slot, status := range statuses {
+				record.BootIDs[slot] = status.BootID
+			}
 		}
 		if err != nil {
 			record.Result, record.Reason = "fail", err.Error()
@@ -221,6 +305,9 @@ func openMCPWithSession(ctx context.Context, env *reference.Environment) (*mcpcl
 }
 
 func checkMCPOwnerSwitch(ctx context.Context, env *reference.Environment, client *http.Client) error {
+	if err := env.SetRoutedNewOwner(ctx, replicarouting.MCP, "mcp-a"); err != nil {
+		return err
+	}
 	mcpClient, capture, err := openMCPWithSession(ctx, env)
 	if err != nil {
 		return err

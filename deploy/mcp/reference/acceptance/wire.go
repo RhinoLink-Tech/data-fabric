@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,9 +28,60 @@ const (
 )
 
 type wire struct {
-	kind surface
-	env  *reference.Environment
-	http *http.Client
+	kind            surface
+	env             *reference.Environment
+	http            *http.Client
+	mcpSessions     map[string]*mcpclient.Client
+	mcpCorrelations map[string]string
+	mcpCaptures     map[string]*sessionCapture
+}
+
+func (w wire) withMCPState() wire {
+	if w.kind == mcpHTTP {
+		w.mcpSessions = make(map[string]*mcpclient.Client)
+		w.mcpCorrelations = make(map[string]string)
+		w.mcpCaptures = make(map[string]*sessionCapture)
+	}
+	return w
+}
+
+func (w wire) releaseMCPActor(ctx context.Context, actor string) error {
+	var failures []error
+	if capture := w.mcpCaptures[actor]; capture != nil {
+		if session := capture.sessionID(); session != "" {
+			identity := w.env.Identities[actor]
+			status, _, _, err := sendHTTP(ctx, w.http, http.MethodDelete, w.env.MCPURL,
+				identity.MCPToken, session, "", nil)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("delete MCP acceptance session: %T", err))
+			} else if status != http.StatusOK && status != http.StatusNotFound {
+				failures = append(failures, fmt.Errorf("MCP acceptance session DELETE returned HTTP %d", status))
+			}
+		}
+	}
+	if client := w.mcpSessions[actor]; client != nil {
+		_ = client.Close()
+	}
+	delete(w.mcpSessions, actor)
+	delete(w.mcpCorrelations, actor)
+	delete(w.mcpCaptures, actor)
+	return errors.Join(failures...)
+}
+
+func (w wire) releaseMCPSessions(ctx context.Context) error {
+	var failures []error
+	for actor := range w.mcpSessions {
+		if err := w.releaseMCPActor(ctx, actor); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func (w wire) closeMCPSessions() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = w.releaseMCPSessions(ctx)
 }
 
 type column struct {
@@ -94,7 +146,13 @@ func (r reply) failureKind() string {
 }
 
 func (r reply) expectError(kind surface, status int, code, message string) error {
-	if !r.failed || (kind == rest && (r.status != status || r.code != code)) || r.message != message {
+	messageMatches := r.message == message
+	if kind == rest && status == http.StatusNotFound && code == "QUERY_SESSION_UNAVAILABLE" &&
+		r.message == "query session is unavailable" {
+		// The ingress rejects an expired signed route before contacting its owner.
+		messageMatches = true
+	}
+	if !r.failed || (kind == rest && (r.status != status || r.code != code)) || !messageMatches {
 		return fmt.Errorf("expected %s; observed %s", code, r.failureKind())
 	}
 	if (len(r.data) != 0 && string(r.data) != "null") ||
@@ -171,8 +229,15 @@ func (w wire) openMCP(ctx context.Context, actor, correlation string) (*mcpclien
 	if correlation != "" {
 		headers["X-Correlation-ID"] = correlation
 	}
+	clientHTTP := *w.http
+	base := clientHTTP.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	capture := &sessionCapture{}
+	clientHTTP.Transport = sessionCaptureTransport{base: base, capture: capture}
 	client, err := mcpclient.NewStreamableHttpClient(w.env.MCPURL,
-		transport.WithHTTPBasicClient(w.http), transport.WithHTTPHeaders(headers))
+		transport.WithHTTPBasicClient(&clientHTTP), transport.WithHTTPHeaders(headers))
 	if err != nil {
 		return nil, fmt.Errorf("construct MCP client")
 	}
@@ -187,10 +252,31 @@ func (w wire) openMCP(ctx context.Context, actor, correlation string) (*mcpclien
 		client.Close()
 		return nil, fmt.Errorf("initialize MCP client")
 	}
+	if w.mcpCaptures != nil {
+		w.mcpCaptures[actor] = capture
+	}
 	return client, nil
 }
 
 func (w wire) tool(ctx context.Context, actor, correlation, name string, args map[string]any) (reply, error) {
+	if w.mcpSessions != nil {
+		client := w.mcpSessions[actor]
+		if client == nil || (correlation != "" && w.mcpCorrelations[actor] != correlation) {
+			if client != nil {
+				if err := w.releaseMCPActor(ctx, actor); err != nil {
+					return reply{}, err
+				}
+			}
+			newClient, err := w.openMCP(ctx, actor, correlation)
+			if err != nil {
+				return reply{}, err
+			}
+			client = newClient
+			w.mcpSessions[actor] = client
+			w.mcpCorrelations[actor] = correlation
+		}
+		return callTool(ctx, client, name, args)
+	}
 	client, err := w.openMCP(ctx, actor, correlation)
 	if err != nil {
 		return reply{}, err

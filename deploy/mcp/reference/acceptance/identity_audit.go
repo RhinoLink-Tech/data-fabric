@@ -70,16 +70,24 @@ func discoverSources(ctx context.Context, w wire) error {
 			}
 			continue
 		}
-		if len(list) != 2 {
-			return fmt.Errorf("expected two sources for the owner and tenant reader, got %d", len(list))
+		expectedSources := len(w.env.Sources) + len(w.env.TenantBSources)
+		if len(list) != expectedSources {
+			return fmt.Errorf("expected %d configured sources for the owner and tenant reader, got %d", expectedSources, len(list))
 		}
-		for _, key := range []string{"mysql", "postgresql"} {
-			source := w.env.Sources[key]
+		for key, source := range w.env.Sources {
 			if source.ID == "" || !slices.ContainsFunc(list, func(info sourceInfo) bool {
 				return info.ID == source.ID && info.Type == source.Type &&
 					info.Name == "reference-"+key && info.Status == "active"
 			}) {
 				return fmt.Errorf("missing or unstable %s identity", key)
+			}
+		}
+		for key, source := range w.env.TenantBSources {
+			if source.ID == "" || !slices.ContainsFunc(list, func(info sourceInfo) bool {
+				return info.ID == source.ID && info.Type == source.Type &&
+					info.Name == "reference-"+key+"-tenant-b" && info.Status == "active"
+			}) {
+				return fmt.Errorf("missing or unstable tenant-b %s identity", key)
 			}
 		}
 	}

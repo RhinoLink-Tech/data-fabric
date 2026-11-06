@@ -64,8 +64,8 @@ func (env *Environment) MintREST(identityKey string, mutate func(jwt.MapClaims))
 
 func (env *Environment) MintMCP(identityKey string, mutate func(jwt.MapClaims)) (string, error) {
 	id, ok := env.Identities[identityKey]
-	if !ok || identityKey == "operator" {
-		return "", fmt.Errorf("unknown reference MCP identity")
+	if !ok {
+		return "", fmt.Errorf("unknown reference identity")
 	}
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -73,6 +73,9 @@ func (env *Environment) MintMCP(identityKey string, mutate func(jwt.MapClaims)) 
 		"iat": now.Unix(), "exp": now.Add(tokenTTL).Unix(),
 		"scope": queryScope, "tenant": id.Tenant, "preferred_username": id.Subject,
 		"roles": []string{"reader"},
+	}
+	if identityKey == "operator" {
+		claims["roles"] = []string{"admin"}
 	}
 	if mutate != nil {
 		mutate(claims)
@@ -83,10 +86,13 @@ func (env *Environment) MintMCP(identityKey string, mutate func(jwt.MapClaims)) 
 }
 
 func (env *Environment) mintIdentities() error {
-	for _, key := range []string{"app-a", "app-b", "app-c", "operator"} {
+	for _, key := range []string{"app-a", "app-b", "app-c", "app-a-tenant-b", "operator"} {
 		id := Identity{Subject: key, Tenant: "tenant-a"}
 		if key == "app-c" {
-			id.Tenant = "tenant-b"
+			id.Tenant = "tenant-c"
+		}
+		if key == "app-a-tenant-b" {
+			id.Subject, id.Tenant = "app-a", "tenant-b"
 		}
 		env.Identities[key] = id
 		var err error
@@ -94,11 +100,9 @@ func (env *Environment) mintIdentities() error {
 		if err != nil {
 			return err
 		}
-		if key != "operator" {
-			id.MCPToken, err = env.MintMCP(key, nil)
-			if err != nil {
-				return err
-			}
+		id.MCPToken, err = env.MintMCP(key, nil)
+		if err != nil {
+			return err
 		}
 		env.Identities[key] = id
 	}
