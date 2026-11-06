@@ -121,6 +121,9 @@ func NewGatewayQueryServicesWithBudgets(datasourceRepo repository.DataSourceRepo
 		sessionTTL = defaultQuerySessionTTL
 	}
 	budgets = budgets.normalized()
+	if budgets.MaxDuration > sessionTTL {
+		budgets.MaxDuration = sessionTTL
+	}
 	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, sessionTTL, budgets, translator),
 		newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, sessionTTL, budgets, translator)
 }

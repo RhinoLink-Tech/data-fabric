@@ -442,7 +442,7 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `query.rate_limit_burst_per_tenant` | Integer | `20`; initial burst capacity for the per-tenant query request budget |
 | `query.max_result_rows` | Integer | `100000`; cumulative rows returned by one logical query across its initial page and continuations (maximum 10,000,000; 0 uses the default) |
 | `query.max_result_bytes` | Integer | `67108864`; cumulative UTF-8 bytes from JSON-marshalling a page object containing only `columns` and `entries` including object keys, delimiters, and repeated column metadata across all delivered pages (maximum 1 GiB; 0 uses the default) |
-| `query.max_duration_seconds` | Integer | `300`; absolute time limit for one logical query, including helper COUNT work and continuations (maximum 1800; 0 uses the default; cannot exceed the session TTL) |
+| `query.max_duration_seconds` | Integer | `300`; absolute time limit for one logical query, including helper COUNT work and continuations (maximum 1800; 0 uses the default; effective deadline is capped at the session TTL) |
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |

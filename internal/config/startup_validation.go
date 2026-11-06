@@ -164,17 +164,6 @@ func (c QueryConfig) Validate() error {
 	if c.MaxDurationSeconds < 0 || c.MaxDurationSeconds > maxQuerySessionTTLSeconds {
 		return fmt.Errorf("query.max_duration_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
 	}
-	queryDuration := c.MaxDurationSeconds
-	if queryDuration == 0 {
-		queryDuration = 300
-	}
-	sessionTTL := c.SessionTTLSeconds
-	if sessionTTL == 0 {
-		sessionTTL = maxQuerySessionTTLSeconds
-	}
-	if queryDuration > sessionTTL {
-		return fmt.Errorf("query.max_duration_seconds cannot exceed query.session_ttl_seconds")
-	}
 	if (c.RateLimitPerMinutePerTenant == 0) != (c.RateLimitBurstPerTenant == 0) {
 		return fmt.Errorf("query.rate_limit_per_minute_per_tenant and query.rate_limit_burst_per_tenant must both be zero to disable query rate limiting")
 	}

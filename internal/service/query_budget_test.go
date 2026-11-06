@@ -15,6 +15,25 @@ func budgetFixturePage(value interface{}) ([]model.ColumnInfo, []*[]interface{})
 	return columns, []*[]interface{}{&row}
 }
 
+func TestGatewayQueryServicesCapBudgetDurationToSessionTTL(t *testing.T) {
+	pagination, streaming := NewGatewayQueryServicesWithBudgets(
+		nil, nil, false, nil, nil, nil, 8*time.Second,
+		QueryBudgetLimits{MaxDuration: 5 * time.Minute}, nil,
+	)
+	t.Cleanup(func() {
+		pagination.Shutdown()
+		_ = streaming.Shutdown()
+	})
+	paginationService := pagination.(*queryService)
+	streamingService := streaming.(*streamingService)
+	if got := paginationService.budgetLimits.MaxDuration; got != 8*time.Second {
+		t.Fatalf("pagination query budget = %s, want session TTL 8s", got)
+	}
+	if got := streamingService.budgetLimits.MaxDuration; got != 8*time.Second {
+		t.Fatalf("streaming query budget = %s, want session TTL 8s", got)
+	}
+}
+
 func TestQueryBudgetAccountsCumulativeRowsAndEncodedBytesAtExactBoundary(t *testing.T) {
 	columns, first := budgetFixturePage(int64(1))
 	_, second := budgetFixturePage(int64(2))
