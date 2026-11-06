@@ -1278,7 +1278,7 @@ Notable behaviors:
 - **Fleet endpoints are admin-only.** `/api/v1/database/health` and `/api/v1/database/connections/stats` enumerate every stored data source, so they require the `admin` role when `security.enable_auth` is on.
 - **`security.enable_auth: false` boundary.** The switch only governs the data-source management API, where no identity exists to check: management requests then run in a legacy-equivalent mode, and created rows stay legacy. `/api/v1/fetch` is authenticated either way (#6), and its authorization checks still apply.
 
-The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Optional per-user and per-tenant table permissions are documented in [Table and Column Authorization](security/table-level-authorization.md).
+The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Optional per-user and per-tenant table permissions are documented in [Table and Column Authorization](security/table-level-authorization.md), including versioned updates through the shared metadata database.
 
 ## Environment Variables
 

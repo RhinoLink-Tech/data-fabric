@@ -316,24 +316,13 @@ func newStack(root, directory string, options Options) *composeStack {
 }
 
 func (env *Environment) writePolicy() error {
-	sources := make(map[string]any, len(env.Sources)+len(env.TenantBSources))
-	registerPolicy := func(source Source, tenant string) {
-		scopes := []map[string]any{
-			{"schema": source.Schema, "table": "orders", "columns": []string{"id", "amount", "status", "created_at"}},
-			{"schema": source.Schema, "table": "order_items", "columns": []string{"id", "order_id", "item", "quantity", "discount"}},
-		}
-		sources[source.ID] = map[string]any{
-			"admin_override": false,
-			"rules":          []map[string]any{{"tenant_id": tenant, "read": scopes, "metadata": scopes}},
-		}
+	policy := env.tableAuthorizationPolicy()
+	if len(policy.DataSources) == 0 {
+		// The API starts once to register sources. Do not persist an enabled
+		// empty policy head before their UUID-based grants are available.
+		policy.Enabled = false
 	}
-	for _, source := range env.Sources {
-		registerPolicy(source, "tenant-a")
-	}
-	for _, source := range env.TenantBSources {
-		registerPolicy(source, "tenant-b")
-	}
-	cfg := map[string]any{"table_authorization": map[string]any{"enabled": true, "data_sources": sources}}
+	cfg := map[string]any{"table_authorization": policy}
 	if env.replica != nil {
 		cfg["routing"] = map[string]any{
 			"enabled": true, "deployment_id": env.replica.deployment, "owner_slot": "", "policy_revision": "reference-1",
@@ -349,7 +338,7 @@ func (env *Environment) writePolicy() error {
 		return err
 	}
 	// JSON is also valid YAML. The containing directory is mounted rather
-	// than the file, so both services see the generated policy at startup.
+	// than the file, so both services see the bootstrap policy at startup.
 	return os.WriteFile(filepath.Join(env.stack.directory, "configs", "config.yaml"), data, 0o644)
 }
 

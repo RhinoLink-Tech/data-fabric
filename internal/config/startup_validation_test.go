@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
 func validStartupConfig() Config {
@@ -35,6 +37,19 @@ func validStartupConfig() Config {
 			Transport: MCPTransportStdio,
 			Address:   "127.0.0.1:8081",
 		},
+	}
+}
+
+func TestValidateStartupDefersManagedTablePolicyValidation(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.TableAuthorization = security.TableAuthorizationConfig{
+		Enabled: true,
+		DataSources: map[string]security.DataSourceTablePolicy{
+			"": {},
+		},
+	}
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want DB-managed policy validation to occur after metadata DB is available", err)
 	}
 }
 

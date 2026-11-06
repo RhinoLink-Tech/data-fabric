@@ -106,6 +106,9 @@ func CheckMultiReplica(ctx context.Context, env *reference.Environment, out io.W
 		{"A1", string(mcpHTTP), "mcp-b", func(ctx context.Context) error {
 			return checkSourceRevocation(ctx, env, httpClient, mcpHTTP)
 		}},
+		{"A2", "rest+mcp-http", "rest-a->rest-b;mcp-a->mcp-b", func(ctx context.Context) error {
+			return checkTablePolicyRevocation(ctx, env, httpClient)
+		}},
 		{"O1", "rest+mcp-http", "rest-a->rest-b;mcp-a->mcp-b", func(ctx context.Context) error {
 			return checkRoutingKeyRotation(ctx, env, httpClient)
 		}},

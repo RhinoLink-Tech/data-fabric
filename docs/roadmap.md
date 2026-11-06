@@ -13,6 +13,7 @@ The next milestones establish repeatable deployment, public API correctness, and
 - Source lifecycle, connection diagnostics, credential handling, shared query services, and REST/MCP interfaces.
 - Remote MCP enterprise OIDC verification; the management HTTP API retains its documented JWT authentication contract.
 - Source ownership and tenant checks, optional table/column policies, and persisted redacted access audit events (#217–#220).
+- Managed table-policy versions with compare-and-swap publication, request-pinned snapshots, publisher/outcome history, and bounded cross-replica revocation (#99).
 - Parameter binding, schema discovery, read-only validation, query continuation, cancellation, and bounded admission controls.
 - A generated connector support catalog and repeatable, version-pinned driver contracts.
 - Existing Compose and remote MCP deployment guides (#180 and #186), plus deployment-footprint and upgrade-rehearsal evidence.
@@ -23,7 +24,7 @@ The [support catalog](data-source-support.md) and [driver contract report](drive
 
 - Query cursors and continuation sessions are process-local. Restart loses active sessions; ordinary load balancing does not provide query ownership routing. #365 defines the next design.
 - Admission limits are per process. A multi-replica continuation increment does not establish globally precise tenant quotas.
-- Table/column policies are loaded at startup. Versioned updates and revocation propagation require an explicit contract in #99.
+- Managed table/column policies use the shared metadata database. Healthy replicas converge within the documented three-second revocation window; an owner that cannot synchronize for three seconds fails closed.
 - Persisted audit is available, but the current failure policy does not guarantee durable evidence for every access when audit storage fails.
 - REST and MCP run in separate service processes in the reference deployment. Shared source metadata does not make live query cursors interchangeable between them.
 - SQL translation covers the documented compatibility subset and does not guarantee identical execution semantics across engines.
@@ -54,7 +55,7 @@ Create implementation issues only after the corresponding contract or design is 
 
 - Implement the #365 decision: query owner routing, owner generation, token and identity binding, bounded drain, and explicit owner-loss behavior. Keep live database cursors with their owner; do not implicitly rerun SQL after owner failure.
 - Add cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. Define COUNT overhead and partial-result behavior. These controls do not represent universal scan-cost or cloud-spend limits.
-- #99: select and implement a bounded strategy for validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and documented cross-replica propagation limits.
+- [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99): implemented validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and the three-second cross-replica contract; see [ADR-004](decisions/adr-004-versioned-table-policy-publication.md).
 - Preserve a lightweight single-replica mode without a new mandatory infrastructure service.
 
 **Exit:** the two-replica routing/failure matrix, cumulative-budget cases, and policy revocation cases pass. Partial results, stale policy, and lost owners have explicit behavior. Transparent recovery of a lost live cursor is outside this increment.

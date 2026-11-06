@@ -16,14 +16,17 @@ const (
 
 // OwnerStatus is exposed through the replica's private admin routes.
 type OwnerStatus struct {
-	OwnerSlot       string     `json:"ownerSlot,omitempty"`
-	BootID          string     `json:"bootId,omitempty"`
-	PolicyRevision  string     `json:"policyRevision,omitempty"`
-	State           string     `json:"state"`
-	DrainDeadline   *time.Time `json:"drainDeadline,omitempty"`
-	PendingSessions int        `json:"pendingSessions"`
-	InFlight        int        `json:"inFlight"`
-	CleanupComplete bool       `json:"cleanupComplete"`
+	OwnerSlot             string     `json:"ownerSlot,omitempty"`
+	BootID                string     `json:"bootId,omitempty"`
+	PolicyRevision        string     `json:"policyRevision,omitempty"`
+	TablePolicyRevision   string     `json:"tablePolicyRevision,omitempty"`
+	TablePolicyFresh      bool       `json:"tablePolicyFresh"`
+	TablePolicyLastSyncAt time.Time  `json:"tablePolicyLastSyncAt,omitempty"`
+	State                 string     `json:"state"`
+	DrainDeadline         *time.Time `json:"drainDeadline,omitempty"`
+	PendingSessions       int        `json:"pendingSessions"`
+	InFlight              int        `json:"inFlight"`
+	CleanupComplete       bool       `json:"cleanupComplete"`
 }
 
 // OwnerLifecycle gates local query work while an operator drains a replica.

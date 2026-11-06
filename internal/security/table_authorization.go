@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
@@ -16,6 +19,9 @@ var (
 	// ErrTableAuthorizationUnavailable means the configured policy cannot be
 	// enforced because dialect-aware AST analysis is unavailable.
 	ErrTableAuthorizationUnavailable = errors.New("table authorization requires SQL AST analysis")
+	// ErrTablePolicyUnavailable means the local policy replica has not observed
+	// the shared policy head within its freshness window and must fail closed.
+	ErrTablePolicyUnavailable = errors.New("table authorization policy is stale or unavailable")
 )
 
 type TablePermission string
@@ -53,7 +59,7 @@ type TableScope struct {
 	Table   string `mapstructure:"table" json:"table"`
 	// Columns is an optional exact-name allowlist. Omitted means all columns;
 	// an explicit empty list denies every column in the matched table scope.
-	Columns []string `mapstructure:"columns" json:"columns,omitempty"`
+	Columns []string `mapstructure:"columns" json:"columns"`
 }
 
 // Validate checks policy structure before the server opens its metadata DB.
@@ -89,22 +95,125 @@ func (c TableAuthorizationConfig) Validate() error {
 	return nil
 }
 
+// TableAuthorizationSnapshot is immutable after publication. A request pins
+// one snapshot so an in-flight operation cannot mix policy versions.
+type TableAuthorizationSnapshot struct {
+	Config      TableAuthorizationConfig `json:"config"`
+	Revision    string                   `json:"revision"`
+	PublishedBy string                   `json:"publishedBy,omitempty"`
+	SourceLabel string                   `json:"sourceLabel,omitempty"`
+	UpdatedAt   time.Time                `json:"updatedAt"`
+}
+
+type tablePolicyRequestContextKey struct{}
+
+type pinnedTablePolicy struct {
+	snapshot *TableAuthorizationSnapshot
+	stale    bool
+}
+
 type TableAuthorizer struct {
-	config TableAuthorizationConfig
+	current    atomic.Pointer[TableAuthorizationSnapshot]
+	managed    atomic.Bool
+	lastSyncNS atomic.Int64
+	staleAfter atomic.Int64
 }
 
 func NewTableAuthorizer(config TableAuthorizationConfig) *TableAuthorizer {
-	return &TableAuthorizer{config: config}
+	authorizer := &TableAuthorizer{}
+	authorizer.current.Store(&TableAuthorizationSnapshot{Config: config})
+	return authorizer
 }
 
 func (a *TableAuthorizer) Enabled() bool {
-	return a != nil && a.config.Enabled
+	if a == nil {
+		return false
+	}
+	snapshot := a.current.Load()
+	return snapshot != nil && snapshot.Config.Enabled
+}
+
+// PinRequest captures the current policy version for the lifetime of one
+// REST request or MCP tool call. Freshness is evaluated once at the boundary.
+func (a *TableAuthorizer) PinRequest(ctx context.Context) context.Context {
+	if a == nil {
+		return ctx
+	}
+	snapshot := a.current.Load()
+	if snapshot == nil {
+		return ctx
+	}
+	pinned := pinnedTablePolicy{snapshot: snapshot, stale: a.isStale(time.Now())}
+	return context.WithValue(ctx, tablePolicyRequestContextKey{}, pinned)
+}
+
+// PolicyRevisionFromContext returns the revision pinned to a request. It is
+// used by audit middleware to correlate an access decision with its policy.
+func PolicyRevisionFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if pinned, ok := ctx.Value(tablePolicyRequestContextKey{}).(pinnedTablePolicy); ok && pinned.snapshot != nil {
+		return pinned.snapshot.Revision
+	}
+	return ""
+}
+
+func (a *TableAuthorizer) activePolicy(ctx context.Context) (*TableAuthorizationSnapshot, bool) {
+	if a == nil {
+		return nil, false
+	}
+	if ctx != nil {
+		if pinned, ok := ctx.Value(tablePolicyRequestContextKey{}).(pinnedTablePolicy); ok {
+			return pinned.snapshot, pinned.stale
+		}
+	}
+	return a.current.Load(), a.isStale(time.Now())
+}
+
+func (a *TableAuthorizer) isStale(now time.Time) bool {
+	if a == nil || !a.managed.Load() {
+		return false
+	}
+	lastSync := a.lastSyncNS.Load()
+	staleAfter := time.Duration(a.staleAfter.Load())
+	return lastSync == 0 || staleAfter <= 0 || now.Sub(time.Unix(0, lastSync)) > staleAfter
+}
+
+func (a *TableAuthorizer) install(snapshot *TableAuthorizationSnapshot, staleAfter time.Duration) {
+	copyOfSnapshot := *snapshot
+	newRevision, newErr := strconv.ParseInt(snapshot.Revision, 10, 64)
+	for {
+		current := a.current.Load()
+		if current != nil {
+			currentRevision, currentErr := strconv.ParseInt(current.Revision, 10, 64)
+			if newErr == nil && currentErr == nil && currentRevision >= newRevision {
+				break
+			}
+		}
+		if a.current.CompareAndSwap(current, &copyOfSnapshot) {
+			break
+		}
+	}
+	a.staleAfter.Store(int64(staleAfter))
+	a.managed.Store(true)
+	a.lastSyncNS.Store(time.Now().UnixNano())
+}
+
+func (a *TableAuthorizer) markSynchronized() {
+	if a != nil {
+		a.lastSyncNS.Store(time.Now().UnixNano())
+	}
 }
 
 // AuthorizeAnalysis checks every physical table and column found by the SQL AST
 // parser. Unresolved sources fail closed whenever table authorization is enabled.
 func (a *TableAuthorizer) AuthorizeAnalysis(ctx context.Context, caller *Caller, dataSource *model.DataSource, analysis sqlanalysis.Analysis, permission TablePermission) error {
-	if !a.Enabled() {
+	snapshot, stale := a.activePolicy(ctx)
+	if snapshot != nil && snapshot.Config.Enabled && stale {
+		return ErrTablePolicyUnavailable
+	}
+	if snapshot == nil || !snapshot.Config.Enabled {
 		return nil
 	}
 	if caller == nil || dataSource == nil || analysis.UnresolvedTables {
@@ -119,7 +228,7 @@ func (a *TableAuthorizer) AuthorizeAnalysis(ctx context.Context, caller *Caller,
 		}
 		return ErrTableAccessDenied
 	}
-	policy, exists := a.config.DataSources[dataSource.ID]
+	policy, exists := snapshot.Config.DataSources[dataSource.ID]
 	if !exists {
 		return ErrTableAccessDenied
 	}
@@ -164,11 +273,11 @@ func (a *TableAuthorizer) AuthorizeAnalysis(ctx context.Context, caller *Caller,
 }
 
 func (a *TableAuthorizer) AuthorizeReferences(ctx context.Context, caller *Caller, dataSource *model.DataSource, tables []sqlanalysis.TableReference, permission TablePermission) error {
-	if !a.Enabled() || len(tables) == 0 {
-		return nil
-	}
 	allowed, err := a.FilterReferences(ctx, caller, dataSource, tables, permission)
-	if err != nil || len(allowed) != len(tables) {
+	if err != nil {
+		return err
+	}
+	if len(allowed) != len(tables) {
 		return ErrTableAccessDenied
 	}
 	return nil
@@ -177,13 +286,17 @@ func (a *TableAuthorizer) AuthorizeReferences(ctx context.Context, caller *Calle
 // FilterColumns returns the visible subset of metadata column names. The
 // boolean reports whether a restrictive column allowlist applies to this table.
 func (a *TableAuthorizer) FilterColumns(ctx context.Context, caller *Caller, dataSource *model.DataSource, table sqlanalysis.TableReference, names []string, permission TablePermission) ([]string, bool, error) {
-	if !a.Enabled() {
+	snapshot, stale := a.activePolicy(ctx)
+	if snapshot != nil && snapshot.Config.Enabled && stale {
+		return nil, false, ErrTablePolicyUnavailable
+	}
+	if snapshot == nil || !snapshot.Config.Enabled {
 		return append([]string(nil), names...), false, nil
 	}
 	if caller == nil || dataSource == nil {
 		return nil, false, ErrTableAccessDenied
 	}
-	policy, exists := a.config.DataSources[dataSource.ID]
+	policy, exists := snapshot.Config.DataSources[dataSource.ID]
 	if !exists {
 		return nil, false, ErrTableAccessDenied
 	}
@@ -223,7 +336,11 @@ func (a *TableAuthorizer) FilterColumns(ctx context.Context, caller *Caller, dat
 // requested permission. It is used by metadata listing so hidden names never
 // enter an MCP response.
 func (a *TableAuthorizer) FilterReferences(ctx context.Context, caller *Caller, dataSource *model.DataSource, tables []sqlanalysis.TableReference, permission TablePermission) ([]sqlanalysis.TableReference, error) {
-	if !a.Enabled() {
+	snapshot, stale := a.activePolicy(ctx)
+	if snapshot != nil && snapshot.Config.Enabled && stale {
+		return nil, ErrTablePolicyUnavailable
+	}
+	if snapshot == nil || !snapshot.Config.Enabled {
 		return append([]sqlanalysis.TableReference(nil), tables...), nil
 	}
 	if len(tables) == 0 {
@@ -233,7 +350,7 @@ func (a *TableAuthorizer) FilterReferences(ctx context.Context, caller *Caller, 
 		return []sqlanalysis.TableReference{}, nil
 	}
 
-	policy, exists := a.config.DataSources[dataSource.ID]
+	policy, exists := snapshot.Config.DataSources[dataSource.ID]
 	if !exists {
 		return []sqlanalysis.TableReference{}, nil
 	}
@@ -340,11 +457,12 @@ func hasRestrictedColumns(caller *Caller, rules []TableAccessRule, table sqlanal
 // RequiresColumnAuthorization reports whether any referenced table has an
 // effective column allowlist for this caller. It lets paginated sessions retain
 // table-only behavior while rechecking saved SQL when column policy is active.
-func (a *TableAuthorizer) RequiresColumnAuthorization(caller *Caller, dataSource *model.DataSource, tables []sqlanalysis.TableReference, permission TablePermission) bool {
-	if !a.Enabled() || caller == nil || dataSource == nil {
+func (a *TableAuthorizer) RequiresColumnAuthorization(ctx context.Context, caller *Caller, dataSource *model.DataSource, tables []sqlanalysis.TableReference, permission TablePermission) bool {
+	snapshot, stale := a.activePolicy(ctx)
+	if snapshot == nil || !snapshot.Config.Enabled || stale || caller == nil || dataSource == nil {
 		return false
 	}
-	policy, exists := a.config.DataSources[dataSource.ID]
+	policy, exists := snapshot.Config.DataSources[dataSource.ID]
 	if !exists || caller.IsAdmin() && policy.AdminOverride {
 		return false
 	}

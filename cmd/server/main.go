@@ -67,6 +67,17 @@ func main() {
 	}
 }
 
+func newTablePolicyManager(db *gorm.DB, cfg *config.Config, authorizer *security.TableAuthorizer) (*security.TablePolicyManager, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	manager, err := security.NewTablePolicyManager(db, authorizer, cfg.TableAuthorization, cfg.Routing.PolicyRevision)
+	if err != nil {
+		return nil, fmt.Errorf("initialize table policy manager: %w", err)
+	}
+	return manager, nil
+}
+
 func newRouteOwner(cfg config.RoutingConfig, pool string) (*replicarouting.Owner, error) {
 	if !cfg.Enabled {
 		return nil, nil
@@ -155,6 +166,14 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	// Initialize services
 	datasourceService := service.NewDataSourceService(datasourceRepo, connPool, healthChecker)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
+	tablePolicyManager, err := newTablePolicyManager(db, cfg, tableAuthorizer)
+	if err != nil {
+		return err
+	}
+	if tablePolicyManager != nil {
+		tablePolicyManager.Start(context.Background())
+		defer tablePolicyManager.Stop()
+	}
 
 	// Initialize streaming and pagination services with one shared table policy.
 	queryStats := service.NewQueryStatsTracker()
@@ -198,6 +217,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	if auditStore != nil {
 		auditController = controller.NewAuditController(auditStore)
 	}
+	var tablePolicyController *controller.TablePolicyController
+	if tablePolicyManager != nil {
+		tablePolicyController = controller.NewTablePolicyController(tablePolicyManager)
+	}
 
 	// Create Gin router
 	router := newRouter(routerDeps{
@@ -211,6 +234,8 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		sqlTranslationController: sqlTranslationController,
 		auditController:          auditController,
 		auditRecorder:            auditStore,
+		tableAuthorizer:          tableAuthorizer,
+		tablePolicyController:    tablePolicyController,
 		queryOwner:               queryOwner,
 	})
 
@@ -411,6 +436,14 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	// metadata database are closed (#32).
 	defer closeGatewayResources(db, connPool)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
+	tablePolicyManager, err := newTablePolicyManager(db, cfg, tableAuthorizer)
+	if err != nil {
+		return err
+	}
+	if tablePolicyManager != nil {
+		tablePolicyManager.Start(context.Background())
+		defer tablePolicyManager.Stop()
+	}
 	queryStats := service.NewQueryStatsTracker()
 	queryAdmissionLimiter := service.NewQueryAdmissionLimiterWithRateLimit(
 		0,
@@ -458,6 +491,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
 	mcpServer.SetAuditRecorder(auditStore)
+	mcpServer.SetTablePolicyManager(tablePolicyManager)
 
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
@@ -492,7 +526,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 				return fmt.Errorf("failed to initialize routed MCP sessions: %w", err)
 			}
 			handler = mcpServer.StreamableHTTPHandlerWithOwnerAdmin(
-				tokenValidator, rateLimiter, limits, routedTransport, queryOwner, cfg.Routing.PolicyRevision,
+				tokenValidator, rateLimiter, limits, routedTransport, queryOwner, cfg.Routing.PolicyRevision, tablePolicyManager,
 			)
 		}
 		return serveMCPHTTP(cfg, handler, streamingService, auditStore, queryOwner, func(stop func()) {

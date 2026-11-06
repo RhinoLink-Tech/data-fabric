@@ -14,14 +14,17 @@ import (
 )
 
 type ownerStatus struct {
-	OwnerSlot       string     `json:"ownerSlot"`
-	BootID          string     `json:"bootId"`
-	PolicyRevision  string     `json:"policyRevision"`
-	State           string     `json:"state"`
-	DrainDeadline   *time.Time `json:"drainDeadline"`
-	PendingSessions int        `json:"pendingSessions"`
-	InFlight        int        `json:"inFlight"`
-	CleanupComplete bool       `json:"cleanupComplete"`
+	OwnerSlot             string     `json:"ownerSlot"`
+	BootID                string     `json:"bootId"`
+	PolicyRevision        string     `json:"policyRevision"`
+	TablePolicyRevision   string     `json:"tablePolicyRevision"`
+	TablePolicyFresh      bool       `json:"tablePolicyFresh"`
+	TablePolicyLastSyncAt time.Time  `json:"tablePolicyLastSyncAt"`
+	State                 string     `json:"state"`
+	DrainDeadline         *time.Time `json:"drainDeadline"`
+	PendingSessions       int        `json:"pendingSessions"`
+	InFlight              int        `json:"inFlight"`
+	CleanupComplete       bool       `json:"cleanupComplete"`
 }
 
 func acceptanceProfile() map[string]any {
@@ -63,6 +66,9 @@ func checkOwnerTopology(ctx context.Context, env *reference.Environment, out io.
 		}
 		if state.State != "ready" {
 			return fmt.Errorf("%s owner did not start ready and idle", slot)
+		}
+		if state.TablePolicyRevision != "1" || !state.TablePolicyFresh || state.TablePolicyLastSyncAt.IsZero() {
+			return fmt.Errorf("%s owner did not start with fresh managed table policy revision 1", slot)
 		}
 		owners[slot] = state
 		if _, err := ownerMetrics(ctx, env, slot); err != nil {
@@ -138,7 +144,7 @@ func readOwnerStatus(ctx context.Context, env *reference.Environment, slot strin
 	if err := json.Unmarshal(body, &state); err != nil {
 		return ownerStatus{}, fmt.Errorf("%s owner status is invalid", slot)
 	}
-	if state.OwnerSlot != slot || state.BootID == "" || state.PolicyRevision == "" || state.State == "" {
+	if state.OwnerSlot != slot || state.BootID == "" || state.PolicyRevision == "" || state.TablePolicyRevision == "" || state.State == "" {
 		return ownerStatus{}, fmt.Errorf("%s owner status omitted identity or lifecycle fields", slot)
 	}
 	return state, nil
