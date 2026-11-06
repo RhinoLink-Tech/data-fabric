@@ -100,6 +100,14 @@ query:
   rate_limit_per_minute_per_tenant: 120
   rate_limit_burst_per_tenant: 20
 
+# Enable the replica drain endpoints on a private REST listener.
+routing:
+  enabled: false
+  deployment_id: ""
+  owner_slot: ""
+  policy_revision: ""
+  drain_timeout_seconds: 120
+
 mcp:
   enabled: false
   transport: "stdio" # stdio or streamable-http
@@ -107,6 +115,8 @@ mcp:
   # Streamable-HTTP entrance budgets: in-flight request cap and request body
   # size (body falls back to server.max_request_body_bytes when unset).
   max_concurrent_requests: 64
+  routed_session_ttl_seconds: 3600
+  max_routed_sessions: 1024
   tls_cert_file: "" # configure with tls_key_file for direct HTTPS
   tls_key_file: ""
   auth_mode: "local-jwt" # local-jwt for development; oidc for protected remote MCP

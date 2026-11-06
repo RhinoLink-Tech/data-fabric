@@ -12,6 +12,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	service "github.com/RhinoLink-Tech/data-fabric/internal/service"
 )
@@ -29,6 +30,8 @@ type unifiedQueryService struct {
 	streamingService  service.StreamingService
 	config            *config.Config
 	history           *service.QueryHistory
+	owner             *OwnerLifecycle
+	routing           *replicarouting.Owner
 }
 
 // NewUnifiedQueryService creates a new unified query service that chooses between
@@ -38,11 +41,23 @@ func NewUnifiedQueryService(
 	streamingService service.StreamingService,
 	config *config.Config,
 ) UnifiedQueryService {
+	return NewUnifiedQueryServiceWithOwner(paginationService, streamingService, config, nil, nil)
+}
+
+func NewUnifiedQueryServiceWithOwner(
+	paginationService service.QueryService,
+	streamingService service.StreamingService,
+	config *config.Config,
+	owner *OwnerLifecycle,
+	routing *replicarouting.Owner,
+) UnifiedQueryService {
 	return &unifiedQueryService{
 		paginationService: paginationService,
 		streamingService:  streamingService,
 		config:            config,
 		history:           service.NewQueryHistory(1000),
+		owner:             owner,
+		routing:           routing,
 	}
 }
 
@@ -61,6 +76,17 @@ func (uqs *unifiedQueryService) GetQueryStats(ctx context.Context) (*model.Query
 // MCP traffic are covered alike; continuation fetches extend an already
 // recorded query and are not separate records.
 func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+	if uqs.owner != nil {
+		workCtx, finish, err := uqs.owner.enter(ctx, true)
+		if err != nil {
+			return nil, err
+		}
+		defer finish()
+		ctx = workCtx
+	}
+	if uqs.routing != nil {
+		ctx = replicarouting.WithOwner(ctx, uqs.routing)
+	}
 	started := time.Now()
 	result, executionMode, err := uqs.executeFetchQuery(ctx, caller, req)
 
@@ -219,6 +245,17 @@ func markExecutionMode(response *model.FetchQueryResponse, mode string) {
 // mode it probes the streaming session first, then falls back to pagination
 // only when no streaming session exists.
 func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (response *model.FetchQueryResponse, err error) {
+	if uqs.routing != nil && uqs.routing.Verify(slug, queryID, time.Now()) != nil {
+		return nil, service.ErrQuerySessionUnavailable
+	}
+	if uqs.owner != nil {
+		workCtx, finish, err := uqs.owner.enter(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		defer finish()
+		ctx = workCtx
+	}
 	defer func() {
 		recordQueryAdmissionRejection(err)
 	}()

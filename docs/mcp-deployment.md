@@ -332,6 +332,9 @@ nothing.
   client registration. Your identity provider issues and rotates the access
   tokens; Data Fabric validates them as a protected resource.
 
+For the optional owner-routed multi-replica topology, bounded MCP session
+routing, and private drain workflow, see [Replica routing and drain](replica-routing.md).
+
 ## Operations
 
 ```bash

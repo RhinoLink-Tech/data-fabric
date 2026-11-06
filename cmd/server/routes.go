@@ -1,11 +1,14 @@
 package main
 
 import (
+	"net/http"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/controller"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +27,7 @@ type routerDeps struct {
 	sqlTranslationController *controller.SQLTranslationController
 	auditController          *controller.AuditController
 	auditRecorder            auditlog.Recorder
+	queryOwner               *unifiedservice.OwnerLifecycle
 }
 
 // newRouter assembles the HTTP API. Setting the gin mode is the caller's job
@@ -63,6 +67,21 @@ func newRouter(deps routerDeps) *gin.Engine {
 	// API authentication switch.
 	metricsHandler := gin.WrapH(middleware.PrometheusHandler())
 	router.GET("/metrics", deps.authMiddleware.RequireAnyRole(security.AdminRole), metricsHandler)
+	if deps.queryOwner != nil {
+		replica := router.Group("/internal/replica", deps.authMiddleware.RequireAnyRole(security.AdminRole))
+		replica.GET("", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			status := deps.queryOwner.Status()
+			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			c.JSON(http.StatusOK, status)
+		})
+		replica.POST("/drain", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			status := deps.queryOwner.Drain()
+			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			c.JSON(http.StatusOK, status)
+		})
+	}
 
 	// API v1 group
 	api := router.Group("/api/v1")

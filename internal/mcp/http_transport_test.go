@@ -22,6 +22,26 @@ import (
 	"gorm.io/gorm"
 )
 
+const mcpTestURL = "http://mcp.test/mcp"
+
+// Keep the SDK client and HTTP handlers in the same process. These tests
+// exercise authentication and tool dispatch without requiring a socket.
+type mcpHandlerTransport struct{ handler http.Handler }
+
+func (t mcpHandlerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	serverRequest := req.Clone(req.Context())
+	if serverRequest.Body == nil {
+		serverRequest.Body = http.NoBody
+	}
+	defer serverRequest.Body.Close()
+	serverRequest.RequestURI = req.URL.RequestURI()
+	rec := httptest.NewRecorder()
+	t.handler.ServeHTTP(rec, serverRequest)
+	response := rec.Result()
+	response.Request = req
+	return response, nil
+}
+
 func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	const secret = "0123456789abcdef0123456789abcdef"
 	jwtManager := security.NewJWTManager(secret, time.Hour)
@@ -46,15 +66,14 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
-	httpServer := httptest.NewServer(server.StreamableHTTPHandler(jwtManager))
-	defer httpServer.Close()
+	httpClient := &http.Client{Transport: mcpHandlerTransport{server.StreamableHTTPHandler(jwtManager)}}
 
 	t.Run("missing bearer token is rejected before MCP", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/mcp", nil)
+		req, err := http.NewRequest(http.MethodGet, mcpTestURL, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,12 +88,12 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 	})
 
 	t.Run("invalid bearer token is rejected", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/mcp", nil)
+		req, err := http.NewRequest(http.MethodGet, mcpTestURL, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("Authorization", "Bearer not-a-jwt")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,12 +109,12 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/mcp", nil)
+		req, err := http.NewRequest(http.MethodGet, mcpTestURL, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,7 +130,7 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		client, err := client.NewStreamableHttpClient(httpServer.URL+"/mcp", transport.WithHTTPHeaders(map[string]string{
+		client, err := client.NewStreamableHttpClient(mcpTestURL, transport.WithHTTPBasicClient(httpClient), transport.WithHTTPHeaders(map[string]string{
 			"Authorization":    "Bearer " + token,
 			"X-Correlation-ID": "mcp-request-bob",
 		}))
@@ -238,10 +257,9 @@ func TestStreamableHTTPPropagatesOIDCIdentityToQueryAuthorization(t *testing.T) 
 		UserID: "oidc-subject-1", TenantID: "tenant-a", Username: "alice",
 		Roles: []string{"reader"}, Scope: "data-fabric.query profile",
 	}}
-	httpServer := httptest.NewServer(mcpServer.StreamableHTTPHandler(validator))
-	defer httpServer.Close()
+	httpClient := &http.Client{Transport: mcpHandlerTransport{mcpServer.StreamableHTTPHandler(validator)}}
 
-	client, err := client.NewStreamableHttpClient(httpServer.URL+"/mcp", transport.WithHTTPHeaders(map[string]string{
+	client, err := client.NewStreamableHttpClient(mcpTestURL, transport.WithHTTPBasicClient(httpClient), transport.WithHTTPHeaders(map[string]string{
 		"Authorization": "Bearer trusted-access-token",
 	}))
 	if err != nil {

@@ -16,10 +16,28 @@ type Config struct {
 	Security           SecurityConfig                    `mapstructure:"security"`
 	Logging            LoggingConfig                     `mapstructure:"logging"`
 	Query              QueryConfig                       `mapstructure:"query"`
+	Routing            RoutingConfig                     `mapstructure:"routing"`
 	MCP                MCPConfig                         `mapstructure:"mcp"`
 	SQLTranslation     SQLTranslationConfig              `mapstructure:"sql_translation"`
 	TableAuthorization security.TableAuthorizationConfig `mapstructure:"table_authorization"`
 	Audit              AuditConfig                       `mapstructure:"audit"`
+}
+
+type RoutingConfig struct {
+	DeploymentID        string `mapstructure:"deployment_id"`
+	OwnerSlot           string `mapstructure:"owner_slot"`
+	PolicyRevision      string `mapstructure:"policy_revision"`
+	Enabled             bool   `mapstructure:"enabled"`
+	DrainTimeoutSeconds int    `mapstructure:"drain_timeout_seconds"`
+}
+
+const defaultDrainTimeoutSeconds = 120
+
+func (c RoutingConfig) DrainTimeout() time.Duration {
+	if c.DrainTimeoutSeconds == 0 {
+		return defaultDrainTimeoutSeconds * time.Second
+	}
+	return time.Duration(c.DrainTimeoutSeconds) * time.Second
 }
 
 type AuditConfig struct {
@@ -157,6 +175,11 @@ func setDefaults() {
 	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
 	viper.SetDefault("query.rate_limit_per_minute_per_tenant", 120)
 	viper.SetDefault("query.rate_limit_burst_per_tenant", 20)
+	viper.SetDefault("routing.enabled", false)
+	viper.SetDefault("routing.deployment_id", "")
+	viper.SetDefault("routing.owner_slot", "")
+	viper.SetDefault("routing.policy_revision", "")
+	viper.SetDefault("routing.drain_timeout_seconds", defaultDrainTimeoutSeconds)
 
 	// SQL translation runtime limits and process configuration.
 	viper.SetDefault("sql_translation.enabled", true)
@@ -181,6 +204,8 @@ func setDefaults() {
 	viper.SetDefault("mcp.transport", "stdio")
 	viper.SetDefault("mcp.address", "127.0.0.1:8081")
 	viper.SetDefault("mcp.max_concurrent_requests", 64)
+	viper.SetDefault("mcp.routed_session_ttl_seconds", defaultRoutedSessionTTLSeconds)
+	viper.SetDefault("mcp.max_routed_sessions", defaultMaxRoutedSessions)
 	viper.SetDefault("mcp.tls_cert_file", "")
 	viper.SetDefault("mcp.tls_key_file", "")
 }
@@ -197,11 +222,13 @@ type SQLTranslationConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Transport   string `mapstructure:"transport"`
-	Address     string `mapstructure:"address"`
-	TLSCertFile string `mapstructure:"tls_cert_file"`
-	TLSKeyFile  string `mapstructure:"tls_key_file"`
+	Enabled                 bool   `mapstructure:"enabled"`
+	Transport               string `mapstructure:"transport"`
+	Address                 string `mapstructure:"address"`
+	RoutedSessionTTLSeconds int    `mapstructure:"routed_session_ttl_seconds"`
+	MaxRoutedSessions       int    `mapstructure:"max_routed_sessions"`
+	TLSCertFile             string `mapstructure:"tls_cert_file"`
+	TLSKeyFile              string `mapstructure:"tls_key_file"`
 	// MaxConcurrentRequests caps in-flight requests on the remote MCP
 	// entrance; 0 falls back to the code default.
 	MaxConcurrentRequests   int           `mapstructure:"max_concurrent_requests"`

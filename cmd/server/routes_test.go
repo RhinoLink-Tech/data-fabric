@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -87,6 +89,11 @@ type testTokens struct {
 // authorization tests can act as a regular caller.
 func newTestRouterWithTokens(t *testing.T, enableAuth bool) (*gin.Engine, testTokens) {
 	t.Helper()
+	return newTestRouterWithOwner(t, enableAuth, nil)
+}
+
+func newTestRouterWithOwner(t *testing.T, enableAuth bool, owner *unifiedservice.OwnerLifecycle) (*gin.Engine, testTokens) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Server:   config.ServerConfig{Mode: "debug"},
@@ -101,12 +108,18 @@ func newTestRouterWithTokens(t *testing.T, enableAuth bool) (*gin.Engine, testTo
 	if tokens.user, err = jwtManager.GenerateToken("user-2", "acme", "plain-user", []string{"user"}); err != nil {
 		t.Fatalf("GenerateToken() error = %v", err)
 	}
+	var queryService unifiedservice.UnifiedQueryService = stubUnifiedQueryService{}
+	if owner != nil {
+		cfg.Query.ExecutionMode = "pagination"
+		queryService = unifiedservice.NewUnifiedQueryServiceWithOwner(ownerRoutePagination{}, nil, cfg, owner, nil)
+	}
 	router := newRouter(routerDeps{
 		cfg:                      cfg,
 		authMiddleware:           security.NewAuthMiddleware(jwtManager),
 		healthController:         controller.NewHealthController(nil),
 		datasourceController:     controller.NewDataSourceController(stubDataSourceService{}),
-		queryController:          controller.NewQueryController(stubUnifiedQueryService{}),
+		queryController:          controller.NewQueryController(queryService),
+		queryOwner:               owner,
 		databaseController:       controller.NewDatabaseController(nil, nil),
 		sqlTranslationController: controller.NewSQLTranslationController(),
 	})
@@ -396,5 +409,73 @@ func TestHTTPMetricsUseRouteTemplatesAndDoNotExposeRawPathsOrSourceIDs(t *testin
 	}
 	if strings.Contains(body, "datasource_id=") {
 		t.Fatal("metrics contain a high-cardinality data-source ID label")
+	}
+}
+
+// ownerRoutePagination supplies query responses beneath the real owner gate.
+type ownerRoutePagination struct{ stubUnifiedQueryService }
+
+func (ownerRoutePagination) LiveSessionCount(time.Time) int { return 0 }
+func (ownerRoutePagination) EndTransportSession(string)     {}
+func (ownerRoutePagination) Shutdown()                      {}
+
+func TestReplicaDrainRoutesRequireAdminAndGateNewQueries(t *testing.T) {
+	const statusPath = "/internal/replica"
+	const drainPath = "/internal/replica/drain"
+	const queryBody = `{"dataSourceId":"12345678-1234-4234-8234-123456789012","sql":"SELECT 1","type":1}`
+	call := func(router *gin.Engine, method, path, token, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+	disabled, tokens := newTestRouterWithTokens(t, false)
+	if got := call(disabled, http.MethodPost, drainPath, tokens.admin, "").Code; got != http.StatusNotFound {
+		t.Fatalf("default drain endpoint status = %d, want 404", got)
+	}
+
+	owner := unifiedservice.NewOwnerLifecycle(time.Hour, func(time.Time) int { return 1 }, func() {})
+	t.Cleanup(owner.Shutdown)
+	router, tokens := newTestRouterWithOwner(t, false, owner)
+	if got := call(router, http.MethodGet, statusPath, "", "").Code; got != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want 401", got)
+	}
+	if got := call(router, http.MethodPost, drainPath, tokens.user, "").Code; got != http.StatusForbidden {
+		t.Fatalf("non-admin drain status = %d, want 403", got)
+	}
+	if rec := call(router, http.MethodPost, "/api/v1/fetch", tokens.user, queryBody); rec.Code != http.StatusOK {
+		t.Fatalf("ready query: status = %d, body = %s", rec.Code, rec.Body)
+	}
+
+	var first, second unifiedservice.OwnerStatus
+	for _, state := range []*unifiedservice.OwnerStatus{&first, &second} {
+		rec := call(router, http.MethodPost, drainPath, tokens.admin, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("admin drain: status = %d, body = %s", rec.Code, rec.Body)
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if first.State != "draining" || first.DrainDeadline == nil || second.DrainDeadline == nil ||
+		!first.DrainDeadline.Equal(*second.DrainDeadline) {
+		t.Fatalf("drain did not retain one deadline: first=%+v second=%+v", first, second)
+	}
+	if rec := call(router, http.MethodPost, "/api/v1/fetch", tokens.user, queryBody); rec.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(rec.Body.String(), "QUERY_OWNER_DRAINING") {
+		t.Fatalf("new query during drain: status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if rec := call(router, http.MethodGet, "/api/v1/fetch/q/s/t", tokens.user, ""); rec.Code != http.StatusOK {
+		t.Fatalf("continuation during drain: status = %d, body = %s", rec.Code, rec.Body)
+	}
+	owner.Shutdown()
+	if rec := call(router, http.MethodGet, "/api/v1/fetch/q/s/t", tokens.user, ""); rec.Code != http.StatusNotFound ||
+		!strings.Contains(rec.Body.String(), "QUERY_SESSION_UNAVAILABLE") {
+		t.Fatalf("continuation after retirement: status = %d, body = %s", rec.Code, rec.Body)
 	}
 }

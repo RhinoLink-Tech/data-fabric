@@ -336,10 +336,20 @@ query:
   execution_mode: "auto"
   session_ttl_seconds: 1800
 
+routing:
+  enabled: false
+  deployment_id: ""
+  owner_slot: ""
+  policy_revision: ""
+  drain_timeout_seconds: 120
+
 mcp:
   enabled: false
   transport: "stdio"
   address: "127.0.0.1:8081"
+  max_concurrent_requests: 64
+  routed_session_ttl_seconds: 3600
+  max_routed_sessions: 1024
   auth_mode: "local-jwt"
   oidc_issuer: ""
   oidc_audience: ""
@@ -434,6 +444,8 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |
 | `mcp.max_concurrent_requests` | Integer | `64`; caps in-flight requests on the streamable-HTTP entrance (body size falls back to `server.max_request_body_bytes`) |
+| `mcp.routed_session_ttl_seconds` | Integer seconds | `3600`; absolute lifetime of each owner-bound remote MCP session when routing is enabled (0 selects the default; maximum 86400) |
+| `mcp.max_routed_sessions` | Integer | `1024`; bounded owner-local remote MCP session registry when routing is enabled (0 selects the default; maximum 65536) |
 | `mcp.auth_mode` | String | `local-jwt` (development); `oidc` for remote MCP in release mode |
 | `mcp.oidc_issuer` | HTTPS URL | Empty; required for OIDC |
 | `mcp.oidc_audience` | String | Empty; required for OIDC |
@@ -443,6 +455,31 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `mcp.oidc_roles_claim` | Claim path | `roles` |
 | `mcp.oidc_username_claim` | Claim path | `preferred_username` |
 | `mcp.oidc_jwks_refresh_interval` | Duration | `5m` (1m–1h) |
+
+### Replica Routing Configuration
+
+| Field | Type | Default |
+|-------|------|---------|
+| `routing.enabled` | Boolean | `false`; keeps the standalone session contract unless explicitly enabled |
+| `routing.deployment_id` | String | Empty; required for routed owners, lowercase letters, digits and hyphens |
+| `routing.owner_slot` | String | Empty; required for routed owners, lowercase letters, digits and hyphens |
+| `routing.policy_revision` | String | Empty; required for routed owners and reported on the private owner status route |
+| `routing.drain_timeout_seconds` | Integer seconds | `120`; range 0-1800, where 0 selects the default |
+
+Routing keys are separate from JWT and credential-vault keys. Configure
+`DATA_FABRIC_ROUTING_KEYS` as a JSON object from lowercase key IDs to unpadded
+base64url values containing 32-64 random bytes, and set
+`DATA_FABRIC_ROUTING_ACTIVE_KEY_ID` to a configured key ID. A deployment uses
+the same routing deployment ID and overlapping verification key ring at its
+ingress and owners. Each live owner needs a unique slot in its REST or MCP
+pool. Read [Replica routing and drain](replica-routing.md) before enabling
+routing.
+
+Routing is optional for the REST API and remote Streamable HTTP MCP. Routed
+stdio is rejected because it has no remote transport session header. The
+operator keeps the private owner listener reachable only by the ingress and
+operations tooling. Use the loaded policy revision to verify every serving
+owner before reopening routes after a policy change.
 
 In `auto` mode, `type: 1` explicitly keeps a request on pagination. `type: 2`
 requests streaming. Requests without a type use pagination for batches below

@@ -419,6 +419,8 @@ func queryFailureStatusAndCode(err error) (int, string) {
 	case errors.Is(err, queryservice.ErrDataSourceInactive):
 		// The source exists but its current state forbids execution (#118)
 		return http.StatusConflict, "DATASOURCE_INACTIVE"
+	case errors.Is(err, queryservice.ErrQueryOwnerDraining):
+		return http.StatusServiceUnavailable, "QUERY_OWNER_DRAINING"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
 	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
