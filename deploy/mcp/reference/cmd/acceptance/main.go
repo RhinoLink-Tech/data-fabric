@@ -17,8 +17,10 @@ func main() {
 	flag.StringVar(&options.Image, "image", "", "use a prebuilt local Data Fabric image instead of building")
 	flag.BoolVar(&options.Keep, "keep", false, "keep the isolated reference stack for inspection")
 	smoke := flag.Bool("smoke", false, "run the premerge subset of public acceptance cases")
+	multiReplica := flag.Bool("multi-replica", false, "run the containerized two-replica continuation acceptance cases")
 	flag.Parse()
 	options.Output = os.Stderr
+	options.MultiReplica = *multiReplica
 	if !*smoke {
 		options.SessionTTLSeconds = acceptance.SessionTTLSeconds
 		options.MaxConcurrentQueriesPerTenant = acceptance.TenantCapacity
@@ -31,7 +33,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	if err := reference.Run(ctx, options, func(ctx context.Context, env *reference.Environment) error {
-		return acceptance.Check(ctx, env, os.Stdout, *smoke)
+		if err := acceptance.Check(ctx, env, os.Stdout, *smoke); err != nil {
+			return err
+		}
+		if *multiReplica {
+			return acceptance.CheckMultiReplica(ctx, env, os.Stdout)
+		}
+		return nil
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

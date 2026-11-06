@@ -7,21 +7,24 @@ and observed status and resource counters for every executed scenario.
 
 ## Automated pull request coverage
 
-The required `Public REST and MCP reference acceptance` check also runs the
-focused owner-routing cases in `internal/replicarouting` and `internal/mcp`.
-Those cases send requests through the public ingress to two independent local
-HTTP owner servers, use deterministic synthetic rows, reload new-work routing
-from A to B, and verify REST continuation stickiness plus MCP initialize,
-POST, GET and DELETE stickiness. The owner transport tests also verify
-principal binding, expiry, capacity, drain and resource cleanup. The focused
-cases need no container image; their log records the PR head commit and owner
-slots. The enclosing reference acceptance separately records the immutable
-Data Fabric image used by its single-owner REST and MCP source run.
+The required Public REST and MCP reference acceptance check builds one
+immutable image containing the API server and replica-ingress, then starts the
+pinned MySQL/PostgreSQL sources, two REST owners, two remote MCP owners, the
+OIDC fixture, and the ingress in an isolated Compose project. Its -multi-replica
+run exercises R1 and M1 through the published loopback ingress: it verifies
+signed owner slots, switches new work from A to B, follows REST continuations
+and MCP tool calls on A, checks MCP GET/DELETE session affinity, and starts
+fresh work on B. The runner records its source commit, image digest, container
+resource snapshot, and per-case owner slots.
 
-This automated coverage is a component-level contract. It does not claim that
-the full containerized matrix below has run. Record that run separately before
-using owner routing in a deployment; policy publication and fleet-wide
-revocation remain tracked in [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99).
+The required check also runs the focused component cases in
+internal/replicarouting and internal/mcp. Those cases cover marker rejection,
+principal binding, expiry, capacity, drain and cleanup. Together the container
+and component tests give an automated contract for R1 and M1 and supporting
+owner lifecycle behavior. They do not claim that the full matrix below has
+run. Record the remaining cases separately before using owner routing in a
+deployment; policy publication and fleet-wide revocation remain tracked in
+https://github.com/RhinoLink-Tech/data-fabric/issues/99.
 
 For each REST or remote MCP run, start two replicas of that server mode
 behind one ingress. Use distinct owner slots and boot identifiers and share a

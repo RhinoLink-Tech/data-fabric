@@ -136,10 +136,23 @@ func (env *Environment) verifyDenials(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.MCPURL, nil)
+	probe, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "initialize",
+		"params": map[string]any{
+			"protocolVersion": mcp.LATEST_PROTOCOL_VERSION,
+			"clientInfo":      map[string]string{"name": "reference-invalid-audience", "version": "1"},
+			"capabilities":    map[string]any{},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("encode MCP invalid-audience probe: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.MCPURL, bytes.NewReader(probe))
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+badToken)
 	resp, err := env.mcpHTTPClient().Do(req)
 	if err != nil {

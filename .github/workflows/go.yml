@@ -128,6 +128,7 @@ jobs:
           if [[ "$CI_EVENT_NAME" != schedule && "$CI_EVENT_NAME" != workflow_dispatch ]]; then
             acceptance_args+=(-smoke)
           fi
+          acceptance_args+=(-multi-replica)
           go run ./deploy/mcp/reference/cmd/acceptance "${acceptance_args[@]}" | tee "$RUNNER_TEMP/public-reference.log"
 
       - name: Run two-owner REST and MCP routing acceptance

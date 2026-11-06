@@ -134,7 +134,7 @@ func (env *Environment) prepareTLS(directory string) error {
 		return err
 	}
 	gatewayTLS := x509.Certificate{
-		SerialNumber: big.NewInt(2), DNSNames: []string{"localhost"}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+		SerialNumber: big.NewInt(2), DNSNames: []string{"localhost", "data-fabric-mcp", "data-fabric-mcp-b"}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
 	}
 	if err := writeServerTLS(filepath.Join(directory, "gateway-tls"), &gatewayTLS, rootCert, key); err != nil {
 		return err
