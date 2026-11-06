@@ -247,6 +247,9 @@ sessions are swept every minute, and cleanup closes their active cursors. For
 the client-facing expiration and token-rotation contract, see the
 [API usage guide](api_usage.md#fetch-the-next-batch).
 
+[ADR-003](decisions/adr-003-query-continuation-across-replicas.md) proposes
+owner routing and bounded drain for a future multi-replica deployment.
+
 ## Monitoring and Observability
 
 ### Metrics Collection
