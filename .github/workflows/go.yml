@@ -18,8 +18,119 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contract-selection:
+    name: Select affected live contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected_jobs: ${{ steps.plan.outputs.selected_jobs }}
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select contracts from the complete Git diff
+        id: plan
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD_SHA: ${{ github.sha }}
+        run: >-
+          python3 scripts/ci/contract_checks.py select
+          --event "$CI_EVENT_NAME" --base "$CI_BASE_SHA" --head "$CI_HEAD_SHA"
+
+  reference-contracts:
+    name: Reference PostgreSQL and MySQL contracts
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'reference-contracts') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATA_FABRIC_POSTGRES_CONTRACT_DSN: postgres://data_fabric_contract:contract-test-only@localhost:5432/data_fabric_contract?sslmode=disable
+      DATA_FABRIC_POSTGRES_EXPECTED_VERSION: "17.11"
+      DATA_FABRIC_MYSQL_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MYSQL_CONTRACT_PORT: "3306"
+      DATA_FABRIC_MYSQL_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
+      DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.4.13"
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: data_fabric_contract
+          POSTGRES_PASSWORD: contract-test-only
+          POSTGRES_DB: data_fabric_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U data_fabric_contract -d data_fabric_contract"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
+        env:
+          MYSQL_ROOT_PASSWORD: root-contract-only
+          MYSQL_USER: data_fabric_contract
+          MYSQL_PASSWORD: contract-test-only
+          MYSQL_DATABASE: data_fabric_contract
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run both existing reference driver contracts
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^(TestPostgreSQLDriverContract|TestMySQLDriverContract)$' 2>&1 | tee "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require both reference contracts to run and pass
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job reference-contracts --log "$RUNNER_TEMP/live-contract.log"
+
+  postgres-tls-contract:
+    name: PostgreSQL TLS certificate contract
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'postgres-tls-contract') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run existing PostgreSQL TLS contract
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_postgresql_tls_contract.sh 2>&1 | tee "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require the PostgreSQL TLS result
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job postgres-tls-contract --log "$RUNNER_TEMP/live-contract.log"
+
   postgres-version-contracts:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'postgres-version-contracts') }}
     name: PostgreSQL ${{ matrix.version }} driver contract
     runs-on: ubuntu-latest
     strategy:
@@ -60,10 +171,17 @@ jobs:
           cache: true
 
       - name: Run PostgreSQL driver contract
-        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestPostgreSQLDriverContract$'
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^TestPostgreSQLDriverContract$' 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job postgres-version-contracts --log "$RUNNER_TEMP/live-contract.log"
 
   mysql-lts-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mysql-lts-contract') }}
     name: MySQL 8.4.13 driver contract
     runs-on: ubuntu-latest
     env:
@@ -99,10 +217,17 @@ jobs:
           cache: true
 
       - name: Run MySQL driver contract
-        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMySQLDriverContract$'
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMySQLDriverContract$' 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mysql-lts-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-lts-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-lts-contract') }}
     name: MariaDB 10.11.19 driver contract
     runs-on: ubuntu-latest
     env:
@@ -138,10 +263,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB driver contract
-        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$' 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-lts-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-114-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-114-contract') }}
     name: MariaDB 11.4.13 driver contract
     runs-on: ubuntu-latest
     env:
@@ -177,10 +309,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB driver contract
-        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$' 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-114-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-123-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-123-contract') }}
     name: MariaDB 12.3.3 driver contract
     runs-on: ubuntu-latest
     env:
@@ -216,10 +355,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB driver contract
-        run: go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$'
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/database/drivers/traditional -run '^TestMariaDBDriverContract$' 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-123-contract --log "$RUNNER_TEMP/live-contract.log"
 
   hdfs-csv-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'hdfs-csv-contract') }}
     name: HDFS CSV, Avro, and Text Hadoop 3.5.0 live contracts
     runs-on: ubuntu-latest
     steps:
@@ -233,10 +379,17 @@ jobs:
           cache: true
 
       - name: Run HDFS CSV, Avro, and Text live contracts
-        run: bash scripts/contracts/run_hdfs_csv_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_hdfs_csv_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job hdfs-csv-contract --log "$RUNNER_TEMP/live-contract.log"
 
   hdfs-parquet-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'hdfs-parquet-contract') }}
     name: HDFS Parquet and ORC Hadoop 3.5.0 live contracts
     runs-on: ubuntu-latest
     steps:
@@ -250,10 +403,16 @@ jobs:
           cache: true
 
       - name: Run HDFS Parquet and ORC live contracts
-        run: bash scripts/contracts/run_hdfs_parquet_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_hdfs_parquet_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
 
-  checks:
-    name: Build and checks
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job hdfs-parquet-contract --log "$RUNNER_TEMP/live-contract.log"
+
+  fast-checks:
+    name: Unit and build checks
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -297,6 +456,9 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Test contract selection and required gate
+        run: python -m unittest discover -s scripts/ci -p "test_*.py"
+
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
 
@@ -330,7 +492,8 @@ jobs:
         run: make build
 
   full-checks:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'full-checks') }}
     name: Full build and checks
     runs-on: ubuntu-latest
     env:
@@ -511,13 +674,19 @@ jobs:
         run: go vet ./...
 
       - name: Verify PostgreSQL TLS certificate contract
-        run: bash scripts/contracts/run_postgresql_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_postgresql_tls_contract.sh 2>&1 | tee "$RUNNER_TEMP/postgres-tls.log"
+
+      - name: Require the full profile PostgreSQL TLS result
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job postgres-tls-contract --log "$RUNNER_TEMP/postgres-tls.log"
 
       - name: Run tests
         run: |
           result_file="$RUNNER_TEMP/go-test.json"
           set +e
-          go test -json ./... >"$result_file"
+          go test -count=1 -json ./... >"$result_file"
           test_status=$?
           python scripts/validation/summarize_driver_contracts.py "$result_file" --require-configured
           summary_status=$?
@@ -561,7 +730,8 @@ jobs:
           docker run --rm --entrypoint /bin/sh -v "$config_dir:/app/configs:ro" data-fabric:ci -c "test -r /app/configs/mount-smoke"
 
   mysql-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mysql-tls-contract') }}
     name: MySQL TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -575,10 +745,17 @@ jobs:
           cache: true
 
       - name: Run MySQL TLS certificate contract
-        run: bash scripts/contracts/run_mysql_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mysql_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mysql-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mysql-84-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mysql-84-tls-contract') }}
     name: MySQL 8.4.13 TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -595,10 +772,17 @@ jobs:
         env:
           DATA_FABRIC_MYSQL_TLS_IMAGE: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
           DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION: "8.4.13"
-        run: bash scripts/contracts/run_mysql_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mysql_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mysql-84-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-tls-contract') }}
     name: MariaDB TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -612,10 +796,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB TLS certificate contract
-        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mariadb_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-1011-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-1011-tls-contract') }}
     name: MariaDB 10.11.19 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -632,10 +823,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB 10.11.19 TLS certificate contract
-        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mariadb_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-1011-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-114-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-114-tls-contract') }}
     name: MariaDB 11.4.13 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -652,10 +850,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB 11.4.13 TLS certificate contract
-        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mariadb_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-114-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mariadb-123-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mariadb-123-tls-contract') }}
     name: MariaDB 12.3.3 TLS certificate contract
     runs-on: ubuntu-latest
     env:
@@ -672,10 +877,17 @@ jobs:
           cache: true
 
       - name: Run MariaDB 12.3.3 TLS certificate contract
-        run: bash scripts/contracts/run_mariadb_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_mariadb_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mariadb-123-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   tidb-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'tidb-tls-contract') }}
     name: TiDB TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -689,10 +901,17 @@ jobs:
           cache: true
 
       - name: Run TiDB TLS certificate contract
-        run: bash scripts/contracts/run_tidb_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_tidb_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job tidb-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   opengauss-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'opengauss-tls-contract') }}
     name: openGauss TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -706,10 +925,17 @@ jobs:
           cache: true
 
       - name: Run openGauss TLS certificate contract
-        run: bash scripts/contracts/run_opengauss_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_opengauss_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job opengauss-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   clickhouse-tls-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'clickhouse-tls-contract') }}
     name: ClickHouse TLS certificate contract
     runs-on: ubuntu-latest
     steps:
@@ -723,10 +949,17 @@ jobs:
           cache: true
 
       - name: Run ClickHouse TLS certificate contract
-        run: bash scripts/contracts/run_clickhouse_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_clickhouse_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job clickhouse-tls-contract --log "$RUNNER_TEMP/live-contract.log"
 
   sqlserver-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'sqlserver-contract') }}
     name: SQL Server driver contract
     runs-on: ubuntu-latest
     steps:
@@ -740,10 +973,17 @@ jobs:
           cache: true
 
       - name: Run SQL Server driver and TLS contracts
-        run: bash scripts/contracts/run_sqlserver_tls_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_sqlserver_tls_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job sqlserver-contract --log "$RUNNER_TEMP/live-contract.log"
 
   mongodb-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'mongodb-contract') }}
     name: MongoDB driver contract
     # MongoDB 8.0.34 cannot start on Linux kernels 6.19+; keep this contract on the Ubuntu 22.04 runner.
     runs-on: ubuntu-22.04
@@ -781,10 +1021,17 @@ jobs:
           cache: true
 
       - name: Run MongoDB driver contract
-        run: go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/drivers/nosql -run '^TestMongoDriverContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job mongodb-contract --log "$RUNNER_TEMP/live-contract.log"
 
   oracle-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'oracle-contract') }}
     name: Oracle driver contract
     runs-on: ubuntu-latest
     env:
@@ -822,10 +1069,17 @@ jobs:
           cache: true
 
       - name: Run Oracle driver contract
-        run: go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job oracle-contract --log "$RUNNER_TEMP/live-contract.log"
 
   s3-csv-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 's3-csv-contract') }}
     name: S3 CSV driver contract
     runs-on: ubuntu-latest
     steps:
@@ -839,10 +1093,17 @@ jobs:
           cache: true
 
       - name: Run S3 CSV, Parquet, ORC, Avro, JSON, and Delta contracts
-        run: bash scripts/contracts/run_s3_csv_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_s3_csv_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job s3-csv-contract --log "$RUNNER_TEMP/live-contract.log"
 
   minio-csv-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'minio-csv-contract') }}
     name: MinIO CSV, Parquet, JSON, Avro, ORC, Delta, and Iceberg driver contracts
     runs-on: ubuntu-latest
     steps:
@@ -856,10 +1117,17 @@ jobs:
           cache: true
 
       - name: Run MinIO CSV, Parquet, JSON, Avro, ORC, Delta, and Iceberg contracts
-        run: bash scripts/contracts/run_minio_object_storage_contract.sh
+        run: |
+          set -o pipefail
+          bash scripts/contracts/run_minio_object_storage_contract.sh 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job minio-csv-contract --log "$RUNNER_TEMP/live-contract.log"
 
   doris-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'doris-contract') }}
     name: Apache Doris driver contract
     runs-on: ubuntu-latest
     env:
@@ -885,13 +1153,22 @@ jobs:
           cache: true
 
       - name: Run Apache Doris driver contract
-        run: go test ./internal/database/drivers/olap -run '^TestDorisDriverContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/drivers/olap -run '^TestDorisDriverContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
 
       - name: Run Apache Doris metadata contract
-        run: go test ./internal/database/metadata -run '^TestDorisMetadataExtractorContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/metadata -run '^TestDorisMetadataExtractorContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job doris-contract --log "$RUNNER_TEMP/live-contract.log"
 
   starrocks-contract:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'starrocks-contract') }}
     name: StarRocks driver and metadata contract
     runs-on: ubuntu-latest
     env:
@@ -922,7 +1199,59 @@ jobs:
           cache: true
 
       - name: Run StarRocks driver contract
-        run: go test ./internal/database/drivers/olap -run '^TestStarRocksDriverContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/drivers/olap -run '^TestStarRocksDriverContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
 
       - name: Run StarRocks metadata contract
-        run: go test ./internal/database/metadata -run '^TestStarRocksMetadataExtractorContract$' -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/database/metadata -run '^TestStarRocksMetadataExtractorContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
+
+      - name: Require actual live contract results
+        if: always()
+        run: python3 scripts/ci/contract_checks.py require --job starrocks-contract --log "$RUNNER_TEMP/live-contract.log"
+
+  checks:
+    name: Build and checks
+    if: always()
+    needs:
+      - contract-selection
+      - fast-checks
+      - reference-contracts
+      - postgres-tls-contract
+      - postgres-version-contracts
+      - mysql-lts-contract
+      - mariadb-lts-contract
+      - mariadb-114-contract
+      - mariadb-123-contract
+      - hdfs-csv-contract
+      - hdfs-parquet-contract
+      - full-checks
+      - mysql-tls-contract
+      - mysql-84-tls-contract
+      - mariadb-tls-contract
+      - mariadb-1011-tls-contract
+      - mariadb-114-tls-contract
+      - mariadb-123-tls-contract
+      - tidb-tls-contract
+      - opengauss-tls-contract
+      - clickhouse-tls-contract
+      - sqlserver-contract
+      - mongodb-contract
+      - oracle-contract
+      - s3-csv-contract
+      - minio-csv-contract
+      - doris-contract
+      - starrocks-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Require fast checks and every selected contract
+        env:
+          CI_CONTRACT_PLAN: ${{ needs.contract-selection.outputs.plan }}
+          CI_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/contract_checks.py gate
