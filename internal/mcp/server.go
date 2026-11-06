@@ -64,9 +64,12 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
 	}
+	hooks := &server.Hooks{}
+	hooks.AddAfterInitialize(markOwnerInitialized)
 	s := server.NewMCPServer(
 		"Data Fabric MCP Server",
 		"1.0.0",
+		server.WithHooks(hooks),
 	)
 
 	mcpServer := &MCPServer{

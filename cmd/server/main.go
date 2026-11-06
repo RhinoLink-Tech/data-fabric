@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -65,12 +67,27 @@ func main() {
 	}
 }
 
+func newRouteOwner(cfg config.RoutingConfig, pool string) (*replicarouting.Owner, error) {
+	if !cfg.Enabled {
+		return nil, nil
+	}
+	keys, err := replicarouting.ParseKeyRing(cfg.DeploymentID, os.Getenv("DATA_FABRIC_ROUTING_KEYS"))
+	if err != nil {
+		return nil, err
+	}
+	return keys.NewOwner(os.Getenv("DATA_FABRIC_ROUTING_ACTIVE_KEY_ID"), pool, cfg.OwnerSlot)
+}
+
 func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	// Validate settings before connecting to the metadata database.
 	if err := cfg.ValidateStartup(); err != nil {
 		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
 
+	routing, err := newRouteOwner(cfg.Routing, replicarouting.REST)
+	if err != nil {
+		return err
+	}
 	translationManager, err := newSQLTranslationManager(cfg)
 	if err != nil {
 		return err
@@ -118,9 +135,8 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 	connPool.SetTokenStore(tokenStore)
 	connPool.StartTokenRotation(context.Background())
-	// Registered before the streaming maintenance defers so it unwinds after
-	// them: cursors close first, then pooled connections and the metadata
-	// database (#32).
+	// Query sessions and cursors are closed before connection pools and the
+	// metadata database unwind (#32).
 	defer closeGatewayResources(db, connPool)
 	healthChecker := database.NewHealthChecker(connPool)
 
@@ -150,9 +166,26 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	)
 	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
 		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
-
-	// Initialize unified query service that chooses between pagination and streaming based on config
-	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
+	var stopStreaming func()
+	var queryOwner *unifiedservice.OwnerLifecycle
+	var queryCleanup sync.Once
+	shutdownQueryServices := func() {
+		queryCleanup.Do(func() {
+			if stopStreaming != nil {
+				stopStreaming()
+			} else if err := streamingService.Shutdown(); err != nil {
+				log.Printf("failed to close streaming resources during shutdown: %v", err)
+			}
+			paginationService.Shutdown()
+		})
+	}
+	defer shutdownQueryServices()
+	if cfg.Routing.Enabled {
+		queryOwner = unifiedservice.NewOwnerLifecycle(cfg.Routing.DrainTimeout(), func(now time.Time) int {
+			return paginationService.LiveSessionCount(now) + streamingService.LiveSessionCount(now)
+		}, shutdownQueryServices)
+	}
+	unifiedQueryService := unifiedservice.NewUnifiedQueryServiceWithOwner(paginationService, streamingService, cfg, queryOwner, routing)
 
 	// Initialize controllers
 	datasourceController := controller.NewDataSourceController(datasourceService)
@@ -177,6 +210,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		sqlTranslationController: sqlTranslationController,
 		auditController:          auditController,
 		auditRecorder:            auditStore,
+		queryOwner:               queryOwner,
 	})
 
 	// Bind the listener before anything else starts so an invalid or occupied
@@ -195,8 +229,10 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopServer()
 
-	stopStreaming := startStreamingMaintenance(serverCtx, streamingService)
-	defer stopStreaming()
+	stopStreaming = startStreamingMaintenance(serverCtx, streamingService)
+	if queryOwner != nil {
+		defer queryOwner.Shutdown()
+	}
 	stopAuditCleanup := startAuditRetentionMaintenance(serverCtx, auditStore)
 	defer stopAuditCleanup()
 
@@ -212,6 +248,9 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		}
 		return nil
 	case <-serverCtx.Done():
+		if queryOwner != nil {
+			queryOwner.Shutdown()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		shutdownErr := server.Shutdown(shutdownCtx)
 		cancel()
@@ -317,6 +356,10 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	if err := cfg.ValidateStartup(); err != nil {
 		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
+	routing, err := newRouteOwner(cfg.Routing, replicarouting.MCP)
+	if err != nil {
+		return err
+	}
 
 	translationManager, err := newSQLTranslationManager(cfg)
 	if err != nil {
@@ -324,7 +367,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 
 	var tokenValidator mcp.MCPTokenValidator
-	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		tokenValidator, err = newMCPTokenValidator(context.Background(), cfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize remote MCP token validation: %w", err)
@@ -363,8 +406,8 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 	connPool.SetTokenStore(tokenStore)
 	connPool.StartTokenRotation(context.Background())
-	// Unwinds after the streaming maintenance defer below: cursors close
-	// first, then pooled connections and the metadata database (#32).
+	// The query lifecycle cleanup below runs before connection pools and the
+	// metadata database are closed (#32).
 	defer closeGatewayResources(db, connPool)
 	tableAuthorizer := security.NewTableAuthorizer(cfg.TableAuthorization)
 	queryStats := service.NewQueryStatsTracker()
@@ -376,12 +419,45 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	)
 	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
 		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
-	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
+	var routedTransport *mcp.OwnerTransport
+	var stopStreaming func()
+	var queryOwner *unifiedservice.OwnerLifecycle
+	var queryCleanup sync.Once
+	shutdownQueryServices := func() {
+		queryCleanup.Do(func() {
+			if routedTransport != nil {
+				routedTransport.Close()
+			}
+			if stopStreaming != nil {
+				stopStreaming()
+			} else if err := streamingService.Shutdown(); err != nil {
+				log.Printf("failed to close streaming resources during shutdown: %v", err)
+			}
+			paginationService.Shutdown()
+		})
+	}
+	if routing != nil {
+		queryOwner = unifiedservice.NewOwnerLifecycle(cfg.Routing.DrainTimeout(), func(now time.Time) int {
+			pending := paginationService.LiveSessionCount(now) + streamingService.LiveSessionCount(now)
+			if routedTransport != nil {
+				pending += routedTransport.LiveSessionCount()
+			}
+			return pending
+		}, shutdownQueryServices)
+	}
+	defer func() {
+		if queryOwner != nil {
+			queryOwner.Shutdown()
+		} else {
+			shutdownQueryServices()
+		}
+	}()
+	queryService := unifiedservice.NewUnifiedQueryServiceWithOwner(paginationService, streamingService, cfg, queryOwner, routing)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
 	mcpServer.SetAuditRecorder(auditStore)
 
-	if cfg.MCP.Transport == config.MCPTransportStreamableHTTP {
+	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
 		// per-client rate limiting from the shared config, plus body and
 		// concurrency caps so one client cannot exhaust the gateway before
@@ -397,12 +473,32 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		}
 		log.Printf("Remote MCP entrance budgets: body %d bytes, %d concurrent requests, rate %d/min",
 			limits.EffectiveBodyBytes(), limits.EffectiveConcurrent(), cfg.Security.RateLimitPerMinute)
-		handler := mcpServer.StreamableHTTPHandlerWithLimits(tokenValidator, rateLimiter, limits)
-		return serveMCPHTTP(cfg, handler, streamingService, db, connPool, auditStore)
+		var handler http.Handler
+		if routing == nil {
+			handler = mcpServer.StreamableHTTPHandlerWithLimits(tokenValidator, rateLimiter, limits)
+		} else {
+			routedTransport, err = mcp.NewOwnerTransport(mcp.OwnerTransportOptions{
+				Owner: routing, TTL: cfg.MCP.RoutedSessionTTL(), MaxSessions: cfg.MCP.RoutedSessionCapacity(),
+				BeginInitialize: queryOwner.BeginInitialization,
+				BindSession:     replicarouting.WithTransportSession,
+				EndSession: func(sessionID string) {
+					paginationService.EndTransportSession(sessionID)
+					streamingService.EndTransportSession(sessionID)
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to initialize routed MCP sessions: %w", err)
+			}
+			handler = mcpServer.StreamableHTTPHandlerWithOwnerAdmin(
+				tokenValidator, rateLimiter, limits, routedTransport, queryOwner, cfg.Routing.PolicyRevision,
+			)
+		}
+		return serveMCPHTTP(cfg, handler, streamingService, auditStore, queryOwner, func(stop func()) {
+			stopStreaming = stop
+		})
 	}
 
-	stopStreaming := startStreamingMaintenance(context.Background(), streamingService)
-	defer stopStreaming()
+	stopStreaming = startStreamingMaintenance(context.Background(), streamingService)
 	stopAuditCleanup := startAuditRetentionMaintenance(context.Background(), auditStore)
 	defer stopAuditCleanup()
 	log.Println("Starting MCP server with transport: stdio")
@@ -429,10 +525,7 @@ func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPToken
 	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
-func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, db metadataDB, connPool *database.ConnectionPool, auditStore *auditlog.Store) error {
-	// Unwinds after the streaming maintenance defer below: cursors close
-	// first, then pooled connections and the metadata database (#32).
-	defer closeGatewayResources(db, connPool)
+func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, auditStore *auditlog.Store, queryOwner *unifiedservice.OwnerLifecycle, setMaintenanceStop func(func())) error {
 	server := &http.Server{
 		Addr:              cfg.MCP.Address,
 		Handler:           handler,
@@ -445,7 +538,9 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopServer()
 	stopStreaming := startStreamingMaintenance(serverCtx, streamingService)
-	defer stopStreaming()
+	if setMaintenanceStop != nil {
+		setMaintenanceStop(stopStreaming)
+	}
 	stopAuditCleanup := startAuditRetentionMaintenance(serverCtx, auditStore)
 	defer stopAuditCleanup()
 

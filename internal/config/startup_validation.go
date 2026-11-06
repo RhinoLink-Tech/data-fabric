@@ -17,6 +17,27 @@ func (c Config) ValidateStartup() error {
 	if err := c.Query.Validate(); err != nil {
 		return err
 	}
+	if c.Routing.DrainTimeoutSeconds < 0 || c.Routing.DrainTimeoutSeconds > 1800 {
+		return fmt.Errorf("routing.drain_timeout_seconds must be between 0 and 1800")
+	}
+	if c.Routing.Enabled && (strings.TrimSpace(c.Routing.PolicyRevision) == "" || len(c.Routing.PolicyRevision) > 64) {
+		return fmt.Errorf("routing.policy_revision is required and must be at most 64 bytes")
+	}
+	if c.Routing.Enabled && c.MCP.Enabled {
+		transport := strings.TrimSpace(c.MCP.Transport)
+		if transport == "" {
+			transport = MCPTransportStdio
+		}
+		if transport != MCPTransportStreamableHTTP {
+			return fmt.Errorf("routing.enabled with mcp.enabled requires the streamable-http transport")
+		}
+		if c.MCP.RoutedSessionTTLSeconds < 0 || c.MCP.RoutedSessionTTLSeconds > maxRoutedSessionTTLSeconds {
+			return fmt.Errorf("mcp.routed_session_ttl_seconds must be between 0 and %d", maxRoutedSessionTTLSeconds)
+		}
+		if c.MCP.MaxRoutedSessions < 0 || c.MCP.MaxRoutedSessions > maxRoutedSessions {
+			return fmt.Errorf("mcp.max_routed_sessions must be between 0 and %d", maxRoutedSessions)
+		}
+	}
 	if err := c.SQLTranslation.Validate(); err != nil {
 		return err
 	}

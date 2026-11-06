@@ -136,7 +136,7 @@ func TestQueryRequestRateLimitRejectsPaginationContinuationBeforeSourceConnectio
 		newTestSQLTranslationManager(),
 	).(*queryService)
 	query.sessionManager.Store(&QuerySession{
-		QueryID: "query-1", Slug: "slug-1", Token: "token-1", CreatorID: caller.UserID,
+		QueryID: "query-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipalFor(caller),
 		DataSourceID: source.ID, SQL: "SELECT 1", TotalRows: 10, FetchedRows: 0,
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -196,7 +196,7 @@ func TestQueryRequestRateLimitRejectsStreamingContinuationBeforeReadingRows(t *t
 		newTestSQLTranslationManager(),
 	).(*streamingService)
 	streaming.streamingSessionManager.Store(&StreamingSession{
-		QueryID: "query-1", Slug: "slug-1", Token: "token-1", CreatorID: caller.UserID,
+		QueryID: "query-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipalFor(caller),
 		DataSourceID: source.ID, SQL: "SELECT 1", Tables: nil, StreamID: "stream-1",
 		TotalRows: 10, FetchedRows: 0, ExpiresAt: time.Now().Add(time.Minute),
 	})

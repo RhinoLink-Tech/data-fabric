@@ -10,6 +10,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 )
@@ -48,11 +49,18 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 	entries := encodeExecutionRows(batch.Rows, columns)
 
 	createdAt := time.Now()
+	queryID := qs.generateSessionID()
+	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(qs.sessionManager.ttl))
+	slug, err := querySessionSlug(ctx, queryID, expiresAt, qs.generateSlug)
+	if err != nil {
+		_ = cursor.Close()
+		return nil, err
+	}
 	session := &QuerySession{
-		QueryID:      qs.generateSessionID(),
-		Slug:         qs.generateSlug(),
+		QueryID:      queryID,
+		Slug:         slug,
 		Token:        qs.generateToken(),
-		CreatorID:    caller.Key(),
+		creator:      querySessionPrincipalFromContext(ctx, caller),
 		DataSourceID: req.DataSourceID,
 		SQL:          query,
 		Tables:       tables,
@@ -65,7 +73,7 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		Entries:      entries,
 		Cursor:       cursor,
 		CreatedAt:    createdAt,
-		ExpiresAt:    createdAt.Add(qs.sessionManager.ttl),
+		ExpiresAt:    expiresAt,
 	}
 	response := &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
@@ -76,8 +84,10 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		TotalCount: int(totalRows),
 	}
 	if req.Type == 2 && batch.HasMore {
+		if !qs.sessionManager.Store(session) {
+			return nil, ErrQuerySessionUnavailable
+		}
 		response.NextURI = qs.buildNextURI(session.QueryID, session.Slug, session.Token, batchSize)
-		qs.sessionManager.Store(session)
 	} else {
 		_ = cursor.Close()
 	}

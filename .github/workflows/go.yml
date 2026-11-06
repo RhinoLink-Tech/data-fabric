@@ -130,6 +130,16 @@ jobs:
           fi
           go run ./deploy/mcp/reference/cmd/acceptance "${acceptance_args[@]}" | tee "$RUNNER_TEMP/public-reference.log"
 
+      - name: Run two-owner REST and MCP routing acceptance
+        env:
+          CI_ACCEPTANCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          echo "acceptance_commit=$CI_ACCEPTANCE_HEAD_SHA"
+          echo "acceptance_image=not-applicable; owner HTTP servers use deterministic in-process fixtures"
+          echo "owner_slots=rest-a,rest-b;mcp=owner-a,owner-b"
+          go test -count=1 -v ./internal/replicarouting -run '^TestIngressRoutesRESTContinuationAcrossTwoHTTPOwners$'
+          go test -count=1 -v ./internal/mcp -run '^TestMCPIngressKeepsSessionsOnTheirOwnerAfterReload$'
+
   postgres-tls-contract:
     name: PostgreSQL TLS certificate contract
     needs: contract-selection

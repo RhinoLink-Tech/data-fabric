@@ -13,6 +13,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
@@ -23,6 +24,9 @@ import (
 )
 
 type QueryService interface {
+	LiveSessionCount(now time.Time) int
+	EndTransportSession(sessionID string)
+	Shutdown()
 	ValidateQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) error
 	GetQueryStats(ctx context.Context) (*model.QueryStats, error)
 	FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error)
@@ -31,13 +35,10 @@ type QueryService interface {
 
 // QuerySession represents a query session for batch fetching
 type QuerySession struct {
-	QueryID string
-	Slug    string
-	Token   string
-	// CreatorID binds a session to the identity that created it (#9): a
-	// continuation Bearer token from a different user is rejected the same
-	// way as an unknown session.
-	CreatorID    string
+	QueryID      string
+	Slug         string
+	Token        string
+	creator      querySessionPrincipal
 	DataSourceID string
 	SQL          string
 	Tables       []sqlanalysis.TableReference
@@ -59,9 +60,13 @@ type QuerySession struct {
 
 // SessionManager manages query sessions
 type SessionManager struct {
-	sessions map[string]*QuerySession
-	mutex    sync.RWMutex
-	ttl      time.Duration
+	sessions     map[string]*QuerySession
+	mutex        sync.RWMutex
+	ttl          time.Duration
+	closed       bool
+	stopCleanup  chan struct{}
+	cleanupDone  chan struct{}
+	shutdownOnce sync.Once
 }
 
 type queryService struct {
@@ -156,8 +161,10 @@ func NewSessionManager() *SessionManager {
 
 func newSessionManager(ttl time.Duration) *SessionManager {
 	sm := &SessionManager{
-		sessions: make(map[string]*QuerySession),
-		ttl:      ttl,
+		sessions:    make(map[string]*QuerySession),
+		ttl:         ttl,
+		stopCleanup: make(chan struct{}),
+		cleanupDone: make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -532,11 +539,17 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 
 	// Create query session
 	createdAt := time.Now()
+	queryID := qs.generateSessionID()
+	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(qs.sessionManager.ttl))
+	slug, err := querySessionSlug(ctx, queryID, expiresAt, qs.generateSlug)
+	if err != nil {
+		return nil, err
+	}
 	session := &QuerySession{
-		QueryID:      qs.generateSessionID(),
-		Slug:         qs.generateSlug(),
+		QueryID:      queryID,
+		Slug:         slug,
 		Token:        qs.generateToken(),
-		CreatorID:    caller.Key(),
+		creator:      querySessionPrincipalFromContext(ctx, caller),
 		DataSourceID: req.DataSourceID,
 		SQL:          sqlToExecute,
 		Tables:       tables,
@@ -544,7 +557,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    createdAt,
-		ExpiresAt:    createdAt.Add(qs.sessionManager.ttl),
+		ExpiresAt:    expiresAt,
 	}
 
 	// Execute query and get first batch
@@ -572,8 +585,9 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		session.TotalRows = totalCount
 		session.FetchedRows = int64(len(entries))
 
-		// Store session
-		qs.sessionManager.Store(session)
+		if !qs.sessionManager.Store(session) {
+			return nil, ErrQuerySessionUnavailable
+		}
 	}
 
 	return response, nil
@@ -600,10 +614,8 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		return nil, err
 	}
 
-	// Sessions are bound to their creator (#9): another user's valid Bearer
-	// token cannot drain a stream it did not open. The response matches an
-	// unknown session so session existence is not disclosed.
-	if session.CreatorID != caller.Key() {
+	// Match the creator's user and tenant without exposing session existence.
+	if session.creator != querySessionPrincipalFromContext(ctx, caller) {
 		return nil, ErrQuerySessionUnavailable
 	}
 
@@ -611,17 +623,21 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	// disabled or deleted since the session was created (#118)
 	datasource, err := qs.datasourceRepo.GetByID(ctx, session.DataSourceID)
 	if err != nil {
+		if errors.Is(err, repository.ErrDataSourceNotFound) {
+			qs.sessionManager.Delete(session.QueryID)
+		}
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
-
-	// Inactive or errored sources must not continue fetch sessions (#118)
 	if !caller.CanRead(datasource) {
+		qs.sessionManager.Delete(session.QueryID)
 		return nil, security.ErrDataSourceAccessDenied
 	}
 	if err := requireActiveDataSource(datasource); err != nil {
+		qs.sessionManager.Delete(session.QueryID)
 		return nil, err
 	}
 	if err := reauthorizeSavedQuery(ctx, caller, datasource, qs.tableAuthorizer, qs.sqlValidator, session.SQL, session.Tables); err != nil {
+		qs.sessionManager.Delete(session.QueryID)
 		return nil, err
 	}
 
@@ -724,13 +740,77 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	return response, nil
 }
 
-// SessionManager methods
+// LiveSessionCount counts sessions that can still serve a continuation.
+func (qs *queryService) LiveSessionCount(now time.Time) int {
+	return qs.sessionManager.liveSessionCount(now)
+}
 
-func (sm *SessionManager) Store(session *QuerySession) {
+func (qs *queryService) EndTransportSession(sessionID string) {
+	if sessionID != "" {
+		qs.sessionManager.deleteTransportSession(sessionID)
+	}
+}
+
+func (qs *queryService) Shutdown() {
+	qs.sessionManager.shutdown()
+}
+
+func (sm *SessionManager) Store(session *QuerySession) bool {
 	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
-
+	if sm.closed {
+		sm.mutex.Unlock()
+		closeQueryCursor(session)
+		return false
+	}
 	sm.sessions[session.QueryID] = session
+	sm.mutex.Unlock()
+	return true
+}
+
+func (sm *SessionManager) deleteTransportSession(sessionID string) {
+	sm.mutex.Lock()
+	var sessions []*QuerySession
+	for id, session := range sm.sessions {
+		if session.creator.transportSessionID == sessionID {
+			delete(sm.sessions, id)
+			sessions = append(sessions, session)
+		}
+	}
+	sm.mutex.Unlock()
+	for _, session := range sessions {
+		closeQueryCursor(session)
+	}
+}
+
+func (sm *SessionManager) liveSessionCount(now time.Time) int {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+	count := 0
+	for _, session := range sm.sessions {
+		if now.Before(session.ExpiresAt) {
+			count++
+		}
+	}
+	return count
+}
+
+// shutdown runs after the owning server has cancelled or finished query work.
+func (sm *SessionManager) shutdown() {
+	sm.shutdownOnce.Do(func() {
+		sm.mutex.Lock()
+		sm.closed = true
+		sessions := sm.sessions
+		sm.sessions = nil
+		sm.mutex.Unlock()
+
+		if sm.stopCleanup != nil {
+			close(sm.stopCleanup)
+			<-sm.cleanupDone
+		}
+		for _, session := range sessions {
+			closeQueryCursor(session)
+		}
+	})
 }
 
 func (sm *SessionManager) getAndLock(ctx context.Context, queryID string) (*QuerySession, error) {
@@ -787,9 +867,15 @@ func closeQueryCursor(session *QuerySession) {
 func (sm *SessionManager) cleanupSessions() {
 	ticker := time.NewTicker(min(5*time.Minute, sm.ttl))
 	defer ticker.Stop()
+	defer close(sm.cleanupDone)
 
-	for range ticker.C {
-		sm.cleanupExpiredSessions(time.Now())
+	for {
+		select {
+		case <-sm.stopCleanup:
+			return
+		case now := <-ticker.C:
+			sm.cleanupExpiredSessions(now)
+		}
 	}
 }
 

@@ -112,7 +112,7 @@ func TestPaginatedContinuationAdmissionRejectsBeforeOpeningSourceConnection(t *t
 		newTestSQLTranslationManager(),
 	).(*queryService)
 	query.sessionManager.Store(&QuerySession{
-		QueryID: "query-1", Slug: "slug-1", Token: "token-1", CreatorID: caller.UserID,
+		QueryID: "query-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipalFor(caller),
 		DataSourceID: source.ID, SQL: "SELECT 1", TotalRows: 10, FetchedRows: 0,
 		ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -136,7 +136,7 @@ func TestPaginatedContinuationCancellationReleasesAdmission(t *testing.T) {
 	).(*queryService)
 	executor := blockingNativeAdmissionExecutor{started: make(chan struct{})}
 	query.sessionManager.Store(&QuerySession{
-		QueryID: "query-1", Slug: "slug-1", Token: "token-1", CreatorID: caller.UserID,
+		QueryID: "query-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipalFor(caller),
 		DataSourceID: source.ID, SQL: "SELECT 1", TotalRows: 10, FetchedRows: 0,
 		Cursor:    &nativeAPIQueryCursor{executor: executor, query: "SELECT 1"},
 		ExpiresAt: time.Now().Add(time.Minute),

@@ -14,6 +14,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
@@ -23,6 +24,8 @@ import (
 )
 
 type StreamingService interface {
+	LiveSessionCount(now time.Time) int
+	EndTransportSession(sessionID string)
 	//ExecuteQuery(ctx context.Context, req *model.QueryRequest) (*model.QueryResponse, error)
 	//ValidateQuery(ctx context.Context, req *model.QueryRequest) error
 	//GetQueryStats(ctx context.Context) (*model.QueryStats, error)
@@ -46,11 +49,10 @@ func (ss *streamingService) translateSQLIfNeeded(ctx context.Context, sql, sourc
 
 // StreamingSession represents a streaming query session for batch fetching
 type StreamingSession struct {
-	QueryID string
-	Slug    string
-	Token   string
-	// CreatorID binds a session to the identity that created it (#9).
-	CreatorID        string
+	QueryID          string
+	Slug             string
+	Token            string
+	creator          querySessionPrincipal
 	DataSourceID     string
 	SQL              string
 	Tables           []sqlanalysis.TableReference
@@ -656,6 +658,13 @@ func (ss *streamingService) closeSessionStream(session *StreamingSession) error 
 	return nil
 }
 
+// Invalidate the continuation even when closing its rows fails. Maintenance
+// can retry closure through activeStreams without accepting the old token.
+func (ss *streamingService) invalidateSessionStream(session *StreamingSession) {
+	ss.streamingSessionManager.deleteIfCurrent(session)
+	_ = ss.closeSessionStream(session)
+}
+
 // closeStreamLocked requires stream.mutex and keeps the session addressable
 // until the underlying SQL rows have been closed successfully.
 func (ss *streamingService) closeStreamLocked(streamID string, stream *ActiveStream) error {
@@ -868,6 +877,50 @@ func (ss *streamingService) StartCleanupRoutine(ctx context.Context, interval ti
 	}
 }
 
+// LiveSessionCount counts sessions that can still serve a continuation.
+func (ss *streamingService) LiveSessionCount(now time.Time) int {
+	manager := ss.streamingSessionManager
+	manager.mutex.RLock()
+	defer manager.mutex.RUnlock()
+	count := 0
+	for _, session := range manager.sessions {
+		if now.Before(session.ExpiresAt) {
+			count++
+		}
+	}
+	return count
+}
+
+// EndTransportSession closes every query created by one remote MCP session.
+func (ss *streamingService) EndTransportSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	manager := ss.streamingSessionManager
+	manager.mutex.RLock()
+	streamIDs := make([]string, 0)
+	orphaned := make([]string, 0)
+	for _, session := range manager.sessions {
+		if session.creator.transportSessionID != sessionID {
+			continue
+		}
+		if session.StreamID != "" {
+			streamIDs = append(streamIDs, session.StreamID)
+		} else {
+			orphaned = append(orphaned, session.QueryID)
+		}
+	}
+	manager.mutex.RUnlock()
+	for _, streamID := range streamIDs {
+		if err := ss.CloseStream(streamID); err != nil {
+			log.Printf("MCP session stream cleanup failed: %v", err)
+		}
+	}
+	for _, queryID := range orphaned {
+		manager.Delete(queryID)
+	}
+}
+
 // Shutdown closes all active streams after maintenance has stopped.
 func (ss *streamingService) Shutdown() error {
 	ss.streamsMutex.RLock()
@@ -882,7 +935,17 @@ func (ss *streamingService) Shutdown() error {
 		if err := ss.CloseStream(id); err != nil {
 			log.Printf("stream shutdown cleanup failed for stream %s: %v", id, err)
 			closeErrors = append(closeErrors, err)
+			// database/sql marks Rows closed even when its driver returns an
+			// error. Retire our bookkeeping and release admission on retry.
+			if retryErr := ss.CloseStream(id); retryErr != nil {
+				closeErrors = append(closeErrors, retryErr)
+			}
 		}
+	}
+	if manager := ss.streamingSessionManager; manager != nil {
+		manager.mutex.Lock()
+		clear(manager.sessions)
+		manager.mutex.Unlock()
 	}
 	return errors.Join(closeErrors...)
 }
@@ -979,17 +1042,23 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 
 	// Create a new streaming session
 	createdAt := time.Now()
+	queryID := ss.generateSessionID()
+	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(ss.streamingSessionManager.ttl))
+	slug, err := querySessionSlug(ctx, queryID, expiresAt, ss.generateSlug)
+	if err != nil {
+		return nil, err
+	}
 	session := &StreamingSession{
-		QueryID:      ss.generateSessionID(),
-		Slug:         ss.generateSlug(),
+		QueryID:      queryID,
+		Slug:         slug,
 		Token:        ss.generateToken(),
-		CreatorID:    caller.Key(),
+		creator:      querySessionPrincipalFromContext(ctx, caller),
 		DataSourceID: req.DataSourceID,
 		SQL:          req.SQL,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    createdAt,
-		ExpiresAt:    createdAt.Add(ss.streamingSessionManager.ttl),
+		ExpiresAt:    expiresAt,
 	}
 
 	// Execute streaming query to get the stream ID
@@ -1094,9 +1163,8 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		return nil, err
 	}
 
-	// Sessions are bound to their creator (#9). The response matches an
-	// unknown session so session existence is not disclosed.
-	if session.CreatorID != caller.Key() {
+	// Match the creator's user and tenant without exposing session existence.
+	if session.creator != querySessionPrincipalFromContext(ctx, caller) {
 		return nil, ErrQuerySessionUnavailable
 	}
 
@@ -1105,18 +1173,21 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	// can no longer serve queries also invalidates its engine cursor.
 	datasource, err := ss.datasourceRepo.GetByID(ctx, session.DataSourceID)
 	if err != nil {
+		if errors.Is(err, repository.ErrDataSourceNotFound) {
+			ss.invalidateSessionStream(session)
+		}
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
 	if !caller.CanRead(datasource) {
-		_ = ss.closeSessionStream(session)
+		ss.invalidateSessionStream(session)
 		return nil, security.ErrDataSourceAccessDenied
 	}
 	if err := requireActiveDataSource(datasource); err != nil {
-		_ = ss.closeSessionStream(session)
+		ss.invalidateSessionStream(session)
 		return nil, err
 	}
 	if err := reauthorizeSavedQuery(ctx, caller, datasource, ss.tableAuthorizer, ss.sqlValidator, session.SQL, session.Tables); err != nil {
-		_ = ss.closeSessionStream(session)
+		ss.invalidateSessionStream(session)
 		return nil, err
 	}
 

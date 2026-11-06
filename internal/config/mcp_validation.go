@@ -9,6 +9,11 @@ import (
 )
 
 const (
+	defaultRoutedSessionTTLSeconds = 3600
+	defaultMaxRoutedSessions       = 1024
+	maxRoutedSessionTTLSeconds     = 86400
+	maxRoutedSessions              = 65536
+
 	MCPTransportStdio          = "stdio"
 	MCPTransportStreamableHTTP = "streamable-http"
 	MCPAuthModeLocalJWT        = "local-jwt"
@@ -104,4 +109,22 @@ func validateMCPOIDCConfig(c MCPConfig) error {
 		}
 	}
 	return nil
+}
+
+// RoutedSessionTTL returns the configured remote MCP session lifetime. Zero
+// selects the conservative one-hour default used by routed owners.
+func (c MCPConfig) RoutedSessionTTL() time.Duration {
+	seconds := c.RoutedSessionTTLSeconds
+	if seconds == 0 {
+		seconds = defaultRoutedSessionTTLSeconds
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// RoutedSessionCapacity returns the configured bound for owner-local sessions.
+func (c MCPConfig) RoutedSessionCapacity() int {
+	if c.MaxRoutedSessions == 0 {
+		return defaultMaxRoutedSessions
+	}
+	return c.MaxRoutedSessions
 }

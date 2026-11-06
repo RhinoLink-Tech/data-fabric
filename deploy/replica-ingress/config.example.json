@@ -1,0 +1,11 @@
+{
+  "deployment_id": "analytics-prod",
+  "rest_upstreams": {
+    "rest-a": {"url": "https://rest-a.internal:8443", "accept_new": true},
+    "rest-b": {"url": "https://rest-b.internal:8443", "accept_new": true}
+  },
+  "mcp_upstreams": {
+    "mcp-a": {"url": "https://mcp-a.internal:8443", "accept_new": true},
+    "mcp-b": {"url": "https://mcp-b.internal:8443", "accept_new": true}
+  }
+}

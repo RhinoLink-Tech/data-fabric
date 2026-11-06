@@ -230,3 +230,29 @@ func TestValidateStartupOIDCRemoteMCPDoesNotRequireLocalJWTSecret(t *testing.T) 
 		t.Fatalf("ValidateStartup() error = %v, want OIDC to replace the local MCP JWT secret", err)
 	}
 }
+
+func TestValidateStartupRESTDrainConfiguration(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.PolicyRevision = "policy-v1"
+	if err := cfg.ValidateStartup(); err != nil || cfg.Routing.DrainTimeout() != 120*time.Second {
+		t.Fatalf("default drain timeout = %v, error = %v", cfg.Routing.DrainTimeout(), err)
+	}
+	for _, seconds := range []int{-1, 1801} {
+		cfg.Routing.DrainTimeoutSeconds = seconds
+		if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "routing.drain_timeout_seconds") {
+			t.Fatalf("drain timeout %d: error = %v", seconds, err)
+		}
+	}
+	cfg.Routing.DrainTimeoutSeconds = 1800
+	cfg.MCP.Enabled = true
+	cfg.MCP.Transport = MCPTransportStreamableHTTP
+	cfg.MCP.Address = "127.0.0.1:8081"
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("remote MCP routing configuration: error = %v", err)
+	}
+	cfg.MCP.Transport = MCPTransportStdio
+	if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "requires the streamable-http transport") {
+		t.Fatalf("stdio routing enabled: error = %v", err)
+	}
+}

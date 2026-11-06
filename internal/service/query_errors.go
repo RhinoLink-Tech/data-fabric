@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrQuerySessionUnavailable = errors.New("query session is unavailable or expired")
+	ErrQueryOwnerDraining      = errors.New("query owner is draining")
 	ErrInvalidQuerySession     = errors.New("query session credentials are invalid")
 	// ErrMaxConcurrentStreams means the stream limit was reached before a
 	// query was started, so auto mode may safely retry through pagination.
@@ -74,6 +75,8 @@ func SafeQueryErrorMessage(err error) string {
 		return "Table authorization is enabled but SQL analysis is unavailable"
 	case errors.Is(err, ErrDataSourceInactive):
 		return "The selected data source is not active. Ask an administrator to re-enable it, then retry the query."
+	case errors.Is(err, ErrQueryOwnerDraining):
+		return "This replica is draining and cannot accept new queries. Try again through the gateway."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):
 		return "The query session is invalid or has expired. Submit the query again."
 	case errors.Is(err, ErrExactCountUnavailable):

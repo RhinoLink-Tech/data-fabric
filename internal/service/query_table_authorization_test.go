@@ -87,7 +87,7 @@ func TestFetchNextBatchRechecksTableAuthorization(t *testing.T) {
 		newTestSQLTranslationManager(),
 	).(*queryService)
 	service.sessionManager.Store(&QuerySession{
-		QueryID: "query-1", Slug: "slug-1", Token: "token-1", CreatorID: "alice",
+		QueryID: "query-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipal{userID: "alice"},
 		DataSourceID: "ds-1", SQL: "SELECT * FROM public.orders",
 		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
 		TotalRows: 2, FetchedRows: 1, ExpiresAt: time.Now().Add(time.Hour),
@@ -143,7 +143,7 @@ func TestFetchNextBatchRechecksColumnPolicy(t *testing.T) {
 		Columns: []sqlanalysis.ColumnReference{{Schema: "public", Table: "orders", Column: "secret"}},
 	}})
 	service.sessionManager.Store(&QuerySession{
-		QueryID: "column-query", Slug: "column-slug", Token: "column-token", CreatorID: "alice",
+		QueryID: "column-query", Slug: "column-slug", Token: "column-token", creator: querySessionPrincipal{userID: "alice"},
 		DataSourceID: "ds-1", SQL: "SELECT secret FROM public.orders",
 		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
 		TotalRows: 1, FetchedRows: 1, ExpiresAt: time.Now().Add(time.Hour),
@@ -161,7 +161,7 @@ func TestFetchNextBatchWithStreamingRechecksColumnPolicy(t *testing.T) {
 	}})
 	manager := NewStreamingSessionManager()
 	manager.Store(&StreamingSession{
-		QueryID: "stream-column-query", Slug: "stream-column-slug", Token: "stream-column-token", CreatorID: "alice",
+		QueryID: "stream-column-query", Slug: "stream-column-slug", Token: "stream-column-token", creator: querySessionPrincipal{userID: "alice"},
 		DataSourceID: "ds-1", SQL: "SELECT secret FROM public.orders",
 		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
 		ExpiresAt: time.Now().Add(time.Hour),
@@ -189,7 +189,7 @@ func TestFetchNextBatchWithStreamingRechecksTableAuthorization(t *testing.T) {
 	authorizer := security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true})
 	manager := NewStreamingSessionManager()
 	manager.Store(&StreamingSession{
-		QueryID: "stream-query", Slug: "stream-slug", Token: "stream-token", CreatorID: "alice",
+		QueryID: "stream-query", Slug: "stream-slug", Token: "stream-token", creator: querySessionPrincipal{userID: "alice"},
 		DataSourceID: "ds-1", StreamID: "stream-id",
 		Tables:    []sqlanalysis.TableReference{{Schema: "public", Table: "orders"}},
 		ExpiresAt: time.Now().Add(time.Hour),
