@@ -260,9 +260,9 @@ func TestIngressRoutesRESTContinuationAcrossTwoHTTPOwners(t *testing.T) {
 
 	failA.Store(true)
 	beforeA, beforeB = aHits.Load(), bHits.Load()
-	resp, _ = send(http.MethodGet, fetchPath+"/query-a/"+slugA+"/token")
-	if resp.StatusCode != http.StatusBadGateway || aHits.Load() != beforeA+1 || bHits.Load() != beforeB {
-		t.Fatalf("failed continuation status/hits A/B = %d/%d/%d, want 502/one/unchanged", resp.StatusCode, aHits.Load()-beforeA, bHits.Load()-beforeB)
+	resp, body = send(http.MethodGet, fetchPath+"/query-a/"+slugA+"/token")
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(body, "QUERY_SESSION_UNAVAILABLE") || aHits.Load() != beforeA+1 || bHits.Load() != beforeB {
+		t.Fatalf("failed continuation status/hits A/B = %d/%d/%d, want 404/one/unchanged", resp.StatusCode, aHits.Load()-beforeA, bHits.Load()-beforeB)
 	}
 }
 
