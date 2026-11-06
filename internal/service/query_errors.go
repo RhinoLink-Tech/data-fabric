@@ -18,9 +18,11 @@ var (
 	ErrInvalidQuerySession     = errors.New("query session credentials are invalid")
 	// ErrMaxConcurrentStreams means the stream limit was reached before a
 	// query was started, so auto mode may safely retry through pagination.
-	ErrMaxConcurrentStreams   = errors.New("maximum concurrent streams reached")
-	ErrQueryAdmissionLimit    = errors.New("query admission limit reached")
-	ErrQueryRateLimitExceeded = errors.New("tenant query request rate limit exceeded")
+	ErrMaxConcurrentStreams       = errors.New("maximum concurrent streams reached")
+	ErrQueryAdmissionLimit        = errors.New("query admission limit reached")
+	ErrQueryRateLimitExceeded     = errors.New("tenant query request rate limit exceeded")
+	ErrQueryResultLimitExceeded   = errors.New("query result exceeded the configured row or byte limit")
+	ErrQueryDurationLimitExceeded = errors.New("query exceeded its configured total duration")
 	// ErrDataSourceInactive rejects query execution against a data source whose
 	// status is not active (#118). Anything but active — inactive, error, or an
 	// unexpected empty status — fails closed.
@@ -57,6 +59,10 @@ func SafeQueryErrorMessage(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, ErrQueryDurationLimitExceeded):
+		return "The query exceeded its total time limit and the result is incomplete. Narrow the query and submit it again."
+	case errors.Is(err, ErrQueryResultLimitExceeded):
+		return "The query result exceeded the configured row or byte limit and is incomplete. Narrow the result and submit it again."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The query timed out. Reduce the query scope or increase the request timeout."
 	case errors.Is(err, context.Canceled), isServerSideCancellation(err):

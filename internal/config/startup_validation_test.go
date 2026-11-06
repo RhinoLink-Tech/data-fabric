@@ -106,6 +106,9 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 		{"negative tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = -1 }, "query.rate_limit_per_minute_per_tenant"},
 		{"negative tenant query burst", func(c *Config) { c.Query.RateLimitBurstPerTenant = -1 }, "query.rate_limit_burst_per_tenant"},
 		{"incomplete tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = 120 }, "must both be zero"},
+		{"negative query result rows", func(c *Config) { c.Query.MaxResultRows = -1 }, "query.max_result_rows"},
+		{"oversized query result bytes", func(c *Config) { c.Query.MaxResultBytes = 1 << 31 }, "query.max_result_bytes"},
+		{"query duration above session TTL", func(c *Config) { c.Query.MaxDurationSeconds = 400; c.Query.SessionTTLSeconds = 300 }, "cannot exceed query.session_ttl_seconds"},
 		{"missing JWT secret", func(c *Config) { c.Security.JWTSecret = "" }, "security.jwt_secret"},
 	}
 	for _, tc := range tests {

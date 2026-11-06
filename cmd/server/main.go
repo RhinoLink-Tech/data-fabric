@@ -164,8 +164,13 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
-	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
-		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
+	queryBudgets := service.QueryBudgetLimits{
+		MaxRows:     cfg.Query.MaxResultRows,
+		MaxBytes:    cfg.Query.MaxResultBytes,
+		MaxDuration: time.Duration(cfg.Query.MaxDurationSeconds) * time.Second,
+	}
+	paginationService, streamingService := service.NewGatewayQueryServicesWithBudgets(datasourceRepo, connPool, cfg.Query.PreferStreaming,
+		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, queryBudgets, translationManager)
 	var stopStreaming func()
 	var queryOwner *unifiedservice.OwnerLifecycle
 	var queryCleanup sync.Once
@@ -418,8 +423,13 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
-	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
-		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
+	queryBudgets := service.QueryBudgetLimits{
+		MaxRows:     cfg.Query.MaxResultRows,
+		MaxBytes:    cfg.Query.MaxResultBytes,
+		MaxDuration: time.Duration(cfg.Query.MaxDurationSeconds) * time.Second,
+	}
+	paginationService, streamingService := service.NewGatewayQueryServicesWithBudgets(datasourceRepo, connPool, cfg.Query.PreferStreaming,
+		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, queryBudgets, translationManager)
 	var routedTransport *mcp.OwnerTransport
 	var stopStreaming func()
 	var queryOwner *unifiedservice.OwnerLifecycle

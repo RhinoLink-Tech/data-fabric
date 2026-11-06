@@ -73,7 +73,7 @@ The #365 ADR must specify routing keys for REST and MCP protocol/tool requests, 
 
 The implementation verification matrix includes two replicas, two tenants, token rotation, concurrent requests, drain and owner death. Lost owners must produce an explicit stable failure rather than implicitly rerunning SQL. Shared metadata is not live-cursor failover. Cluster-wide precise tenant quotas and transparent cursor recovery require their own design if later needed.
 
-The query-budget increment accounts for cumulative returned rows, encoded bytes and total deadline across every batch. Define oversized rows, optional/helper COUNT work, cancellation and partial-result status. Reuse current admission controls; result budgets do not imply bounded scans or a universal cloud-spend limit.
+[#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) accounts for cumulative returned rows, encoded bytes and total deadline across every batch. Define oversized rows, optional/helper COUNT work, cancellation and partial-result status. Reuse current admission controls; result budgets do not imply bounded scans or a universal cloud-spend limit.
 
 Policy work in #99 chooses atomic configuration reload or publication through the existing metadata store. Each request uses one valid policy snapshot. Invalid updates retain the last valid version; new queries and continuations observe revocation within a documented maximum propagation window. Stale replicas have explicit rejection/isolation behavior. Record policy version and publisher/outcome without promising stronger audit durability than is implemented.
 

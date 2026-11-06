@@ -24,6 +24,8 @@ func TestQueryFailureStatusAndCodeAreStable(t *testing.T) {
 		{name: "dangerous statement", err: security.ErrDangerousKeyword, wantStatus: 400, wantCode: "INVALID_QUERY"},
 		{name: "unavailable session", err: service.ErrQuerySessionUnavailable, wantStatus: 404, wantCode: "QUERY_SESSION_UNAVAILABLE"},
 		{name: "tenant query rate limit", err: service.ErrQueryRateLimitExceeded, wantStatus: 429, wantCode: "QUERY_RATE_LIMIT_EXCEEDED"},
+		{name: "query result limit", err: service.ErrQueryResultLimitExceeded, wantStatus: 413, wantCode: "QUERY_RESULT_LIMIT_EXCEEDED"},
+		{name: "query duration budget", err: service.ErrQueryDurationLimitExceeded, wantStatus: 504, wantCode: "QUERY_BUDGET_TIMEOUT"},
 		{name: "inactive data source", err: fmt.Errorf("wrapped: %w", service.ErrDataSourceInactive), wantStatus: 409, wantCode: "DATASOURCE_INACTIVE"},
 		{name: "engine failure", err: errors.New("internal coordinator URL contains password=secret"), wantStatus: 502, wantCode: "QUERY_ENGINE_ERROR"},
 	}

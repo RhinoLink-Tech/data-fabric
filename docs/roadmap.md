@@ -53,7 +53,7 @@ Define the reference profile in #81: pinned PostgreSQL and MySQL, synthetic data
 Create implementation issues only after the corresponding contract or design is ready.
 
 - Implement the #365 decision: query owner routing, owner generation, token and identity binding, bounded drain, and explicit owner-loss behavior. Keep live database cursors with their owner; do not implicitly rerun SQL after owner failure.
-- Add cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. Define COUNT overhead and partial-result behavior. These controls do not represent universal scan-cost or cloud-spend limits.
+- [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413): enforce cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. Define COUNT overhead and partial-result behavior. These controls do not represent universal scan-cost or cloud-spend limits.
 - #99: select and implement a bounded strategy for validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and documented cross-replica propagation limits.
 - Preserve a lightweight single-replica mode without a new mandatory infrastructure service.
 
