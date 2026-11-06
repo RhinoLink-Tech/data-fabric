@@ -1173,6 +1173,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		ss.stats.RecordBudgetExceeded()
 		return nil, ErrQueryDurationLimitExceeded
 	}
+	session.budget = budget
 
 	// Create a response similar to pagination service
 	response = &model.FetchQueryResponse{
