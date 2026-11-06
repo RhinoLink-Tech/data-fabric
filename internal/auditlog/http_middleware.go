@@ -70,7 +70,8 @@ func HTTPMiddleware(recorder Recorder, maxBodyBytes int64) gin.HandlerFunc {
 		event := Event{
 			CorrelationID: correlation, ActorID: actorID, TenantID: tenantID,
 			Transport: "rest", Operation: operation, DataSourceID: datasourceID,
-			Tables: tables, QueryFingerprint: fingerprint, Decision: decision,
+			Tables: tables, QueryFingerprint: fingerprint,
+			PolicyRevision: security.PolicyRevisionFromContext(c.Request.Context()), Decision: decision,
 			ReasonCode: reason, Outcome: outcome, StatusCode: c.Writer.Status(),
 			DurationMS: time.Since(started).Milliseconds(), RowsReturned: rows,
 			OccurredAt: started.UTC(),

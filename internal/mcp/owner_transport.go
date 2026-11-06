@@ -346,7 +346,7 @@ func writeMCPUnavailable(w http.ResponseWriter) {
 
 // StreamableHTTPHandlerWithOwnerAdmin adds the private owner status and drain
 // routes for routed remote MCP. The public ingress only forwards /mcp.
-func (m *MCPServer) StreamableHTTPHandlerWithOwnerAdmin(tokenValidator MCPTokenValidator, rateLimiter *middleware.RateLimiter, limits RemoteLimits, owner *OwnerTransport, lifecycle *unifiedservice.OwnerLifecycle, policyRevision string) http.Handler {
+func (m *MCPServer) StreamableHTTPHandlerWithOwnerAdmin(tokenValidator MCPTokenValidator, rateLimiter *middleware.RateLimiter, limits RemoteLimits, owner *OwnerTransport, lifecycle *unifiedservice.OwnerLifecycle, policyRevision string, policyManager *security.TablePolicyManager) http.Handler {
 	if owner == nil || lifecycle == nil {
 		return m.StreamableHTTPHandlerWithOwner(tokenValidator, rateLimiter, limits, owner)
 	}
@@ -384,6 +384,12 @@ func (m *MCPServer) StreamableHTTPHandlerWithOwnerAdmin(tokenValidator MCPTokenV
 			return
 		}
 		status.PolicyRevision = policyRevision
+		if policyManager != nil {
+			policyStatus := policyManager.Status()
+			status.TablePolicyRevision = policyStatus.Revision
+			status.TablePolicyFresh = policyStatus.Fresh
+			status.TablePolicyLastSyncAt = policyStatus.LastSyncAt
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(status)

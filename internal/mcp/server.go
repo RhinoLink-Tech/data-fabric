@@ -48,6 +48,7 @@ type MCPServer struct {
 	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
 	server              *server.MCPServer
 	auditRecorder       auditlog.Recorder
+	tablePolicyManager  *security.TablePolicyManager
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -172,8 +173,19 @@ func (m *MCPServer) registerTools() {
 
 func (m *MCPServer) SetAuditRecorder(recorder auditlog.Recorder) { m.auditRecorder = recorder }
 
+func (m *MCPServer) SetTablePolicyManager(manager *security.TablePolicyManager) {
+	if m == nil || manager == nil {
+		return
+	}
+	m.tablePolicyManager = manager
+	m.registerTablePolicyTools()
+}
+
 func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandlerFunc) {
 	m.server.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if m.tableAuthorizer != nil {
+			ctx = m.tableAuthorizer.PinRequest(ctx)
+		}
 		recorder := m.auditRecorder
 		if recorder == nil {
 			return handler(ctx, request)
@@ -226,7 +238,8 @@ func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandl
 		event := auditlog.Event{
 			CorrelationID: correlation, ActorID: caller.UserID, TenantID: caller.TenantID,
 			Transport: transport, Operation: "tools/call " + name, DataSourceID: datasourceID,
-			Tables: tables, QueryFingerprint: fingerprint, Decision: decision, ReasonCode: reason,
+			Tables: tables, QueryFingerprint: fingerprint,
+			PolicyRevision: security.PolicyRevisionFromContext(ctx), Decision: decision, ReasonCode: reason,
 			Outcome: outcome, DurationMS: time.Since(started).Milliseconds(), OccurredAt: started.UTC(),
 			RowsReturned: mcpRowsReturned(result),
 		}
@@ -545,6 +558,8 @@ func markMCPAuthorizationError(ctx context.Context, err error) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "datasource_access_denied")
 	} else if errors.Is(err, security.ErrTableAccessDenied) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "table_access_denied")
+	} else if errors.Is(err, security.ErrTablePolicyUnavailable) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionError, "table_policy_unavailable")
 	}
 }
 
@@ -590,6 +605,10 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 			}
 			allowed, err := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, references, security.TablePermissionMetadata)
 			if err != nil {
+				markMCPAuthorizationError(ctx, err)
+				if errors.Is(err, security.ErrTablePolicyUnavailable) {
+					return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+				}
 				return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 			}
 			allowedKeys := make(map[string]struct{}, len(allowed))
@@ -714,7 +733,14 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 	if tablePolicyEnabled {
 		reference := sqlanalysis.TableReference{Schema: requestedSchema, Table: tableName, Unqualified: requestedSchema == ""}
 		references, authErr := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, []sqlanalysis.TableReference{reference}, security.TablePermissionMetadata)
-		if authErr != nil || len(references) != 1 {
+		if authErr != nil {
+			markMCPAuthorizationError(ctx, authErr)
+			if errors.Is(authErr, security.ErrTablePolicyUnavailable) {
+				return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+			}
+			return mcp.NewToolResultError("table not found or access denied"), nil
+		}
+		if len(references) != 1 {
 			return mcp.NewToolResultError("table not found or access denied"), nil
 		}
 		authorizedTable = references[0]
@@ -752,6 +778,10 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 		}
 		visibleColumns, restricted, filterErr := m.tableAuthorizer.FilterColumns(ctx, caller, dataSource, authorizedTable, columnNames, security.TablePermissionMetadata)
 		if filterErr != nil {
+			markMCPAuthorizationError(ctx, filterErr)
+			if errors.Is(filterErr, security.ErrTablePolicyUnavailable) {
+				return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+			}
 			return mcp.NewToolResultError("table not found or access denied"), nil
 		}
 		if restricted {

@@ -18,7 +18,7 @@ func reauthorizeSavedQuery(ctx context.Context, caller *security.Caller, dataSou
 	if err := authorizer.AuthorizeReferences(ctx, caller, dataSource, tables, security.TablePermissionRead); err != nil {
 		return err
 	}
-	if !authorizer.RequiresColumnAuthorization(caller, dataSource, tables, security.TablePermissionRead) {
+	if !authorizer.RequiresColumnAuthorization(ctx, caller, dataSource, tables, security.TablePermissionRead) {
 		return nil
 	}
 	if validator == nil || !validator.SupportsASTAnalysis() {

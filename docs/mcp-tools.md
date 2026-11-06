@@ -20,6 +20,10 @@ client-visible contract change — update this page in the same PR.
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
 | `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects. |
 | `list_supported_dialects` | — | — | Enumerate the dialects `translate_sql` accepts. |
+| `get_table_policy` | — | `revision` | Read the active policy, version and freshness, or inspect an immutable historical revision. Administrator role required. |
+| `validate_table_policy` | `policy_json` | — | Preflight a complete enabled table/column policy without publishing it. Administrator role required. |
+| `publish_table_policy` | `expected_revision`, `policy_json` | — | Compare-and-swap publish a policy. Rollback creates a new revision. Administrator role required. |
+| `list_table_policy_publications` | — | `limit` (1–100; default 50) | List publisher, revision and outcome history. Administrator role required. |
 
 ## Conditional registration
 
@@ -27,6 +31,10 @@ client-visible contract change — update this page in the same PR.
   `sql_translation.enabled` is true (`sql_translation.*` settings).
 - `describe_table` is registered only when the gateway is built with schema
   discovery for the deployment (both server modes register it today).
+- The four table-policy administration tools are registered only while an
+  enabled managed table policy is loaded. They always require the administrator
+  role and are available through remote MCP; policy publication uses the shared
+  metadata database and the same revision contract as the REST admin endpoints.
 
 ## Failure semantics (two channels)
 
@@ -35,7 +43,8 @@ Tool failures reach the client through two distinct channels:
 1. **Tool-level errors** — the JSON-RPC response is a *successful* call whose
    result carries `isError: true` with a human-readable text message. Used for
    conditions the client can act on: unknown or inaccessible
-   `datasource_id`, invalid `parameters`, rejected SQL, query failures
+   `datasource_id`, invalid `parameters`, rejected SQL, stale managed table
+   policy (which fails closed), query failures
    (messages come from the gateway's sanitized mapping — internal hostnames,
    DSNs, and driver errors are never echoed), and expired pagination tokens.
 2. **Transport-level errors** — the JSON-RPC response itself is an error

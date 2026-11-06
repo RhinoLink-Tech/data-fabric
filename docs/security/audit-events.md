@@ -6,8 +6,11 @@ without retaining bearer tokens. Events include the verified actor and tenant
 when available, transport, operation, data-source ID, decision, reason code,
 HTTP status when applicable, duration, returned row count, timestamp, and
 correlation ID. Table names are recorded when explicit in the request or
-resolved by the table-policy analyzer. Column identifiers are not currently
-produced by that analyzer.
+resolved by the table-policy analyzer. When managed table authorization is
+active, events include the policy revision pinned to that request. Column
+identifiers are not currently produced by that analyzer. Policy publication
+outcomes are stored separately in the metadata database transaction that
+activates a revision; failure to write that record prevents activation.
 
 Query text, bind values, credentials, result rows, and model reasoning are not
 stored. SQL is represented by an HMAC-SHA-256 fingerprint derived from the

@@ -27,6 +27,8 @@ type routerDeps struct {
 	sqlTranslationController *controller.SQLTranslationController
 	auditController          *controller.AuditController
 	auditRecorder            auditlog.Recorder
+	tableAuthorizer          *security.TableAuthorizer
+	tablePolicyController    *controller.TablePolicyController
 	queryOwner               *unifiedservice.OwnerLifecycle
 }
 
@@ -44,6 +46,12 @@ func newRouter(deps routerDeps) *gin.Engine {
 	router.Use(middleware.PrometheusMiddleware())
 	if deps.cfg.Audit.Enabled && deps.auditRecorder != nil {
 		router.Use(auditlog.HTTPMiddleware(deps.auditRecorder, deps.cfg.Server.MaxRequestBodyBytes))
+	}
+	if deps.tableAuthorizer != nil {
+		router.Use(func(c *gin.Context) {
+			c.Request = c.Request.WithContext(deps.tableAuthorizer.PinRequest(c.Request.Context()))
+			c.Next()
+		})
 	}
 
 	// Authenticate optional JWTs before rate limiting so verified users share
@@ -67,18 +75,38 @@ func newRouter(deps routerDeps) *gin.Engine {
 	// API authentication switch.
 	metricsHandler := gin.WrapH(middleware.PrometheusHandler())
 	router.GET("/metrics", deps.authMiddleware.RequireAnyRole(security.AdminRole), metricsHandler)
+	if deps.tablePolicyController != nil {
+		policy := router.Group("/internal/table-policy", deps.authMiddleware.RequireAnyRole(security.AdminRole))
+		policy.GET("", deps.tablePolicyController.Get)
+		policy.GET("/publications", deps.tablePolicyController.Publications)
+		policy.GET("/versions/:revision", deps.tablePolicyController.GetRevision)
+		policy.POST("/validate", deps.tablePolicyController.Validate)
+		policy.POST("/publish", deps.tablePolicyController.Publish)
+	}
 	if deps.queryOwner != nil {
 		replica := router.Group("/internal/replica", deps.authMiddleware.RequireAnyRole(security.AdminRole))
 		replica.GET("", func(c *gin.Context) {
 			c.Header("Cache-Control", "no-store")
 			status := deps.queryOwner.Status()
 			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			if deps.tablePolicyController != nil {
+				policyStatus := deps.tablePolicyController.Status()
+				status.TablePolicyRevision = policyStatus.Revision
+				status.TablePolicyFresh = policyStatus.Fresh
+				status.TablePolicyLastSyncAt = policyStatus.LastSyncAt
+			}
 			c.JSON(http.StatusOK, status)
 		})
 		replica.POST("/drain", func(c *gin.Context) {
 			c.Header("Cache-Control", "no-store")
 			status := deps.queryOwner.Drain()
 			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			if deps.tablePolicyController != nil {
+				policyStatus := deps.tablePolicyController.Status()
+				status.TablePolicyRevision = policyStatus.Revision
+				status.TablePolicyFresh = policyStatus.Fresh
+				status.TablePolicyLastSyncAt = policyStatus.LastSyncAt
+			}
 			c.JSON(http.StatusOK, status)
 		})
 	}

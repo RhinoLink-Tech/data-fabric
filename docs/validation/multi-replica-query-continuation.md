@@ -19,12 +19,14 @@ resource snapshot, and per-case owner slots.
 
 The required check also runs the focused component cases in
 internal/replicarouting and internal/mcp. Those cases cover marker rejection,
-principal binding, expiry, capacity, drain and cleanup. Together the container
-and component tests give an automated contract for R1 and M1 and supporting
-owner lifecycle behavior. They do not claim that the full matrix below has
-run. Record the remaining cases separately before using owner routing in a
-deployment; policy publication and fleet-wide revocation remain tracked in
-https://github.com/RhinoLink-Tech/data-fabric/issues/99.
+principal binding, expiry, capacity, drain and cleanup. The container run also
+executes A2 against both REST and remote MCP owner pools: it publishes a grant
+removal through REST, waits for all four owners to report the new fresh
+revision, verifies already-issued continuations and new queries are denied,
+then republishes the saved policy through MCP as a new rollback revision and
+checks history. Component tests separately exercise stale-replica fail-closed
+behavior and request snapshot consistency. These checks establish A2 for the
+reference profile; they do not claim the entire matrix below has run.
 
 For each REST or remote MCP run, start two replicas of that server mode
 behind one ingress. Use distinct owner slots and boot identifiers and share a
@@ -61,7 +63,7 @@ sessions for one principal.
 | R9 | Leave an active SQL stream, native API cursor and in-flight request open at the drain deadline. | The owner reports retired and stops serving continuations, even before the ingress map is reloaded. In-flight work is cancelled or bounded by the shutdown deadline. Cursors and admission slots close before pools. Existing credentials cannot reopen a cursor. |
 | R10 | Cancel an in-flight continuation and exhaust a query budget in separate cases. | Cancellation reaches the owner and the supported source. Streaming cleanup releases resources. A budget rejection before advancement preserves the token. Budgets are observed per owner. |
 | A1 | Disable or remove the source or change the caller's effective access after the first batch. Include a query that would return only terminal metadata. | The next request checks current policy, returns no rows or columns, and retires the affected session and cursor. |
-| A2 | Roll out a policy revision that removes a grant while A still holds the old revision. Send new and continuation requests before and after reopening ingress. | During the rollout barrier no old-policy route can grant access. Old sessions are unavailable after retirement. Before reopening, private status reports the new revision on all mapped owners. Under the new policy, denied requests cannot reveal rows or metadata. |
+| A2 | Publish a grant removal with compare-and-swap through REST while a REST and MCP continuation are open on owner A. Poll status on both REST and both MCP owners. After convergence, retry the old continuations and start new queries through ingress. Restore the saved policy through the MCP publication tool. | All four owners report the new fresh revision within 3 seconds. New queries and continuations are denied with no rows after revocation. Rollback creates another increasing revision, restores allowed queries, and appears in publication history with publisher and outcome. A replica that exceeds the freshness bound rejects table queries and metadata instead of authorizing from its old snapshot. |
 | M1 | Initialize an MCP session on A. Execute a multi-batch query and remove A from the new-work pool. Send tool calls, a listening GET, and DELETE through ingress. | Every request with the returned transport header reaches A while the session is live. The result batches match the REST expected rows. DELETE ends the session and releases its query resources. |
 | M2 | Use A's header with another caller or tenant, omit the header after initialization, or pass query credentials to a second session for the same principal. | The owner rejects invalid identity and session bindings before serving tools or SSE. No result, session notification, or cursor advancement is exposed. |
 | M3 | Submit `initialize` or `execute_sql_query` to a draining owner, including via a valid existing transport header. Follow an existing continuation. | New session and query work is rejected. Continuation can finish within the deadline. At cutoff active SSE connections and affected queries terminate. |
