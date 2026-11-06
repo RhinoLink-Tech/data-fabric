@@ -210,11 +210,11 @@ func TestQuerySessionRejectsAnotherMCPTransportForTheSameCaller(t *testing.T) {
 		t.Fatal("unexpected query service implementation")
 	}
 	session := &QuerySession{
-		QueryID: "query-one",
-		Slug:    "signed-query-marker",
-		Token:   "valid-current-token",
+		QueryID:   "query-one",
+		Slug:      "signed-query-marker",
+		Token:     "valid-current-token",
 		ExpiresAt: time.Now().Add(time.Minute),
-		creator: querySessionPrincipalFromContext(creatorContext, caller),
+		creator:   querySessionPrincipalFromContext(creatorContext, caller),
 	}
 	if !service.sessionManager.Store(session) {
 		t.Fatal("failed to store test session")
