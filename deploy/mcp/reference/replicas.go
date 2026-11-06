@@ -56,7 +56,7 @@ func (env *Environment) writeReplicaRouting() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(env.replica.path, data, 0o600)
+	return os.WriteFile(env.replica.path, data, 0o644)
 }
 
 // SetRoutedNewOwner changes only which replica accepts new work. Existing
