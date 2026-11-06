@@ -184,6 +184,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		queryOwner = unifiedservice.NewOwnerLifecycle(cfg.Routing.DrainTimeout(), func(now time.Time) int {
 			return paginationService.LiveSessionCount(now) + streamingService.LiveSessionCount(now)
 		}, shutdownQueryServices)
+		queryOwner.SetIdentity(routing.Slot(), routing.BootID())
 	}
 	unifiedQueryService := unifiedservice.NewUnifiedQueryServiceWithOwner(paginationService, streamingService, cfg, queryOwner, routing)
 
@@ -444,6 +445,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 			}
 			return pending
 		}, shutdownQueryServices)
+		queryOwner.SetIdentity(routing.Slot(), routing.BootID())
 	}
 	defer func() {
 		if queryOwner != nil {
@@ -525,7 +527,19 @@ func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPToken
 	return security.NewJWTManager(cfg.Security.JWTSecret, cfg.Security.JWTExpiration), nil
 }
 
+func observeMCPHTTP(handler http.Handler) http.Handler {
+	router := gin.New()
+	router.Use(middleware.AccessLog(log.Writer()), middleware.Recovery(log.Writer()), middleware.PrometheusMiddleware())
+	for _, path := range []string{"/mcp", "/internal/replica", "/internal/replica/drain", "/metrics"} {
+		router.Any(path, gin.WrapH(handler))
+	}
+	router.NoRoute(gin.WrapH(handler))
+	return router
+}
+
 func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, auditStore *auditlog.Store, queryOwner *unifiedservice.OwnerLifecycle, setMaintenanceStop func(func())) error {
+	middleware.InitMetrics()
+	handler = observeMCPHTTP(handler)
 	server := &http.Server{
 		Addr:              cfg.MCP.Address,
 		Handler:           handler,

@@ -119,7 +119,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run the public acceptance harness against pinned sources
+      - name: Build one gateway image for both acceptance runs
+        run: |
+          docker build --tag data-fabric:public-acceptance --file Dockerfile .
+          echo "acceptance_image_id=$(docker image inspect --format '{{.Id}}' data-fabric:public-acceptance)"
+
+      - name: Run standalone public reference acceptance
         env:
           CI_EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -128,17 +133,30 @@ jobs:
           if [[ "$CI_EVENT_NAME" != schedule && "$CI_EVENT_NAME" != workflow_dispatch ]]; then
             acceptance_args+=(-smoke)
           fi
-          go run ./deploy/mcp/reference/cmd/acceptance "${acceptance_args[@]}" | tee "$RUNNER_TEMP/public-reference.log"
+          echo "acceptance_path=standalone"
+          go run ./deploy/mcp/reference/cmd/acceptance -image data-fabric:public-acceptance "${acceptance_args[@]}" | tee "$RUNNER_TEMP/public-reference.log"
 
-      - name: Run two-owner REST and MCP routing acceptance
+      - name: Run containerized two-replica acceptance against the same image
         env:
-          CI_ACCEPTANCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CI_EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "acceptance_commit=$CI_ACCEPTANCE_HEAD_SHA"
-          echo "acceptance_image=not-applicable; owner HTTP servers use deterministic in-process fixtures"
-          echo "owner_slots=rest-a,rest-b;mcp=owner-a,owner-b"
-          go test -count=1 -v ./internal/replicarouting -run '^TestIngressRoutesRESTContinuationAcrossTwoHTTPOwners$'
-          go test -count=1 -v ./internal/mcp -run '^TestMCPIngressKeepsSessionsOnTheirOwnerAfterReload$'
+          set -o pipefail
+          acceptance_args=()
+          if [[ "$CI_EVENT_NAME" != schedule && "$CI_EVENT_NAME" != workflow_dispatch ]]; then
+            acceptance_args+=(-smoke)
+          fi
+          acceptance_args+=(-multi-replica)
+          echo "acceptance_path=two-replica"
+          go run ./deploy/mcp/reference/cmd/acceptance -image data-fabric:public-acceptance "${acceptance_args[@]}" | tee -a "$RUNNER_TEMP/public-reference.log"
+
+      - name: Upload public acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: public-reference-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/public-reference.log
+          if-no-files-found: warn
+          retention-days: 14
 
   postgres-tls-contract:
     name: PostgreSQL TLS certificate contract

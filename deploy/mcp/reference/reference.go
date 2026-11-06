@@ -21,6 +21,13 @@ import (
 	"time"
 )
 
+// Reference replica timing and capacity settings are surfaced in acceptance evidence.
+const (
+	ReferenceOwnerDrainTimeoutSeconds   = 3
+	ReferenceRoutedMCPSessionTTLSeconds = 10
+	ReferenceMaxRoutedMCPSessions       = 32
+)
+
 // Options controls a reference run. All Docker resources are scoped to a unique
 // Compose project. The default image is built from RepoRoot.
 type Options struct {
@@ -30,6 +37,7 @@ type Options struct {
 	Image                         string
 	SessionTTLSeconds             int
 	MaxConcurrentQueriesPerTenant int
+	MultiReplica                  bool
 }
 
 type Source struct {
@@ -41,15 +49,18 @@ type Source struct {
 // Environment is valid during the Run callback. It uses generated credentials
 // and contains only the synthetic sources started by this invocation.
 type Environment struct {
-	APIURL     string
-	MCPURL     string
-	TLSConfig  *tls.Config
-	Sources    map[string]Source
-	Identities map[string]Identity
+	APIURL         string
+	MCPURL         string
+	TLSConfig      *tls.Config
+	Sources        map[string]Source
+	TenantBSources map[string]Source
+	Identities     map[string]Identity
+	OwnerURLs      map[string]string
 
 	stack   *composeStack
 	restKey string
 	oidcKey *rsa.PrivateKey
+	replica *replicaProfile
 }
 
 type sourceDefinition struct {
@@ -98,7 +109,8 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		}
 	}()
 	env := &Environment{
-		Sources: make(map[string]Source), Identities: make(map[string]Identity),
+		Sources: make(map[string]Source), TenantBSources: make(map[string]Source),
+		Identities: make(map[string]Identity), OwnerURLs: make(map[string]string),
 		stack: s, restKey: s.env["JWT_SECRET"],
 	}
 	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
@@ -108,6 +120,11 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	}
 	if err := env.prepareTLS(directory); err != nil {
 		return fmt.Errorf("prepare reference TLS: %w", err)
+	}
+	if options.MultiReplica {
+		if err := env.configureReplicaRouting(); err != nil {
+			return fmt.Errorf("configure replica routing: %w", err)
+		}
 	}
 	if err := env.writePolicy(); err != nil {
 		return err
@@ -172,18 +189,49 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if _, err := s.compose(ctx, "restart", "data-fabric-api"); err != nil {
 		return err
 	}
+	if options.MultiReplica {
+		if err := s.up(ctx, "data-fabric-api-b"); err != nil {
+			return err
+		}
+	}
 	if err := s.up(ctx, "data-fabric-mcp"); err != nil {
 		return err
 	}
-	env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
-	if err != nil {
-		return err
+	if options.MultiReplica {
+		if err := s.up(ctx, "data-fabric-mcp-b"); err != nil {
+			return err
+		}
+		if err := s.up(ctx, "replica-ingress"); err != nil {
+			return err
+		}
+		env.APIURL, err = s.url(ctx, "replica-ingress", "8082", "http")
+		if err != nil {
+			return err
+		}
+		env.MCPURL = env.APIURL + "/mcp"
+		for _, owner := range []struct{ slot, service, port, scheme string }{
+			{"rest-a", "data-fabric-api", "8080", "http"},
+			{"rest-b", "data-fabric-api-b", "8080", "http"},
+			{"mcp-a", "data-fabric-mcp", "8081", "https"},
+			{"mcp-b", "data-fabric-mcp-b", "8081", "https"},
+		} {
+			ownerURL, urlErr := s.url(ctx, owner.service, owner.port, owner.scheme)
+			if urlErr != nil {
+				return fmt.Errorf("locate loopback test endpoint for %s: %w", owner.slot, urlErr)
+			}
+			env.OwnerURLs[owner.slot] = ownerURL
+		}
+	} else {
+		env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
+		if err != nil {
+			return err
+		}
+		mcpBase, err := s.url(ctx, "data-fabric-mcp", "8081", "https")
+		if err != nil {
+			return err
+		}
+		env.MCPURL = mcpBase + "/mcp"
 	}
-	mcpBase, err := s.url(ctx, "data-fabric-mcp", "8081", "https")
-	if err != nil {
-		return err
-	}
-	env.MCPURL = mcpBase + "/mcp"
 	fmt.Fprintf(out, "Policy loaded and remote MCP ready in %s\n", elapsed(stage))
 
 	stage = time.Now()
@@ -238,6 +286,18 @@ func newStack(root, directory string, options Options) *composeStack {
 		"MCP_HTTPS_PORT":                       "8443",
 	}
 	var secrets []string
+	if options.MultiReplica {
+		deployment := "reference-" + randomHex(6)
+		routingKey := base64.RawURLEncoding.EncodeToString(randomBytes(32))
+		nextRoutingKey := base64.RawURLEncoding.EncodeToString(randomBytes(32))
+		env["ROUTING_ENABLED"] = "true"
+		env["ROUTING_DEPLOYMENT_ID"] = deployment
+		env["ROUTING_POLICY_REVISION"] = "reference-1"
+		env["DATA_FABRIC_ROUTING_ACTIVE_KEY_ID"] = "reference"
+		env["DATA_FABRIC_ROUTING_ACTIVE_KEY_ID_B"] = "reference-next"
+		env["DATA_FABRIC_ROUTING_KEYS"] = fmt.Sprintf("{\"reference\":%q,\"reference-next\":%q}", routingKey, nextRoutingKey)
+		secrets = append(secrets, routingKey, "[redacted]", nextRoutingKey, "[redacted]", env["DATA_FABRIC_ROUTING_KEYS"], "[redacted]")
+	}
 	for _, key := range []string{
 		"JWT_SECRET", "METADATA_DB_ROOT_PASSWORD", "METADATA_DB_PASSWORD",
 		"SAMPLE_SOURCE_ROOT_PASSWORD", "SAMPLE_READER_PASSWORD",
@@ -251,23 +311,39 @@ func newStack(root, directory string, options Options) *composeStack {
 	secrets = append(secrets, vaultKey, "[redacted]")
 	return &composeStack{
 		root: root, directory: directory, project: project, image: image,
-		env: env, redact: strings.NewReplacer(secrets...),
+		env: env, redact: strings.NewReplacer(secrets...), multiReplica: options.MultiReplica,
 	}
 }
 
 func (env *Environment) writePolicy() error {
-	sources := make(map[string]any, len(env.Sources))
-	for _, source := range env.Sources {
+	sources := make(map[string]any, len(env.Sources)+len(env.TenantBSources))
+	registerPolicy := func(source Source, tenant string) {
 		scopes := []map[string]any{
 			{"schema": source.Schema, "table": "orders", "columns": []string{"id", "amount", "status", "created_at"}},
 			{"schema": source.Schema, "table": "order_items", "columns": []string{"id", "order_id", "item", "quantity", "discount"}},
 		}
 		sources[source.ID] = map[string]any{
 			"admin_override": false,
-			"rules":          []map[string]any{{"tenant_id": "tenant-a", "read": scopes, "metadata": scopes}},
+			"rules":          []map[string]any{{"tenant_id": tenant, "read": scopes, "metadata": scopes}},
 		}
 	}
+	for _, source := range env.Sources {
+		registerPolicy(source, "tenant-a")
+	}
+	for _, source := range env.TenantBSources {
+		registerPolicy(source, "tenant-b")
+	}
 	cfg := map[string]any{"table_authorization": map[string]any{"enabled": true, "data_sources": sources}}
+	if env.replica != nil {
+		cfg["routing"] = map[string]any{
+			"enabled": true, "deployment_id": env.replica.deployment, "owner_slot": "", "policy_revision": "reference-1",
+			"drain_timeout_seconds": ReferenceOwnerDrainTimeoutSeconds,
+		}
+		cfg["mcp"] = map[string]any{
+			"routed_session_ttl_seconds": ReferenceRoutedMCPSessionTTLSeconds,
+			"max_routed_sessions":        ReferenceMaxRoutedMCPSessions,
+		}
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err

@@ -59,6 +59,20 @@ type Owner struct {
 	boot string
 }
 
+func (o *Owner) Slot() string {
+	if o == nil {
+		return ""
+	}
+	return o.slot
+}
+
+func (o *Owner) BootID() string {
+	if o == nil {
+		return ""
+	}
+	return o.boot
+}
+
 func (r *KeyRing) NewOwner(activeKey, pool, slot string) (*Owner, error) {
 	if _, ok := r.keys[activeKey]; !ok {
 		return nil, errors.New("DATA_FABRIC_ROUTING_ACTIVE_KEY_ID must name a configured routing key")

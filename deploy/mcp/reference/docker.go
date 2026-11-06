@@ -22,20 +22,25 @@ const (
 )
 
 type composeStack struct {
-	root      string
-	directory string
-	project   string
-	image     string
-	env       map[string]string
-	redact    *strings.Replacer
+	root         string
+	directory    string
+	project      string
+	image        string
+	env          map[string]string
+	redact       *strings.Replacer
+	multiReplica bool
 }
 
 func (s *composeStack) composeArgs(args ...string) []string {
-	return append([]string{
+	files := []string{
 		"compose", "--project-name", s.project, "--env-file", filepath.Join(s.directory, "compose.env"),
 		"-f", filepath.Join(s.root, "deploy", "mcp", "docker-compose.yml"),
 		"-f", filepath.Join(s.root, "deploy", "mcp", "docker-compose.reference.yml"),
-	}, args...)
+	}
+	if s.multiReplica {
+		files = append(files, "-f", filepath.Join(s.root, "deploy", "mcp", "docker-compose.reference-replicas.yml"))
+	}
+	return append(files, args...)
 }
 
 func (s *composeStack) command(ctx context.Context, args ...string) *exec.Cmd {
@@ -133,8 +138,12 @@ func (s *composeStack) recordResources(ctx context.Context, out io.Writer) error
 		return err
 	}
 	ids := strings.Fields(raw)
-	if len(ids) != 6 {
-		return fmt.Errorf("resource snapshot expected six reference containers, got %d", len(ids))
+	expected := 6
+	if s.multiReplica {
+		expected = 9
+	}
+	if len(ids) != expected {
+		return fmt.Errorf("resource snapshot expected %d reference containers, got %d", expected, len(ids))
 	}
 	stats, err := s.docker(ctx, append([]string{
 		"stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}} {{.MemUsage}}",

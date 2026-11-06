@@ -390,5 +390,14 @@ func (m *MCPServer) StreamableHTTPHandlerWithOwnerAdmin(tokenValidator MCPTokenV
 	})
 	mux.Handle("/internal/replica", authenticateMCPRequests(tokenValidator, admin, m.auditRecorder))
 	mux.Handle("/internal/replica/drain", authenticateMCPRequests(tokenValidator, admin, m.auditRecorder))
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := r.Context().Value(callerContextKey{}).(*security.Caller)
+		if caller == nil || !caller.IsAdmin() {
+			writeRemoteError(w, http.StatusForbidden, "forbidden", "administrator role required")
+			return
+		}
+		middleware.PrometheusHandler().ServeHTTP(w, r)
+	})
+	mux.Handle("/metrics", authenticateMCPRequests(tokenValidator, metrics, m.auditRecorder))
 	return withRemoteLimits(rateLimiter, limits, mux)
 }

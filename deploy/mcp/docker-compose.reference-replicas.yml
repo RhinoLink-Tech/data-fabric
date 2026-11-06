@@ -1,0 +1,167 @@
+# Private two-replica overlay used only by the container acceptance harness.
+# Public REST and remote MCP traffic enters through replica-ingress.
+x-reference-replica-env: &reference-replica-env
+  SERVER_MODE: release
+  SERVER_PORT: "8080"
+  DATABASE_HOST: metadata-db
+  DATABASE_PORT: "3306"
+  DATABASE_DATABASE: data_fabric
+  DATABASE_USERNAME: data_fabric
+  DATABASE_PASSWORD: ${METADATA_DB_PASSWORD}
+  SECURITY_JWT_SECRET: ${JWT_SECRET}
+  SECURITY_ENABLE_AUTH: "true"
+  DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID: reference
+  DATA_FABRIC_CREDENTIAL_KEYS: ${DATA_FABRIC_CREDENTIAL_KEYS}
+  SECURITY_RATE_LIMIT_PER_MINUTE: "600"
+  SECURITY_RATE_LIMIT_BURST: "120"
+  QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT: "600"
+  QUERY_RATE_LIMIT_BURST_PER_TENANT: "120"
+  QUERY_SESSION_TTL_SECONDS: ${DF_REFERENCE_SESSION_TTL_SECONDS}
+  QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT}
+  ROUTING_ENABLED: "true"
+  ROUTING_DEPLOYMENT_ID: ${ROUTING_DEPLOYMENT_ID}
+  ROUTING_POLICY_REVISION: ${ROUTING_POLICY_REVISION}
+  DATA_FABRIC_ROUTING_ACTIVE_KEY_ID: ${DATA_FABRIC_ROUTING_ACTIVE_KEY_ID}
+  DATA_FABRIC_ROUTING_KEYS: ${DATA_FABRIC_ROUTING_KEYS}
+
+services:
+  data-fabric-api:
+    environment:
+      ROUTING_ENABLED: "true"
+      ROUTING_DEPLOYMENT_ID: ${ROUTING_DEPLOYMENT_ID}
+      ROUTING_POLICY_REVISION: ${ROUTING_POLICY_REVISION}
+      ROUTING_OWNER_SLOT: rest-a
+      DATA_FABRIC_ROUTING_ACTIVE_KEY_ID: ${DATA_FABRIC_ROUTING_ACTIVE_KEY_ID}
+      DATA_FABRIC_ROUTING_KEYS: ${DATA_FABRIC_ROUTING_KEYS}
+    ports: !override
+      - target: 8080
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+  data-fabric-api-b:
+    image: ${DF_REFERENCE_IMAGE}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - target: 8080
+        host_ip: 127.0.0.1
+        protocol: tcp
+    environment:
+      <<: *reference-replica-env
+      ROUTING_OWNER_SLOT: rest-b
+      DATA_FABRIC_ROUTING_ACTIVE_KEY_ID: ${DATA_FABRIC_ROUTING_ACTIVE_KEY_ID_B}
+    depends_on:
+      metadata-db:
+        condition: service_healthy
+      sample-source:
+        condition: service_healthy
+      sample-postgres:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/configs
+        target: /app/configs
+        read_only: true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+
+  data-fabric-mcp:
+    environment:
+      ROUTING_ENABLED: "true"
+      ROUTING_DEPLOYMENT_ID: ${ROUTING_DEPLOYMENT_ID}
+      ROUTING_POLICY_REVISION: ${ROUTING_POLICY_REVISION}
+      ROUTING_OWNER_SLOT: mcp-a
+      DATA_FABRIC_ROUTING_ACTIVE_KEY_ID: ${DATA_FABRIC_ROUTING_ACTIVE_KEY_ID}
+      DATA_FABRIC_ROUTING_KEYS: ${DATA_FABRIC_ROUTING_KEYS}
+    ports: !override
+      - target: 8081
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+  data-fabric-mcp-b:
+    image: ${DF_REFERENCE_IMAGE}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - target: 8081
+        host_ip: 127.0.0.1
+        protocol: tcp
+    environment:
+      <<: *reference-replica-env
+      ROUTING_OWNER_SLOT: mcp-b
+      DATA_FABRIC_ROUTING_ACTIVE_KEY_ID: ${DATA_FABRIC_ROUTING_ACTIVE_KEY_ID_B}
+      SSL_CERT_DIR: /etc/ssl/certs:/etc/data-fabric/reference-ca
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: streamable-http
+      MCP_AUTH_MODE: oidc
+      MCP_OIDC_ISSUER: ${MCP_OIDC_ISSUER}
+      MCP_OIDC_AUDIENCE: ${MCP_OIDC_AUDIENCE}
+      MCP_OIDC_REQUIRED_SCOPES: ${MCP_OIDC_REQUIRED_SCOPES}
+      MCP_OIDC_SCOPE_CLAIM: ${MCP_OIDC_SCOPE_CLAIM}
+      MCP_OIDC_TENANT_CLAIM: ${MCP_OIDC_TENANT_CLAIM}
+      MCP_OIDC_ROLES_CLAIM: ${MCP_OIDC_ROLES_CLAIM}
+      MCP_OIDC_USERNAME_CLAIM: ${MCP_OIDC_USERNAME_CLAIM}
+      MCP_OIDC_JWKS_REFRESH_INTERVAL: ${MCP_OIDC_JWKS_REFRESH_INTERVAL}
+      MCP_ADDRESS: 0.0.0.0:8081
+      MCP_TLS_CERT_FILE: /etc/data-fabric/tls/tls.crt
+      MCP_TLS_KEY_FILE: /etc/data-fabric/tls/tls.key
+    depends_on:
+      data-fabric-api-b:
+        condition: service_healthy
+      oidc-fixture:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/configs
+        target: /app/configs
+        read_only: true
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/gateway-tls
+        target: /etc/data-fabric/tls
+        read_only: true
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/ca
+        target: /etc/data-fabric/reference-ca
+        read_only: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+
+  replica-ingress:
+    image: ${DF_REFERENCE_IMAGE}
+    pull_policy: never
+    restart: unless-stopped
+    entrypoint: ["/app/replica-ingress"]
+    command: ["--listen", "0.0.0.0:8082", "--config", "/reference/routing.json"]
+    environment:
+      DATA_FABRIC_ROUTING_KEYS: ${DATA_FABRIC_ROUTING_KEYS}
+      SSL_CERT_FILE: /etc/data-fabric/reference-ca/ca.crt
+    depends_on:
+      data-fabric-api:
+        condition: service_healthy
+      data-fabric-api-b:
+        condition: service_healthy
+      data-fabric-mcp:
+        condition: service_healthy
+      data-fabric-mcp-b:
+        condition: service_healthy
+    ports:
+      - target: 8082
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/routing.json
+        target: /reference/routing.json
+        read_only: true
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY}/ca
+        target: /etc/data-fabric/reference-ca
+        read_only: true
