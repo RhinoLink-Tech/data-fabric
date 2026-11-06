@@ -79,12 +79,21 @@ retire. The owner slot and deployment ID must be lowercase letters, digits
 and hyphens. Use one live process per slot. A replacement that starts before
 the old process exits must use a new slot.
 
-All owners serving the same pool must load identical authentication mapping
-and access-policy configuration. Set the same `policy_revision` only after
-deploying the corresponding policy. The private status endpoint reports the
-loaded revision. During a policy change, pause affected routes, retire old
-owners and verify the new revision on every serving owner before reopening
-the routes.
+All owners serving the same pool must load identical authentication
+configuration. The static `routing.policy_revision` reports that deployed
+authentication/routing configuration; it is separate from the dynamic
+`tablePolicyRevision`. Managed table/column policy is stored in the shared
+metadata database, with a monotonically increasing revision and publication
+history. Each owner polls the database and reports its active table-policy
+revision, freshness, and last successful sync at `/internal/replica`. See
+[Table and Column Authorization](security/table-level-authorization.md) for
+admin publication and rollback.
+
+After a policy change, keep affected routes closed until every serving owner
+reports the intended fresh table-policy revision. The declared propagation
+window is three seconds; an owner that cannot synchronize for three seconds
+fails closed for table queries and metadata. Do not point policy reads at an
+asynchronously lagging metadata replica.
 
 ## Reference ingress
 

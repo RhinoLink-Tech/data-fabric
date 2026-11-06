@@ -15,7 +15,7 @@ This plan sequences the engineering work behind the [roadmap](../roadmap.md). Bu
 | Design multi-replica continuation | [#365](https://github.com/RhinoLink-Tech/data-fabric/issues/365) | ADR and verification matrix only. Research may proceed alongside the reference work; use its public contracts. |
 | Implement owner routing and drain | Create after #365 is accepted | Follow the chosen ADR using the public task harness. Keep live cursors with their owner. |
 | Bound cumulative query results | Create after the public baseline | One logical query has cumulative rows, encoded-byte and overall-deadline limits across all batches. Define COUNT and partial-result behavior. |
-| Update and revoke policies | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | Select a bounded publication strategy coordinated with the replica ADR; validate versions and the revocation propagation window. |
+| Update and revoke policies | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | Publish validated immutable versions through the shared metadata database with CAS, request-pinned snapshots, publisher/outcome history and a documented three-second revocation/fail-closed contract. See [ADR-004](../decisions/adr-004-versioned-table-policy-publication.md). |
 | Add targeted task context | [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66), [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67), [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) | Defined scope, no current implementation commitment. Start only from recorded schema-selection, business-context or schema-drift failures. |
 | Prepare repeatable candidate delivery | Create when M2 starts and its candidate scope is fixed | Depends on shared-operation acceptance and policy work. Reproduce installation, reuse, upgrade and recovery on the candidate commit. |
 | Validate real-team value | Create when the maintainer resumes pilots | Measure actual integration/reuse/support effort and task outcomes. |
@@ -75,7 +75,7 @@ The implementation verification matrix includes two replicas, two tenants, token
 
 [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) accounts for cumulative returned rows, encoded bytes and total deadline across every batch. Define oversized rows, optional/helper COUNT work, cancellation and partial-result status. Reuse current admission controls; result budgets do not imply bounded scans or a universal cloud-spend limit.
 
-Policy work in #99 chooses atomic configuration reload or publication through the existing metadata store. Each request uses one valid policy snapshot. Invalid updates retain the last valid version; new queries and continuations observe revocation within a documented maximum propagation window. Stale replicas have explicit rejection/isolation behavior. Record policy version and publisher/outcome without promising stronger audit durability than is implemented.
+Policy work in #99 uses immutable versions in the existing metadata store. Each request pins one valid policy snapshot. Compare-and-swap publication rejects stale writers; invalid updates retain the last valid version; rollback publishes a new revision. Replicas report freshness, converge within the documented three-second window, and fail closed after three seconds without synchronization. Publication outcome is committed atomically with activation; general access-audit delivery keeps its existing durability limits.
 
 ## Candidate delivery evidence
 

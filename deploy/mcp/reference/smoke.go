@@ -72,15 +72,8 @@ func (env *Environment) EnsureTenantBSource(ctx context.Context, sourceKey strin
 		return fmt.Errorf("register tenant-b %s returned an empty ID", sourceKey)
 	}
 	env.TenantBSources[sourceKey] = Source{ID: created.ID, Type: definition.key, Schema: definition.schema}
-	if err := env.writePolicy(); err != nil {
+	if err := env.publishManagedPolicy(ctx); err != nil {
 		return fmt.Errorf("publish tenant-b source policy: %w", err)
-	}
-	if env.replica != nil {
-		for _, slot := range []string{"rest-a", "rest-b", "mcp-a", "mcp-b"} {
-			if err := env.RestartReplica(ctx, slot); err != nil {
-				return fmt.Errorf("reload tenant-b policy on %s: %w", slot, err)
-			}
-		}
 	}
 	return nil
 }

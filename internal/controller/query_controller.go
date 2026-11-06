@@ -417,6 +417,8 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusForbidden, "DATASOURCE_ACCESS_DENIED"
 	case errors.Is(err, security.ErrTableAccessDenied):
 		return http.StatusForbidden, "TABLE_ACCESS_DENIED"
+	case errors.Is(err, security.ErrTablePolicyUnavailable):
+		return http.StatusServiceUnavailable, "TABLE_POLICY_STALE"
 	case errors.Is(err, queryservice.ErrDataSourceInactive):
 		// The source exists but its current state forbids execution (#118)
 		return http.StatusConflict, "DATASOURCE_INACTIVE"

@@ -41,9 +41,8 @@ func (c Config) ValidateStartup() error {
 	if err := c.SQLTranslation.Validate(); err != nil {
 		return err
 	}
-	if err := c.TableAuthorization.Validate(); err != nil {
-		return err
-	}
+	// Validate the active table policy after opening the metadata DB. A managed
+	// DB revision is authoritative and may intentionally supersede stale local YAML.
 	if c.MCP.Enabled {
 		if err := c.MCP.Validate(); err != nil {
 			return err
