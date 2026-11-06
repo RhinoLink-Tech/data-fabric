@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -300,4 +302,128 @@ func TestOwnerTransportRejectsInitializationWhenDraining(t *testing.T) {
 		t.Fatalf("draining initialization got status %d or a session header", w.Code)
 	}
 	waitForOwnerSlots(t, owner, 0)
+}
+
+func newOwnerTestTransportForSlot(t *testing.T, ring *replicarouting.KeyRing, slot string, ttl time.Duration, capacity int, end func(string), enter func(context.Context) (context.Context, func(), error)) *OwnerTransport {
+	t.Helper()
+	signer, err := ring.NewOwner("key", replicarouting.MCP, slot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enter == nil {
+		enter = func(ctx context.Context) (context.Context, func(), error) { return ctx, func() {}, nil }
+	}
+	owner, err := NewOwnerTransport(OwnerTransportOptions{
+		Owner: signer, TTL: ttl, MaxSessions: capacity, BeginInitialize: enter,
+		BindSession: func(ctx context.Context, id string, expiry time.Time) context.Context {
+			return context.WithValue(ctx, ownerTestBindingKey{}, ownerTestBinding{id, expiry})
+		},
+		EndSession: end,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(owner.Close)
+	return owner
+}
+
+func TestMCPIngressKeepsSessionsOnTheirOwnerAfterReload(t *testing.T) {
+	ring := newOwnerTestRing(t)
+	jwt, token, _ := newOwnerTestJWT(t)
+	queryA := &ownerTestQueryService{}
+	queryB := &ownerTestQueryService{}
+	ownerA := newOwnerTestTransportForSlot(t, ring, "owner-a", time.Hour, 4, func(string) {}, nil)
+	ownerB := newOwnerTestTransportForSlot(t, ring, "owner-b", time.Hour, 4, func(string) {}, nil)
+	serverA := httptest.NewServer(NewMCPServer(queryA, mcpHTTPRepository{}, nil).StreamableHTTPHandlerWithOwner(jwt, nil, RemoteLimits{}, ownerA))
+	serverB := httptest.NewServer(NewMCPServer(queryB, mcpHTTPRepository{}, nil).StreamableHTTPHandlerWithOwner(jwt, nil, RemoteLimits{}, ownerB))
+	t.Cleanup(serverA.Close)
+	t.Cleanup(serverB.Close)
+
+	cfg := replicarouting.Upstreams{MCP: map[string]replicarouting.Upstream{
+		"owner-a": {URL: serverA.URL, AcceptNew: true},
+		"owner-b": {URL: serverB.URL},
+	}}
+	ingress, err := replicarouting.NewIngress(ring, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := httptest.NewServer(ingress)
+	t.Cleanup(public.Close)
+	conn, loopbackErr := net.DialTimeout("tcp", public.Listener.Addr().String(), time.Second)
+	if loopbackErr != nil {
+		t.Skipf("local TCP loopback is unavailable: %v", loopbackErr)
+	}
+	_ = conn.Close()
+	client := public.Client()
+	client.Timeout = 5 * time.Second
+	send := func(method, body, session string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, public.URL+"/mcp", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		if session != "" {
+			req.Header.Set(server.HeaderKeySessionID, session)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s request through ingress: %v", method, err)
+		}
+		return resp
+	}
+	initialize := func() string {
+		t.Helper()
+		resp := send(http.MethodPost, ownerInitializeBody, "")
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("initialize status %d", resp.StatusCode)
+		}
+		id := resp.Header.Get(server.HeaderKeySessionID)
+		if id == "" {
+			t.Fatal("initialize response omitted the MCP session header")
+		}
+		return id
+	}
+	call := func(method, body, session string, want int) {
+		t.Helper()
+		resp := send(method, body, session)
+		defer resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("%s status = %d, want %d", method, resp.StatusCode, want)
+		}
+		if method != http.MethodGet {
+			_, _ = io.Copy(io.Discard, resp.Body)
+		}
+	}
+
+	sessionA := initialize()
+	if slot, err := ring.Verify(sessionA, replicarouting.MCP, "", time.Now()); err != nil || slot != "owner-a" {
+		t.Fatalf("first session owner = %q, %v; want owner-a", slot, err)
+	}
+	cfg.MCP["owner-a"] = replicarouting.Upstream{URL: serverA.URL}
+	cfg.MCP["owner-b"] = replicarouting.Upstream{URL: serverB.URL, AcceptNew: true}
+	if err := ingress.Reload(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	call(http.MethodPost, ownerToolBody, sessionA, http.StatusOK)
+	if len(queryA.received) != 1 || len(queryB.received) != 0 {
+		t.Fatalf("existing session tool calls reached owner A/B = %d/%d, want 1/0", len(queryA.received), len(queryB.received))
+	}
+	call(http.MethodGet, "", sessionA, http.StatusOK)
+	call(http.MethodDelete, "", sessionA, http.StatusOK)
+	call(http.MethodPost, ownerToolBody, sessionA, http.StatusNotFound)
+	waitForOwnerSlots(t, ownerA, 0)
+
+	sessionB := initialize()
+	if slot, err := ring.Verify(sessionB, replicarouting.MCP, "", time.Now()); err != nil || slot != "owner-b" {
+		t.Fatalf("new session owner = %q, %v; want owner-b", slot, err)
+	}
+	call(http.MethodPost, ownerToolBody, sessionB, http.StatusOK)
+	if len(queryB.received) != 1 {
+		t.Fatalf("new session tool calls reached owner B %d times, want once", len(queryB.received))
+	}
 }

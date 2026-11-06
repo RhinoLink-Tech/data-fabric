@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -130,4 +131,146 @@ type testRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f testRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestIngressRoutesRESTContinuationAcrossTwoHTTPOwners(t *testing.T) {
+	key := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("z", 32)))
+	ring, err := ParseKeyRing("acceptance-site", `{"active":"`+key+`"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerA, err := ring.NewOwner("active", REST, "rest-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerB, err := ring.NewOwner("active", REST, "rest-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiry := time.Now().Add(time.Minute)
+	slugA, err := ownerA.Mark("query-a", expiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slugB, err := ownerB.Mark("query-b", expiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var aHits, bHits atomic.Int32
+	var failA atomic.Bool
+	newOwner := func(slot string, hits *atomic.Int32) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1/query" {
+				slug := slugA
+				if slot == "rest-b" {
+					slug = slugB
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"owner":"`+slot+`","rows":["synthetic-1","synthetic-2"],"nextUri":"`+fetchPath+`/query-`+strings.TrimPrefix(slot, "rest-")+`/`+slug+`/token"}`)
+				return
+			}
+			if strings.HasPrefix(r.URL.Path, fetchPath+"/") && r.Method == http.MethodGet {
+				if slot == "rest-a" && failA.Load() {
+					hijacker, ok := w.(http.Hijacker)
+					if !ok {
+						http.Error(w, "unexpected writer", http.StatusInternalServerError)
+						return
+					}
+					conn, _, hijackErr := hijacker.Hijack()
+					if hijackErr == nil {
+						_ = conn.Close()
+					}
+					return
+				}
+				fields := strings.Split(strings.TrimPrefix(r.URL.Path, fetchPath+"/"), "/")
+				if len(fields) != 3 {
+					http.NotFound(w, r)
+					return
+				}
+				verifiedSlot, verifyErr := ring.Verify(fields[1], REST, fields[0], time.Now())
+				if verifyErr != nil || verifiedSlot != slot {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"owner":"`+slot+`","rows":["synthetic-3"]}`)
+				return
+			}
+			http.NotFound(w, r)
+		}))
+	}
+	serverA := newOwner("rest-a", &aHits)
+	serverB := newOwner("rest-b", &bHits)
+	t.Cleanup(serverA.Close)
+	t.Cleanup(serverB.Close)
+	cfg := Upstreams{REST: map[string]Upstream{
+		"rest-a": {URL: serverA.URL, AcceptNew: true},
+		"rest-b": {URL: serverB.URL},
+	}}
+	ingress, err := NewIngress(ring, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := httptest.NewServer(ingress)
+	t.Cleanup(public.Close)
+	conn, loopbackErr := net.DialTimeout("tcp", public.Listener.Addr().String(), time.Second)
+	if loopbackErr != nil {
+		t.Skipf("local TCP loopback is unavailable: %v", loopbackErr)
+	}
+	_ = conn.Close()
+	client := public.Client()
+	send := func(method, path string) (*http.Response, string) {
+		t.Helper()
+		resp, err := client.Do(mustRequest(t, method, public.URL+path))
+		if err != nil {
+			t.Fatalf("request through ingress: %v", err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp, string(body)
+	}
+
+	resp, body := send(http.MethodPost, "/api/v1/query")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"owner":"rest-a"`) {
+		t.Fatalf("first query reached the wrong owner: %d %s", resp.StatusCode, body)
+	}
+	if err := ingress.Reload(Upstreams{REST: map[string]Upstream{
+		"rest-a": {URL: serverA.URL},
+		"rest-b": {URL: serverB.URL, AcceptNew: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	resp, body = send(http.MethodPost, "/api/v1/query")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"owner":"rest-b"`) {
+		t.Fatalf("new query did not move to owner B: %d %s", resp.StatusCode, body)
+	}
+	resp, body = send(http.MethodGet, fetchPath+"/query-a/"+slugA+"/token")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"owner":"rest-a"`) || !strings.Contains(body, "synthetic-3") {
+		t.Fatalf("continuation did not stay on owner A: %d %s", resp.StatusCode, body)
+	}
+	beforeA, beforeB := aHits.Load(), bHits.Load()
+	resp, body = send(http.MethodGet, fetchPath+"/query-other/"+slugA+"/token")
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(body, "QUERY_SESSION_UNAVAILABLE") {
+		t.Fatalf("mismatched query marker status/body = %d %q", resp.StatusCode, body)
+	}
+	if aHits.Load() != beforeA || bHits.Load() != beforeB {
+		t.Fatal("mismatched marker reached an owner")
+	}
+
+	failA.Store(true)
+	beforeA, beforeB = aHits.Load(), bHits.Load()
+	resp, _ = send(http.MethodGet, fetchPath+"/query-a/"+slugA+"/token")
+	if resp.StatusCode != http.StatusBadGateway || aHits.Load() != beforeA+1 || bHits.Load() != beforeB {
+		t.Fatalf("failed continuation status/hits A/B = %d/%d/%d, want 502/one/unchanged", resp.StatusCode, aHits.Load()-beforeA, bHits.Load()-beforeB)
+	}
+}
+
+func mustRequest(t *testing.T, method, url string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
 }
