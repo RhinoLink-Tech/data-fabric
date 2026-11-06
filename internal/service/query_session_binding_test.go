@@ -213,6 +213,7 @@ func TestQuerySessionRejectsAnotherMCPTransportForTheSameCaller(t *testing.T) {
 		QueryID: "query-one",
 		Slug:    "signed-query-marker",
 		Token:   "valid-current-token",
+		ExpiresAt: time.Now().Add(time.Minute),
 		creator: querySessionPrincipalFromContext(creatorContext, caller),
 	}
 	if !service.sessionManager.Store(session) {
