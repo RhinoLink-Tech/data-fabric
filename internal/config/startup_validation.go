@@ -122,6 +122,9 @@ func (c ServerConfig) Validate() error {
 }
 
 func (c QueryConfig) Validate() error {
+	if c.SessionTTLSeconds < 0 || c.SessionTTLSeconds > maxQuerySessionTTLSeconds {
+		return fmt.Errorf("query.session_ttl_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
+	}
 	if c.MaxConcurrentQueriesPerTenant < 0 {
 		return fmt.Errorf("query.max_concurrent_queries_per_tenant cannot be negative")
 	}

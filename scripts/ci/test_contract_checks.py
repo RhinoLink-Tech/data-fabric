@@ -22,7 +22,7 @@ class SelectionTests(unittest.TestCase):
     def test_shared_and_unknown_code_select_reference(self):
         for path in ("internal/security/policy.go", "internal/mcp/query.go", "new_tool.py", "docs/fixture.py"):
             with self.subTest(path=path):
-                self.assertEqual(self.select(path)["jobs"], ["reference-contracts"])
+                self.assertEqual(self.select(path)["jobs"], list(checks.REFERENCE))
 
     def test_specific_drivers_and_shared_reader_select_applicable_jobs(self):
         cases = (
@@ -46,7 +46,7 @@ class SelectionTests(unittest.TestCase):
         for path, expected in cases:
             with self.subTest(path=path):
                 plan = self.select("internal/database/drivers/" + path)
-                self.assertEqual(set(plan["jobs"]), expected | {"reference-contracts"})
+                self.assertEqual(set(plan["jobs"]), expected | set(checks.REFERENCE))
 
     def test_unknown_driver_or_global_infrastructure_selects_all(self):
         for path in ("go.sum", "scripts/ci/contract_checks.py", "internal/database/drivers/new_driver.go"):
@@ -66,6 +66,7 @@ class SelectionTests(unittest.TestCase):
                 plan = checks.select_plan(event, "", "head")
                 self.assertEqual(plan["jobs"], list(checks.SCHEDULED_JOBS))
                 self.assertIn("full-checks", plan["jobs"])
+                self.assertIn("public-reference-acceptance", plan["jobs"])
                 self.assertNotIn("reference-contracts", plan["jobs"])
                 self.assertNotIn("postgres-tls-contract", plan["jobs"])
 
@@ -94,7 +95,7 @@ class SelectionTests(unittest.TestCase):
             plan = checks.select_plan("pull_request", base, git("rev-parse", "HEAD"), repo)
             self.assertEqual(set(plan["paths"]), {postgres, oracle, "README.md"})
             self.assertEqual(set(plan["jobs"]), {
-                "reference-contracts", "postgres-version-contracts", "postgres-tls-contract", "oracle-contract",
+                *checks.REFERENCE, "postgres-version-contracts", "postgres-tls-contract", "oracle-contract",
             })
 
     def test_select_output_matches_gate_plan(self):

@@ -190,7 +190,7 @@ Tokens are random UUIDv4 values. Each successful continuation rotates the token,
 cannot be replayed to fetch another batch. Follow only the newest `nextUri`. Treat the URI as
 secret and redact its token segment from proxy and access logs.
 
-A query session expires 30 minutes after it is created; fetching batches does not extend the expiry.
+By default, a query session expires 30 minutes after creation. Set `query.session_ttl_seconds` to shorten the lifetime. Fetching batches does not extend the expiry.
 Requests after expiry are rejected. Pagination and native API sessions are removed by a cleanup sweep
 that runs every 5 minutes. Streaming cursors are swept every minute and closed during cleanup. A
 process restart discards all in-memory sessions and cursors.

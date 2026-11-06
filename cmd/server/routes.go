@@ -33,8 +33,8 @@ func newRouter(deps routerDeps) *gin.Engine {
 	router := gin.New()
 
 	// Add middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	router.Use(middleware.AccessLog(gin.DefaultWriter))
+	router.Use(middleware.Recovery(gin.DefaultErrorWriter))
 	router.Use(middleware.Cors())
 	router.Use(middleware.CorrelationID())
 	router.Use(middleware.PrometheusMiddleware())

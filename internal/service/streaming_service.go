@@ -76,12 +76,14 @@ type StreamingSessionManager struct {
 
 // NewStreamingSessionManager creates a new streaming session manager
 func NewStreamingSessionManager() *StreamingSessionManager {
-	sm := &StreamingSessionManager{
-		sessions: make(map[string]*StreamingSession),
-		ttl:      defaultQuerySessionTTL,
-	}
+	return newStreamingSessionManager(defaultQuerySessionTTL)
+}
 
-	return sm
+func newStreamingSessionManager(ttl time.Duration) *StreamingSessionManager {
+	return &StreamingSessionManager{
+		sessions: make(map[string]*StreamingSession),
+		ttl:      ttl,
+	}
 }
 
 // Store stores a streaming session
@@ -293,6 +295,10 @@ func NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo repo
 // NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
 // streaming service using a shared process-level query admission limiter.
 func NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, defaultQuerySessionTTL, translators...)
+}
+
+func newStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -313,7 +319,7 @@ func NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourc
 		activeStreams:           make(map[string]*ActiveStream),
 		admissionLimiter:        limiter,
 		streamTimeout:           5 * time.Minute,
-		streamingSessionManager: NewStreamingSessionManager(),
+		streamingSessionManager: newStreamingSessionManager(sessionTTL),
 		sqlValidator:            validator,
 		sqlTranslator:           translator,
 		tableAuthorizer:         authorizer,
@@ -841,6 +847,9 @@ func (ss *streamingService) StartCleanupRoutine(ctx context.Context, interval ti
 	}
 	if interval <= 0 {
 		interval = time.Minute
+	}
+	if manager := ss.streamingSessionManager; manager != nil && manager.ttl > 0 {
+		interval = min(interval, manager.ttl)
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

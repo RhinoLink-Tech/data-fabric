@@ -1,0 +1,332 @@
+// Package reference runs the synthetic, self-hosted Data Fabric reference profile.
+package reference
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Options controls a reference run. All Docker resources are scoped to a unique
+// Compose project. The default image is built from RepoRoot.
+type Options struct {
+	RepoRoot                      string
+	Output                        io.Writer
+	Keep                          bool
+	Image                         string
+	SessionTTLSeconds             int
+	MaxConcurrentQueriesPerTenant int
+}
+
+type Source struct {
+	ID     string
+	Type   string
+	Schema string
+}
+
+// Environment is valid during the Run callback. It uses generated credentials
+// and contains only the synthetic sources started by this invocation.
+type Environment struct {
+	APIURL     string
+	MCPURL     string
+	TLSConfig  *tls.Config
+	Sources    map[string]Source
+	Identities map[string]Identity
+
+	stack   *composeStack
+	restKey string
+	oidcKey *rsa.PrivateKey
+}
+
+type sourceDefinition struct {
+	key       string
+	service   string
+	schema    string
+	port      int
+	readerEnv string
+}
+
+var sourceDefinitions = []sourceDefinition{
+	{"mysql", "sample-source", "sample", 3306, "SAMPLE_READER_PASSWORD"},
+	{"postgresql", "sample-postgres", "public", 5432, "DF_REFERENCE_POSTGRES_READER_PASSWORD"},
+}
+
+// Run starts the reference profile, verifies tenant-shared read access across
+// both transports, and invokes check before shutting the profile down.
+func Run(ctx context.Context, options Options, check func(context.Context, *Environment) error) (err error) {
+	start := time.Now()
+	out := options.Output
+	if out == nil {
+		out = io.Discard
+	}
+	if options.SessionTTLSeconds < 0 || options.SessionTTLSeconds > 1800 {
+		return fmt.Errorf("reference session TTL must be between 0 and 1800 seconds")
+	}
+	if options.MaxConcurrentQueriesPerTenant < 0 || options.MaxConcurrentQueriesPerTenant > 100 {
+		return fmt.Errorf("reference per-tenant concurrency must be between 0 and 100")
+	}
+	root, err := repositoryRoot(options.RepoRoot)
+	if err != nil {
+		return err
+	}
+	directory, err := os.MkdirTemp("", "data-fabric-reference-")
+	if err != nil {
+		return err
+	}
+	ownedImage := options.Image == ""
+	s := newStack(root, directory, options)
+	stackReady := false
+	defer func() {
+		if stackReady {
+			err = errors.Join(err, s.cleanup(out, options.Keep, ownedImage))
+		} else {
+			err = errors.Join(err, os.RemoveAll(directory))
+		}
+	}()
+	env := &Environment{
+		Sources: make(map[string]Source), Identities: make(map[string]Identity),
+		stack: s, restKey: s.env["JWT_SECRET"],
+	}
+	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
+		if err := os.Mkdir(filepath.Join(directory, name), 0o755); err != nil {
+			return err
+		}
+	}
+	if err := env.prepareTLS(directory); err != nil {
+		return fmt.Errorf("prepare reference TLS: %w", err)
+	}
+	if err := env.writePolicy(); err != nil {
+		return err
+	}
+	if err := s.writeEnvironment(); err != nil {
+		return err
+	}
+	if _, err := s.compose(ctx, "config", "--quiet"); err != nil {
+		return err
+	}
+	dockerVersion, err := s.docker(ctx, "version", "--format", "{{.Server.Version}}")
+	if err != nil {
+		return err
+	}
+	composeVersion, err := s.docker(ctx, "compose", "version", "--short")
+	if err != nil {
+		return err
+	}
+	stackReady = true
+	fmt.Fprintf(out, "Reference project %s on %s/%s, Docker %s, Compose %s\n",
+		s.project, runtime.GOOS, runtime.GOARCH, dockerVersion, composeVersion)
+	fmt.Fprintf(out, "Checkout: %s\nMySQL (metadata and source): %s\nPostgreSQL: %s\n", checkout(ctx, root), mysqlImage, postgresImage)
+	fmt.Fprintf(out, "Prepared local configuration and verified Docker in %s\n", elapsed(start))
+	stage := time.Now()
+	if ownedImage {
+		fmt.Fprintln(out, "Building the gateway image...")
+		if _, err := s.compose(ctx, "build", "data-fabric-api"); err != nil {
+			return err
+		}
+	}
+	imageID, err := s.docker(ctx, "image", "inspect", "--format", "{{.Id}}", s.image)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Gateway image %s (%s), prepared in %s\n", s.image, imageID, elapsed(stage))
+
+	stage = time.Now()
+	fmt.Fprintln(out, "Starting the two source databases and the HTTP API...")
+	if err := s.up(ctx, "data-fabric-api"); err != nil {
+		return err
+	}
+	env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Databases and API ready in %s\n", elapsed(stage))
+	if err := env.mintIdentities(); err != nil {
+		return fmt.Errorf("mint reference identities: %w", err)
+	}
+	stage = time.Now()
+	if err := env.registerSources(ctx); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Registered both sources with app-a in %s\n", elapsed(stage))
+
+	stage = time.Now()
+	if err := env.writePolicy(); err != nil {
+		return err
+	}
+	// Table/column policy is loaded at startup and uses the UUIDs just
+	// assigned by the API. Restart only the API before starting remote MCP.
+	if _, err := s.compose(ctx, "restart", "data-fabric-api"); err != nil {
+		return err
+	}
+	if err := s.up(ctx, "data-fabric-mcp"); err != nil {
+		return err
+	}
+	env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
+	if err != nil {
+		return err
+	}
+	mcpBase, err := s.url(ctx, "data-fabric-mcp", "8081", "https")
+	if err != nil {
+		return err
+	}
+	env.MCPURL = mcpBase + "/mcp"
+	fmt.Fprintf(out, "Policy loaded and remote MCP ready in %s\n", elapsed(stage))
+
+	stage = time.Now()
+	if err := env.verifyReuse(ctx); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "app-b reused both sources via REST and MCP in %s\n", elapsed(stage))
+	if err := env.verifyDenials(ctx); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Cross-tenant access, a restricted column, and invalid MCP audience rejected. Setup and smoke: %s\n", elapsed(start))
+	if err := s.recordResources(ctx, out); err != nil {
+		return err
+	}
+	if check != nil {
+		return check(ctx, env)
+	}
+	return nil
+}
+
+func newStack(root, directory string, options Options) *composeStack {
+	project := "df-reference-" + randomHex(6)
+	image := options.Image
+	if image == "" {
+		image = project + ":local"
+	}
+	ttl := options.SessionTTLSeconds
+	if ttl == 0 {
+		ttl = 1800
+	}
+	concurrent := options.MaxConcurrentQueriesPerTenant
+	if concurrent == 0 {
+		concurrent = 25
+	}
+	env := map[string]string{
+		"DF_REFERENCE_DIRECTORY":               filepath.ToSlash(directory),
+		"DF_REFERENCE_IMAGE":                   image,
+		"DF_REFERENCE_MYSQL_IMAGE":             mysqlImage,
+		"DF_REFERENCE_POSTGRES_IMAGE":          postgresImage,
+		"DF_REFERENCE_CONCURRENT_PER_TENANT":   strconv.Itoa(concurrent),
+		"DF_REFERENCE_SESSION_TTL_SECONDS":     strconv.Itoa(ttl),
+		"DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID": "reference",
+		"MCP_OIDC_ISSUER":                      issuerURL,
+		"MCP_OIDC_AUDIENCE":                    audience,
+		"MCP_OIDC_REQUIRED_SCOPES":             queryScope,
+		"MCP_OIDC_SCOPE_CLAIM":                 "scope",
+		"MCP_OIDC_TENANT_CLAIM":                "tenant",
+		"MCP_OIDC_ROLES_CLAIM":                 "roles",
+		"MCP_OIDC_USERNAME_CLAIM":              "preferred_username",
+		"MCP_OIDC_JWKS_REFRESH_INTERVAL":       "5m",
+		"API_PORT":                             "8080",
+		"MCP_HTTPS_PORT":                       "8443",
+	}
+	var secrets []string
+	for _, key := range []string{
+		"JWT_SECRET", "METADATA_DB_ROOT_PASSWORD", "METADATA_DB_PASSWORD",
+		"SAMPLE_SOURCE_ROOT_PASSWORD", "SAMPLE_READER_PASSWORD",
+		"DF_REFERENCE_POSTGRES_PASSWORD", "DF_REFERENCE_POSTGRES_READER_PASSWORD",
+	} {
+		env[key] = randomHex(32)
+		secrets = append(secrets, env[key], "[redacted]")
+	}
+	vaultKey := base64.StdEncoding.EncodeToString(randomBytes(32))
+	env["DATA_FABRIC_CREDENTIAL_KEYS"] = `{"reference":"` + vaultKey + `"}`
+	secrets = append(secrets, vaultKey, "[redacted]")
+	return &composeStack{
+		root: root, directory: directory, project: project, image: image,
+		env: env, redact: strings.NewReplacer(secrets...),
+	}
+}
+
+func (env *Environment) writePolicy() error {
+	sources := make(map[string]any, len(env.Sources))
+	for _, source := range env.Sources {
+		scopes := []map[string]any{
+			{"schema": source.Schema, "table": "orders", "columns": []string{"id", "amount", "status", "created_at"}},
+			{"schema": source.Schema, "table": "order_items", "columns": []string{"id", "order_id", "item", "quantity", "discount"}},
+		}
+		sources[source.ID] = map[string]any{
+			"admin_override": false,
+			"rules":          []map[string]any{{"tenant_id": "tenant-a", "read": scopes, "metadata": scopes}},
+		}
+	}
+	cfg := map[string]any{"table_authorization": map[string]any{"enabled": true, "data_sources": sources}}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	// JSON is also valid YAML. The containing directory is mounted rather
+	// than the file, so both services see the generated policy at startup.
+	return os.WriteFile(filepath.Join(env.stack.directory, "configs", "config.yaml"), data, 0o644)
+}
+
+func repositoryRoot(path string) (string, error) {
+	var err error
+	if path == "" {
+		path, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(path, "deploy", "mcp", "docker-compose.reference.yml")); err == nil {
+			return path, nil
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return "", fmt.Errorf("could not find the Data Fabric repository")
+		}
+		path = parent
+	}
+}
+
+func checkout(ctx context.Context, root string) string {
+	command := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	command.Dir = root
+	revision, err := command.Output()
+	if err != nil {
+		return "unavailable"
+	}
+	command = exec.CommandContext(ctx, "git", "status", "--porcelain")
+	command.Dir = root
+	status, err := command.Output()
+	if err == nil && len(status) != 0 {
+		return strings.TrimSpace(string(revision)) + " (working tree changes)"
+	}
+	return strings.TrimSpace(string(revision))
+}
+
+func elapsed(since time.Time) time.Duration {
+	return time.Since(since).Round(time.Millisecond)
+}
+
+func randomHex(size int) string {
+	return hex.EncodeToString(randomBytes(size))
+}
+
+func randomBytes(size int) []byte {
+	data := make([]byte, size)
+	_, _ = rand.Read(data) // crypto/rand.Read either succeeds or terminates the process.
+	return data
+}

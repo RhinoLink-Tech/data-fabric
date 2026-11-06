@@ -44,10 +44,12 @@ JOBS = {
     "doris-contract": ("TestDorisDriverContract", "TestDorisMetadataExtractorContract"),
     "starrocks-contract": ("TestStarRocksDriverContract", "TestStarRocksMetadataExtractorContract"),
     "reference-contracts": ("TestPostgreSQLDriverContract", "TestMySQLDriverContract"),
+    # This runner validates the public evidence itself and exits nonzero on a failed case.
+    "public-reference-acceptance": (),
     "postgres-tls-contract": ("TestPostgreSQLTLSVerification",),
 }
 SCHEDULED_JOBS = tuple(job for job in JOBS if job not in {"reference-contracts", "postgres-tls-contract"})
-REFERENCE = ("reference-contracts",)
+REFERENCE = ("reference-contracts", "public-reference-acceptance")
 HDFS = ("hdfs-csv-contract", "hdfs-parquet-contract")
 SHARED_OBJECT_STORAGE = ("s3-csv-contract", "minio-csv-contract", *HDFS)
 MYSQL_TLS = ("mysql-tls-contract", "mysql-84-tls-contract")
