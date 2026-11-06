@@ -185,11 +185,11 @@ func (dtm *DataTypeMapper) mapPostgreSQLType(columnType string, nullable bool) m
 	columnType = strings.ToLower(columnType)
 
 	switch {
-	case columnType == "smallint":
+	case columnType == "smallint" || columnType == "int2":
 		return model.TypeInteger
-	case columnType == "integer":
+	case columnType == "integer" || columnType == "int4":
 		return model.TypeInteger
-	case columnType == "bigint":
+	case columnType == "bigint" || columnType == "int8":
 		return model.TypeBigInt
 	case columnType == "smallserial":
 		return model.TypeInteger

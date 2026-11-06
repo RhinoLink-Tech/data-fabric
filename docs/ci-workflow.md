@@ -18,8 +18,8 @@ to skip live services.
 | Change | Live coverage |
 | --- | --- |
 | Documentation only | No live services; unit and build checks still run. |
-| Shared connection, query, validation, security, REST/MCP, or runtime changes | Reference PostgreSQL **17.11** and MySQL **8.4.13** driver contracts, using the existing pinned images and test accounts. |
-| Direct changes to a connector or its contract runner | The reference pair and applicable existing driver, metadata, or TLS jobs for that connector. Changes to shared connector code also select the families that use it. |
+| Shared connection, query, validation, security, REST/MCP, or runtime changes | Reference PostgreSQL **17.11** and MySQL **8.4.13** driver contracts plus public REST and remote MCP smoke acceptance, using pinned images and synthetic accounts. |
+| Direct changes to a connector or its contract runner | The reference pair, public smoke acceptance, and applicable existing driver, metadata, or TLS jobs for that connector. Changes to shared connector code also select the families that use it. |
 | ClickHouse or TiDB driver changes | The applicable TLS job and existing full build/checks job, which holds their versioned driver contracts. This adds more work than the two-database reference profile. |
 | Changes to dependency versions or global CI/validation infrastructure; unknown driver impact | All known live jobs. |
 | A provider without a versioned live baseline | Existing fixture coverage and the reference profile. This does not change the provider's documented support tier. |
@@ -43,7 +43,7 @@ The complete provider/version contracts, TLS checks, race tests, container
 image build, and image smoke tests still run daily at 02:17 China Standard
 Time and through **Run workflow** in Actions. The full schedule covers the
 original matrix; the PR-only reference and standalone PostgreSQL TLS jobs are
-not duplicated there. A newer commit to the same PR cancels the superseded run.
+not duplicated there. Scheduled and manual runs execute the full [public acceptance matrix](validation/public-task-acceptance.md). A newer commit to the same PR cancels the superseded run.
 
 When automatic provider execution is unavailable or an investigation needs
 the complete matrix, run **Go CI** against a branch or tag pointing to the

@@ -151,6 +151,7 @@ func setDefaults() {
 
 	// Query defaults
 	viper.SetDefault("query.prefer_streaming", true)
+	viper.SetDefault("query.session_ttl_seconds", maxQuerySessionTTLSeconds)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
 	viper.SetDefault("query.max_concurrent_queries_per_tenant", 25)
 	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
@@ -215,8 +216,11 @@ type MCPConfig struct {
 	OIDCJWKSRefreshInterval time.Duration `mapstructure:"oidc_jwks_refresh_interval"`
 }
 
+const maxQuerySessionTTLSeconds = 30 * 60
+
 // QueryConfig holds settings related to query execution
 type QueryConfig struct {
+	SessionTTLSeconds             int    `mapstructure:"session_ttl_seconds"`
 	PreferStreaming               bool   `mapstructure:"prefer_streaming"`
 	ExecutionMode                 string `mapstructure:"execution_mode"`
 	MaxConcurrentQueriesPerTenant int    `mapstructure:"max_concurrent_queries_per_tenant"`

@@ -103,6 +103,33 @@ jobs:
         if: always()
         run: python3 scripts/ci/contract_checks.py require --job reference-contracts --log "$RUNNER_TEMP/live-contract.log"
 
+  public-reference-acceptance:
+    name: Public REST and MCP reference acceptance
+    needs: contract-selection
+    if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'public-reference-acceptance') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run the public acceptance harness against pinned sources
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          acceptance_args=()
+          if [[ "$CI_EVENT_NAME" != schedule && "$CI_EVENT_NAME" != workflow_dispatch ]]; then
+            acceptance_args+=(-smoke)
+          fi
+          go run ./deploy/mcp/reference/cmd/acceptance "${acceptance_args[@]}" | tee "$RUNNER_TEMP/public-reference.log"
+
   postgres-tls-contract:
     name: PostgreSQL TLS certificate contract
     needs: contract-selection
@@ -1219,6 +1246,7 @@ jobs:
       - contract-selection
       - fast-checks
       - reference-contracts
+      - public-reference-acceptance
       - postgres-tls-contract
       - postgres-version-contracts
       - mysql-lts-contract

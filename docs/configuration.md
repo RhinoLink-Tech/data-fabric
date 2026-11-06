@@ -334,6 +334,7 @@ logging:
 query:
   prefer_streaming: true
   execution_mode: "auto"
+  session_ttl_seconds: 1800
 
 mcp:
   enabled: false
@@ -424,6 +425,7 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `logging.format` | String | `json` |
 | `query.prefer_streaming` | Boolean | `true` |
 | `query.execution_mode` | String | `auto` (`auto`, `streaming`, or `pagination`) |
+| `query.session_ttl_seconds` | Integer | `1800`; fixed lifetime of a pagination or streaming query session. Values `1`–`1800` set the lifetime. `0` uses the default. |
 | `query.max_concurrent_queries_per_tenant` | Integer | `25`; limits combined active streams and in-flight paginated queries per tenant (falls back to user ID when no tenant claim is present) |
 | `query.max_concurrent_streams_per_tenant` | Integer | Deprecated alias for `query.max_concurrent_queries_per_tenant` |
 | `query.rate_limit_per_minute_per_tenant` | Integer | `120`; shared query execution and continuation request budget per tenant |
@@ -1275,6 +1277,7 @@ Every service-config field supports this mapping:
 | `logging.format` | `LOGGING_FORMAT` |
 | `query.prefer_streaming` | `QUERY_PREFER_STREAMING` |
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
+| `query.session_ttl_seconds` | `QUERY_SESSION_TTL_SECONDS` |
 | `query.max_concurrent_queries_per_tenant` | `QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT` |
 | `query.max_concurrent_streams_per_tenant` (deprecated) | `QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT` |
 | `query.rate_limit_per_minute_per_tenant` | `QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT` |

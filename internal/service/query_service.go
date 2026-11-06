@@ -99,6 +99,19 @@ func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSo
 // NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
 // pagination service using a shared process-level query admission limiter.
 func NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) QueryService {
+	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, defaultQuerySessionTTL, translators...)
+}
+
+// NewGatewayQueryServices builds both execution modes with the same continuation lifetime.
+func NewGatewayQueryServices(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, translator *sql_translator.SQLTranslationManager) (QueryService, StreamingService) {
+	if sessionTTL <= 0 {
+		sessionTTL = defaultQuerySessionTTL
+	}
+	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, sessionTTL, translator),
+		newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, sessionTTL, translator)
+}
+
+func newQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, translators ...*sql_translator.SQLTranslationManager) QueryService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -120,7 +133,7 @@ func NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRep
 		sqlValidator:     validator,
 		typeMapper:       utils.NewDataTypeMapper(),
 		stats:            stats,
-		sessionManager:   NewSessionManager(),
+		sessionManager:   newSessionManager(sessionTTL),
 		preferStreaming:  preferStreaming,
 		sqlTranslator:    translator,
 		tableAuthorizer:  authorizer,
@@ -138,9 +151,13 @@ func (qs *queryService) acquireQueryAdmission(caller *security.Caller) (func(), 
 
 // NewSessionManager creates a new session manager
 func NewSessionManager() *SessionManager {
+	return newSessionManager(defaultQuerySessionTTL)
+}
+
+func newSessionManager(ttl time.Duration) *SessionManager {
 	sm := &SessionManager{
 		sessions: make(map[string]*QuerySession),
-		ttl:      defaultQuerySessionTTL,
+		ttl:      ttl,
 	}
 
 	// Start cleanup goroutine
@@ -768,7 +785,7 @@ func closeQueryCursor(session *QuerySession) {
 }
 
 func (sm *SessionManager) cleanupSessions() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(min(5*time.Minute, sm.ttl))
 	defer ticker.Stop()
 
 	for range ticker.C {

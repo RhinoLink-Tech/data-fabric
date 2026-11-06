@@ -148,8 +148,8 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
-	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
+	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
+		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
 
 	// Initialize unified query service that chooses between pagination and streaming based on config
 	unifiedQueryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
@@ -374,8 +374,8 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
-	streamingService := service.NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
-	paginationService := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, cfg.Query.PreferStreaming, tableAuthorizer, queryStats, queryAdmissionLimiter, translationManager)
+	paginationService, streamingService := service.NewGatewayQueryServices(datasourceRepo, connPool, cfg.Query.PreferStreaming,
+		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, translationManager)
 	queryService := unifiedservice.NewUnifiedQueryService(paginationService, streamingService, cfg)
 	metadataExtractor := metadata.NewMetadataExtractor(connPool, datasourceRepo)
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
