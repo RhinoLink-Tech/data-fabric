@@ -328,6 +328,11 @@ func expireSessions(ctx context.Context, w wire) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	// The query session lifetime is intentionally shorter than this wait.
+	// Refresh the independent MCP transport session before issuing new work.
+	if err := w.releaseMCPActor(ctx, reader); err != nil {
+		return fmt.Errorf("renew acceptance session after query expiry wait: %w", err)
+	}
 	// First verify the sweeper can reclaim capacity without an expired
 	// continuation request doing the cleanup on its behalf.
 	if err := verifyReleasedCapacity(ctx, w, source); err != nil {
@@ -442,6 +447,11 @@ func sourceOutage(ctx context.Context, w wire) error {
 	defer cancel()
 	if err := w.env.SetSourceAvailable(restore, "mysql", true); err != nil {
 		return errors.Join(check, fmt.Errorf("restore synthetic MySQL"))
+	}
+	// Stopping and restoring the fixture can outlive the MCP transport TTL.
+	// Start the recovery query on a fresh transport session.
+	if err := w.releaseMCPActor(restore, reader); err != nil {
+		return errors.Join(check, fmt.Errorf("renew acceptance session after MySQL recovery: %w", err))
 	}
 	return errors.Join(check, healthyRows(restore, w, mysql))
 }
