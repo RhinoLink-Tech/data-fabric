@@ -46,6 +46,7 @@ func NewQueryController(unifiedQueryService unifiedservice.UnifiedQueryService) 
 // @Param request body model.FetchQueryRequest true "Fetch query request"
 // @Success 200 {object} response.StandardResponse{data=model.FetchQueryResponse}
 // @Failure 400 {object} response.StandardResponse
+// @Failure 413 {object} response.StandardResponse
 // @Failure 422 {object} response.StandardResponse
 // @Failure 500 {object} response.StandardResponse
 // @Router /api/v1/fetch [post]
@@ -427,6 +428,10 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
 	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
 		return http.StatusTooManyRequests, "QUERY_RATE_LIMIT_EXCEEDED"
+	case errors.Is(err, queryservice.ErrQueryResultLimitExceeded):
+		return http.StatusRequestEntityTooLarge, "QUERY_RESULT_LIMIT_EXCEEDED"
+	case errors.Is(err, queryservice.ErrQueryDurationLimitExceeded):
+		return http.StatusGatewayTimeout, "QUERY_BUDGET_TIMEOUT"
 	case errors.Is(err, queryservice.ErrExactCountUnavailable):
 		// The statement is valid but its shape cannot be counted exactly (#23)
 		return http.StatusUnprocessableEntity, "COUNT_UNSUPPORTED"

@@ -121,6 +121,8 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 		{"negative tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = -1 }, "query.rate_limit_per_minute_per_tenant"},
 		{"negative tenant query burst", func(c *Config) { c.Query.RateLimitBurstPerTenant = -1 }, "query.rate_limit_burst_per_tenant"},
 		{"incomplete tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = 120 }, "must both be zero"},
+		{"negative query result rows", func(c *Config) { c.Query.MaxResultRows = -1 }, "query.max_result_rows"},
+		{"oversized query result bytes", func(c *Config) { c.Query.MaxResultBytes = 1 << 31 }, "query.max_result_bytes"},
 		{"missing JWT secret", func(c *Config) { c.Security.JWTSecret = "" }, "security.jwt_secret"},
 	}
 	for _, tc := range tests {
@@ -132,6 +134,15 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 				t.Fatalf("ValidateStartup() error = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateStartupCapsQueryDurationToShortSessionTTL(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Query.SessionTTLSeconds = 8
+	cfg.Query.MaxDurationSeconds = 300
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want the effective deadline to be capped to the shorter session TTL", err)
 	}
 }
 

@@ -12,9 +12,10 @@ func TestQueryStatsTrackerAggregatesDurationAndDimensions(t *testing.T) {
 	tracker.Record("source-postgres", model.DatabaseTypePostgreSQL, true, 1500*time.Millisecond)
 	tracker.Record("source-postgres", model.DatabaseTypePostgreSQL, false, 500*time.Millisecond)
 	tracker.Record("source-mysql", model.DatabaseTypeMySQL, true, time.Second)
+	tracker.RecordBudgetExceeded()
 
 	stats := tracker.Snapshot()
-	if stats.TotalQueries != 3 || stats.SuccessfulQueries != 2 || stats.FailedQueries != 1 {
+	if stats.TotalQueries != 3 || stats.SuccessfulQueries != 2 || stats.FailedQueries != 1 || stats.BudgetExceededQueries != 1 {
 		t.Fatalf("unexpected counters: %+v", stats)
 	}
 	if stats.AvgExecutionTime != 1 {

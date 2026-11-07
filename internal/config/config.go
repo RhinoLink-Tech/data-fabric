@@ -175,6 +175,9 @@ func setDefaults() {
 	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
 	viper.SetDefault("query.rate_limit_per_minute_per_tenant", 120)
 	viper.SetDefault("query.rate_limit_burst_per_tenant", 20)
+	viper.SetDefault("query.max_result_rows", 100000)
+	viper.SetDefault("query.max_result_bytes", 64<<20)
+	viper.SetDefault("query.max_duration_seconds", 300)
 	viper.SetDefault("routing.enabled", false)
 	viper.SetDefault("routing.deployment_id", "")
 	viper.SetDefault("routing.owner_slot", "")
@@ -254,4 +257,7 @@ type QueryConfig struct {
 	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"` // deprecated compatibility alias
 	RateLimitPerMinutePerTenant   int    `mapstructure:"rate_limit_per_minute_per_tenant"`
 	RateLimitBurstPerTenant       int    `mapstructure:"rate_limit_burst_per_tenant"`
+	MaxResultRows                 int64  `mapstructure:"max_result_rows"`
+	MaxResultBytes                int64  `mapstructure:"max_result_bytes"`
+	MaxDurationSeconds            int    `mapstructure:"max_duration_seconds"`
 }

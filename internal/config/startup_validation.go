@@ -154,6 +154,15 @@ func (c QueryConfig) Validate() error {
 	if c.RateLimitBurstPerTenant < 0 {
 		return fmt.Errorf("query.rate_limit_burst_per_tenant cannot be negative")
 	}
+	if c.MaxResultRows < 0 || c.MaxResultRows > 10000000 {
+		return fmt.Errorf("query.max_result_rows must be between 0 and 10000000")
+	}
+	if c.MaxResultBytes < 0 || c.MaxResultBytes > 1<<30 {
+		return fmt.Errorf("query.max_result_bytes must be between 0 and 1073741824")
+	}
+	if c.MaxDurationSeconds < 0 || c.MaxDurationSeconds > maxQuerySessionTTLSeconds {
+		return fmt.Errorf("query.max_duration_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
+	}
 	if (c.RateLimitPerMinutePerTenant == 0) != (c.RateLimitBurstPerTenant == 0) {
 		return fmt.Errorf("query.rate_limit_per_minute_per_tenant and query.rate_limit_burst_per_tenant must both be zero to disable query rate limiting")
 	}

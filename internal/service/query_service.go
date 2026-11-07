@@ -55,6 +55,7 @@ type QuerySession struct {
 	Entries          []*[]interface{}
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
+	budget           queryBudgetState
 	continuationLock sessionContinuationLock
 }
 
@@ -81,6 +82,7 @@ type queryService struct {
 	preferStreaming  bool
 	sqlTranslator    *sql_translator.SQLTranslationManager // Added SQL translator
 	tableAuthorizer  *security.TableAuthorizer
+	budgetLimits     QueryBudgetLimits
 }
 
 // NewQueryService creates a new instance of QueryService
@@ -104,19 +106,29 @@ func NewQueryServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSo
 // NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
 // pagination service using a shared process-level query admission limiter.
 func NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) QueryService {
-	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, defaultQuerySessionTTL, translators...)
+	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, defaultQuerySessionTTL, DefaultQueryBudgetLimits(), translators...)
 }
 
 // NewGatewayQueryServices builds both execution modes with the same continuation lifetime.
 func NewGatewayQueryServices(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, translator *sql_translator.SQLTranslationManager) (QueryService, StreamingService) {
+	return NewGatewayQueryServicesWithBudgets(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, sessionTTL, DefaultQueryBudgetLimits(), translator)
+}
+
+// NewGatewayQueryServicesWithBudgets builds both execution modes with the same
+// session lifetime, result limits, and owner-local budget behavior.
+func NewGatewayQueryServicesWithBudgets(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, budgets QueryBudgetLimits, translator *sql_translator.SQLTranslationManager) (QueryService, StreamingService) {
 	if sessionTTL <= 0 {
 		sessionTTL = defaultQuerySessionTTL
 	}
-	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, sessionTTL, translator),
-		newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, sessionTTL, translator)
+	budgets = budgets.normalized()
+	if budgets.MaxDuration > sessionTTL {
+		budgets.MaxDuration = sessionTTL
+	}
+	return newQueryService(datasourceRepo, connPool, preferStreaming, authorizer, stats, limiter, sessionTTL, budgets, translator),
+		newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, sessionTTL, budgets, translator)
 }
 
-func newQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, translators ...*sql_translator.SQLTranslationManager) QueryService {
+func newQueryService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, preferStreaming bool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, budgets QueryBudgetLimits, translators ...*sql_translator.SQLTranslationManager) QueryService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -142,6 +154,7 @@ func newQueryService(datasourceRepo repository.DataSourceRepository, connPool *d
 		preferStreaming:  preferStreaming,
 		sqlTranslator:    translator,
 		tableAuthorizer:  authorizer,
+		budgetLimits:     budgets.normalized(),
 	}
 }
 
@@ -467,8 +480,17 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	if req == nil {
 		return nil, fmt.Errorf("query request is required")
 	}
+	budget := newQueryBudgetState(started, qs.budgetLimits)
+	defer func() {
+		if err != nil && budget.expired(time.Now()) && errors.Is(err, context.DeadlineExceeded) {
+			err = ErrQueryDurationLimitExceeded
+			qs.stats.RecordBudgetExceeded()
+		}
+	}()
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
+	ctx, budgetCancel := budget.withDeadline(ctx)
+	defer budgetCancel()
 
 	// Validate bind parameters before anything touches a data source (#21):
 	// unsupported shapes fail here with index-and-type messages that carry
@@ -520,20 +542,32 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	if !qs.admissionLimiter.AllowQueryRequest(caller) {
 		return nil, ErrQueryRateLimitExceeded
 	}
+	if budget.expired(time.Now()) {
+		qs.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
 
 	// Drivers with a native protocol can execute through a typed executor
 	// without manufacturing a database/sql connection.
 	nativeExecutor, supported, err := qs.connPool.GetNativeSQLAPIExecutor(ctx, datasource)
 	if err != nil {
+		if budget.expired(time.Now()) {
+			qs.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to open native API executor: %w", err)
 	}
 	if supported {
-		return qs.fetchNativeAPIQuery(ctx, caller, datasource, req, sqlToExecute, tables, parameters, nativeExecutor)
+		return qs.fetchNativeAPIQuery(ctx, caller, datasource, req, sqlToExecute, tables, parameters, nativeExecutor, budget)
 	}
 
 	// Get connection from pool
 	conn, err := qs.connPool.GetConnection(ctx, datasource)
 	if err != nil {
+		if budget.expired(time.Now()) {
+			qs.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
 
@@ -541,6 +575,9 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	createdAt := time.Now()
 	queryID := qs.generateSessionID()
 	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(qs.sessionManager.ttl))
+	if budget.deadline.Before(expiresAt) {
+		expiresAt = budget.deadline
+	}
 	slug, err := querySessionSlug(ctx, queryID, expiresAt, qs.generateSlug)
 	if err != nil {
 		return nil, err
@@ -558,13 +595,33 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    createdAt,
 		ExpiresAt:    expiresAt,
+		budget:       budget,
 	}
 
 	// Execute query and get first batch
 	columns, entries, totalCount, err := qs.executeBatchQuery(ctx, datasource.Type, conn, sqlToExecute, int64(req.BatchSize), 0, session.Parameters)
 	if err != nil {
+		if budget.expired(time.Now()) {
+			qs.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
 	}
+	if budget.expired(time.Now()) {
+		qs.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	if err := budget.accountPage(columns, entries); err != nil {
+		if err == ErrQueryResultLimitExceeded {
+			qs.stats.RecordBudgetExceeded()
+		}
+		return nil, err
+	}
+	if budget.expired(time.Now()) {
+		qs.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	session.budget = budget
 
 	// Prepare response
 	response = &model.FetchQueryResponse{
@@ -618,11 +675,22 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	if session.creator != querySessionPrincipalFromContext(ctx, caller) {
 		return nil, ErrQuerySessionUnavailable
 	}
+	session.budget.ensure(session.CreatedAt, qs.budgetLimits, session.FetchedRows)
+	ctx, budgetCancel := session.budget.withDeadline(ctx)
+	defer budgetCancel()
+	if session.budget.expired(time.Now()) {
+		qs.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
+	}
 
 	// Re-check the data source on continuation: the source may have been
 	// disabled or deleted since the session was created (#118)
 	datasource, err := qs.datasourceRepo.GetByID(ctx, session.DataSourceID)
 	if err != nil {
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		if errors.Is(err, repository.ErrDataSourceNotFound) {
 			qs.sessionManager.Delete(session.QueryID)
 		}
@@ -637,19 +705,41 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		return nil, err
 	}
 	if err := reauthorizeSavedQuery(ctx, caller, datasource, qs.tableAuthorizer, qs.sqlValidator, session.SQL, session.Tables); err != nil {
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		qs.sessionManager.Delete(session.QueryID)
 		return nil, err
+	}
+	if session.budget.expired(time.Now()) {
+		qs.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 
 	// Check if all data has been fetched only after current access policy has
 	// been rechecked, since the empty response still exposes result columns.
 	if session.FetchedRows >= session.TotalRows {
+		entries := []*[]interface{}{}
+		if err := session.budget.accountPage(session.Columns, entries); err != nil {
+			if err == ErrQueryResultLimitExceeded {
+				qs.discardBudgetSession(session)
+			} else {
+				qs.sessionManager.Delete(session.QueryID)
+			}
+			return nil, err
+		}
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
+		qs.sessionManager.Delete(session.QueryID)
 		return &model.FetchQueryResponse{
 			QueryID:    session.QueryID,
 			Slug:       session.Slug,
 			Token:      session.Token,
 			Columns:    session.Columns,
-			Entries:    []*[]interface{}{},
+			Entries:    entries,
 			TotalCount: int(session.TotalRows),
 		}, nil
 	}
@@ -675,11 +765,31 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		}
 		batch, sourceColumns, totalRows, err := cursor.NextBatch(ctx, batchSize)
 		if err != nil {
+			if session.budget.expired(time.Now()) {
+				qs.discardBudgetSession(session)
+				return nil, ErrQueryDurationLimitExceeded
+			}
 			qs.sessionManager.Delete(session.QueryID)
 			return nil, fmt.Errorf("failed to fetch native API batch: %w", err)
 		}
 		columns := qs.buildExecutionColumnInfo(sourceColumns, datasource.Type)
 		entries := encodeExecutionRows(batch.Rows, columns)
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
+		if err := session.budget.accountPage(columns, entries); err != nil {
+			if err == ErrQueryResultLimitExceeded {
+				qs.discardBudgetSession(session)
+			} else {
+				qs.sessionManager.Delete(session.QueryID)
+			}
+			return nil, err
+		}
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		session.Columns = columns
 		session.Entries = entries
 		session.FetchedRows += int64(len(entries))
@@ -703,6 +813,10 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 
 	conn, err := qs.connPool.GetConnection(ctx, datasource)
 	if err != nil {
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
 
@@ -712,7 +826,27 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	// Execute query for next batch
 	columns, entries, _, err := qs.executeBatchQuery(ctx, datasource.Type, conn, session.SQL, int64(batchSize), offset, session.Parameters)
 	if err != nil {
+		if session.budget.expired(time.Now()) {
+			qs.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to execute batch query: %w", err)
+	}
+	if session.budget.expired(time.Now()) {
+		qs.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	if err := session.budget.accountPage(columns, entries); err != nil {
+		if err == ErrQueryResultLimitExceeded {
+			qs.discardBudgetSession(session)
+		} else {
+			qs.sessionManager.Delete(session.QueryID)
+		}
+		return nil, err
+	}
+	if session.budget.expired(time.Now()) {
+		qs.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 	// Update session
 	session.Entries = entries
@@ -865,7 +999,7 @@ func closeQueryCursor(session *QuerySession) {
 }
 
 func (sm *SessionManager) cleanupSessions() {
-	ticker := time.NewTicker(min(5*time.Minute, sm.ttl))
+	ticker := time.NewTicker(min(time.Minute, sm.ttl))
 	defer ticker.Stop()
 	defer close(sm.cleanupDone)
 
