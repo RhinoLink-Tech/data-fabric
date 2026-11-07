@@ -2,25 +2,91 @@
 
 **Reviewed: 2026-11-07**
 
-This plan sequences the engineering work behind the [roadmap](../roadmap.md). Build repeatable public-interface evidence first, then improve shared operation and delivery. Real-team pilots remain deferred until the maintainer resumes them.
+This plan sequences the engineering work behind the [roadmap](../roadmap.md). M0–M3 delivered the public-access and shared-operation foundation. The active work is the M5–M7 productization program in [#439](https://github.com/RhinoLink-Tech/data-fabric/issues/439). Real-team value validation remains M4 and is separate from synthetic engineering acceptance.
 
-## Current work and dependencies
+## Productization program
 
-| Work | Tracking | Readiness and outcome |
+**Status: proposed implementation; no new runtime capability is delivered by this plan.**
+
+The next increment is governed by four outcomes: **simple installation, easy first use, fast deployment, and low resource use**. New capability work must improve one of these outcomes and preserve the existing access-control and query contracts. First use means an operator can initialize the instance, connect one source, execute an authorized query, and reuse it from a second application.
+
+### Baseline and intended product profiles
+
+The reviewed baseline is `07d3c834b4cd9abe1e40ec942125912623398a2e`. Production metadata currently uses MySQL; REST and MCP run in separate processes; published v2.0.0 artifacts contain source rather than a ready-to-run image; the UI requires a JWT supplied by the operator. All connector families are compiled into the executable. SQL connections are already opened lazily, but support-catalog construction invokes driver factories. These findings justify the tasks below; they do not mean all sources connect at startup.
+
+The [2026-11-01 footprint report](../performance/deployment-footprint.md) records a 119.5 MiB executable, a 236.1 MiB uncompressed image and 83.61 MiB idle PID RSS. Its original scope excludes the external metadata database and whole-container parser-child memory. It is historical evidence, not the budget measurement for this program.
+
+| Profile | Intended deployment | Capability boundary |
 | --- | --- | --- |
-| Reconcile roadmap and backlog | [#402](https://github.com/RhinoLink-Tech/data-fabric/issues/402) | Complete the issue/milestone alignment and preserve retired scope as history. |
-| Preserve pre-merge source evidence | [#404](https://github.com/RhinoLink-Tech/data-fabric/issues/404) | Follow #400/#401; use existing pinned reference contracts and conservative changed-path selection. |
-| Reproduce heterogeneous access | [#81](https://github.com/RhinoLink-Tech/data-fabric/issues/81) | Extend #180/#186 and `deploy/mcp` with PostgreSQL and MySQL together, isolated test identities, setup checks and measurements. |
-| Verify complete public tasks | [#403](https://github.com/RhinoLink-Tech/data-fabric/issues/403) | Depends on the reference environment. Extend existing tests through actual REST/MCP endpoints and record pass/fail/skip/unsupported evidence. |
-| Design multi-replica continuation | [#365](https://github.com/RhinoLink-Tech/data-fabric/issues/365) | ADR and verification matrix only. Research may proceed alongside the reference work; use its public contracts. |
-| Implement owner routing and drain | Create after #365 is accepted | Follow the chosen ADR using the public task harness. Keep live cursors with their owner. |
-| Bound cumulative query results | [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) | One logical query has cumulative rows, encoded-byte and overall-deadline limits across paginated, native API, and streaming paths; define COUNT and partial-result behavior. |
-| Update and revoke policies | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | Publish validated immutable versions through the shared metadata database with CAS, request-pinned snapshots, publisher/outcome history and a documented three-second revocation/fail-closed contract. See [ADR-004](../decisions/adr-004-versioned-table-policy-publication.md). |
-| Add targeted task context | [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66), [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67), [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) | Defined scope, no current implementation commitment. Start only from recorded schema-selection, business-context or schema-drift failures. |
-| Candidate delivery evidence | [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) | Completed against source SHA 53d0d662ac24273d8a5877dd4190188c843342c8; see the [candidate evidence runbook](../validation/post-m2-candidate-evidence.md) and [2026-11-07 evidence report](../validation/results/2026-11-07-post-m2-candidate.md). |
-| Validate real-team value | Create when the maintainer resumes pilots | Follow the [M4 pilot evidence protocol](../validation/real-team-pilot-evidence.md) to measure integration/reuse/support effort and task outcomes. |
+| Standalone target | One application container, one persistent volume, shared REST/remote-MCP runtime, verified local metadata. | Single node. Local metadata is proposed in [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444); it must not be advertised before implementation and acceptance. Business sources remain external. |
+| Team | Shared MySQL metadata and documented enterprise authentication, using the same gateway contracts. | Existing optional multi-replica routing retains owner-bound process-local cursors and explicit owner-loss behavior. |
+| Core / Full packages | Core starts with the verified PostgreSQL/MySQL/MariaDB family; Full preserves the broader connector distribution. | Compile-time connector inclusion and runtime enablement are separate from versioned support evidence. The default changes only after measured acceptance. |
 
-Do not create every future implementation issue at once. Keep at most two major implementation items in progress. #365 does not implement the selected design, and #99 does not reopen the identity/authorization/audit foundation in #217–#220.
+Combined REST/MCP is opt-in until accepted, and current single-transport and stdio modes remain supported. Production authentication requirements remain enforced; a guided setup must not introduce a permanent default account or a bypass.
+
+### Work and dependency gates
+
+| Milestone | Issue | Start after |
+| --- | --- | --- |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440) Reconcile README-linked guides with current startup and authentication behavior | Ready to claim |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) Measure the complete deployment and first-query resource baseline | Ready to claim |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) Publish runnable version-pinned images and offline artifacts | [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440), [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) Share one runtime across REST and remote MCP transports | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444) Add a verified single-node metadata backend | [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | [#445](https://github.com/RhinoLink-Tech/data-fabric/issues/445) Add idempotent initialization and actionable diagnostics | [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443), [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444) |
+| [M6 Guided use and on-demand connectors](https://github.com/RhinoLink-Tech/data-fabric/milestone/12) | [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) Guide first query and second-application reuse | [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440), [#445](https://github.com/RhinoLink-Tech/data-fabric/issues/445), [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) |
+| [M6 Guided use and on-demand connectors](https://github.com/RhinoLink-Tech/data-fabric/milestone/12) | [#447](https://github.com/RhinoLink-Tech/data-fabric/issues/447) Separate connector descriptions from lazy resource initialization | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) |
+| [M6 Guided use and on-demand connectors](https://github.com/RhinoLink-Tech/data-fabric/milestone/12) | [#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448) Ship selectable Core and Full connector distributions | [#447](https://github.com/RhinoLink-Tech/data-fabric/issues/447), [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442), [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) |
+| [M7 Efficient and recoverable operation](https://github.com/RhinoLink-Tech/data-fabric/milestone/13) | [#449](https://github.com/RhinoLink-Tech/data-fabric/issues/449) Reuse bounded parser workers without weakening authorization | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441), [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) |
+| [M7 Efficient and recoverable operation](https://github.com/RhinoLink-Tech/data-fabric/milestone/13) | [#450](https://github.com/RhinoLink-Tech/data-fabric/issues/450) Make exact totals optional for faster first pages | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441), [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) |
+| [M7 Efficient and recoverable operation](https://github.com/RhinoLink-Tech/data-fabric/milestone/13) | [#451](https://github.com/RhinoLink-Tech/data-fabric/issues/451) Bound aggregate connection client and file-query usage | [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441), [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443), [#447](https://github.com/RhinoLink-Tech/data-fabric/issues/447) |
+| [M7 Efficient and recoverable operation](https://github.com/RhinoLink-Tech/data-fabric/milestone/13) | [#452](https://github.com/RhinoLink-Tech/data-fabric/issues/452) Productize metadata key backup restore and upgrade checks | [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444), [#445](https://github.com/RhinoLink-Tech/data-fabric/issues/445), [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) |
+
+The initial ready work is [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440) and [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441). The first critical path is documentation/baseline → shared runtime → local metadata → initialization → guided first query and second-application reuse. Runnable artifacts and connector resource/package work can proceed alongside that path after their own gates pass. Aggregate limits, parser/count changes and recovery use the resulting runtime and candidate evidence. Keep at most two major implementations active; prioritize measured bottlenecks and the next usable end-to-end increment.
+
+M5 exits with a clean persistent installation from a pinned runnable artifact, an authorized first task and measured restart behavior. M6 exits with an independent guided-use rehearsal, resource-free discovery of unused connectors and verified Core/Full packages. M7 exits with the reviewed whole-container budgets, bounded failure behavior and fresh-instance restore/upgrade evidence. Link these records from [#439](https://github.com/RhinoLink-Tech/data-fabric/issues/439) before closing the corresponding milestone.
+
+### Provisional acceptance budgets
+
+These numbers are candidate targets, not delivered guarantees. [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) measures the current profile and delivers a reusable harness, then freezes or explicitly revises each budget with a recorded explanation. Each downstream implementation reruns the harness for its candidate; future profiles are not prerequisites for closing the baseline issue. A missed target requires remediation or a reviewed scope/budget decision; it must not disappear from the record.
+
+| Metric | Candidate target | Measurement boundary |
+| --- | --- | --- |
+| Standalone deployment | One application container and one persistent data volume; no external metadata database required. | Business source systems remain external; demo-source containers are reported separately. |
+| First authorized query | Candidate target: at most 5 minutes for an independent operator. | A reachable source and its approved connection details are supplied; report image download separately. |
+| Start to readiness | Candidate target: at most 3 seconds. | Cached image, standalone profile, empty metadata directory; also report restart and migration cases. |
+| Core image size | Candidate target: at most 150 MiB uncompressed. | Record exact connector set, architecture, artifact digest, and embedded SQL runtime. |
+| Warm idle memory | Candidate target: at most 128 MiB for the whole standalone application container. | After the first task and five idle minutes; include parser children and report cgroup memory, not only Go PID RSS. |
+| Light-load peak memory | Candidate target: at most 256 MiB. | Four concurrent fixed small PostgreSQL/MySQL queries with pinned synthetic fixtures; report object/file stress separately. |
+| Recovery | A verified supported upgrade, consistent backup and fresh-instance restore preserve sources, encrypted credentials, policy revisions and required audit records. | Missing keys and incompatible schemas fail clearly; no raw business records or credentials enter reports. |
+
+Measure the actual REST/MCP authentication, SQL validation, source execution, batching and cleanup path. Record exact commit, image digest, connector set, source versions, hardware, configuration and raw samples. Include all application processes in container memory, and report external metadata/identity/demo-source cost separately and in the full-stack total. Distinguish download, initialization, readiness, first query, warm idle and concurrent load. Keep file/object stress separate from the small SQL workload so its limits remain explicit.
+
+### Acceptance and collaboration rules
+
+- Before coding, assign the issue and post a claim with chat, branch, isolated Data Fabric worktree and intended files. Check overlapping claims and open PRs; a claim on this tracker coordinates the plan and does not reserve every implementation task.
+- Each PR must explain which of the four outcomes improves and link observable acceptance evidence. Runtime/package/UX/operations tasks require implemented behavior; a design or reference document alone does not close them.
+- Reuse existing owner/tenant checks, table/column policy and three-second revocation, read-only SQL parsing, parameter binding, redacted audit, per-query result budgets and continuation contracts. Preserve the known durability and process-local limits until separately addressed.
+- Catalog discovery must not create clients, connect to sources or start workers. Lazy resource initialization reduces runtime cost; Core/Full import boundaries reduce artifact size. Runtime enablement flags alone do not shrink the binary.
+- Use bounded lazy parser workers and optional totals only through their issues. Authorization decisions and query results are not parser-cache entries; exact-count compatibility and fail-closed SQL behavior remain explicit.
+- Use isolated synthetic fixtures in representative business flows. Do not access or modify Atlas code, repositories, databases or services. No credentials or raw business records belong in issues, examples or reports.
+- Update [#439](https://github.com/RhinoLink-Tech/data-fabric/issues/439) and this roadmap after each accepted increment. Planning alone closes none of the implementation issues. Real-team/customer/model-value evidence remains separate; #67/#68 are bounded agent guidance and #73 delivered scope only, with runtime masking still unimplemented.
+
+## M0–M3 foundation record
+
+These completed tasks provide the reference contracts for M5–M7. They are not a new implementation queue. The acceptance sections below retain the delivered baseline and its limits.
+
+| Work | Tracking | Delivered outcome |
+| --- | --- | --- |
+| Roadmap reconciliation | [#402](https://github.com/RhinoLink-Tech/data-fabric/issues/402) | Historical scope and issue disposition reconciled. |
+| Pre-merge source evidence | [#404](https://github.com/RhinoLink-Tech/data-fabric/issues/404) | Pinned reference contracts and conservative changed-path selection. |
+| Heterogeneous reference access | [#81](https://github.com/RhinoLink-Tech/data-fabric/issues/81) | PostgreSQL/MySQL fixtures with isolated application identities and synthetic data. |
+| Public task acceptance | [#403](https://github.com/RhinoLink-Tech/data-fabric/issues/403) | Deterministic REST/MCP cases with explicit pass/fail/skip/unsupported outcomes. |
+| Owner routing and drain | [#365](https://github.com/RhinoLink-Tech/data-fabric/issues/365), [#409](https://github.com/RhinoLink-Tech/data-fabric/issues/409), [#411](https://github.com/RhinoLink-Tech/data-fabric/issues/411) | ADR, implementation and two-replica evidence; live cursors stay with their owner. |
+| Cumulative query results | [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) | Rows, encoded bytes and overall deadline across logical query batches. |
+| Policy publication/revocation | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | CAS publication, immutable request snapshots, outcome history and bounded synchronization; see [ADR-004](../decisions/adr-004-versioned-table-policy-publication.md). |
+| Task context | [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66), [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67), [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) | Bounded permitted-schema search and an agent-guided warehouse context/schema-drift reference; no gateway schema-monitoring service or real-team success claim. |
+| Candidate delivery evidence | [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) | Source SHA 53d0d662ac24273d8a5877dd4190188c843342c8; see the [candidate runbook](../validation/post-m2-candidate-evidence.md) and [2026-11-07 report](../validation/results/2026-11-07-post-m2-candidate.md). |
 
 ## Engineering reference profile
 

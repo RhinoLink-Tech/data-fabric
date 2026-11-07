@@ -171,6 +171,7 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 - [架构设计](docs/architecture.md)
 - [产品路线图](docs/roadmap.md)
 - [工程执行计划](docs/plans/gateway-delivery.md)
+- [简单易用、快速部署与低资源演进计划](docs/plans/gateway-delivery.md#productization-program)（规划中）
 - [配置指南](docs/configuration.md)
 - [开发指南](docs/development.md)
 - [贡献指南](CONTRIBUTING.md)
