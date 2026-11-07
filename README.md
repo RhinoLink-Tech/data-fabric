@@ -172,6 +172,7 @@ The embedded [data-source management UI](docs/data-source-management-ui.md) is a
 - [Architecture Guide](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Gateway Delivery Plan](docs/plans/gateway-delivery.md)
+- [Simple deployment and low-resource productization plan](docs/plans/gateway-delivery.md#productization-program) (planned work)
 - [Configuration Guide](docs/configuration.md)
 - [Development Guide](docs/development.md)
 - [Contributing Guide](CONTRIBUTING.md)

@@ -6,7 +6,25 @@
 
 Data Fabric is a lightweight, self-hosted data access gateway for AI applications. Teams register and govern sources once and reuse a documented, read-only access contract across applications. Single-source queries use gateway drivers. An optional external federation engine owns cross-source planning and execution.
 
-The next milestones establish repeatable deployment, public API correctness, and reliable shared operation. Real-team pilots are deferred until the maintainer schedules them. Engineering reference results and customer value evidence are tracked separately.
+The next milestones turn the delivered gateway foundation into a simpler product to install, use and operate. Real-team pilots remain a separate M4 activity; isolated synthetic business fixtures are sufficient for this engineering program. Engineering reference results and customer value evidence are tracked separately.
+
+## Active productization program
+
+Tracking: [#439](https://github.com/RhinoLink-Tech/data-fabric/issues/439). Implementation order, dependencies and provisional budgets are in the [productization delivery plan](plans/gateway-delivery.md#productization-program). **The issues below are planned work, not delivered features.**
+
+The next increment is governed by four outcomes: **simple installation, easy first use, fast deployment, and low resource use**. New capability work must improve one of these outcomes and preserve the existing access-control and query contracts. First use means an operator can initialize the instance, connect one source, execute an authorized query, and reuse it from a second application.
+
+| Milestone | Work | Exit evidence |
+| --- | --- | --- |
+| [M5 Simple deployment](https://github.com/RhinoLink-Tech/data-fabric/milestone/11) | Documentation [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440); full-stack baseline [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441); runnable artifacts [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442); shared REST/MCP runtime [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443); local metadata [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444); initialization/diagnostics [#445](https://github.com/RhinoLink-Tech/data-fabric/issues/445). | A clean, persistent standalone installation from a pinned artifact, a successful authorized first task, and a repeatable restart with measured time and total resource use. |
+| [M6 Guided use and on-demand connectors](https://github.com/RhinoLink-Tech/data-fabric/milestone/12) | Guided first query and application reuse [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446); lazy connector resources [#447](https://github.com/RhinoLink-Tech/data-fabric/issues/447); Core/Full builds [#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448). | An independent operator completes the guided path; unused sources create no resource-bearing clients; both package profiles state exactly which connectors are included and verified. |
+| [M7 Efficient and recoverable operation](https://github.com/RhinoLink-Tech/data-fabric/milestone/13) | Bounded parser reuse [#449](https://github.com/RhinoLink-Tech/data-fabric/issues/449); optional exact totals [#450](https://github.com/RhinoLink-Tech/data-fabric/issues/450); aggregate resource controls [#451](https://github.com/RhinoLink-Tech/data-fabric/issues/451); backup/restore/upgrade [#452](https://github.com/RhinoLink-Tech/data-fabric/issues/452). | Candidate-matched workload and failure evidence meet the reviewed resource budgets, and a fresh-instance recovery preserves the required metadata and keys. |
+
+Start with [#440](https://github.com/RhinoLink-Tech/data-fabric/issues/440) and [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441). Later tasks may proceed when their explicit dependencies pass; milestones group outcomes rather than imposing a mandatory serial queue. Claim an issue before coding, name the branch/worktree and intended files, and check other claims and PRs. Keep at most two major implementations active.
+
+The standalone target is one application container plus a persistent volume. Candidate budgets are first authorized query within five minutes, cached-image readiness within three seconds, Core image at most 150 MiB uncompressed, whole-container warm idle at most 128 MiB, and four fixed small concurrent queries at most 256 MiB peak. These are **provisional targets**, not current performance guarantees. [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) must measure and freeze or explicitly revise them with evidence. See the delivery plan for prerequisites and measurement boundaries.
+
+MySQL-backed team deployments and existing optional owner routing remain supported. Local metadata and combined REST/MCP are proposed changes; current limits below still apply. Existing authorization, policy revocation, SQL validation, audit and result budgets must remain intact. Runtime issues close only after implementation and acceptance evidence; this planning update does not complete them.
 
 ## Delivered foundation
 
@@ -94,6 +112,6 @@ New connectors require an identified use case, an operation/identity/version bou
 
 The [previous roadmap snapshot](https://github.com/RhinoLink-Tech/data-fabric/blob/bc0973d1557d75020ef2db252c9e0811f99ee7ca/docs/roadmap.md) preserves the earlier priorities and completed-work record. Its support counts are historical; use the generated catalog for current support.
 
-GitHub issues track execution. The historical Phase 2–5 milestones are retired planning records, not feature commitments. Keep at most two major implementation items in progress and create follow-up issues when their dependencies are ready.
+GitHub issues track execution. The historical Phase 2–5 milestones are retired planning records, not feature commitments. M5–M7 issues have explicit acceptance dependencies; their existence does not make them all ready to implement. Keep at most two major implementation items in progress and update the active tracker after each accepted increment.
 
 Completed connector/TLS details remain in support, contract, and release documentation. [The v2.0.0 candidate review](releases/v2.0.0-candidate.md) records the published baseline; it does not replace current mainline evidence.
