@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// SetSourceAvailable controls one of the two isolated reference containers
-// during a check. The metadata database and gateway processes stay up.
+// SetSourceAvailable controls a reference source fixture. Metadata and gateway
+// services stay up during a source outage.
 func (env *Environment) SetSourceAvailable(ctx context.Context, sourceKey string, available bool) error {
 	for _, def := range sourceDefinitions {
 		if def.key != sourceKey {
@@ -19,6 +19,18 @@ func (env *Environment) SetSourceAvailable(ctx context.Context, sourceKey string
 			return env.stack.up(ctx, def.service)
 		}
 		_, err := env.stack.compose(ctx, "stop", def.service)
+		return err
+	}
+	if sourceKey == "trino" && env.stack.trinoIntegration {
+		if !available {
+			_, err := env.stack.compose(ctx, "stop", "trino")
+			return err
+		}
+		if err := env.stack.up(ctx, "trino"); err != nil {
+			return err
+		}
+		var err error
+		env.TrinoCoordinatorURL, err = env.stack.url(ctx, "trino", "8080", "http")
 		return err
 	}
 	return fmt.Errorf("unknown reference source")

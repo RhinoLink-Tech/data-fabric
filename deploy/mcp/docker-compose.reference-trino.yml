@@ -1,0 +1,18 @@
+# Opt-in real Trino integration profile. The image tag is pinned in reference/docker.go.
+services:
+  trino:
+    image: ${DF_REFERENCE_TRINO_IMAGE:?run the Trino reference command}
+    mem_limit: 2g
+    ports:
+      - target: 8080
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - ./trino/reference/tpch.properties:/etc/trino/catalog/tpch.properties:ro
+      - ./trino/reference/tpch_copy.properties:/etc/trino/catalog/tpch_copy.properties:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/v1/info"]
+      interval: 5s
+      timeout: 3s
+      retries: 36
+      start_period: 30s

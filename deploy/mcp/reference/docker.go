@@ -19,16 +19,18 @@ import (
 const (
 	mysqlImage    = "mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7"
 	postgresImage = "postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+	trinoImage    = "trinodb/trino:484@sha256:2704eb53935af5e582d63d6033e9bf99d20c325e9b0e30b1016ef59a4773979f"
 )
 
 type composeStack struct {
-	root         string
-	directory    string
-	project      string
-	image        string
-	env          map[string]string
-	redact       *strings.Replacer
-	multiReplica bool
+	root             string
+	directory        string
+	project          string
+	image            string
+	env              map[string]string
+	redact           *strings.Replacer
+	multiReplica     bool
+	trinoIntegration bool
 }
 
 func (s *composeStack) composeArgs(args ...string) []string {
@@ -39,6 +41,9 @@ func (s *composeStack) composeArgs(args ...string) []string {
 	}
 	if s.multiReplica {
 		files = append(files, "-f", filepath.Join(s.root, "deploy", "mcp", "docker-compose.reference-replicas.yml"))
+	}
+	if s.trinoIntegration {
+		files = append(files, "-f", filepath.Join(s.root, "deploy", "mcp", "docker-compose.reference-trino.yml"))
 	}
 	return append(files, args...)
 }
@@ -141,6 +146,9 @@ func (s *composeStack) recordResources(ctx context.Context, out io.Writer) error
 	expected := 6
 	if s.multiReplica {
 		expected = 9
+	}
+	if s.trinoIntegration {
+		expected++
 	}
 	if len(ids) != expected {
 		return fmt.Errorf("resource snapshot expected %d reference containers, got %d", expected, len(ids))

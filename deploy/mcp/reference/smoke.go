@@ -38,6 +38,23 @@ func (env *Environment) registerSources(ctx context.Context) error {
 		}
 		env.Sources[def.key] = Source{ID: created.ID, Type: def.key, Schema: def.schema}
 	}
+	if env.stack.trinoIntegration {
+		body := map[string]any{
+			"name": "reference-trino", "type": "trino",
+			"config": map[string]any{
+				"host": "trino", "port": 8080, "database": "tpch", "schema": "tiny",
+				"username": "reference-reader",
+			},
+		}
+		var created sourceRecord
+		if err := env.rest(ctx, "app-a", http.MethodPost, "/api/v1/datasources", body, http.StatusCreated, &created); err != nil {
+			return fmt.Errorf("register trino: %w", err)
+		}
+		if created.ID == "" {
+			return fmt.Errorf("register trino returned an empty ID")
+		}
+		env.Sources["trino"] = Source{ID: created.ID, Type: "trino", Schema: "tiny"}
+	}
 	return nil
 }
 
