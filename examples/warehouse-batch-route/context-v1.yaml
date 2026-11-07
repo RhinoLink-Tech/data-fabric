@@ -1,0 +1,64 @@
+asset_id: warehouse.batch-route.initial-phase
+asset_version: 1
+status: illustrative-only
+owner: not-collected
+approval_reference: not-collected
+
+source_profile:
+  id: isolated-warehouse-reference
+  type: postgresql
+  exact_version: "17"
+  schema_identity: reference-shape-v1
+  objects:
+    - public.pallet_tasks
+    - public.tray_records
+
+task_scope:
+  description: Determine the initial route for one queued batch before its own phase event starts.
+  parameter:
+    name: batch_no
+    type: bigint
+    binding: positional-1
+  supported_task_states:
+    - PENDING
+    - SENDING
+    - ACCEPTED
+    - RUNNING
+    - PAUSED
+  outputs:
+    route_origin: WAIT
+    next_destination: FULL_PALLET
+    other_states: OUT_OF_SCOPE
+
+business_terms:
+  batch_no: Identifies one queued material-handling task.
+  material: The full-pallet phase.
+  empty: The empty-container return phase.
+  relationship: A phase event belongs to the task with the same batch_no.
+  rule: A phase event from an older batch cannot set the route origin of the selected batch.
+
+required_columns:
+  public.pallet_tasks:
+    - batch_no
+    - status
+    - pallet_started_command_id
+    - empty_started_command_id
+  public.tray_records:
+    - id
+    - batch_no
+    - tray_type
+    - status
+
+permission_boundary:
+  statement: read-only
+  authorization: Re-evaluate the current caller's source, table, and column policy on every execution.
+  row_isolation: Use an approved source-side view or role if callers must see only selected batches.
+  bypass: false
+
+invalidation:
+  triggers:
+    - A referenced table or column is removed, renamed, or changes type.
+    - The meaning or allowed values of status or tray_type changes.
+    - The relationship between task and phase event changes.
+  action: Disable the asset until its owner reviews the new schema, publishes a new version, and replays the acceptance scenario.
+  fingerprint: This example uses a named reference shape, not a live schema hash.
