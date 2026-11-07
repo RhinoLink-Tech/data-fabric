@@ -181,6 +181,63 @@ func describeTable(ctx context.Context, w wire) error {
 	})
 }
 
+func searchSchema(ctx context.Context, w wire) error {
+	return forEachSource(w, func(_ string, source reference.Source) error {
+		type result struct {
+			DataSourceID string `json:"datasource_id"`
+			Query        string `json:"query"`
+			Matches      []struct {
+				Schema        string   `json:"schema"`
+				Table         string   `json:"table"`
+				MatchedFields []string `json:"matched_fields"`
+				Columns       []string `json:"matched_columns"`
+			} `json:"matches"`
+			Ambiguous bool `json:"ambiguous"`
+			Truncated bool `json:"truncated"`
+		}
+		search := func(query string, limit int) (reply, result, error) {
+			r, err := w.tool(ctx, reader, "", "search_schema", map[string]any{
+				"datasource_id": source.ID, "query": query, "schema": source.Schema, "limit": float64(limit),
+			})
+			var response result
+			if err == nil {
+				err = r.decode(&response)
+			}
+			return r, response, err
+		}
+
+		r, amount, err := search("amount", 5)
+		if err != nil {
+			return err
+		}
+		if amount.DataSourceID != source.ID || amount.Query != "amount" || len(amount.Matches) != 1 ||
+			amount.Ambiguous || amount.Truncated || amount.Matches[0].Schema != source.Schema ||
+			amount.Matches[0].Table != "orders" || !slices.Equal(amount.Matches[0].MatchedFields, []string{"column_name"}) ||
+			!slices.Equal(amount.Matches[0].Columns, []string{"amount"}) {
+			return fmt.Errorf("search result for the permitted amount column is unstable or incomplete")
+		}
+
+		_, hidden, err := search("customer", 5)
+		if err != nil {
+			return err
+		}
+		if len(hidden.Matches) != 0 {
+			return fmt.Errorf("search returned a column hidden by metadata policy")
+		}
+
+		r, ambiguous, err := search("id", 1)
+		if err != nil {
+			return err
+		}
+		if len(ambiguous.Matches) != 1 || ambiguous.Matches[0].Table != "order_items" ||
+			!slices.Contains(ambiguous.Matches[0].Columns, "id") ||
+			!ambiguous.Ambiguous || !ambiguous.Truncated {
+			return fmt.Errorf("limited duplicate-name search did not report ambiguity and truncation")
+		}
+		return safePayload(r, "customer", "Ada Lovelace", "Grace Hopper", "Alan Turing")
+	})
+}
+
 func invalidTokens(ctx context.Context, w wire) error {
 	mint := w.env.MintREST
 	valid := w.env.Identities[reader].RESTToken

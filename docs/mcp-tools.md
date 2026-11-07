@@ -18,6 +18,7 @@ client-visible contract change — update this page in the same PR.
 | `validate_sql_query` | `datasource_id`, `sql` | `source_dialect` | Validate a query (read-only rules, dialect) without executing it. |
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
+| `search_schema` | `datasource_id`, `query` | `schema`, `limit` (default 10, max 20) | Case-insensitive 2–128 character substring search over permitted catalog/schema/table names and visible column names/comments. Returns stable identifiers, matched fields, and explicit `ambiguous`/`truncated` flags; comments themselves are not returned. |
 | `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects. |
 | `list_supported_dialects` | — | — | Enumerate the dialects `translate_sql` accepts. |
 | `get_table_policy` | — | `revision` | Read the active policy, version and freshness, or inspect an immutable historical revision. Administrator role required. |
@@ -29,8 +30,8 @@ client-visible contract change — update this page in the same PR.
 
 - `translate_sql` and `list_supported_dialects` are registered only when
   `sql_translation.enabled` is true (`sql_translation.*` settings).
-- `describe_table` is registered only when the gateway is built with schema
-  discovery for the deployment (both server modes register it today).
+- `describe_table` and `search_schema` are registered only when the gateway is
+  built with schema discovery for the deployment (both server modes register them today).
 - The four table-policy administration tools are registered only while an
   enabled managed table policy is loaded. They always require the administrator
   role and are available through remote MCP; policy publication uses the shared

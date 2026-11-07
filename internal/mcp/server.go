@@ -153,6 +153,15 @@ func (m *MCPServer) registerTools() {
 			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")),
 			mcp.WithString("schema", mcp.Description("Optional schema name when the data source contains tables with the same name in multiple schemas")))
 		m.addTool("describe_table", describeTableTool, m.handleDescribeTable)
+
+		searchSchemaTool := mcp.NewTool("search_schema",
+			mcp.WithDescription("Search permitted table, schema, column names, and visible column comments. Returns bounded stable identifiers and explicit ambiguity/truncation; use describe_table for details."),
+			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to search")),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Case-insensitive substring, 2–128 characters")),
+			mcp.WithString("schema", mcp.Description("Optional exact schema filter")),
+			mcp.WithNumber("limit", mcp.Description("Maximum matches, default 10 and maximum 20")),
+		)
+		m.addTool("search_schema", searchSchemaTool, m.handleSearchSchema)
 	}
 
 	if m.sqlTranslator != nil && m.sqlTranslator.Enabled() {

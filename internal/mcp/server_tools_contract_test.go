@@ -27,6 +27,7 @@ var documentedToolContract = map[string]toolContract{
 	"validate_sql_query":      {required: []string{"datasource_id", "sql"}, properties: []string{"datasource_id", "sql", "source_dialect"}},
 	"list_tables":             {required: []string{"datasource_id"}, properties: []string{"datasource_id"}},
 	"describe_table":          {required: []string{"datasource_id", "table_name"}, properties: []string{"datasource_id", "table_name", "schema"}, conditional: true},
+	"search_schema":           {required: []string{"datasource_id", "query"}, properties: []string{"datasource_id", "query", "schema", "limit"}, conditional: true},
 	"translate_sql":           {required: []string{"sql", "source_dialect", "target_dialect"}, properties: []string{"sql", "source_dialect", "target_dialect"}, conditional: true},
 	"list_supported_dialects": {properties: []string{}, conditional: true},
 }
@@ -68,7 +69,7 @@ func sortedCopy(values []string) []string {
 }
 
 // With translation enabled and a table describer wired — the full
-// configuration both server modes run today — all nine documented tools are
+// configuration both server modes run today — all ten documented tools are
 // registered and each carries exactly the documented required fields and
 // input properties (#181).
 func TestRegisteredToolsMatchContractWithTranslationEnabled(t *testing.T) {
@@ -101,8 +102,8 @@ func TestRegisteredToolsMatchContractWithTranslationEnabled(t *testing.T) {
 	}
 }
 
-// With translation disabled the two dialect tools disappear; the other seven
-// — including conditionally documented describe_table — stay registered.
+// With translation disabled the two dialect tools disappear; the other eight
+// — including conditionally documented metadata tools — stay registered.
 func TestRegisteredToolsMatchContractWithTranslationDisabled(t *testing.T) {
 	srv := contractServer(false)
 
