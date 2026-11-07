@@ -51,6 +51,10 @@ The image size is Docker's uncompressed local image size, not the compressed reg
 - Baseline: [CSV samples](results/deployment_footprint_2026-11-01.csv), [environment metadata](results/deployment_footprint_2026-11-01.json)
 - Stripped release build: [CSV samples](results/deployment_footprint_stripped_2026-11-01.csv), [environment metadata](results/deployment_footprint_stripped_2026-11-01.json)
 
+## Related end-to-end baseline
+
+For repeated first-page and complete-result measurements over the public REST and MCP HTTP boundaries, see the [REST and MCP task baseline](rest-mcp-task-baseline.md). This complements the footprint runner; it records serial query-task latency on the current synthetic reference profile.
+
 ## Reproduce
 
 Requirements: Docker, Python 3, and network access to pull the pinned MySQL image if it is not cached. Go is built inside the pinned Dockerfile builder image.

@@ -47,6 +47,18 @@ type Source struct {
 	Schema string
 }
 
+// RunInfo identifies the disposable stack and candidate measured by an acceptance run.
+type RunInfo struct {
+	SourceRevision      string
+	WorkingTreeDirty    bool
+	DockerServerVersion string
+	ComposeVersion      string
+	GatewayImage        string
+	GatewayImageID      string
+	MySQLImage          string
+	PostgreSQLImage     string
+}
+
 // Environment is valid during the Run callback. It uses generated credentials
 // and contains only the synthetic sources started by this invocation.
 type Environment struct {
@@ -54,6 +66,7 @@ type Environment struct {
 	MCPURL              string
 	TrinoCoordinatorURL string
 	TLSConfig           *tls.Config
+	RunInfo             RunInfo
 	Sources             map[string]Source
 	TenantBSources      map[string]Source
 	Identities          map[string]Identity
@@ -114,6 +127,7 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		Sources: make(map[string]Source), TenantBSources: make(map[string]Source),
 		Identities: make(map[string]Identity), OwnerURLs: make(map[string]string),
 		stack: s, restKey: s.env["JWT_SECRET"],
+		RunInfo: RunInfo{MySQLImage: mysqlImage, PostgreSQLImage: postgresImage},
 	}
 	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
 		if err := os.Mkdir(filepath.Join(directory, name), 0o755); err != nil {
@@ -145,6 +159,9 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if err != nil {
 		return err
 	}
+	env.RunInfo.DockerServerVersion = dockerVersion
+	env.RunInfo.ComposeVersion = composeVersion
+	env.RunInfo.SourceRevision, env.RunInfo.WorkingTreeDirty = checkoutState(ctx, root)
 	stackReady = true
 	fmt.Fprintf(out, "Reference project %s on %s/%s, Docker %s, Compose %s\n",
 		s.project, runtime.GOOS, runtime.GOARCH, dockerVersion, composeVersion)
@@ -164,6 +181,8 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if err != nil {
 		return err
 	}
+	env.RunInfo.GatewayImage = s.image
+	env.RunInfo.GatewayImageID = imageID
 	fmt.Fprintf(out, "Gateway image %s (%s), prepared in %s\n", s.image, imageID, elapsed(stage))
 
 	stage = time.Now()
@@ -384,19 +403,27 @@ func repositoryRoot(path string) (string, error) {
 }
 
 func checkout(ctx context.Context, root string) string {
+	revision, dirty := checkoutState(ctx, root)
+	if revision == "" {
+		return "unavailable"
+	}
+	if dirty {
+		return revision + " (working tree changes)"
+	}
+	return revision
+}
+
+func checkoutState(ctx context.Context, root string) (string, bool) {
 	command := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	command.Dir = root
 	revision, err := command.Output()
 	if err != nil {
-		return "unavailable"
+		return "", false
 	}
 	command = exec.CommandContext(ctx, "git", "status", "--porcelain")
 	command.Dir = root
 	status, err := command.Output()
-	if err == nil && len(status) != 0 {
-		return strings.TrimSpace(string(revision)) + " (working tree changes)"
-	}
-	return strings.TrimSpace(string(revision))
+	return strings.TrimSpace(string(revision)), err == nil && len(status) != 0
 }
 
 func elapsed(since time.Time) time.Duration {
