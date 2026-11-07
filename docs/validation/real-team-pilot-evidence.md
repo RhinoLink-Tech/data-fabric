@@ -42,6 +42,19 @@ Use this protocol only after the maintainer schedules a real-team pilot. It capt
 
 Treat correctness, authorization, effort, and production readiness as separate outcomes. A faster run with incorrect or unauthorized results is not a success. One task can show whether this team has a useful fit; it cannot establish broad willingness to pay or performance across other teams.
 
+## Evidence gates for the remaining issues
+
+Use this mapping to decide whether an issue is ready for bounded implementation. A pilot result alone does not authorize a feature or establish a general product claim. Record only the minimum redacted evidence or an opaque reference; retain raw task data and detailed logs in the team's approved storage.
+
+| Issue | Mark the trigger met only when | Minimum evidence to record |
+| --- | --- | --- |
+| [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67) Business context | A recorded task remains wrong because business terms, confirmed relationships, or query definitions are missing after the relevant schema has been correctly resolved. | Opaque task ID; source/schema profile and evidence of correct schema resolution; fixed model/prompt versions when used; task-owner confirmation of the missing context; proposed asset type, owner, source/schema scope, version, permission, and invalidation rule; replay result for the original task. Keep deterministic gateway checks separate from model evaluation. |
+| [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) Schema drift | Persistent schema-dependent assets have been adopted, or a task demonstrates a stale-schema failure. | Redacted before/after schema versions and the removed, renamed, or changed fields; affected authorized asset IDs; task/failure reference; expected invalidation or actionable failure; documented refresh result. Do not include hidden object names or broaden access to inspect them. |
+| [#73](https://github.com/RhinoLink-Tech/data-fabric/issues/73) Result masking | A concrete access requirement cannot be met with column denial or a restricted source-side view. | Pseudonymous identity/role and task; affected field category; the allowed and denied outcomes; which existing controls were tried and why they fail; the masking and inference boundary to validate. Any unexpected allow is a stop condition. |
+| [#83](https://github.com/RhinoLink-Tech/data-fabric/issues/83) Data flow and residency | An approved deployment supplies a specific network, location, or residency constraint. This may be recorded outside an M4 pilot when a concrete deployment requirement is available. | Deployment profile and approved constraint reference; location and route for queries, credentials, metadata, audit events, results, intermediate data, and backups; which flows cross the stated boundary; supporting evidence and unresolved gaps. Do not infer a general compliance claim. |
+
+If an issue's trigger is not met, leave it marked as needing evidence and record what is still missing. A design hypothesis, synthetic fixture, or issue description alone does not satisfy a real-use trigger.
+
 ## Report template
 
 Copy this section into a new report after the pilot has been scheduled. Replace placeholders with redacted values; leave unavailable fields marked as not collected.
@@ -77,6 +90,17 @@ Copy this section into a new report after the pilot has been scheduled. Replace 
 - Model, prompt, and client versions (if used):
 - First integration active effort and elapsed time:
 - Second application identity and reuse effort (if applicable):
+
+### Evidence-gated issue triage
+
+For each issue, mark trigger met, not met, or not applicable. Link only to a redacted or opaque evidence reference. For #83 evidence supplied outside this pilot, reference the approved deployment record instead of inventing a pilot observation.
+
+| Issue | Trigger status | Evidence reference | Owner / next step |
+| --- | --- | --- | --- |
+| #67 business context | | | |
+| #68 schema drift | | | |
+| #73 result masking | | | |
+| #83 data flow / residency | | | |
 
 ### Outcomes
 
