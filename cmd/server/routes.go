@@ -1,6 +1,8 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"net/http"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
@@ -12,6 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed ui
+var managementUIAssets embed.FS
 
 // routerDeps carries everything newRouter needs to wire the HTTP API.
 // Production wiring lives in main.go; route-level tests build it with stub
@@ -197,6 +202,22 @@ func newRouter(deps routerDeps) *gin.Engine {
 			}
 		}
 	}
+
+	uiFiles, err := fs.Sub(managementUIAssets, "ui")
+	if err != nil {
+		panic(err)
+	}
+	uiFileServer := http.StripPrefix("/ui/", http.FileServer(http.FS(uiFiles)))
+	serveUI := func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("X-Content-Type-Options", "nosniff")
+		uiFileServer.ServeHTTP(c.Writer, c.Request)
+	}
+	router.GET("/ui", func(c *gin.Context) { c.Redirect(http.StatusPermanentRedirect, "/ui/") })
+	router.GET("/ui/*filepath", serveUI)
+	router.HEAD("/ui/*filepath", serveUI)
 
 	return router
 }

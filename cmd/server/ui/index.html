@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>Data Fabric · 数据源管理</title>
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/ui/"><span class="brand-mark">DF</span><span>Data Fabric</span></a>
+      <span class="environment"><i></i> 自托管管理界面</span>
+    </header>
+    <main>
+      <section class="intro">
+        <div><p class="eyebrow">CONNECTIONS</p><h1>数据源管理</h1><p>在一个页面维护连接配置，并通过 Data Fabric 现有管理 API 执行变更。</p></div>
+        <span class="origin"><i></i> API 与页面同源</span>
+      </section>
+      <section class="session-card">
+        <div><h2>访问凭据</h2><p>如果服务启用了认证，请填写已有且具备相应数据源权限的 Bearer JWT。令牌只保留在当前页面内存中。</p></div>
+        <div class="token"><label class="sr-only" for="bearerToken">Bearer JWT</label><input id="bearerToken" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴 Bearer JWT"><button id="clearToken" class="button quiet" type="button">清除</button></div>
+      </section>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="card">
+        <div class="card-head"><div><h2>已配置的数据源</h2><p id="sourceSummary">正在读取数据源…</p></div><div class="toolbar"><button id="refreshButton" class="button secondary" type="button">↻ 刷新</button><button id="addButton" class="button primary" type="button">添加数据源</button></div></div>
+        <div id="tableWrap" class="table-wrap"><table><thead><tr><th>名称</th><th>连接器</th><th>数据库</th><th>状态</th><th>最近更新</th><th><span class="sr-only">操作</span></th></tr></thead><tbody id="sourceRows"></tbody></table></div>
+        <div id="emptyState" class="empty" hidden><div class="empty-icon">＋</div><h3>还没有数据源</h3><p>添加一个连接配置，或检查当前令牌是否有权查看数据源。</p><button id="emptyAddButton" class="button primary" type="button">添加第一个数据源</button></div>
+        <div id="loadError" class="load-error" hidden></div>
+        <nav id="pagination" class="pagination" aria-label="数据源分页" hidden><span id="pageSummary"></span><div><button id="previousPage" class="button quiet" type="button">上一页</button><button id="nextPage" class="button quiet" type="button">下一页</button></div></nav>
+      </section>
+    </main>
+    <footer><span>Data Fabric 管理 API</span><a href="/api/v1/database/types" target="_blank" rel="noreferrer">查看连接器支持目录</a></footer>
+  </div>
+  <dialog id="editorDialog" aria-labelledby="editorTitle">
+    <form id="sourceForm" novalidate>
+      <div class="dialog-head"><div><p class="eyebrow">DATA SOURCE</p><h2 id="editorTitle">添加数据源</h2></div><button id="closeDialog" class="icon-button" type="button" aria-label="关闭">×</button></div>
+      <div class="form-grid">
+        <label class="field wide"><span>名称 <b>*</b></span><input id="sourceName" required maxlength="255" autocomplete="off" placeholder="例如：分析型 PostgreSQL"></label>
+        <label class="field wide"><span>连接器类型 <b>*</b></span><select id="sourceType" required></select><small>选项来自当前服务端的已注册支持目录。</small></label>
+        <label class="field"><span>主机</span><input id="sourceHost" autocomplete="off" placeholder="数据库主机或连接端点"></label>
+        <label class="field"><span>端口</span><input id="sourcePort" type="number" min="1" max="65535" step="1" inputmode="numeric"></label>
+        <label class="field"><span>数据库 / 路径</span><input id="sourceDatabase" autocomplete="off" placeholder="按连接器要求填写"></label>
+        <label class="field"><span>Schema</span><input id="sourceSchema" autocomplete="off"></label>
+        <label class="field"><span>用户名</span><input id="sourceUsername" autocomplete="off" placeholder="可选；编辑时留空保留现有值"><small>编辑时不会回显已保存的用户名。</small></label>
+        <label class="field"><span>密码 / 凭据</span><input id="sourcePassword" type="password" autocomplete="off" spellcheck="false"><small id="passwordHint">编辑时留空会保留已保存的密码。</small></label>
+        <label class="field"><span>SSL 模式</span><input id="sourceSSLMode" autocomplete="off" placeholder="例如：require"></label>
+        <label class="field"><span>超时（秒）</span><input id="sourceTimeout" type="number" min="0" step="1" inputmode="numeric" placeholder="30"></label>
+        <label class="field wide"><span>SSL 根证书</span><textarea id="sourceSSLRootCert" rows="3" spellcheck="false" autocomplete="off"></textarea></label>
+        <label class="field"><span>连接池最大连接数</span><input id="sourceMaxPoolSize" type="number" min="0" step="1" inputmode="numeric"></label>
+        <label class="field"><span>连接空闲超时（秒）</span><input id="sourceIdleTimeout" type="number" min="0" step="1" inputmode="numeric"></label>
+        <label class="field"><span>连接最大生命周期（秒）</span><input id="sourceMaxLifetime" type="number" min="0" step="1" inputmode="numeric"></label>
+        <label class="field"><span>时区</span><input id="sourceTimezone" autocomplete="off" placeholder="例如：UTC"></label>
+        <label class="field check"><input id="sourceSSL" type="checkbox"><span>启用 SSL</span></label>
+        <label class="field wide"><span>额外参数（JSON 对象）</span><textarea id="sourceAdditionalProps" rows="5" spellcheck="false" autocomplete="off">{}</textarea><small>连接器专属选项可填在这里。敏感键不会从服务器回显；编辑时新增对应键值可替换现有秘密。</small></label>
+      </div>
+      <div id="testResult" class="test-result" role="status" aria-live="polite" hidden></div><div id="formError" class="form-error" role="alert" hidden></div>
+      <div class="dialog-actions"><button id="testButton" class="button secondary" type="button">测试连接</button><span class="spacer"></span><button id="cancelButton" class="button quiet" type="button">取消</button><button id="saveButton" class="button primary" type="submit">保存数据源</button></div>
+    </form>
+  </dialog>
+  <script src="/ui/app.js" defer></script>
+</body>
+</html>
