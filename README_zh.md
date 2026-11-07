@@ -177,7 +177,7 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 
 ## 跨源查询引擎接入
 
-需要跨源 SQL 时，Data Fabric 可通过统一适配接入兼容的联邦查询引擎。Trino、Presto 和 OpenLooKeng 适配器已实现并可登记为数据源；支持目录将它们标为“已实现”，尚未标为“端到端验证”。当前跨目录回归使用模拟协调器，真实协调器验证按 [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179) 暂缓。
+需要跨源 SQL 时，Data Fabric 可通过统一适配接入兼容的联邦查询引擎。Trino、Presto 和 OpenLooKeng 适配器已实现并可登记为数据源。支持目录记录版本固定的驱动契约证据，目前仍将这三个适配器标为“已实现”。另有可选的 [Trino 484 集成验证配置](docs/validation/trino-integration.md)，通过公开 REST 和 MCP 接口覆盖报告列出的只读跨目录查询、超时、协调器恢复和引擎错误路径。该有限范围不证明其他 Trino 版本、认证方式、连接器、SQL 功能、worker 拓扑或生产工作负载的兼容性。
 
 连接配置见 [API 使用指南](docs/api_usage.md)，SQL 兼容范围见[统一 SQL v1 说明](SQL_TRANSLATION_FEATURES.md)。
 

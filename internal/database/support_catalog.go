@@ -826,6 +826,12 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
 			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are rejected or outside the adapter boundary.")
+	case model.DatabaseTypeTrino:
+		profile.Limitations = []string{
+			"No versioned driver-contract range or exact server version is recorded in this catalog.",
+			"A separate opt-in Trino 484 integration profile verifies the listed read-only query, timeout, coordinator-recovery, and engine-error paths through public REST and MCP; see [the validation report](validation/trino-integration.md). It does not establish compatibility for other Trino versions, authentication modes, connectors, SQL features, worker topologies, or production workloads.",
+			"This supplemental integration profile does not change the versioned driver-contract status or compatibility range recorded by this catalog.",
+		}
 	}
 }
 
@@ -1001,7 +1007,7 @@ func CompatibilityByType(catalog []ConnectorSupport) map[string]ConnectorSupport
 func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 	var out strings.Builder
 	out.WriteString("# Data Source Support Catalog\n\n")
-	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists are intentional when no pinned evidence exists. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
+	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists mean no versioned driver-contract evidence is recorded in the runtime catalog; connector-specific integration profiles may provide narrower supplemental evidence. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
 	out.WriteString("| Type | Category | Registered | Status | End-to-end verified | Version range | Exact versions verified | Version policy | Compatibility mode | Version detection | Operations | Authentication methods | Authentication note | Capabilities | Version-dependent capabilities | Limitations |\n")
 	out.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, profile := range catalog {
@@ -1032,7 +1038,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 			profile.ServerVersionDetection, operations, authentication, profile.AuthenticationDisclosure,
 			capabilitySummary(profile.Capabilities), versionCapabilities, limitations))
 	}
-	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); new connector verification work should be scoped to a concrete user need and a pinned server version. For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
+	out.WriteString("\n`endToEndVerified` is true only after a versioned driver-contract test passes and is recorded in the runtime catalog. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); new connector verification work should be scoped to a concrete user need and a pinned server version. For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
 	return out.String()
 }
 
