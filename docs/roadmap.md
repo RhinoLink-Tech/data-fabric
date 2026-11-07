@@ -63,13 +63,15 @@ Create implementation issues only after the corresponding contract or design is 
 
 ## M3 Repeatable delivery
 
-Use failures from the same task set to decide which task-context improvements to implement:
+Use failures from the same task set to scope task-context improvements. The bounded schema-search slice is delivered; follow-up business-context and schema-drift work remains evidence-gated.
 
-- #66: bounded, authorization-aware schema search when table selection or context size causes failures.
-- #67: versioned business terms, confirmed relationships, examples, or approved parameterized query assets when schema alone is insufficient.
-- #68: schema-change detection and affected-asset invalidation when those assets depend on persistent schema context.
+- [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66) (completed): Added a conditional MCP search across permitted catalog, schema, table, and visible-column names/comments. It applies existing authorization before searching, returns no comment text, caps results at 20, scans at most 100 permitted tables, returns at most five matching column names per result, and reports ambiguity and truncation. See [PR #422](https://github.com/RhinoLink-Tech/data-fabric/pull/422).
+- [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67): Version business terms, confirmed relationships, examples, or approved parameterized query assets when schema alone is insufficient.
+- [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68): Detect schema changes and invalidate affected assets when those assets depend on persistent schema context.
 
-Track the commit-matched deployment, second-application reuse, two-replica operation, upgrade, and recovery evidence in [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416), using the [post-M2 candidate evidence runbook](validation/post-m2-candidate-evidence.md) and [2026-11-07 candidate evidence report](validation/results/2026-11-07-post-m2-candidate.md). Extend the existing reference acceptance and upgrade rehearsal; do not repeat completed work without a candidate-specific change.
+- [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) (completed): Recorded commit-matched synthetic deployment, second-application reuse, two-replica acceptance, and MySQL upgrade/recovery in the [candidate report](validation/results/2026-11-07-post-m2-candidate.md), using the [post-M2 candidate evidence runbook](validation/post-m2-candidate-evidence.md). This record does not establish production readiness or real-team fit.
+
+Extend the existing reference acceptance and upgrade rehearsal only for candidate-specific changes; do not repeat completed work without such a change.
 
 **Exit:** another operator can repeat setup and upgrade from the documentation; the second application reuses registered sources and policies; full candidate checks pass; capability claims match the support evidence.
 
