@@ -77,7 +77,7 @@ Extend the existing reference acceptance and upgrade rehearsal only for candidat
 
 ## M4 Real-team validation
 
-Start when the maintainer resumes real-team work. Select one actual task and source profile, then measure first integration effort, second-application reuse, task correctness, authorization outcomes, manual intervention, and ongoing support effort against the team's existing approach.
+Start when the maintainer resumes real-team work. Use the [pilot evidence protocol](validation/real-team-pilot-evidence.md) to select one actual task and source profile, record the team's baseline, and measure first integration effort, second-application reuse, task correctness, authorization outcomes, manual intervention, and ongoing support effort.
 
 Use this evidence to choose additional supported source/version combinations and define the commercial reason to adopt the product. Reference environments alone do not establish willingness to pay or production fit.
 
