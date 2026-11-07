@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -206,17 +207,36 @@ func (ds *DataSource) BeforeCreate(tx *gorm.DB) error {
 
 // IsSensitiveDataSourceProperty reports whether an additional configuration key may contain a secret.
 func IsSensitiveDataSourceProperty(key string) bool {
-	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
+	normalized := normalizeDataSourcePropertyKey(key)
 	for _, marker := range []string{
 		"password", "passwd", "token", "secret", "credential", "authorization",
 		"privatekey", "private_key", "accesskey", "access_key", "apikey", "api_key",
 		"keytab", "credentialsjson", "credentials_json", "ssl_key", "ssl_cert", "ssl_ca",
+		"signature", "sharedkey", "shared_key", "clientkey", "client_key",
+		"signingkey", "signing_key", "encryptionkey", "encryption_key", "jwt", "bearer",
 	} {
 		if strings.Contains(normalized, marker) {
 			return true
 		}
 	}
-	return false
+	return normalized == "sig" || strings.HasSuffix(normalized, "_sig")
+}
+
+func normalizeDataSourcePropertyKey(key string) string {
+	characters := []rune(strings.NewReplacer("-", "_", ".", "_").Replace(key))
+	var normalized strings.Builder
+	normalized.Grow(len(key))
+	for i, character := range characters {
+		if i > 0 && unicode.IsUpper(character) {
+			previous := characters[i-1]
+			nextIsLower := i+1 < len(characters) && unicode.IsLower(characters[i+1])
+			if unicode.IsLower(previous) || unicode.IsDigit(previous) || (unicode.IsUpper(previous) && nextIsLower) {
+				normalized.WriteByte('_')
+			}
+		}
+		normalized.WriteRune(unicode.ToLower(character))
+	}
+	return normalized.String()
 }
 
 // IsValidDatabaseType checks if a database type is valid
