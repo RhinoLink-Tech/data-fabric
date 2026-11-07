@@ -48,7 +48,7 @@ M5 exits with a clean persistent installation from a pinned runnable artifact, a
 
 ### Provisional acceptance budgets
 
-These numbers are candidate targets, not delivered guarantees. [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) measures the current and proposed profiles, then freezes or explicitly revises each budget with a recorded explanation. A missed target requires remediation or a reviewed scope/budget decision; it must not disappear from the record.
+These numbers are candidate targets, not delivered guarantees. [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441) measures the current profile and delivers a reusable harness, then freezes or explicitly revises each budget with a recorded explanation. Each downstream implementation reruns the harness for its candidate; future profiles are not prerequisites for closing the baseline issue. A missed target requires remediation or a reviewed scope/budget decision; it must not disappear from the record.
 
 | Metric | Candidate target | Measurement boundary |
 | --- | --- | --- |
