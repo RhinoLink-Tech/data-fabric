@@ -1,6 +1,6 @@
 # Data Fabric Roadmap
 
-**Last reviewed: 2026-11-05**
+**Last reviewed: 2026-11-07**
 
 ## Product direction
 
@@ -17,6 +17,7 @@ The next milestones establish repeatable deployment, public API correctness, and
 - Parameter binding, schema discovery, read-only validation, query continuation, cancellation, and bounded admission controls.
 - A generated connector support catalog and repeatable, version-pinned driver contracts.
 - Existing Compose and remote MCP deployment guides (#180 and #186), plus deployment-footprint and upgrade-rehearsal evidence.
+- A bounded, version-pinned Trino 484 public REST/MCP integration profile (#179; [validation report](validation/trino-integration.md)).
 
 The [support catalog](data-source-support.md) and [driver contract report](driver-contract-tests.md) define exact connector evidence. Registered code, restricted experimental adapters, and verified operations remain distinct. Connector counts are not duplicated in this roadmap.
 
@@ -28,7 +29,7 @@ The [support catalog](data-source-support.md) and [driver contract report](drive
 - Persisted audit is available, but the current failure policy does not guarantee durable evidence for every access when audit storage fails.
 - REST and MCP run in separate service processes in the reference deployment. Shared source metadata does not make live query cursors interchangeable between them.
 - SQL translation covers the documented compatibility subset and does not guarantee identical execution semantics across engines.
-- Real Trino coordinator compatibility remains explicitly deferred in #179. Simulated coordinator coverage is not real-engine compatibility evidence.
+- The Trino 484 opt-in [integration profile](validation/trino-integration.md) covers only its listed read-only query, timeout, coordinator-recovery, and engine-error paths through REST and MCP. Other releases, authentication modes, connectors, SQL features, worker topologies, and production workloads remain outside this evidence.
 
 ## M0 Product scope and engineering acceptance
 
@@ -83,7 +84,7 @@ Use this evidence to choose additional supported source/version combinations and
 - #175: add the bounded source-management UI when observed operator friction justifies it.
 - #73: scope result masking when column denial and source-side restricted views do not satisfy a concrete use case.
 - #83: document specific data-flow and residency boundaries when a deployment has explicit requirements.
-- #179: resume real Trino verification only when the maintainer schedules it and a deterministic coordinator/catalog environment is available.
+- Broader federation-engine evidence (other Trino releases, Presto, OpenLooKeng, authentication modes, connectors, or production topologies) remains demand-triggered; expand only against a concrete need and a reproducible version boundary.
 
 New connectors require an identified use case, an operation/identity/version boundary, and a repeatable verification plan. Existing experimental code and tests remain available under their documented status.
 

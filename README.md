@@ -178,7 +178,7 @@ See the [API usage guide](docs/api_usage.md) for request fields, response struct
 
 ## Cross-Source Query Engine Integrations
 
-When cross-source SQL is needed, Data Fabric can connect to compatible federation engines through a shared adapter. Trino, Presto, and OpenLooKeng adapters are implemented and can be registered as data sources. The support catalog classifies them as implementation-present, not end-to-end verified. Current cross-catalog regression coverage uses a simulated coordinator; live coordinator verification is deferred in [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179).
+When cross-source SQL is needed, Data Fabric can connect to compatible federation engines through a shared adapter. Trino, Presto, and OpenLooKeng adapters are implemented and can be registered as data sources. The generated support catalog records versioned driver-contract evidence and currently keeps these adapters at implementation-present. Separately, the opt-in [Trino 484 integration profile](docs/validation/trino-integration.md) verifies the listed read-only query, timeout, coordinator-recovery, and engine-error paths through public REST and MCP. This bounded profile does not establish compatibility for other Trino versions, authentication modes, connectors, SQL features, worker topologies, or production workloads.
 
 See the [API usage guide](docs/api_usage.md) for connection setup and the [SQL v1 contract](SQL_TRANSLATION_FEATURES.md) for the supported SQL compatibility scope.
 
