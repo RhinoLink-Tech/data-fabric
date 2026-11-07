@@ -68,7 +68,7 @@ Use failures from the same task set to decide which task-context improvements to
 - #67: versioned business terms, confirmed relationships, examples, or approved parameterized query assets when schema alone is insufficient.
 - #68: schema-change detection and affected-asset invalidation when those assets depend on persistent schema context.
 
-Prepare a fixed release candidate and reproduce deployment, second-application reuse, upgrade, backup/restore, and draining behavior. Release evidence must match the candidate commit. Existing support and upgrade assets should be extended rather than rebuilt.
+Track the commit-matched deployment, second-application reuse, two-replica operation, upgrade, and recovery evidence in [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416), using the [post-M2 candidate evidence runbook](validation/post-m2-candidate-evidence.md). Extend the existing reference acceptance and upgrade rehearsal; do not repeat completed work without a candidate-specific change.
 
 **Exit:** another operator can repeat setup and upgrade from the documentation; the second application reuses registered sources and policies; full candidate checks pass; capability claims match the support evidence.
 

@@ -141,6 +141,8 @@ ROLLBACK_CHECK="$(mysql_exec "$FAIL_DB" --batch --skip-column-names --execute="S
 [[ "$ROLLBACK_CHECK" == "1" ]] || fail "credential migration did not roll back the earlier row update"
 echo "Startup gate and credential transaction: passed (server exited before listen; earlier row update rolled back)"
 
+echo "Preparing managed table-policy revocation and rollback history..."
+DATA_FABRIC_MYSQL_REHEARSAL_DSN="$DSN" go test -tags mysql_rehearsal -v ./internal/repository -run TestMySQLPolicyHistoryFixture -count=1
 BACKUP="$TMP_DIR/rehearsal.sql"
 docker exec --env MYSQL_PWD="$ROOT_PASSWORD" "$CONTAINER" mysqldump --user=root --single-transaction --skip-comments "$DB" >"$BACKUP"
 BACKUP_SHA="$(sha256sum "$BACKUP" | awk '{print $1}')"
@@ -149,5 +151,6 @@ docker exec --interactive --env MYSQL_PWD="$ROOT_PASSWORD" "$CONTAINER" mysql --
 echo "Backup SHA-256: $BACKUP_SHA"
 echo "Verifying restored records, decryptability, and indexes..."
 DATA_FABRIC_MYSQL_REHEARSAL_DSN="$DSN" go test -tags mysql_rehearsal -v ./internal/repository -run '^TestMySQLRestoredRecentFixture$' -count=1
+DATA_FABRIC_MYSQL_REHEARSAL_DSN="$DSN" go test -tags mysql_rehearsal -v ./internal/repository -run TestMySQLRestoredPolicyHistory -count=1
 
 echo "MySQL upgrade and recovery rehearsal passed."
