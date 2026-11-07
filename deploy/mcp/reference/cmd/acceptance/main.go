@@ -50,29 +50,32 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	if err := reference.Run(ctx, options, func(ctx context.Context, env *reference.Environment) error {
+		var failures []error
 		if err := acceptance.Check(ctx, env, os.Stdout, *smoke); err != nil {
-			return err
+			failures = append(failures, err)
 		}
 		if *multiReplica {
 			if err := acceptance.CheckMultiReplica(ctx, env, os.Stdout); err != nil {
-				return err
+				failures = append(failures, err)
 			}
 		}
 		if *benchmarkSamples > 0 {
 			if err := os.MkdirAll(filepath.Dir(*benchmarkOutput), 0o755); err != nil {
-				return fmt.Errorf("create benchmark output directory: %w", err)
-			}
-			output, err := os.Create(*benchmarkOutput)
-			if err != nil {
-				return fmt.Errorf("create benchmark output: %w", err)
-			}
-			benchmarkErr := acceptance.Benchmark(ctx, env, output, *benchmarkSamples)
-			closeErr := output.Close()
-			if benchmarkErr != nil || closeErr != nil {
-				return errors.Join(benchmarkErr, closeErr)
+				failures = append(failures, fmt.Errorf("create benchmark output directory: %w", err))
+			} else {
+				output, err := os.Create(*benchmarkOutput)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("create benchmark output: %w", err))
+				} else {
+					benchmarkErr := acceptance.Benchmark(ctx, env, output, *benchmarkSamples)
+					closeErr := output.Close()
+					if benchmarkErr != nil || closeErr != nil {
+						failures = append(failures, errors.Join(benchmarkErr, closeErr))
+					}
+				}
 			}
 		}
-		return nil
+		return errors.Join(failures...)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
