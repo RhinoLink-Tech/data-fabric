@@ -9,16 +9,16 @@ From the repository root, with Docker and Compose available:
 ```sh
 mkdir -p docs/performance/results
 
-go run ./deploy/mcp/reference/cmd/acceptance \\
-  -benchmark-samples 100 \\
-  -benchmark-output docs/performance/results/rest_mcp_task_$(date -u +%F).jsonl \\
-  > docs/performance/results/rest_mcp_acceptance_$(date -u +%F).jsonl \\
+go run ./deploy/mcp/reference/cmd/acceptance \
+  -benchmark-samples 100 \
+  -benchmark-output docs/performance/results/rest_mcp_task_$(date -u +%F).jsonl \
+  > docs/performance/results/rest_mcp_acceptance_$(date -u +%F).jsonl \
   2> /tmp/data-fabric-reference-run.log
 ```
 
 The runner builds the production Dockerfile, creates a uniquely named disposable reference stack, generates temporary identities and credentials, runs the public acceptance matrix, then measures the tasks below. It removes the temporary stack and generated configuration at exit. The image build is part of the reported setup time; benchmark sample durations start after deployment, policy loading and five warm-up tasks for each source/transport/scenario.
 
-`-benchmark-samples` accepts 20–10,000 successful sample attempts per combination. The JSONL file has one environment record, one record per timed attempt, and one percentile summary per combination. Keep the acceptance JSONL and reference log alongside the raw benchmark file when publishing a run; the first contains denied/error outcomes and the second records startup stages, candidate checkout, image identity and container resource snapshots. These outputs contain only generated fixture identifiers and no bearer tokens or source credentials.
+`-benchmark-samples` accepts 20–10,000 timed attempts per combination. The JSONL file has one environment record, raw warm-ups and timed attempts, and one percentile summary per combination. Acceptance failures are preserved in the acceptance JSONL and the runner still collects benchmark samples before exiting nonzero. Keep the acceptance JSONL and reference log alongside the raw benchmark file when publishing a run; the first contains denied/error outcomes and the second records startup stages, candidate checkout, image identity and container resource snapshots. These outputs contain only generated fixture identifiers and no bearer tokens or source credentials.
 
 ## Measured tasks
 
