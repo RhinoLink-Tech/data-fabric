@@ -34,12 +34,11 @@ operator  ──HTTP, loopback────────▶ data-fabric-api :8080 
 
 ## Prerequisites
 
-- Docker Engine 24+ with the Compose plugin
+- Docker Engine 24+ with Docker Compose plugin 2.24+ (the release and PostgreSQL overlays use Compose merge tags)
 - `openssl` for secrets and a self-signed certificate
 - An OIDC-compatible identity provider configured to issue access tokens for
   the Data Fabric MCP audience and required query scope
-- `python3` with [PyJWT](https://pypi.org/project/PyJWT/) (`pip install pyjwt`)
-  to mint a local token for the HTTP management API quickstart
+- `python3` (standard library only) to mint a local HS256 management token
 
 ## Quickstart
 
@@ -123,7 +122,25 @@ deployment does not run an identity provider or mint OIDC access tokens.
 export JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
 
 # This local token registers the sample source through the management API.
-export AGENT_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'agent-1','username':'agent-1','tenantId':'quickstart','iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
+export AGENT_JWT=$(python3 - <<'PY'
+import base64, hashlib, hmac, json, os, time
+
+def b64url(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+claims = b64url(json.dumps({
+    "userId": "agent-1",
+    "username": "agent-1",
+    "tenantId": "quickstart",
+    "iat": int(time.time()),
+    "exp": int(time.time()) + 86400,
+}, separators=(",", ":")).encode())
+signing_input = f"{header}.{claims}".encode("ascii")
+signature = hmac.new(os.environ["JWT_SECRET"].encode(), signing_input, hashlib.sha256).digest()
+print(f"{header}.{claims}.{b64url(signature)}")
+PY
+)
 ```
 
 Obtain an OIDC-signed JWT access token from your provider using its supported
@@ -201,7 +218,28 @@ The query returns the seeded rows. Write statements (`INSERT`, `UPDATE`,
 by the read-only session opened against MySQL — the sample source's user also
 holds only `SELECT` privileges.
 
+## Run a published image without compiling source
+
+The source-build quickstart above remains useful for contributors. After a Preview image is published, the release path runs both gateway processes from the exact same registry image digest and does not build Go or install Python packages on the host.
+
+1. Copy the `tag@sha256` image reference from the matching GitHub Release record and add it to `deploy/mcp/.env`:
+
+   ```dotenv
+   DATA_FABRIC_IMAGE=ghcr.io/rhinolink-tech/data-fabric:<tag>@sha256:<digest>
+   ```
+
+2. From `deploy/mcp/`, pull and start the release profile:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.release.yml pull
+   docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
+   ```
+
+The release overlay removes the Compose build definition and always pulls the selected image. Use the version and digest from the release record; the placeholder above is not a usable image reference. **No container image is published yet.** Until the first approved tag is published, use the source-build quickstart above.
+
 ## PostgreSQL sample source variant
+
+This optional source override is outside the first MySQL Preview profile. Its `postgres:18` tag is not digest-pinned; pin and revalidate it before using the override as a reproducible release profile.
 
 The quickstart seeds MySQL by default. To try the stack against PostgreSQL
 instead, apply the override file when bringing the stack up (Compose 2.24+
