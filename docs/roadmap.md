@@ -22,7 +22,7 @@ The [support catalog](data-source-support.md) and [driver contract report](drive
 
 ## Current operating limits
 
-- Query cursors and continuation sessions are process-local. Restart loses active sessions; ordinary load balancing does not provide query ownership routing. #365 defines the next design.
+- Query cursors and continuation sessions remain process-local, so owner restart or loss invalidates active sessions. When opt-in routing is enabled, the reference ingress sends REST and remote MCP continuations to their creating owner using signed markers. Routing does not replicate query state or fail over to another owner; without the ingress, ordinary load balancing does not preserve continuations. See [Replica routing and drain](replica-routing.md).
 - Admission limits are per process. A multi-replica continuation increment does not establish globally precise tenant quotas.
 - Managed table/column policies use the shared metadata database. Healthy replicas converge within the documented three-second revocation window; an owner that cannot synchronize for three seconds fails closed.
 - Persisted audit is available, but the current failure policy does not guarantee durable evidence for every access when audit storage fails.
@@ -36,29 +36,29 @@ Tracking: [#402](https://github.com/RhinoLink-Tech/data-fabric/issues/402). Deta
 
 Reconcile the historical Phase 2–5 issues with the gateway direction. Retain their history, explain scope changes, and move current work into outcome-based milestones. Retired directions must not be described as delivered capabilities.
 
-Define the reference profile in #81: pinned PostgreSQL and MySQL, synthetic data, two application identities, two tenants, and explicit expected results and denials. An existing MinIO format may be added for object-storage coverage. Real customer work remains deferred.
+The reference profile was delivered in #81: pinned PostgreSQL and MySQL, synthetic data, two application identities, two tenants, and explicit expected results and denials. An existing MinIO format may be added for object-storage coverage. Real customer work remains deferred.
 
 **Exit:** the issue disposition is complete, the reference scope is documented, and public-interface acceptance cases have fixed expectations.
 
 ## M1 Reproducible public access
 
-- [#404](https://github.com/RhinoLink-Tech/data-fabric/issues/404): follow the completed #400/#401 CI split with affected reference and connector validation before merge. Preserve the fast required check and complete scheduled/manual matrix; releases require commit-matched full evidence.
-- #81: extend the existing reference deployment to register both reference databases and support independent application identities.
-- [#403](https://github.com/RhinoLink-Tech/data-fabric/issues/403): add public REST/MCP task acceptance by extending existing validation assets. Exercise identity, source discovery, metadata, parameter binding, results, continuation, denied access, cancellation, errors, and audit correlation.
-- #365: deliver the continuation ADR and a two-replica verification matrix. Cover REST routing and MCP tool/session behavior explicitly.
+- [#404](https://github.com/RhinoLink-Tech/data-fabric/issues/404) (completed): added affected reference and connector validation before merge while retaining the fast required check and scheduled/manual full matrix.
+- [#81](https://github.com/RhinoLink-Tech/data-fabric/issues/81) (completed): registered the pinned reference databases and validated reuse across independent application identities and tenants.
+- [#403](https://github.com/RhinoLink-Tech/data-fabric/issues/403) (completed): added deterministic public REST/MCP acceptance for identity, discovery, metadata, parameters, results, continuation, denials, cancellation, errors, and audit correlation.
+- [#365](https://github.com/RhinoLink-Tech/data-fabric/issues/365) (completed): delivered ADR-003 and a two-replica verification matrix in [PR #407](https://github.com/RhinoLink-Tech/data-fabric/pull/407). Owner-routing implementation and containerized evidence followed in [#409](https://github.com/RhinoLink-Tech/data-fabric/issues/409), [#410](https://github.com/RhinoLink-Tech/data-fabric/pull/410), [#411](https://github.com/RhinoLink-Tech/data-fabric/issues/411), and [#412](https://github.com/RhinoLink-Tech/data-fabric/pull/412).
 
-**Exit:** every declared deterministic reference case passes, unauthorized access succeeds zero times, setup is repeatable, and measurements include source/configuration versions and relevant dependencies. Fixed-SQL results are not reported as model task success rates.
+**Exit (met):** every declared deterministic reference case passed, unauthorized access succeeded zero times, setup is repeatable, and measurements include source/configuration versions and relevant dependencies. Fixed-SQL results are not reported as model task success rates.
 
 ## M2 Reliable shared operation
 
 Create implementation issues only after the corresponding contract or design is ready.
 
-- Implement the #365 decision: query owner routing, owner generation, token and identity binding, bounded drain, and explicit owner-loss behavior. Keep live database cursors with their owner; do not implicitly rerun SQL after owner failure.
-- [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413): enforce cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. Define COUNT overhead and partial-result behavior. These controls do not represent universal scan-cost or cloud-spend limits.
-- [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99): implemented validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and the three-second cross-replica contract; see [ADR-004](decisions/adr-004-versioned-table-policy-publication.md).
-- Preserve a lightweight single-replica mode without a new mandatory infrastructure service.
+- [#409](https://github.com/RhinoLink-Tech/data-fabric/issues/409) (completed): implemented the #365 decision for owner-bound REST/MCP continuations, signed owner generations, identity binding, bounded drain, and explicit owner-loss behavior. Live cursors stay with their owner; failed work is not rerun implicitly. See the [#410 routing implementation](https://github.com/RhinoLink-Tech/data-fabric/pull/410) and [#412 two-replica evidence](https://github.com/RhinoLink-Tech/data-fabric/pull/412).
+- [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) (completed): enforced cumulative per-query result rows, encoded-byte budgets, and an overall deadline across initial and continuation requests. COUNT overhead and incomplete-result behavior are explicit; these controls do not represent universal scan-cost or cloud-spend limits. See [PR #414](https://github.com/RhinoLink-Tech/data-fabric/pull/414).
+- [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) (completed): implemented validated policy snapshots, atomic publication, revocation, policy-version audit correlation, and the three-second cross-replica contract; see [ADR-004](decisions/adr-004-versioned-table-policy-publication.md) and [PR #415](https://github.com/RhinoLink-Tech/data-fabric/pull/415).
+- Routing remains opt-in, preserving lightweight single-replica REST, MCP, and stdio operation without a new mandatory infrastructure service.
 
-**Exit:** the two-replica routing/failure matrix, cumulative-budget cases, and policy revocation cases pass. Partial results, stale policy, and lost owners have explicit behavior. Transparent recovery of a lost live cursor is outside this increment.
+**Exit (met):** the two-replica routing/failure matrix, cumulative-budget cases, and policy revocation cases passed. Partial results, stale policy, and lost owners have explicit behavior. Transparent recovery of a lost live cursor remains outside this increment.
 
 ## M3 Repeatable delivery
 
