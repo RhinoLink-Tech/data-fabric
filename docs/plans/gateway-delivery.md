@@ -1,6 +1,6 @@
 # Gateway Delivery Plan
 
-**Reviewed: 2026-11-05**
+**Reviewed: 2026-11-07**
 
 This plan sequences the engineering work behind the [roadmap](../roadmap.md). Build repeatable public-interface evidence first, then improve shared operation and delivery. Real-team pilots remain deferred until the maintainer resumes them.
 
@@ -17,7 +17,7 @@ This plan sequences the engineering work behind the [roadmap](../roadmap.md). Bu
 | Bound cumulative query results | [#413](https://github.com/RhinoLink-Tech/data-fabric/issues/413) | One logical query has cumulative rows, encoded-byte and overall-deadline limits across paginated, native API, and streaming paths; define COUNT and partial-result behavior. |
 | Update and revoke policies | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | Publish validated immutable versions through the shared metadata database with CAS, request-pinned snapshots, publisher/outcome history and a documented three-second revocation/fail-closed contract. See [ADR-004](../decisions/adr-004-versioned-table-policy-publication.md). |
 | Add targeted task context | [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66), [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67), [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) | Defined scope, no current implementation commitment. Start only from recorded schema-selection, business-context or schema-drift failures. |
-| Prepare repeatable candidate delivery | [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) | Reproduce clean deployment, second-identity source reuse, two-replica operation, upgrade, backup and restore on one fixed candidate commit. Follow the [candidate evidence runbook](../validation/post-m2-candidate-evidence.md). |
+| Candidate delivery evidence | [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) | Completed against source SHA 53d0d662ac24273d8a5877dd4190188c843342c8; see the [candidate evidence runbook](../validation/post-m2-candidate-evidence.md) and [2026-11-07 evidence report](../validation/results/2026-11-07-post-m2-candidate.md). |
 | Validate real-team value | Create when the maintainer resumes pilots | Measure actual integration/reuse/support effort and task outcomes. |
 
 Do not create every future implementation issue at once. Keep at most two major implementation items in progress. #365 does not implement the selected design, and #99 does not reopen the identity/authorization/audit foundation in #217–#220.
