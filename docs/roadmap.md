@@ -83,7 +83,7 @@ Use this evidence to choose additional supported source/version combinations and
 
 ## Demand-triggered work
 
-- #175: add the bounded source-management UI when observed operator friction justifies it.
+- #175 (engineering reference delivered): the [source-management UI](data-source-management-ui.md) is available at /ui/. Its impact on operator effort remains unvalidated; measure it under M4 before making a customer-value claim.
 - #73: scope result masking when column denial and source-side restricted views do not satisfy a concrete use case.
 - #83: document specific data-flow and residency boundaries when a deployment has explicit requirements.
 - Broader federation-engine evidence (other Trino releases, Presto, OpenLooKeng, authentication modes, connectors, or production topologies) remains demand-triggered; expand only against a concrete need and a reproducible version boundary.
