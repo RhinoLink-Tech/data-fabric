@@ -21,6 +21,13 @@ func (env *Environment) tableAuthorizationPolicy() security.TableAuthorizationCo
 			{Schema: source.Schema, Table: "orders", Columns: []string{"id", "amount", "status", "created_at"}},
 			{Schema: source.Schema, Table: "order_items", Columns: []string{"id", "order_id", "item", "quantity", "discount"}},
 		}
+		if source.Type == "trino" {
+			scopes = []security.TableScope{
+				{Catalog: "tpch", Schema: "tiny", Table: "nation", Columns: []string{"nationkey", "name", "regionkey"}},
+				{Catalog: "tpch_copy", Schema: "tiny", Table: "region", Columns: []string{"regionkey", "name"}},
+				{Catalog: "tpch", Schema: "sf100", Table: "lineitem", Columns: []string{"orderkey"}},
+			}
+		}
 		sources[source.ID] = security.DataSourceTablePolicy{
 			Rules: []security.TableAccessRule{{TenantID: tenant, Read: scopes, Metadata: scopes}},
 		}

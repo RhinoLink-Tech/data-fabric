@@ -38,6 +38,7 @@ type Options struct {
 	SessionTTLSeconds             int
 	MaxConcurrentQueriesPerTenant int
 	MultiReplica                  bool
+	TrinoIntegration              bool
 }
 
 type Source struct {
@@ -49,13 +50,14 @@ type Source struct {
 // Environment is valid during the Run callback. It uses generated credentials
 // and contains only the synthetic sources started by this invocation.
 type Environment struct {
-	APIURL         string
-	MCPURL         string
-	TLSConfig      *tls.Config
-	Sources        map[string]Source
-	TenantBSources map[string]Source
-	Identities     map[string]Identity
-	OwnerURLs      map[string]string
+	APIURL              string
+	MCPURL              string
+	TrinoCoordinatorURL string
+	TLSConfig           *tls.Config
+	Sources             map[string]Source
+	TenantBSources      map[string]Source
+	Identities          map[string]Identity
+	OwnerURLs           map[string]string
 
 	stack   *composeStack
 	restKey string
@@ -147,6 +149,9 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	fmt.Fprintf(out, "Reference project %s on %s/%s, Docker %s, Compose %s\n",
 		s.project, runtime.GOOS, runtime.GOARCH, dockerVersion, composeVersion)
 	fmt.Fprintf(out, "Checkout: %s\nMySQL (metadata and source): %s\nPostgreSQL: %s\n", checkout(ctx, root), mysqlImage, postgresImage)
+	if options.TrinoIntegration {
+		fmt.Fprintf(out, "Trino coordinator: %s\n", trinoImage)
+	}
 	fmt.Fprintf(out, "Prepared local configuration and verified Docker in %s\n", elapsed(start))
 	stage := time.Now()
 	if ownedImage {
@@ -162,13 +167,23 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	fmt.Fprintf(out, "Gateway image %s (%s), prepared in %s\n", s.image, imageID, elapsed(stage))
 
 	stage = time.Now()
-	fmt.Fprintln(out, "Starting the two source databases and the HTTP API...")
-	if err := s.up(ctx, "data-fabric-api"); err != nil {
+	fmt.Fprintln(out, "Starting the source databases and the HTTP API...")
+	services := []string{"data-fabric-api"}
+	if options.TrinoIntegration {
+		services = append(services, "trino")
+	}
+	if err := s.up(ctx, services...); err != nil {
 		return err
 	}
 	env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
 	if err != nil {
 		return err
+	}
+	if options.TrinoIntegration {
+		env.TrinoCoordinatorURL, err = s.url(ctx, "trino", "8080", "http")
+		if err != nil {
+			return err
+		}
 	}
 	fmt.Fprintf(out, "Databases and API ready in %s\n", elapsed(stage))
 	if err := env.mintIdentities(); err != nil {
@@ -178,7 +193,7 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if err := env.registerSources(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Registered both sources with app-a in %s\n", elapsed(stage))
+	fmt.Fprintf(out, "Registered %d sources with app-a in %s\n", len(env.Sources), elapsed(stage))
 
 	stage = time.Now()
 	if err := env.writePolicy(); err != nil {
@@ -238,7 +253,7 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if err := env.verifyReuse(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "app-b reused both sources via REST and MCP in %s\n", elapsed(stage))
+	fmt.Fprintf(out, "app-b reused %d sources via REST and MCP in %s\n", len(env.Sources), elapsed(stage))
 	if err := env.verifyDenials(ctx); err != nil {
 		return err
 	}
@@ -271,6 +286,7 @@ func newStack(root, directory string, options Options) *composeStack {
 		"DF_REFERENCE_IMAGE":                   image,
 		"DF_REFERENCE_MYSQL_IMAGE":             mysqlImage,
 		"DF_REFERENCE_POSTGRES_IMAGE":          postgresImage,
+		"DF_REFERENCE_TRINO_IMAGE":             trinoImage,
 		"DF_REFERENCE_CONCURRENT_PER_TENANT":   strconv.Itoa(concurrent),
 		"DF_REFERENCE_SESSION_TTL_SECONDS":     strconv.Itoa(ttl),
 		"DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID": "reference",
@@ -312,6 +328,7 @@ func newStack(root, directory string, options Options) *composeStack {
 	return &composeStack{
 		root: root, directory: directory, project: project, image: image,
 		env: env, redact: strings.NewReplacer(secrets...), multiReplica: options.MultiReplica,
+		trinoIntegration: options.TrinoIntegration,
 	}
 }
 
