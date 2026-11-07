@@ -43,6 +43,12 @@ connector. Use the target source's native SQL unless translation is needed.
 Do not assume arbitrary registered sources can be joined: cross-catalog SQL
 requires a configured federation-engine source and supported catalogs.
 
+## Use a versioned context asset
+
+When the application supplies an approved, source-specific context asset, check its source profile and version before using it. Describe each referenced table and compare the required columns and types. If the source or schema no longer matches, stop, mark that asset version stale, and have its owner refresh the query and increment the version. Do not guess a replacement column.
+
+Use the asset's parameterized template, validate it, and pass values separately. The gateway rechecks the current caller's policy and read-only rules on every execution; an asset never grants access. See the [warehouse batch-route example](../../examples/warehouse-batch-route/README.md).
+
 ## Validate, execute, and bound the result
 
 Validate the final SQL for the selected source before executing it. Inspect
