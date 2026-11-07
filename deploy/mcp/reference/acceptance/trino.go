@@ -148,6 +148,9 @@ func checkTrinoCoordinatorFailure(ctx context.Context, w wire, source reference.
 }
 
 func checkTrinoCancellation(ctx context.Context, w wire, source reference.Source) error {
+	// Keep query identities distinct because Trino retains terminal history.
+	marker := strings.ReplaceAll(string(w.kind), "-", "_")
+	querySQL := strings.Replace(trinoCancellationSQL, "count(orderkey)", "count(orderkey) AS df_cancel_"+marker, 1)
 	type queryOutcome struct {
 		result reply
 		err    error
@@ -156,7 +159,7 @@ func checkTrinoCancellation(ctx context.Context, w wire, source reference.Source
 	defer cancelQuery()
 	outcome := make(chan queryOutcome, 1)
 	go func() {
-		result, err := w.query(queryCtx, reader, "", source, trinoCancellationSQL, nil, 1, 1)
+		result, err := w.query(queryCtx, reader, "", source, querySQL, nil, 1, 1)
 		outcome <- queryOutcome{result: result, err: err}
 	}()
 
@@ -194,7 +197,7 @@ func checkTrinoCancellation(ctx context.Context, w wire, source reference.Source
 			}
 			completed = &result
 		case <-ticker.C:
-			seen, active, terminal, err := trinoQueryState(ctx, w.env, trinoCancellationSQL)
+			seen, active, terminal, err := trinoQueryState(ctx, w.env, querySQL)
 			if err != nil {
 				return err
 			}
