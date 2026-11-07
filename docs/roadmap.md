@@ -63,11 +63,11 @@ Create implementation issues only after the corresponding contract or design is 
 
 ## M3 Repeatable delivery
 
-Use failures from the same task set to scope task-context improvements. The bounded schema-search slice is delivered; follow-up business-context and schema-drift work remains evidence-gated.
+Use the same representative task set to scope context improvements. The agent-side context and schema-drift reference is delivered for a maintainer-directed warehouse batch-route scenario using synthetic records. This is engineering evidence, not a customer deployment; live source and model fit remain in M4.
 
 - [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66) (completed): Added a conditional MCP search across permitted catalog, schema, table, and visible-column names/comments. It applies existing authorization before searching, returns no comment text, caps results at 20, scans at most 100 permitted tables, returns at most five matching column names per result, and reports ambiguity and truncation. See [PR #422](https://github.com/RhinoLink-Tech/data-fabric/pull/422).
-- [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67): Version business terms, confirmed relationships, examples, or approved parameterized query assets when schema alone is insufficient.
-- [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68): Detect schema changes and invalidate affected assets when those assets depend on persistent schema context.
+- [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67) (engineering reference delivered): added one versioned context asset and a batch-scoped parameterized query. The Skill compares required columns and types, validates and binds the query, and current gateway policy still applies. See [PR #436](https://github.com/RhinoLink-Tech/data-fabric/pull/436).
+- [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) (agent-guided invalidation delivered): the Skill compares the live schema with the asset, stops before execution on a mismatch, and documents owner review and version refresh. This reference does not add gateway-side schema monitoring. See [PR #436](https://github.com/RhinoLink-Tech/data-fabric/pull/436).
 
 - [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) (completed): Recorded commit-matched synthetic deployment, second-application reuse, two-replica acceptance, and MySQL upgrade/recovery in the [candidate report](validation/results/2026-11-07-post-m2-candidate.md), using the [post-M2 candidate evidence runbook](validation/post-m2-candidate-evidence.md). This record does not establish production readiness or real-team fit.
 
