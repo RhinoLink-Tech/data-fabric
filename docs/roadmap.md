@@ -84,7 +84,7 @@ Use this evidence to choose additional supported source/version combinations and
 ## Demand-triggered work
 
 - #175 (engineering reference delivered): the [source-management UI](data-source-management-ui.md) is available at /ui/. Its impact on operator effort remains unvalidated; measure it under M4 before making a customer-value claim.
-- #73: scope result masking when column denial and source-side restricted views do not satisfy a concrete use case.
+- [#73](https://github.com/RhinoLink-Tech/data-fabric/issues/73) (scope delivered): the scoped target is a synthetic S3/MinIO CSV dispatch task. A dispatcher may directly project only the last four phone digits; a supervisor sees the full value only with an explicit column-read grant. The target denies operator use of the field in filters, joins, grouping, sorting, aggregates, and expressions. See the [scope decision](https://github.com/RhinoLink-Tech/data-fabric/issues/73#issuecomment-6708302260). Runtime masking remains demand-triggered and requires a deployed task.
 - #83: document specific data-flow and residency boundaries when a deployment has explicit requirements.
 - Broader federation-engine evidence (other Trino releases, Presto, OpenLooKeng, authentication modes, connectors, or production topologies) remains demand-triggered; expand only against a concrete need and a reproducible version boundary.
 
