@@ -23,43 +23,51 @@ const (
 )
 
 type benchmarkRecord struct {
-	Type             string   `json:"type"`
-	FormatVersion    int      `json:"format_version,omitempty"`
-	StartedAtUTC     string   `json:"started_at_utc,omitempty"`
-	SourceRevision   string   `json:"source_revision,omitempty"`
-	WorkingTreeDirty bool     `json:"working_tree_dirty"`
-	Platform         string   `json:"platform,omitempty"`
-	GoVersion        string   `json:"go_version,omitempty"`
-	CPUCount         int      `json:"cpu_count,omitempty"`
-	MemoryTotalBytes uint64   `json:"memory_total_bytes,omitempty"`
-	DockerVersion    string   `json:"docker_server_version,omitempty"`
-	ComposeVersion   string   `json:"compose_version,omitempty"`
-	GatewayImage     string   `json:"gateway_image,omitempty"`
-	GatewayImageID   string   `json:"gateway_image_id,omitempty"`
-	MySQLImage       string   `json:"mysql_image,omitempty"`
-	PostgreSQLImage  string   `json:"postgresql_image,omitempty"`
-	Profile          string   `json:"profile,omitempty"`
-	MetadataStore    string   `json:"metadata_store,omitempty"`
-	Sources          []string `json:"sources,omitempty"`
-	FixtureRows      int      `json:"fixture_rows,omitempty"`
-	SampleTarget     int      `json:"sample_target,omitempty"`
-	WarmupCount      int      `json:"warmup_count,omitempty"`
-	Parallel         bool     `json:"parallel"`
-	Notes            string   `json:"notes,omitempty"`
-	Transport        string   `json:"transport,omitempty"`
-	Source           string   `json:"source,omitempty"`
-	Scenario         string   `json:"scenario,omitempty"`
-	Iteration        int      `json:"iteration,omitempty"`
-	DurationNS       int64    `json:"duration_ns,omitempty"`
-	RequestCount     int      `json:"gateway_request_count,omitempty"`
-	RowsReturned     int      `json:"rows_returned,omitempty"`
-	Result           string   `json:"result,omitempty"`
-	Error            string   `json:"error,omitempty"`
-	SampleCount      int      `json:"successful_sample_count,omitempty"`
-	FailedCount      int      `json:"failed_sample_count,omitempty"`
-	P50MS            float64  `json:"p50_ms,omitempty"`
-	P95MS            float64  `json:"p95_ms,omitempty"`
-	P99MS            float64  `json:"p99_ms,omitempty"`
+	Type              string   `json:"type"`
+	FormatVersion     int      `json:"format_version,omitempty"`
+	StartedAtUTC      string   `json:"started_at_utc,omitempty"`
+	SourceRevision    string   `json:"source_revision,omitempty"`
+	WorkingTreeDirty  bool     `json:"working_tree_dirty"`
+	Platform          string   `json:"platform,omitempty"`
+	GoVersion         string   `json:"go_version,omitempty"`
+	CPUCount          int      `json:"cpu_count,omitempty"`
+	MemoryTotalBytes  uint64   `json:"memory_total_bytes,omitempty"`
+	DockerVersion     string   `json:"docker_server_version,omitempty"`
+	ComposeVersion    string   `json:"compose_version,omitempty"`
+	GatewayImage      string   `json:"gateway_image,omitempty"`
+	GatewayImageID    string   `json:"gateway_image_id,omitempty"`
+	MySQLImage        string   `json:"mysql_image,omitempty"`
+	PostgreSQLImage   string   `json:"postgresql_image,omitempty"`
+	SessionTTL        int      `json:"session_ttl_seconds,omitempty"`
+	TenantConcurrency int      `json:"tenant_concurrency,omitempty"`
+	MultiReplica      bool     `json:"multi_replica"`
+	TrinoIntegration  bool     `json:"trino_integration"`
+	RestMCPTopology   string   `json:"rest_mcp_topology,omitempty"`
+	ContainerLimits   string   `json:"container_limits,omitempty"`
+	QueryTimeout      int      `json:"query_timeout_seconds,omitempty"`
+	IdentityProfile   string   `json:"identity_profile,omitempty"`
+	Profile           string   `json:"profile,omitempty"`
+	MetadataStore     string   `json:"metadata_store,omitempty"`
+	Sources           []string `json:"sources,omitempty"`
+	FixtureRows       int      `json:"fixture_rows,omitempty"`
+	SampleTarget      int      `json:"sample_target,omitempty"`
+	WarmupCount       int      `json:"warmup_count,omitempty"`
+	Parallel          bool     `json:"parallel"`
+	Notes             string   `json:"notes,omitempty"`
+	Transport         string   `json:"transport,omitempty"`
+	Source            string   `json:"source,omitempty"`
+	Scenario          string   `json:"scenario,omitempty"`
+	Iteration         int      `json:"iteration,omitempty"`
+	DurationNS        int64    `json:"duration_ns,omitempty"`
+	RequestCount      int      `json:"gateway_request_count,omitempty"`
+	RowsReturned      int      `json:"rows_returned,omitempty"`
+	Result            string   `json:"result,omitempty"`
+	Error             string   `json:"error,omitempty"`
+	SampleCount       int      `json:"successful_sample_count,omitempty"`
+	FailedCount       int      `json:"failed_sample_count"`
+	P50MS             float64  `json:"p50_ms,omitempty"`
+	P95MS             float64  `json:"p95_ms,omitempty"`
+	P99MS             float64  `json:"p99_ms,omitempty"`
 }
 
 // Benchmark measures warmed, serial query journeys through the public REST and
@@ -81,8 +89,13 @@ func Benchmark(ctx context.Context, env *reference.Environment, out io.Writer, s
 		MemoryTotalBytes: memoryBytes, DockerVersion: env.RunInfo.DockerServerVersion,
 		ComposeVersion: env.RunInfo.ComposeVersion, GatewayImage: env.RunInfo.GatewayImage,
 		GatewayImageID: env.RunInfo.GatewayImageID, MySQLImage: env.RunInfo.MySQLImage,
-		PostgreSQLImage: env.RunInfo.PostgreSQLImage, Profile: "single-node synthetic reference",
-		MetadataStore: "MySQL", Sources: []string{"MySQL", "PostgreSQL"}, FixtureRows: 3,
+		PostgreSQLImage: env.RunInfo.PostgreSQLImage, SessionTTL: env.RunInfo.SessionTTLSeconds,
+		TenantConcurrency: env.RunInfo.TenantConcurrency, MultiReplica: env.RunInfo.MultiReplica,
+		TrinoIntegration: env.RunInfo.TrinoIntegration, RestMCPTopology: "separate API and MCP containers",
+		ContainerLimits: "none", QueryTimeout: 5,
+		IdentityProfile: "synthetic REST bearer and OIDC bearer for MCP",
+		Profile:         "single-node synthetic reference", MetadataStore: "MySQL",
+		Sources: []string{"MySQL", "PostgreSQL"}, FixtureRows: 3,
 		SampleTarget: samples, WarmupCount: benchmarkWarmups, Parallel: false,
 		Notes: "Serial warmed measurements. MCP initialize is excluded after warmup. Gateway request count includes the first-page and continuation calls; internal source SQL/COUNT statement counts are not instrumented. Full-result pagination can re-execute source SQL. The full acceptance JSONL is captured separately by the command.",
 	}

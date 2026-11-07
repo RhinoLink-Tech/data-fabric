@@ -57,6 +57,10 @@ type RunInfo struct {
 	GatewayImageID      string
 	MySQLImage          string
 	PostgreSQLImage     string
+	SessionTTLSeconds   int
+	TenantConcurrency   int
+	MultiReplica        bool
+	TrinoIntegration    bool
 }
 
 // Environment is valid during the Run callback. It uses generated credentials
@@ -127,7 +131,12 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		Sources: make(map[string]Source), TenantBSources: make(map[string]Source),
 		Identities: make(map[string]Identity), OwnerURLs: make(map[string]string),
 		stack: s, restKey: s.env["JWT_SECRET"],
-		RunInfo: RunInfo{MySQLImage: mysqlImage, PostgreSQLImage: postgresImage},
+		RunInfo: RunInfo{
+			MySQLImage: mysqlImage, PostgreSQLImage: postgresImage,
+			SessionTTLSeconds: optionDefault(options.SessionTTLSeconds, 1800),
+			TenantConcurrency: optionDefault(options.MaxConcurrentQueriesPerTenant, 25),
+			MultiReplica:      options.MultiReplica, TrinoIntegration: options.TrinoIntegration,
+		},
 	}
 	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
 		if err := os.Mkdir(filepath.Join(directory, name), 0o755); err != nil {
@@ -284,6 +293,13 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		return check(ctx, env)
 	}
 	return nil
+}
+
+func optionDefault(value, fallback int) int {
+	if value == 0 {
+		return fallback
+	}
+	return value
 }
 
 func newStack(root, directory string, options Options) *composeStack {
