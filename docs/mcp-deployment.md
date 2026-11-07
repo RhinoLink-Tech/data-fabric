@@ -1,5 +1,7 @@
 # Self-Hosted Remote MCP Deployment
 
+中文部署说明：[docs/mcp-deployment-zh.md](mcp-deployment-zh.md)。
+
 This guide takes a clean environment to a healthy, authenticated remote MCP
 endpoint for Data Fabric: a metadata database, a seeded sample source, and the
 gateway serving MCP over Streamable HTTP with TLS (#186). Everything runs on
@@ -13,8 +15,9 @@ first — the quickstart below is the remote path.
 
 ## What gets deployed
 
-The Compose stack in [`deploy/mcp/`](../deploy/mcp/) builds one image from the
-repository `Dockerfile` and runs four services on a private network. The
+The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
+image from the repository `Dockerfile`; the release overlay pulls an immutable
+image digest. Both profiles run four services on a private network. The
 gateway runs either the HTTP API or MCP in a given process — never both — so
 the stack runs one container per mode against the shared metadata database:
 
@@ -35,62 +38,42 @@ operator  ──HTTP, loopback────────▶ data-fabric-api :8080 
 ## Prerequisites
 
 - Docker Engine 24+ with Docker Compose plugin 2.24+ (the release and PostgreSQL overlays use Compose merge tags)
-- `openssl` for secrets and a self-signed certificate
+- `openssl` for the local TLS certificate
 - An OIDC-compatible identity provider configured to issue access tokens for
   the Data Fabric MCP audience and required query scope
-- `python3` (standard library only) to mint a local HS256 management token
+- `python3` (standard library only) for setup, diagnostics and short-lived management tokens
 
 ## Quickstart
 
 All commands run from `deploy/mcp/`.
 
-### 1. Create the deployment secrets
+### 1. Initialize secrets and local TLS
 
 ```bash
-cp .env.example .env
+python3 ../../scripts/mcp/onboard.py init
 ```
 
-Fill in the database and vault secrets, plus the OIDC issuer and audience
-registered with your identity provider. Generate each secret with
-`openssl rand -base64 32`; for the credential vault, wrap one generated key in
-the JSON object shown in the file:
+The initializer creates `deploy/mcp/.env` with fresh database passwords, a
+32-byte credential-vault key, a management JWT secret and a localhost
+self-signed certificate. It writes `.env` atomically with mode `0600`, creates
+the private key with mode `0640` for the configured container group, and never
+replaces non-empty secrets or existing TLS files. Re-running it fills only
+missing values. It refuses ambiguous existing keyrings and partial TLS pairs
+instead of guessing or overwriting data.
 
-```bash
-KEY=$(openssl rand -base64 32)
-# DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=key-1
-# DATA_FABRIC_CREDENTIAL_KEYS={"key-1":"<value of $KEY>"}
-```
+Set `MCP_OIDC_ISSUER` and `MCP_OIDC_AUDIENCE` in `.env` to the HTTPS issuer and
+resource audience registered with your identity provider. Keep production
+identity-provider access tokens separate from the local management API token.
 
-The gateway fails fast at startup when a secret is missing, a known
-placeholder, or too short — placeholder-only secrets are a hard requirement
-here, not a suggestion.
+### 2. TLS certificate and private-key access
 
-### 2. Create the TLS certificate
-
-The MCP listener refuses to bind a non-loopback address without TLS, so the
-stack serves HTTPS directly. For a private trial, generate a self-signed
-certificate covering the name clients will use:
-
-```bash
-mkdir -p tls
-openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-  -keyout tls/tls.key -out tls/tls.crt \
-  -subj "/CN=data-fabric.local" \
-  -addext "subjectAltName=DNS:data-fabric.local,DNS:localhost,IP:127.0.0.1"
-```
-
-For internet-facing deployments, use a real certificate for your domain in
-place of both files — nothing else changes.
-
-The gateway containers run as a non-root user, so make sure that user can read
-the mounted key. For the quickstart:
-
-```bash
-chmod 644 tls/tls.crt tls/tls.key
-```
-
-For a longer-lived deployment, prefer tightening ownership to the container's
-UID over leaving the private key world-readable.
+The initializer creates a self-signed certificate for `localhost`,
+`data-fabric.local`, and `127.0.0.1`. Use a real certificate pair for an
+internet-facing deployment. When replacing the files, keep the private key
+readable by the non-root MCP container through the numeric
+`DATA_FABRIC_TLS_GID` supplementary group; use a restricted group and mode
+`0640`. Do not make the private key world-readable. The directory must allow
+that group to traverse it.
 
 ### 3. Start the stack
 
@@ -106,6 +89,17 @@ curl -s http://127.0.0.1:8080/health && echo
 curl -sk https://localhost:8443/mcp -o /dev/null -w '%{http_code}\n'   # 401
 ```
 
+Run the local profile doctor after the services start:
+
+```bash
+python3 ../../scripts/mcp/onboard.py doctor
+```
+
+It checks Compose configuration and service health, the API health endpoint,
+the MCP TLS/auth boundary, and the packaged SQL translation parser. It does not
+probe every registered data source. An unauthenticated `401` from the MCP probe
+is expected and confirms that TLS and the authentication gate respond.
+
 The `data-fabric-mcp` container's own health check is a TCP probe on its
 listener — an MCP-only process serves no HTTP `/health` — and the `401` from
 curl is the real end-to-end confirmation: TLS is up and the authentication
@@ -119,29 +113,18 @@ validates it against the configured discovery metadata and signing keys. The
 deployment does not run an identity provider or mint OIDC access tokens.
 
 ```bash
-export JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
-
-# This local token registers the sample source through the management API.
-export AGENT_JWT=$(python3 - <<'PY'
-import base64, hashlib, hmac, json, os, time
-
-def b64url(data):
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
-claims = b64url(json.dumps({
-    "userId": "agent-1",
-    "username": "agent-1",
-    "tenantId": "quickstart",
-    "iat": int(time.time()),
-    "exp": int(time.time()) + 86400,
-}, separators=(",", ":")).encode())
-signing_input = f"{header}.{claims}".encode("ascii")
-signature = hmac.new(os.environ["JWT_SECRET"].encode(), signing_input, hashlib.sha256).digest()
-print(f"{header}.{claims}.{b64url(signature)}")
-PY
-)
+# Use the stable `sub` value included in your identity provider's access token.
+export DF_USER_ID='<stable OIDC sub>'
+export DF_TENANT_ID='quickstart'
+export DF_MANAGEMENT_TOKEN="$(python3 ../../scripts/mcp/onboard.py token \
+  --user "$DF_USER_ID" --tenant "$DF_TENANT_ID")"
 ```
+
+The helper signs a local management API token with a 15-minute lifetime by
+default (the maximum is 15 minutes). It emits only the token on stdout so the
+shell can capture it; it does not print or persist the token. The token has no
+admin role unless `--admin` is explicitly requested. Do not use this local
+HS256 token for remote MCP.
 
 Obtain an OIDC-signed JWT access token from your provider using its supported
 OAuth flow, then set it in this shell:
@@ -149,6 +132,20 @@ OAuth flow, then set it in this shell:
 ```bash
 export MCP_ACCESS_TOKEN='<OIDC-signed JWT access token>'
 ```
+
+Check the configured issuer and compare the provider token's unverified
+`sub`/tenant/audience/scope claims with the management principal before using
+both paths. The gateway still validates the signed token on every MCP request;
+this local claim inspection is advisory only:
+
+```bash
+python3 ../../scripts/mcp/onboard.py doctor --probe-oidc \
+  --api-user "$DF_USER_ID" --tenant "$DF_TENANT_ID"
+```
+
+`--probe-oidc` fetches the discovery document and JWKS over HTTPS and checks the issuer
+match and key-set response. Omit the flag when outbound
+identity-provider access is not allowed.
 
 Opaque access tokens and ID tokens are not accepted. The token issuer must
 match `MCP_OIDC_ISSUER`, its audience must match `MCP_OIDC_AUDIENCE`, and its
@@ -160,8 +157,18 @@ settings. The sample source is registered in tenant `quickstart`, so the
 provider token needs the configured tenant claim set to `quickstart`; alternatively,
 register it with an API identity whose subject matches the MCP token's `sub`.
 
-Mint an API token with `'roles':['admin']` only when you need the management
-API's admin-only endpoints or cross-owner visibility.
+Use the helper's `--admin` flag only for management API admin-only endpoints
+or cross-owner visibility. Re-mint the management token immediately before
+registration if its 15-minute lifetime expires.
+
+To diagnose a selected connection before saving it, give the doctor one source
+configuration rather than probing every registered source. Store the JSON in
+an owner-only file (`chmod 600 source.json`) or pipe it on stdin, then run
+`python3 ../../scripts/mcp/onboard.py doctor --source-type mysql
+--source-config source.json` with `DF_MANAGEMENT_TOKEN` set. The check posts the
+configuration only to the loopback management API, never prints source
+credentials, and returns a correlation ID for sanitized follow-up. Delete any
+temporary file when finished.
 
 ### 6. Register the sample source
 
@@ -169,7 +176,7 @@ API's admin-only endpoints or cross-owner visibility.
 SAMPLE_READER_PASSWORD=$(grep -E '^SAMPLE_READER_PASSWORD=' .env | cut -d= -f2-)
 
 curl -s http://127.0.0.1:8080/api/v1/datasources \
-  -H "Authorization: Bearer $AGENT_JWT" \
+  -H "Authorization: Bearer $DF_MANAGEMENT_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"sample-mysql\",
@@ -185,7 +192,7 @@ curl -s http://127.0.0.1:8080/api/v1/datasources \
 ```
 
 Data sources are scoped by owner, tenant, and role: whoever registers a source
-owns it, and this source is owned by `agent-1` — the same identity the MCP
+owns it, and this source is owned by `$DF_USER_ID` — the same principal the MCP
 client presents in the next step. To serve several clients, either share one
 identity, give the tokens a common `tenantId`, or register with an admin
 identity (admins read every source); a token with a different user and no
@@ -261,7 +268,7 @@ Register it with the PostgreSQL connection parameters — note `type` and
 
 ```bash
 curl -s http://127.0.0.1:8080/api/v1/datasources \
-  -H "Authorization: Bearer $AGENT_JWT" \
+  -H "Authorization: Bearer $DF_MANAGEMENT_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"sample-postgres\",
