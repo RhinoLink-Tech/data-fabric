@@ -1,6 +1,6 @@
 # Post-M2 Candidate Deployment and Recovery Evidence
 
-This runbook implements issue #416. It binds deployment, second-identity reuse, two-replica operations, and database recovery evidence to one source commit and one locally built gateway image. It uses synthetic PostgreSQL and MySQL fixtures. It does not publish an artifact or require a real-team environment.
+This runbook implements issue #416. It binds deployment, second-identity reuse, two-replica operations, and database recovery evidence to one source commit and one locally built gateway image. It uses synthetic PostgreSQL and MySQL fixtures. It does not publish an artifact or require a real-team environment. The completed 2026-11-07 candidate run is recorded in the [validation report](results/2026-11-07-post-m2-candidate.md).
 
 ## Freeze the candidate
 
