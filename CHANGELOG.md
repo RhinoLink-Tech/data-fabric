@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Add tag-gated GHCR Preview image publishing with digest-pinned Compose startup, SQLGlot notices, SBOM and provenance (#442).
 - Add idempotent self-hosted MCP initialization, a bounded management-token helper, and a local profile doctor (#445).
+- Add age-encrypted current-profile backup verification and fresh-checkout restore preparation, bound to an OCI source-revision label (#452).
 - Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
 
 ### Fixed

@@ -15,7 +15,7 @@ first — the quickstart below is the remote path.
 
 ## What gets deployed
 
-The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
+When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are marked unknown and cannot produce a verified candidate backup. The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
 image from the repository `Dockerfile`; the release overlay pulls an immutable
 image digest. Both profiles run four services on a private network. The
 gateway runs either the HTTP API or MCP in a given process — never both — so
@@ -388,6 +388,8 @@ docker compose logs -f data-fabric-api data-fabric-mcp
 docker compose restart data-fabric-mcp
 docker compose down                   # stop; add -v to also drop both databases
 ```
+
+For an encrypted metadata/keyring backup and a fresh-project restore, follow the [profile backup and recovery runbook](operations/mcp-profile-backup-recovery.md), also available [in Chinese](operations/mcp-profile-backup-recovery-zh.md).
 
 Secrets live only in `.env` and the containers. Rotating `JWT_SECRET`
 invalidates every token; rotating the credential-vault key means re-entering

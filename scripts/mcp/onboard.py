@@ -25,7 +25,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DEPLOY_DIR = REPO_ROOT / "deploy" / "mcp"
 SECRET_KEYS = ("JWT_SECRET", "METADATA_DB_ROOT_PASSWORD", "METADATA_DB_PASSWORD", "SAMPLE_SOURCE_ROOT_PASSWORD", "SAMPLE_READER_PASSWORD")
-PLACEHOLDERS = {"change-me", "changeme", "replace-me", "replace_me", "todo"}
+PLACEHOLDERS = {"change-me", "changeme", "replace-me", "replace_me", "todo", "unknown"}
 
 class OnboardingError(Exception):
     pass
@@ -197,6 +197,17 @@ def command_init(args):
             raise ValueError
     except ValueError as exc:
         raise OnboardingError("DATA_FABRIC_TLS_GID must be a non-negative numeric group ID") from exc
+    try:
+        revision = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--verify", "HEAD"],
+                                  capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        revision = None
+    source_revision = revision.stdout.strip() if revision and revision.returncode == 0 else ""
+    if not re.fullmatch(r"[0-9a-f]{40,64}", source_revision):
+        existing_revision = current.get("DATA_FABRIC_SOURCE_REVISION", "").strip()
+        source_revision = existing_revision if re.fullmatch(r"[0-9a-f]{40,64}", existing_revision) else "unknown"
+    if current.get("DATA_FABRIC_SOURCE_REVISION", "").strip() != source_revision:
+        replacements["DATA_FABRIC_SOURCE_REVISION"] = source_revision
     if not env_path.exists() or replacements:
         atomic_private_write(env_path, replace_env_values(text, replacements))
     else:
@@ -206,6 +217,8 @@ def command_init(args):
     print("Generated or filled: " + (", ".join(sorted(replacements)) if replacements else "no missing environment values"))
     print(f"Protected configuration: {env_path} (mode 0600)")
     print(tls_result + ".")
+    if source_revision == "unknown":
+        print("Warning: Git source revision is unavailable; set DATA_FABRIC_SOURCE_REVISION before building a recoverable local candidate.")
     print("Next: fill MCP_OIDC_ISSUER and MCP_OIDC_AUDIENCE in .env, then run doctor.")
     print("Existing non-empty secrets, identity settings, database files and TLS files are preserved.")
     return 0

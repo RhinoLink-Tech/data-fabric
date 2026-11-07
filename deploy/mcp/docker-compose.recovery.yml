@@ -1,0 +1,6 @@
+# Restrict a temporary recovery project to localhost even though the normal
+# remote profile publishes MCP on all interfaces. Requires Compose 2.24+.
+services:
+  data-fabric-mcp:
+    ports: !override
+      - "127.0.0.1:${MCP_HTTPS_PORT:-18443}:8081"

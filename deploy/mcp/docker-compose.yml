@@ -22,6 +22,8 @@ x-data-fabric-base: &data-fabric-base
   build:
     context: ../..
     dockerfile: Dockerfile
+    args:
+      DATA_FABRIC_SOURCE_REVISION: ${DATA_FABRIC_SOURCE_REVISION:-unknown}
   restart: unless-stopped
   environment: &data-fabric-env
     SERVER_MODE: release

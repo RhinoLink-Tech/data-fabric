@@ -7,7 +7,7 @@ The latest published stable release is v1.2.0. This guide only covers upgrading 
 ## Before upgrading
 
 1. Schedule a maintenance window and stop the old Data Fabric process. Do not run old and new binaries against the metadata database at the same time.
-2. Back up the metadata database and verify that the backup can be restored. The tested MySQL path is documented in [the D15 rehearsal](operations/mysql-upgrade-rehearsal.md). MySQL DDL may commit implicitly.
+2. Back up the metadata database and verify that the backup can be restored. For the current self-hosted MCP profile, use the [encrypted profile backup and recovery workflow](operations/mcp-profile-backup-recovery.md). The tested MySQL migration path is documented in [the D15 rehearsal](operations/mysql-upgrade-rehearsal.md). MySQL DDL may commit implicitly.
 3. Back up the local configs/config.yaml securely before updating the checkout. The tracked file was removed; a pull may delete it. Do not commit or share the backup.
 4. Inventory existing data-source rows and preserve all source connection credentials. Legacy rows without owner/tenant metadata become admin-only; the migration does not infer their owner.
 5. Preserve the credential-encryption keyring. Do not generate a replacement key for an existing deployment unless performing the documented key-rotation procedure with both old and new keys present.
