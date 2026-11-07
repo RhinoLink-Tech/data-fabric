@@ -161,10 +161,12 @@ Deployment resource measurements are documented separately: a local WSL2 run rec
 | GET | /api/v1/fetch/:query_id/:slug/:token | Retrieve a subsequent result batch | Bearer (always); only the session's creator may continue |
 
 See the [API usage guide](docs/api_usage.md) for request fields, response structures, and authentication behavior.
+The embedded [data-source management UI](docs/data-source-management-ui.md) is available at /ui/.
 
 ## Documentation
 
 - [API Usage Guide](docs/api_usage.md)
+- [Data-source Management UI](docs/data-source-management-ui.md)
 - [Data Fabric Agent Skill](docs/agent-skill.md)
 - [DeepSeek Function-Calling Example](examples/deepseek-agent/README.md)
 - [Architecture Guide](docs/architecture.md)

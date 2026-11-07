@@ -161,10 +161,12 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 | GET | /api/v1/fetch/:query_id/:slug/:token | 获取后续结果批次 | 始终需要 Bearer；会话仅创建者可续拉 |
 
 请求字段、响应结构和认证行为见 [API 使用指南](docs/api_usage.md)，数据源授权模型见 [配置文档](docs/configuration.md#data-source-authorization)。
+自托管的数据源管理页面位于 /ui/，使用说明见[数据源管理界面文档](docs/data-source-management-ui-zh.md)。
 
 ## 项目文档
 
 - [API 使用指南](docs/api_usage.md)
+- [数据源管理界面](docs/data-source-management-ui-zh.md)
 - [DeepSeek API 函数调用示例](examples/deepseek-agent/README.md)
 - [架构设计](docs/architecture.md)
 - [产品路线图](docs/roadmap.md)
