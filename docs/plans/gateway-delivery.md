@@ -18,7 +18,7 @@ This plan sequences the engineering work behind the [roadmap](../roadmap.md). Bu
 | Update and revoke policies | [#99](https://github.com/RhinoLink-Tech/data-fabric/issues/99) | Publish validated immutable versions through the shared metadata database with CAS, request-pinned snapshots, publisher/outcome history and a documented three-second revocation/fail-closed contract. See [ADR-004](../decisions/adr-004-versioned-table-policy-publication.md). |
 | Add targeted task context | [#66](https://github.com/RhinoLink-Tech/data-fabric/issues/66), [#67](https://github.com/RhinoLink-Tech/data-fabric/issues/67), [#68](https://github.com/RhinoLink-Tech/data-fabric/issues/68) | Defined scope, no current implementation commitment. Start only from recorded schema-selection, business-context or schema-drift failures. |
 | Candidate delivery evidence | [#416](https://github.com/RhinoLink-Tech/data-fabric/issues/416) | Completed against source SHA 53d0d662ac24273d8a5877dd4190188c843342c8; see the [candidate evidence runbook](../validation/post-m2-candidate-evidence.md) and [2026-11-07 evidence report](../validation/results/2026-11-07-post-m2-candidate.md). |
-| Validate real-team value | Create when the maintainer resumes pilots | Measure actual integration/reuse/support effort and task outcomes. |
+| Validate real-team value | Create when the maintainer resumes pilots | Follow the [M4 pilot evidence protocol](../validation/real-team-pilot-evidence.md) to measure integration/reuse/support effort and task outcomes. |
 
 Do not create every future implementation issue at once. Keep at most two major implementation items in progress. #365 does not implement the selected design, and #99 does not reopen the identity/authorization/audit foundation in #217–#220.
 
@@ -87,7 +87,7 @@ If real-model evaluation is run, pin model/version, prompt, fixtures, retries an
 
 ## Deferred and historical work
 
-Real-team contact and environment access are deferred. When resumed, measure the actual existing integration approach, first deployment, second-application reuse, correct task results, permission outcomes and ongoing support effort before expanding the support profile.
+Real-team contact and environment access are deferred. When resumed, use the [M4 pilot evidence protocol](../validation/real-team-pilot-evidence.md) to compare the existing integration approach with Data Fabric on first deployment, second-application reuse, task correctness, permission outcomes, and ongoing support effort before expanding the support profile.
 
 #175 UI, #73 masking and #83 deployment/residency evidence require observed needs. The [Trino 484 integration profile](../validation/trino-integration.md) is complete within its documented boundary; broader engine coverage remains demand-triggered. Existing connectors and their tests remain available under their current support contracts.
 
