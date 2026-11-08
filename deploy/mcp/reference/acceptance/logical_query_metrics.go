@@ -34,7 +34,21 @@ func acceptanceProfileForRun(env *reference.Environment) map[string]any {
 }
 
 func logicalQueryMetricSnapshot(ctx context.Context, w wire) (map[string]float64, error) {
-	var metricBodies []string
+	bodies, err := acceptanceMetricBodies(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]float64)
+	for _, outcome := range []string{"success", "timeout", "budget_duration", "budget_result", "canceled", "session_expired", "owner_unavailable"} {
+		values["outcomes/"+outcome] = sumLogicalMetric(bodies, "data_fabric_logical_query_outcomes_total", outcome)
+		values["rows/"+outcome] = sumLogicalMetric(bodies, "data_fabric_logical_query_rows_returned_total", outcome)
+		values["batches/"+outcome] = sumLogicalMetric(bodies, "data_fabric_logical_query_batches_total", outcome)
+	}
+	return values, nil
+}
+
+func acceptanceMetricBodies(ctx context.Context, w wire) ([]string, error) {
+	var bodies []string
 	if w.env.RunInfo.MultiReplica {
 		slots := []string{"rest-a", "rest-b"}
 		if w.kind == mcpHTTP {
@@ -45,37 +59,30 @@ func logicalQueryMetricSnapshot(ctx context.Context, w wire) (map[string]float64
 			if err != nil {
 				return nil, err
 			}
-			metricBodies = append(metricBodies, body)
+			bodies = append(bodies, body)
 		}
-	} else {
-		endpoint := w.env.APIURL
-		token := w.env.Identities["operator"].RESTToken
-		if w.kind == mcpHTTP {
-			endpoint = strings.TrimSuffix(w.env.MCPURL, "/mcp")
-			token = w.env.Identities["operator"].MCPToken
-		}
-		response, err := w.request(ctx, http.MethodGet, endpoint+"/metrics", token, "", nil)
-		if err != nil {
-			return nil, err
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("%s metrics returned HTTP %d", w.kind, response.StatusCode)
-		}
-		body, err := io.ReadAll(io.LimitReader(response.Body, maxResponse))
-		if err != nil {
-			return nil, fmt.Errorf("%s metrics response could not be read", w.kind)
-		}
-		metricBodies = append(metricBodies, string(body))
+		return bodies, nil
 	}
 
-	values := make(map[string]float64)
-	for _, outcome := range []string{"success", "timeout", "budget_duration", "budget_result", "canceled", "session_expired", "owner_unavailable"} {
-		values["outcomes/"+outcome] = sumLogicalMetric(metricBodies, "data_fabric_logical_query_outcomes_total", outcome)
-		values["rows/"+outcome] = sumLogicalMetric(metricBodies, "data_fabric_logical_query_rows_returned_total", outcome)
-		values["batches/"+outcome] = sumLogicalMetric(metricBodies, "data_fabric_logical_query_batches_total", outcome)
+	endpoint := w.env.APIURL
+	token := w.env.Identities["operator"].RESTToken
+	if w.kind == mcpHTTP {
+		endpoint = strings.TrimSuffix(w.env.MCPURL, "/mcp")
+		token = w.env.Identities["operator"].MCPToken
 	}
-	return values, nil
+	response, err := w.request(ctx, http.MethodGet, endpoint+"/metrics", token, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s metrics returned HTTP %d", w.kind, response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponse))
+	if err != nil {
+		return nil, fmt.Errorf("%s metrics response could not be read", w.kind)
+	}
+	return []string{string(body)}, nil
 }
 
 func sumLogicalMetric(bodies []string, name, outcome string) float64 {

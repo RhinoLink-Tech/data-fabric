@@ -78,6 +78,22 @@ func newTablePolicyManager(db *gorm.DB, cfg *config.Config, authorizer *security
 	return manager, nil
 }
 
+func configureManagedTablePolicyMetrics(manager *security.TablePolicyManager) {
+	middleware.SetManagedTablePolicyStatusProvider(nil)
+	if manager == nil {
+		return
+	}
+	manager.SetSyncFailureObserver(middleware.RecordManagedTablePolicySyncFailure)
+	middleware.SetManagedTablePolicyStatusProvider(func() middleware.ManagedTablePolicyStatus {
+		status := manager.Status()
+		return middleware.ManagedTablePolicyStatus{
+			Configured: status.Revision != "",
+			Fresh:      status.Fresh,
+			LastSync:   status.LastSyncAt,
+		}
+	})
+}
+
 func newRouteOwner(cfg config.RoutingConfig, pool string) (*replicarouting.Owner, error) {
 	if !cfg.Enabled {
 		return nil, nil
@@ -170,6 +186,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	if err != nil {
 		return err
 	}
+	configureManagedTablePolicyMetrics(tablePolicyManager)
 	if tablePolicyManager != nil {
 		tablePolicyManager.Start(context.Background())
 		defer tablePolicyManager.Stop()
@@ -445,6 +462,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	if err != nil {
 		return err
 	}
+	configureManagedTablePolicyMetrics(tablePolicyManager)
 	if tablePolicyManager != nil {
 		tablePolicyManager.Start(context.Background())
 		defer tablePolicyManager.Stop()

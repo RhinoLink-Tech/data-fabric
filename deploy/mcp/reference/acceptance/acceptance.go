@@ -54,6 +54,7 @@ var matrix = []scenario{
 	{id: "A24", check: auditEvidence},
 	{id: "A25", check: searchSchema, restUnsupported: "no public REST schema search", smoke: true},
 	{id: "A26", check: logicalQueryMetrics, smoke: true},
+	{id: "A27", check: managedPolicyAuditRecovery, smoke: true},
 }
 
 type evidence struct {
