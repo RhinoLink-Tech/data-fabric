@@ -57,6 +57,10 @@ func readQuery(ctx context.Context, w wire, source reference.Source, sql string,
 	return readBatch(w.query(ctx, reader, "", source, sql, params, size, 5))
 }
 
+func readQueryWithMode(ctx context.Context, w wire, source reference.Source, sql string, size int, mode string) (batch, error) {
+	return readBatch(w.queryWithMode(ctx, reader, "", source, sql, nil, size, 10, mode))
+}
+
 func rows(page batch, expected ...[]any) error {
 	if len(page.Entries) != len(expected) {
 		return fmt.Errorf("expected %d rows, observed %d", len(expected), len(page.Entries))
@@ -522,4 +526,271 @@ func containsAny(raw string, values ...string) bool {
 		}
 	}
 	return false
+}
+
+func singleMutationID(page batch, queryID, mode string, total int, hasNext bool) (string, error) {
+	if page.QueryID == "" || (queryID != "" && page.QueryID != queryID) ||
+		page.ExecutionMode != mode || page.TotalCount != total || (page.NextURI != "") != hasNext {
+		return "", fmt.Errorf("unexpected query identity, execution mode, count, or continuation state")
+	}
+	if len(page.Entries) != 1 || len(page.Entries[0]) != 1 {
+		return "", fmt.Errorf("expected one row with one value")
+	}
+	value, ok := page.Entries[0][0].(json.Number)
+	if !ok {
+		return "", fmt.Errorf("fixture row ID is not a JSON number")
+	}
+	return value.String(), nil
+}
+
+func emptyMutationPage(page batch, queryID, mode string, total int) error {
+	if page.QueryID != queryID || page.ExecutionMode != mode || page.TotalCount != total ||
+		page.NextURI != "" || len(page.Entries) != 0 {
+		return fmt.Errorf("unexpected empty terminal page")
+	}
+	return nil
+}
+
+func pageMutationSemantics(ctx context.Context, w wire) error {
+	return forEachSource(w, func(sourceKey string, source reference.Source) error {
+		run := func(check func() error) error {
+			if err := w.env.ResetSyntheticOrders(ctx, sourceKey); err != nil {
+				return err
+			}
+			checkErr := check()
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			cleanupErr := w.env.ResetSyntheticOrders(cleanupCtx, sourceKey)
+			return errors.Join(checkErr, cleanupErr)
+		}
+		note := func(value string) {
+			if w.observe != nil {
+				w.observe(sourceKey + " " + value)
+			}
+		}
+		runPagination := func(sql string) (batch, string, error) {
+			first, err := readQueryWithMode(ctx, w, source, sql, 1, "pagination")
+			if err != nil {
+				return batch{}, "", err
+			}
+			firstID, err := singleMutationID(first, "", "pagination", 3, true)
+			return first, firstID, err
+		}
+		nextID := func(previous batch, mode string, hasNext bool) (batch, string, error) {
+			result, err := readBatch(w.next(ctx, reader, previous))
+			if err != nil {
+				return batch{}, "", err
+			}
+			rowID, err := singleMutationID(result, previous.QueryID, mode, 3, hasNext)
+			return result, rowID, err
+		}
+
+		if err := run(func() error {
+			first, firstID, err := runPagination(orderedIDs)
+			if err != nil || firstID != "1" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("unique pagination first page was %s, want 1", firstID)
+			}
+			if err := w.env.MutateSyntheticOrders(ctx, sourceKey, reference.InsertOrderBeforeFirst, 0); err != nil {
+				return err
+			}
+			second, secondID, err := nextID(first, "pagination", true)
+			if err != nil || secondID != "1" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("insert-before-page oracle: second ID %s, want duplicate 1", secondID)
+			}
+			_, thirdID, err := nextID(second, "pagination", false)
+			if err != nil || thirdID != "2" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("insert-before-page oracle: final ID %s, want 2", thirdID)
+			}
+			note("pagination unique ORDER BY id insert 0: pages=[1 1 2], initial_total=3; no cross-page snapshot")
+			return nil
+		}); err != nil {
+			return fmt.Errorf("unique-order insert: %w", err)
+		}
+
+		if err := run(func() error {
+			first, firstID, err := runPagination(orderedIDs)
+			if err != nil || firstID != "1" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("unique pagination first page was %s, want 1", firstID)
+			}
+			if err := w.env.MutateSyntheticOrders(ctx, sourceKey, reference.DeleteFixtureOrder, 3); err != nil {
+				return err
+			}
+			second, secondID, err := nextID(first, "pagination", true)
+			if err != nil || secondID != "2" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("delete-between-pages oracle: second ID %s, want 2", secondID)
+			}
+			terminal, err := readBatch(w.next(ctx, reader, second))
+			if err != nil {
+				return err
+			}
+			if err := emptyMutationPage(terminal, first.QueryID, "pagination", 3); err != nil {
+				return err
+			}
+			note("pagination unique ORDER BY id delete final row 3: pages=[1 2 empty], initial_total=3")
+			return nil
+		}); err != nil {
+			return fmt.Errorf("unique-order delete: %w", err)
+		}
+
+		if err := run(func() error {
+			first, firstID, err := runPagination(orderedIDs)
+			if err != nil || firstID != "1" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("unique pagination first page was %s, want 1", firstID)
+			}
+			if err := w.env.MutateSyntheticOrders(ctx, sourceKey, reference.MoveFixtureOrder, 0); err != nil {
+				return err
+			}
+			second, secondID, err := nextID(first, "pagination", true)
+			if err != nil || secondID != "2" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("order-key update oracle: second ID %s, want 2", secondID)
+			}
+			_, thirdID, err := nextID(second, "pagination", false)
+			if err != nil || thirdID != "4" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("order-key update oracle: final ID %s, want 4", thirdID)
+			}
+			note("pagination unique ORDER BY id update 3 to 4: pages=[1 2 4], initial_total=3")
+			return nil
+		}); err != nil {
+			return fmt.Errorf("unique-order update: %w", err)
+		}
+
+		if err := run(func() error {
+			first, firstID, err := runPagination("SELECT id FROM orders ORDER BY status")
+			if err != nil || firstID != "2" {
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("non-unique status order first page was %s, want 2", firstID)
+			}
+			if err := w.env.MutateSyntheticOrders(ctx, sourceKey, reference.ShipFixtureOrder, 0); err != nil {
+				return err
+			}
+			second, secondID, err := nextID(first, "pagination", true)
+			if err != nil {
+				return err
+			}
+			_, thirdID, err := nextID(second, "pagination", false)
+			if err != nil {
+				return err
+			}
+			for _, rowID := range []string{secondID, thirdID} {
+				if rowID != "1" && rowID != "2" && rowID != "3" {
+					return fmt.Errorf("non-unique status order returned an unknown fixture ID")
+				}
+			}
+			note(fmt.Sprintf("pagination ORDER BY status (non-unique), update status of 2: pages=[%s %s %s], tie order unspecified", firstID, secondID, thirdID))
+			_ = terminal
+			return nil
+		}); err != nil {
+			return fmt.Errorf("non-unique-order update: %w", err)
+		}
+
+		if err := run(func() error {
+			first, firstID, err := runPagination("SELECT id FROM orders")
+			if err != nil {
+				return err
+			}
+			if firstID != "1" && firstID != "2" && firstID != "3" {
+				return fmt.Errorf("unordered first page returned an unknown fixture ID")
+			}
+			if err := w.env.MutateSyntheticOrders(ctx, sourceKey, reference.DeleteFixtureOrder, 3); err != nil {
+				return err
+			}
+			second, secondID, err := nextID(first, "pagination", true)
+			if err != nil {
+				return err
+			}
+			if secondID == "3" {
+				return fmt.Errorf("pagination returned the deleted fixture row")
+			}
+			terminal, err := readBatch(w.next(ctx, reader, second))
+			if err != nil {
+				return err
+			}
+			if err := emptyMutationPage(terminal, first.QueryID, "pagination", 3); err != nil {
+				return err
+			}
+			note(fmt.Sprintf("pagination without ORDER BY delete row 3 after first page %s: pages=[%s %s empty], row order unspecified", firstID, firstID, secondID))
+			return nil
+		}); err != nil {
+			return fmt.Errorf("unordered delete: %w", err)
+		}
+
+		for _, mutation := range []struct {
+			name string
+			kind reference.OrdersFixtureMutation
+			id   int64
+		}{
+			{name: "insert", kind: reference.InsertOrderBeforeFirst, id: 0},
+			{name: "delete", kind: reference.DeleteFixtureOrder, id: 3},
+			{name: "update", kind: reference.MoveFixtureOrder, id: 0},
+		} {
+			mutation := mutation
+			if err := run(func() error {
+				first, err := readQueryWithMode(ctx, w, source, orderedIDs, 1, "streaming")
+				if err != nil {
+					return err
+				}
+				firstID, err := singleMutationID(first, "", "streaming", 3, true)
+				if err != nil || firstID != "1" {
+					if err != nil {
+						return err
+					}
+					return fmt.Errorf("streaming first page was %s, want 1", firstID)
+				}
+				if err := w.env.MutateSyntheticOrders(ctx, sourceKey, mutation.kind, mutation.id); err != nil {
+					return err
+				}
+				observed := []string{firstID}
+				current := first
+				for len(observed) < 4 {
+					if current.NextURI == "" {
+						break
+					}
+					hasNext := len(observed)+1 < 3
+					next, rowID, err := nextID(current, "streaming", hasNext)
+					if err != nil {
+						return err
+					}
+					if rowID != "1" && rowID != "2" && rowID != "3" {
+						return fmt.Errorf("streaming source statement returned an ID outside its initial snapshot oracle")
+					}
+					observed = append(observed, rowID)
+					current = next
+				}
+				if current.NextURI != "" || !slices.Equal(observed, []string{"1", "2", "3"}) {
+					return fmt.Errorf("streaming %s observed rows %v; pinned PostgreSQL/MySQL statement cursor oracle is [1 2 3]", mutation.name, observed)
+				}
+				note(fmt.Sprintf("streaming unique ORDER BY id %s between batches: pages=%v, initial_total=3; pinned sources retained statement rows", mutation.name, observed))
+				return nil
+			}); err != nil {
+				return fmt.Errorf("streaming %s: %w", mutation.name, err)
+			}
+		}
+		return nil
+	})
 }

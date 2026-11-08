@@ -149,6 +149,7 @@ The setup must provide documented startup, registration, readiness/identity chec
 | A25 | Search permitted schema metadata | MCP returns stable, policy-filtered table and column matches; REST records the capability as unsupported. |
 | A26 | Observe one logical query across batches | REST and MCP report one bounded terminal outcome with complete rows, batches and duration across the initial request and continuations. |
 | A27 | Recover managed policy and audit persistence | A disposable metadata outage produces stale-policy, sync-failure and audit-failure signals on every owner; recovery restores synchronization and correlated audit writes. |
+| A28 | Mutate orders between result pages | REST and MCP can select pagination or streaming. Pagination records pinned insert/delete/update outcomes for unique order, plus non-unique and absent-order cases. Streaming records the pinned MySQL/PostgreSQL cursor result. These observations do not promise a cross-driver snapshot. |
 
 REST/MCP consistency means equivalent policy and result behavior for applicable tasks. It does not mean a process-local REST cursor can be continued by a different MCP process. The expiry case should use controlled test time/configuration rather than require a long wall-clock wait.
 
