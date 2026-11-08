@@ -142,6 +142,15 @@ func (c ServerConfig) Validate() error {
 }
 
 func (c QueryConfig) Validate() error {
+	if c.MaxConcurrentQueries < 0 || c.MaxConcurrentQueries > 100 {
+		return fmt.Errorf("query.max_concurrent_queries must be between 0 and 100")
+	}
+	if c.MaxConcurrentQueriesPerTenant < 0 || c.MaxConcurrentQueriesPerTenant > 100 {
+		return fmt.Errorf("query.max_concurrent_queries_per_tenant must be between 0 and 100")
+	}
+	if c.MaxConcurrentStreamsPerTenant < 0 || c.MaxConcurrentStreamsPerTenant > 100 {
+		return fmt.Errorf("query.max_concurrent_streams_per_tenant must be between 0 and 100")
+	}
 	if c.SessionTTLSeconds < 0 || c.SessionTTLSeconds > maxQuerySessionTTLSeconds {
 		return fmt.Errorf("query.session_ttl_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
 	}

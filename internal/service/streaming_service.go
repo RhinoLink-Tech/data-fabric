@@ -662,6 +662,29 @@ func (ss *streamingService) CloseStream(streamID string) error {
 	return ss.closeStreamLocked(streamID, stream)
 }
 
+// CloseDataSourceStreams cancels active cursors associated with a data source.
+// Admission slots and continuation sessions are released through CloseStream.
+func (ss *streamingService) CloseDataSourceStreams(dataSourceID string) int {
+	ss.streamsMutex.RLock()
+	streamIDs := make([]string, 0)
+	for streamID, stream := range ss.activeStreams {
+		if stream.DataSourceID == dataSourceID {
+			streamIDs = append(streamIDs, streamID)
+		}
+	}
+	ss.streamsMutex.RUnlock()
+
+	closed := 0
+	for _, streamID := range streamIDs {
+		if err := ss.CloseStream(streamID); err != nil {
+			log.Printf("failed to close stream %s after data source %s invalidation: %v", streamID, dataSourceID, err)
+			continue
+		}
+		closed++
+	}
+	return closed
+}
+
 func (ss *streamingService) closeSessionStream(session *StreamingSession) error {
 	if session == nil {
 		return nil

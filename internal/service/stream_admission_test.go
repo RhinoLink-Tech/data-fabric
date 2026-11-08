@@ -10,6 +10,106 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
+func TestSourceInvalidationClosesMatchingStreamsAndReleasesCapacity(t *testing.T) {
+	limiter := NewQueryAdmissionLimiter(2, 1)
+	callerA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	callerB := &security.Caller{UserID: "bob", TenantID: "tenant-b"}
+	releaseA, ok := limiter.Acquire(callerA)
+	if !ok {
+		t.Fatal("could not reserve tenant-a capacity")
+	}
+	releaseB, ok := limiter.Acquire(callerB)
+	if !ok {
+		t.Fatal("could not reserve tenant-b capacity")
+	}
+
+	cancelled := false
+	manager := NewStreamingSessionManager()
+	manager.Store(&StreamingSession{QueryID: "query-a", StreamID: "stream-a"})
+	streams := &streamingService{
+		activeStreams: map[string]*ActiveStream{
+			"stream-a": {
+				ID:               "stream-a",
+				DataSourceID:     "source-a",
+				CancelFunc:       func() { cancelled = true },
+				releaseAdmission: releaseA,
+			},
+			"stream-b": {
+				ID:               "stream-b",
+				DataSourceID:     "source-b",
+				releaseAdmission: releaseB,
+			},
+		},
+		streamingSessionManager: manager,
+	}
+
+	if closed := streams.CloseDataSourceStreams("source-a"); closed != 1 {
+		t.Fatalf("closed %d streams, want 1", closed)
+	}
+	if !cancelled {
+		t.Fatal("source invalidation did not cancel the matching stream")
+	}
+	if _, exists := streams.activeStreams["stream-a"]; exists {
+		t.Fatal("matching stream is still active")
+	}
+	if _, exists := streams.activeStreams["stream-b"]; !exists {
+		t.Fatal("stream for a different source was closed")
+	}
+	manager.mutex.RLock()
+	_, sessionExists := manager.sessions["query-a"]
+	manager.mutex.RUnlock()
+	if sessionExists {
+		t.Fatal("continuation session for the invalidated stream still exists")
+	}
+
+	releaseAgain, admitted := limiter.Acquire(callerA)
+	if !admitted {
+		t.Fatal("tenant-a admission capacity was not released")
+	}
+	releaseAgain()
+	if err := streams.CloseStream("stream-b"); err != nil {
+		t.Fatalf("could not close unrelated stream after verifying it remained active: %v", err)
+	}
+}
+
+func TestQueryAdmissionLimiterUsesMeasuredProfileCapsAndReleasesCapacity(t *testing.T) {
+	limiter := NewQueryAdmissionLimiter(0, 0)
+	callers := []*security.Caller{
+		{UserID: "alice", TenantID: "tenant-a"},
+		{UserID: "bob", TenantID: "tenant-a"},
+		{UserID: "carol", TenantID: "tenant-b"},
+		{UserID: "dave", TenantID: "tenant-b"},
+	}
+	releases := make([]func(), 0, len(callers))
+	for _, caller := range callers {
+		release, admitted := limiter.Acquire(caller)
+		if !admitted {
+			t.Fatalf("measured four-way workload rejected caller %q", caller.UserID)
+		}
+		releases = append(releases, release)
+	}
+	if release, admitted := limiter.Acquire(&security.Caller{UserID: "erin", TenantID: "tenant-c"}); admitted {
+		release()
+		t.Fatal("fifth active task exceeded the process-wide default cap")
+	}
+	for _, release := range releases {
+		release()
+	}
+	release, admitted := limiter.Acquire(&security.Caller{UserID: "erin", TenantID: "tenant-c"})
+	if !admitted {
+		t.Fatal("process capacity was not restored after release")
+	}
+	release()
+}
+
+func TestQueryAdmissionLimiterClampsExplicitCaps(t *testing.T) {
+	limiter := NewQueryAdmissionLimiter(1000, 1000)
+	if limiter.maxConcurrent != maxConcurrentQueryLimit || limiter.maxPerTenant != maxConcurrentQueryLimit {
+		t.Fatalf("limits = %d total / %d per tenant, want hard cap %d",
+			limiter.maxConcurrent, limiter.maxPerTenant, maxConcurrentQueryLimit)
+	}
+}
+
 func TestQueryAdmissionLimiterEnforcesTenantAndProcessCaps(t *testing.T) {
 	limiter := NewQueryAdmissionLimiter(2, 1)
 	callerA := &security.Caller{UserID: "alice", TenantID: "tenant-a"}

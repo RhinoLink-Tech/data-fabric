@@ -78,6 +78,47 @@ health, long-running result lifecycles and the workload profile before changing
 limits. Candidate task SLOs and capacity budgets must be justified by the
 end-to-end baseline tracked in [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441).
 
+## Current query and cursor capacity
+
+The measured preview defaults are four active query or stream reservations per
+process and two per validated tenant. Configure them with
+QUERY_MAX_CONCURRENT_QUERIES and
+QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT; each accepts 0 (use its default)
+through 100. Values above 100 are rejected at startup, and the limiter itself
+also clamps programmatic values to 100. This is a configuration guardrail, not
+a measured safe capacity above the four-slot profile. A concurrency rejection
+is returned before the source connection is opened.
+
+A streaming reservation stays held while its source cursor is active and is
+released on completion, cancellation, deadline, expiry, failed initialization,
+explicit close, or a same-process data-source update/deactivation. The pool
+invalidation callback closes matching active streams and removes their
+continuation sessions. Pagination reserves capacity only while a page request
+is executing. Invalidation is process-local: other replicas are not notified
+and retain their own cursors until a local close or expiry. Existing
+per-source database/sql pool limits still apply as a second bound; the default
+pool has at most 10 open connections per source and process. With the measured four active slots, a SQL streaming task may
+temporarily use a cursor connection plus a count connection. These are
+process-local bounds: the separate REST and MCP processes each have their own
+four-slot limit, and every additional replica multiplies it. There is no
+cluster-wide tenant quota.
+
+The profile has a 64 MiB per-query returned-result budget, but that is not a
+whole-process heap cap or a bound on source scans, object-store buffers, or
+external engine work. The #441 three-row fixture does not validate memory use
+at the configured result limit. The 39.26 MiB whole-stack residual after the
+one-minute wait is an observation, not a proven leak or a resource guarantee.
+Do not advertise a hard memory envelope until a representative large-result
+profile is measured under explicit container/cgroup limits.
+
+The six rejected tasks in the #441 MCP/PostgreSQL mixed burst were reported as
+HTTP/MCP request-rate rejections after the shared request budget had been
+consumed by earlier benchmark calls. They are separate from the per-tenant
+query-admission counter and do not demonstrate the process concurrency cap.
+The load runner records these classes separately; tune HTTP request-rate and
+query-request-rate limits deliberately for the deployment rather than raising
+the concurrency cap to hide a rate-limit response.
+
 ## Managed table-policy freshness and synchronization
 
 Each process reports its own managed table-policy state. Exactly one

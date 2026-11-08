@@ -132,6 +132,7 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 		"LOGGING_FORMAT":                          "text",
 		"QUERY_PREFER_STREAMING":                  "false",
 		"QUERY_EXECUTION_MODE":                    "pagination",
+		"QUERY_MAX_CONCURRENT_QUERIES":            "8",
 		"QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT": "7",
 		"QUERY_SESSION_TTL_SECONDS":               "3",
 		"QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT":  "240",
@@ -186,13 +187,31 @@ func TestConfigEnvironmentVariablesOverrideAllSections(t *testing.T) {
 	if cfg.Logging.Level != "debug" || cfg.Logging.Format != "text" {
 		t.Errorf("logging settings = %+v, want environment overrides", cfg.Logging)
 	}
-	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentQueriesPerTenant != 7 || cfg.Query.SessionTTLSeconds != 3 ||
+	if cfg.Query.PreferStreaming || cfg.Query.ExecutionMode != "pagination" || cfg.Query.MaxConcurrentQueries != 8 ||
+		cfg.Query.MaxConcurrentQueriesPerTenant != 7 || cfg.Query.SessionTTLSeconds != 3 ||
 		cfg.Query.RateLimitPerMinutePerTenant != 240 || cfg.Query.RateLimitBurstPerTenant != 40 {
 		t.Errorf("query settings = %+v, want environment overrides", cfg.Query)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Transport != "stdio" || cfg.MCP.Address != "127.0.0.1:9090" ||
 		cfg.MCP.TLSCertFile != "/tmp/mcp.crt" || cfg.MCP.TLSKeyFile != "/tmp/mcp.key" {
 		t.Errorf("MCP settings = %+v, want environment overrides", cfg.MCP)
+	}
+}
+
+func TestQueryAdmissionDefaultsMatchMeasuredProfile(t *testing.T) {
+	resetViper(t)
+	// Empty values are treated as unset by Viper, so host-specific values
+	// cannot accidentally make this a different profile test.
+	t.Setenv("QUERY_MAX_CONCURRENT_QUERIES", "")
+	t.Setenv("QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Query.MaxConcurrentQueries != 4 || cfg.Query.MaxConcurrentQueriesPerTenant != 2 {
+		t.Fatalf("query concurrency defaults = %d total / %d per tenant, want 4 / 2",
+			cfg.Query.MaxConcurrentQueries, cfg.Query.MaxConcurrentQueriesPerTenant)
 	}
 }
 

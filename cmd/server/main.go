@@ -195,7 +195,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	// Initialize streaming and pagination services with one shared table policy.
 	queryStats := service.NewQueryStatsTracker()
 	queryAdmissionLimiter := service.NewQueryAdmissionLimiterWithRateLimit(
-		0,
+		cfg.Query.MaxConcurrentQueries,
 		cfg.Query.MaxConcurrentQueriesPerTenant,
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
@@ -207,6 +207,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 	}
 	paginationService, streamingService := service.NewGatewayQueryServicesWithBudgets(datasourceRepo, connPool, cfg.Query.PreferStreaming,
 		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, queryBudgets, translationManager)
+	bindDataSourceStreamInvalidation(connPool, streamingService)
 	var stopStreaming func()
 	var queryOwner *unifiedservice.OwnerLifecycle
 	var queryCleanup sync.Once
@@ -361,6 +362,20 @@ func startAuditRetentionMaintenance(parent context.Context, store *auditlog.Stor
 	return func() { cancel(); <-done }
 }
 
+func bindDataSourceStreamInvalidation(pool *database.ConnectionPool, streams service.StreamingService) {
+	closer, ok := streams.(interface {
+		CloseDataSourceStreams(string) int
+	})
+	if !ok {
+		return
+	}
+	pool.SetDataSourceInvalidationHandler(func(dataSourceID string) {
+		if closed := closer.CloseDataSourceStreams(dataSourceID); closed > 0 {
+			log.Printf("closed %d active stream(s) after data source %s changed", closed, dataSourceID)
+		}
+	})
+}
+
 // closeGatewayResources releases the pooled data-source connections and the
 // metadata database during process shutdown, after in-flight requests have
 // drained. It is best-effort: failures are logged, never fatal, so one
@@ -469,7 +484,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 	queryStats := service.NewQueryStatsTracker()
 	queryAdmissionLimiter := service.NewQueryAdmissionLimiterWithRateLimit(
-		0,
+		cfg.Query.MaxConcurrentQueries,
 		cfg.Query.MaxConcurrentQueriesPerTenant,
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
@@ -481,6 +496,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 	paginationService, streamingService := service.NewGatewayQueryServicesWithBudgets(datasourceRepo, connPool, cfg.Query.PreferStreaming,
 		tableAuthorizer, queryStats, queryAdmissionLimiter, time.Duration(cfg.Query.SessionTTLSeconds)*time.Second, queryBudgets, translationManager)
+	bindDataSourceStreamInvalidation(connPool, streamingService)
 	var routedTransport *mcp.OwnerTransport
 	var stopStreaming func()
 	var queryOwner *unifiedservice.OwnerLifecycle

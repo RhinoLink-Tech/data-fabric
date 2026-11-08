@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Add configurable, bounded process-wide query and active-stream capacity with defaults aligned to the measured four-way, two-tenant profile (#451).
 - Add explicit pagination or streaming selection to MCP execute_sql_query and candidate-matched page-mutation outcomes to the public REST/MCP reference acceptance (#455).
 - Add tag-gated GHCR Preview image publishing with digest-pinned Compose startup, SQLGlot notices, SBOM and provenance (#442).
 - Add idempotent self-hosted MCP initialization, a bounded management-token helper, and a local profile doctor (#445).

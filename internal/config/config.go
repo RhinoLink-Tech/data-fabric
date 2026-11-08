@@ -97,6 +97,7 @@ func Load() (*Config, error) {
 	// spellings as aliases for their canonical keys.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	_ = viper.BindEnv("query.max_concurrent_queries", "QUERY_MAX_CONCURRENT_QUERIES")
 	_ = viper.BindEnv("query.max_concurrent_queries_per_tenant", "QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
 	_ = viper.BindEnv("query.max_concurrent_streams_per_tenant", "QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
 	_ = viper.BindEnv("query.rate_limit_per_minute_per_tenant", "QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT")
@@ -171,8 +172,9 @@ func setDefaults() {
 	viper.SetDefault("query.prefer_streaming", true)
 	viper.SetDefault("query.session_ttl_seconds", maxQuerySessionTTLSeconds)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
-	viper.SetDefault("query.max_concurrent_queries_per_tenant", 25)
-	viper.SetDefault("query.max_concurrent_streams_per_tenant", 25)
+	viper.SetDefault("query.max_concurrent_queries", 4)
+	viper.SetDefault("query.max_concurrent_queries_per_tenant", 2)
+	viper.SetDefault("query.max_concurrent_streams_per_tenant", 2)
 	viper.SetDefault("query.rate_limit_per_minute_per_tenant", 120)
 	viper.SetDefault("query.rate_limit_burst_per_tenant", 20)
 	viper.SetDefault("query.max_result_rows", 100000)
@@ -253,6 +255,7 @@ type QueryConfig struct {
 	SessionTTLSeconds             int    `mapstructure:"session_ttl_seconds"`
 	PreferStreaming               bool   `mapstructure:"prefer_streaming"`
 	ExecutionMode                 string `mapstructure:"execution_mode"`
+	MaxConcurrentQueries          int    `mapstructure:"max_concurrent_queries"`
 	MaxConcurrentQueriesPerTenant int    `mapstructure:"max_concurrent_queries_per_tenant"`
 	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"` // deprecated compatibility alias
 	RateLimitPerMinutePerTenant   int    `mapstructure:"rate_limit_per_minute_per_tenant"`
