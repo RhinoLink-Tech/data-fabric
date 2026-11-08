@@ -2,7 +2,7 @@
 
 ## Current automation
 
-The Go workflow checks pull requests and pushes to master. It does not publish binaries or container images. GitHub Releases are currently created by a maintainer.
+The Go workflow checks pull requests and pushes to master. The `publish-container.yml` workflow publishes only on an annotated semver tag that points to master; pull requests do not publish images. GitHub Releases are still created by a maintainer.
 
 ## Release checklist
 
@@ -25,7 +25,11 @@ The Go workflow checks pull requests and pushes to master. It does not publish b
 
 ## Container images
 
-Container publishing is not configured, so releases do not currently publish an image automatically. The repository Dockerfile builds with the Go version declared by the project, defaults to port 8080, and runs as a non-root user. Build and smoke-check a local image with the Docker instructions in [README.md](../README.md) before treating a container image as a release artifact.
+The tag-gated `publish-container.yml` workflow builds one `linux/amd64` GHCR image from an annotated semver tag on master. Before building, it requires a successful Go CI push run for the exact SHA with successful affected-contract selection, unit/build, PostgreSQL/MySQL reference contracts, and public REST/MCP acceptance. It rejects an existing version or source tag, publishes version and source-SHA tags, and attaches BuildKit SBOM and max-mode provenance. The workflow summary records the source SHA and immutable `tag@sha256` reference. Pull requests do not publish images.
+
+The Dockerfile includes the pinned SQLGlot runtime, project license, third-party notices and dependency pin file. It defaults to non-root UID 10001. The contributor path can still build from source; adopters should use [the digest-pinned deployment overlay](mcp-deployment.md#run-a-published-image-without-compiling-source), which removes the `build` definition and pulls the selected image.
+
+The first tag and package visibility still require maintainer release action. Verify that the GHCR package is public and that its digest, source SHA, release notes and supported profile match before directing adopters to it. The preview profile is linux/amd64 only.
 
 ## Current candidate documents
 

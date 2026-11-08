@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Add tag-gated GHCR Preview image publishing with digest-pinned Compose startup, SQLGlot notices, SBOM and provenance (#442).
 - Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
 
 ### Fixed

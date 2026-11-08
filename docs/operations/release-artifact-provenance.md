@@ -1,8 +1,8 @@
 # Release Artifact Provenance and License Checklist
 
-**Review date:** 2026-10-20
+**Historical review date:** 2026-10-20
 **Checked repository commit:** 5b4fcf8383b6310ff42ddb884bc3cb4d1fe44bb3
-**Latest published Data Fabric release reviewed:** v1.2.0, tag commit 5b927f8723406b36df206b7b3e7fe6921f72e84e
+**Latest release at that historical review:** v1.2.0, tag commit 5b927f8723406b36df206b7b3e7fe6921f72e84e
 
 ## Artifact inventory
 
@@ -31,3 +31,12 @@ The latest Release page is https://github.com/RhinoLink-Tech/data-fabric/release
 - [ ] If binary or container distribution is added, complete its artifact-specific dependency/license review before publishing it.
 
 This review does not create an SBOM. SBOM generation remains a separate release-policy task unless a future artifact format or policy requires it.
+
+
+## Current v2.0.0 and Preview status (2026-11-08)
+
+- The latest published release is [v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0), tag commit `9f52d4db0ada3c8429f8144ab8e8535cc759b485`. It is a source release; no binary or container image is published.
+- PR #442 prepares a tag-gated GHCR workflow for a future `linux/amd64` image. The PR does not push a tag or publish an image. The maintainer must approve the exact release commit/tag, candidate validation and public package visibility before the Preview is available to adopters.
+- The image copies `/app/LICENSE`, `/app/THIRD_PARTY_NOTICES.md` and the pinned SQL translation requirements file. The notice now records SQLGlot 30.23.0 under MIT. BuildKit attaches an SBOM and provenance; the workflow summary records the immutable image digest and source SHA.
+- The Compose release overlay requires the exact `tag@sha256` reference from the published workflow summary. The MySQL metadata and sample-source images are pinned to the tested MySQL 8.4.13 manifest.
+- This candidate does not establish external team fit, production capacity, a support SLA, or availability of an image.

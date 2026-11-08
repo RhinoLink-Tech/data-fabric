@@ -18,6 +18,7 @@ name: data-fabric-mcp
 # settings, and the credential vault keyring. Remote MCP has separate OIDC
 # resource-token validation settings below.
 x-data-fabric-base: &data-fabric-base
+  image: ${DATA_FABRIC_IMAGE:-data-fabric:local}
   build:
     context: ../..
     dockerfile: Dockerfile
@@ -37,7 +38,7 @@ x-data-fabric-base: &data-fabric-base
 
 services:
   metadata-db:
-    image: mysql:8.4
+    image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${METADATA_DB_ROOT_PASSWORD:?set METADATA_DB_ROOT_PASSWORD in .env}
@@ -54,7 +55,7 @@ services:
     # No published ports: the metadata database stays on the internal network.
 
   sample-source:
-    image: mysql:8.4
+    image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${SAMPLE_SOURCE_ROOT_PASSWORD:?set SAMPLE_SOURCE_ROOT_PASSWORD in .env}

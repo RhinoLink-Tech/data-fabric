@@ -1,0 +1,126 @@
+name: Publish container image
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish a versioned linux/amd64 image
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    concurrency:
+      group: publish-container-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Require an annotated semver tag on master
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            echo "Tag must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N" >&2
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "$GITHUB_REF")" != "tag" ]]; then
+            echo "Release tags must be annotated" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "Tagged source must be on master" >&2
+            exit 1
+          fi
+
+      - name: Require successful candidate CI for the exact tag SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          headers=(-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28")
+          runs="$(curl --fail --silent --show-error "${headers[@]}" "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/go.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=100")"
+          run_id="$(jq -r --arg sha "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_branch == "master" and .status == "completed" and .conclusion == "success") | .id' <<<"$runs" | head -n 1)"
+          if [[ -z "$run_id" ]]; then
+            echo "No successful Go CI push run exists for tagged SHA $GITHUB_SHA" >&2
+            exit 1
+          fi
+          jobs="$(curl --fail --silent --show-error "${headers[@]}" "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
+          for required in \
+            "Select affected live contracts" \
+            "Unit and build checks" \
+            "Reference PostgreSQL and MySQL contracts" \
+            "Public REST and MCP reference acceptance"; do
+            conclusion="$(jq -r --arg name "$required" '[.jobs[] | select(.name == $name)] | if length == 1 then .[0].conclusion else "missing" end' <<<"$jobs")"
+            if [[ "$conclusion" != "success" ]]; then
+              echo "Required candidate job '$required' concluded '$conclusion' for SHA $GITHUB_SHA" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare Buildx builder
+        shell: bash
+        run: |
+          builder="data-fabric-release-${GITHUB_RUN_ID}"
+          docker buildx create --name "$builder" --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Refuse to overwrite an existing version or commit tag
+        shell: bash
+        run: |
+          image=ghcr.io/rhinolink-tech/data-fabric
+          short_sha="${GITHUB_SHA:0:12}"
+          for tag in "$GITHUB_REF_NAME" "sha-${short_sha}"; do
+            if docker buildx imagetools inspect "${image}:${tag}" >/dev/null 2>&1; then
+              echo "Refusing to overwrite existing image tag ${image}:${tag}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Build, attest and publish the version and source tags
+        shell: bash
+        run: |
+          image=ghcr.io/rhinolink-tech/data-fabric
+          short_sha="${GITHUB_SHA:0:12}"
+          docker buildx build \
+            --file Dockerfile \
+            --platform linux/amd64 \
+            --pull \
+            --tag "${image}:${GITHUB_REF_NAME}" \
+            --tag "${image}:sha-${short_sha}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${GITHUB_REF_NAME}" \
+            --sbom=true \
+            --provenance=mode=max \
+            --metadata-file "$RUNNER_TEMP/container-metadata.json" \
+            --push .
+          digest="$(jq -er '."containerimage.digest"' "$RUNNER_TEMP/container-metadata.json")"
+          {
+            echo "## Published Data Fabric container"
+            echo
+            echo "- Version tag: \`${image}:${GITHUB_REF_NAME}\`"
+            echo "- Source tag: \`${image}:sha-${short_sha}\`"
+            echo "- Immutable image reference: \`${image}:${GITHUB_REF_NAME}@${digest}\`"
+            echo "- Source SHA: \`${GITHUB_SHA}\`"
+            echo "- Platform: \`linux/amd64\`"
+            echo "- BuildKit SBOM and max-mode provenance: attached to the image."
+          } >> "$GITHUB_STEP_SUMMARY"
