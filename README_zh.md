@@ -77,7 +77,7 @@ flowchart LR
 
 ## 数据源范围
 
-Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容性接口。目录区分“已注册实现”和“端到端验证”，分别记录声明的版本范围与精确测试版本，并列出协议兼容方式、驱动能力、版本策略和服务器版本探测结果。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已注册实现仍处于实验状态。Ozone Parquet、按行文本和 Avro OCF 可通过 S3 Gateway 以只读实验性适配器访问；原生 Ozone RPC 尚未实现。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
+Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持目录。目录区分已登记实现与端到端验证、声明的版本范围与精确测试版本，也区分协议 fixture 与真实服务证据。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已登记实现仍处于实验状态。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
 
 ### 驱动打包与运行占用
 
@@ -85,55 +85,34 @@ Data Fabric 使用共享的数据源支持目录驱动数据库类型和兼容�
 
 ## 快速开始
 
-### 环境要求
+建议从[自托管远程 MCP 完整快速上手](docs/mcp-deployment-zh.md)开始。该路径从源码构建，带你完成持久密钥初始化、健康诊断、仅监听本机的 REST 管理 API、TLS 保护的远程 MCP、只读 MySQL 8.4.13 示例数据源、OIDC 访问和一次完整查询。Compose 中的两个 MySQL 镜像均固定到 digest；当前还没有发布 Data Fabric 容器镜像，因此网关镜像从当前 checkout 构建。
 
-- 本地源码运行需要 Go 1.26.1 或更高版本。
-- 构建或运行容器需要 Docker Engine。
-- 已配置且可访问的元数据数据库。
-- 服务能够访问计划登记的数据源。
-- 通过环境变量提供 JWT 密钥和凭证加密密钥环。
+示例配置使用 MySQL 元数据数据库，并由 REST 与 MCP 两个独立进程共享；预置数据为合成数据。它演示已记录的路径，不证明外部团队采用、生产容量或 SLA。请同时查看[首个采用者画像](docs/product/first-adopter-profile.md)（当前仍是待验证假设）、[数据源支持目录](docs/data-source-support.md)和[当前运行边界](docs/roadmap.md#current-operating-limits)。
 
-### 本地运行
+该 Compose 路径要求 Docker Engine 24 或更高版本、Docker Compose 2.24 或更高版本、OpenSSL、带标准库的 Python 3，以及能够为已配置的受众和查询 scope 签发 access token 的 OIDC 身份提供方。容器构建已包含 SQLGlot parser；宿主机不需要安装 Go 或 Python 三方包。
+
+### 从源码运行网关用于开发
+
+直接从源码运行需要 Go 1.26.1 或更高版本、Python 3、可访问的 MySQL 元数据数据库，以及到计划使用的数据源的网络连通性。只读 SQL 分析和方言转换默认使用 SQLGlot 运行时。从仓库根目录在虚拟环境中安装锁定的 parser 依赖：
 
 ~~~bash
-git clone https://github.com/RhinoLink-Tech/data-fabric.git
-cd data-fabric
-cp configs/config.yaml.example configs/config.yaml
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-sql-translation.txt
 go mod download
+cp configs/config.yaml.example configs/config.yaml
 ~~~
 
-在 configs/config.yaml 中配置元数据数据库。生成密钥后请妥善保存，并在服务重启时继续使用相同的值。
+在 configs/config.yaml 中设置元数据数据库字段。通过环境变量或密钥管理器注入稳定的 JWT 密钥和凭证密钥环；服务重启时必须继续使用相同密钥环，才能解密已保存的数据源凭证。
 
 ~~~bash
-export JWT_SECRET="<稳定且至少 32 字节的密钥>"
+export SECURITY_JWT_SECRET="<稳定且至少 32 字节的密钥>"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
 export DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}'
 go run ./cmd/server
 ~~~
 
-JWT 密钥可用 openssl rand -hex 32 生成，凭证加密密钥可用 openssl rand -base64 32 生成。请妥善保存，并在服务重启时继续使用相同值。服务健康检查路径为 /health；部署参数、密钥管理和轮换方式见[配置指南](docs/configuration.md)。
-
-### 使用 Docker 构建和运行
-
-镜像使用与 `go.mod` 一致的 Go 1.26.1，默认监听 8080，并以非 root 用户运行。启动前请先创建 MySQL 元数据数据库和账号。
-
-~~~bash
-docker build -t data-fabric:local .
-docker run --rm --name data-fabric \
-  --add-host=host.docker.internal:host-gateway \
-  -p 8080:8080 \
-  -e DATABASE_HOST=host.docker.internal \
-  -e DATABASE_PORT=3306 \
-  -e DATABASE_DATABASE=data_fabric \
-  -e DATABASE_USERNAME=data_fabric \
-  -e DATABASE_PASSWORD="<元数据库密码>" \
-  -e SECURITY_JWT_SECRET="<至少 32 字节且稳定的密钥>" \
-  -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
-  -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}' \
-  data-fabric:local
-~~~
-
-容器镜像不包含实际配置文件，通过环境变量和默认值启动，默认端口为 8080。如果通过 SERVER_PORT 或 server.port 覆盖端口，请同步修改容器端口和端口映射。真实密钥应由部署平台注入，重启时复用相同的凭证密钥环。
+可使用 openssl rand -hex 32 和 openssl rand -base64 32 生成密钥；应安全保存，切勿在每次重启时重新生成。管理 API 的配置及查询请求见 [API 使用指南](docs/api_usage.md)。部署受保护的远程 MCP 时，请使用上面的 OIDC profile；REST 管理 JWT 与身份提供方签发的 MCP access token 是两种不同凭据。
 
 ## 性能预期
 
@@ -171,6 +150,7 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 - [架构设计](docs/architecture.md)
 - [产品路线图](docs/roadmap.md)
 - [采用与产品价值执行计划](docs/plans/gateway-delivery.md)
+- [首个采用者与支持画像](docs/product/first-adopter-profile.md)（英文；当前假设，外部验证仍待完成）
 - [开源采用与产品价值演进计划](docs/plans/gateway-delivery.md#productization-program)（交付与验证规划中）
 - [配置指南](docs/configuration.md)
 - [开发指南](docs/development.md)

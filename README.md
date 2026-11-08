@@ -77,7 +77,7 @@ Applications can use a gateway driver for an individual source or send SQL throu
 
 ## Data Sources
 
-Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. It distinguishes registered implementation code from end-to-end verified support, separates declared version ranges from exact versions tested, and reports compatible protocol families, driver capabilities, version policy, and detected server versions. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations are experimental. Google Cloud Storage has a bounded CSV adapter through XML API interoperability with HMAC credentials; its protocol fixture is not a live GCS compatibility claim. Tencent COS CSV, JSON, ORC, Avro OCF, Parquet, and bounded Delta Lake snapshots are available through its object API; COS-backed Iceberg tables can use an external REST catalog and the S3-compatible API. Alibaba OSS supports CSV, JSON, Avro OCF, ORC, Parquet, and bounded Delta Lake snapshots. Ozone supports Parquet, ORC, line-oriented text, Avro OCF, JSON, CSV, and bounded Delta Lake snapshots through the S3 Gateway; native Ozone RPC is not implemented. See the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
+Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. The catalog separates registered implementations from end-to-end verified support, declared version ranges from exact tested versions, and protocol fixtures from live-service evidence. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations remain experimental. Consult the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
 
 ### Build and Runtime Footprint
 
@@ -85,55 +85,34 @@ The standard server build compiles the registered driver implementations and the
 
 ## Quick Start
 
-### Requirements
+The recommended clean install and first authorized task is the [self-hosted remote MCP quickstart](docs/mcp-deployment.md). It builds from source and walks through persistent secrets, readiness checks, the loopback-only REST management API, TLS-protected remote MCP, a read-only MySQL 8.4.13 sample source, OIDC access, and a complete query. Both MySQL services are pinned in Compose; the Data Fabric image is built from the checkout because a published container image is not available yet.
 
-- Go 1.26.1 or newer for running from source.
-- Docker Engine for building or running the container.
-- A configured and reachable metadata database.
-- Network access to the data sources you plan to register.
-- A JWT secret and a credential-encryption keyring supplied through environment variables.
+The sample profile uses MySQL metadata and separate REST and MCP processes. Its seeded data is synthetic. It demonstrates the documented path; it does not establish external adoption, production capacity, or an SLA. See the [first-adopter profile](docs/product/first-adopter-profile.md), [connector support catalog](docs/data-source-support.md), and [current operating limits](docs/roadmap.md#current-operating-limits) for the scope and open evidence.
 
-### Run Locally
+Prerequisites for this Compose path are Docker Engine 24 or later, Docker Compose 2.24 or later, OpenSSL, Python 3 with its standard library, and an OIDC provider that can issue an access token for the configured audience and query scope. The container build includes the SQLGlot parser; no Go or Python package installation is needed on the host.
+
+### Run the gateway from source for development
+
+A direct source run requires Go 1.26.1 or later, Python 3, a reachable MySQL metadata database, and network access to the data sources. The default SQLGlot runtime is used for read-only SQL analysis and dialect translation. From the repository root, install the pinned parser dependency in a virtual environment:
 
 ~~~bash
-git clone https://github.com/RhinoLink-Tech/data-fabric.git
-cd data-fabric
-cp configs/config.yaml.example configs/config.yaml
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-sql-translation.txt
 go mod download
+cp configs/config.yaml.example configs/config.yaml
 ~~~
 
-Configure the metadata database in configs/config.yaml. Generate secrets once and store them securely; reuse the same values across restarts.
+Set the metadata database fields in configs/config.yaml. Supply a stable JWT secret and credential keyring through a secret manager or environment variables; preserve the same keyring across restarts so saved source credentials remain decryptable.
 
 ~~~bash
-export JWT_SECRET="<stable secret with at least 32 bytes>"
+export SECURITY_JWT_SECRET="<stable secret with at least 32 bytes>"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
 export DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64-encoded 32-byte key>"}'
 go run ./cmd/server
 ~~~
 
-Generate the JWT secret with openssl rand -hex 32 and the credential key with openssl rand -base64 32. Store both securely and reuse them across restarts. The service health-check endpoint is /health. See the [configuration guide](docs/configuration.md) for deployment settings, secret handling, and key rotation.
-
-### Build and Run with Docker
-
-The image uses Go 1.26.1 to match `go.mod`, listens on port 8080 by default, and runs as a non-root user. Create the MySQL metadata database and account before starting the container.
-
-~~~bash
-docker build -t data-fabric:local .
-docker run --rm --name data-fabric \
-  --add-host=host.docker.internal:host-gateway \
-  -p 8080:8080 \
-  -e DATABASE_HOST=host.docker.internal \
-  -e DATABASE_PORT=3306 \
-  -e DATABASE_DATABASE=data_fabric \
-  -e DATABASE_USERNAME=data_fabric \
-  -e DATABASE_PASSWORD="<metadata database password>" \
-  -e SECURITY_JWT_SECRET="<stable secret with at least 32 bytes>" \
-  -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
-  -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64-encoded 32-byte key>"}' \
-  data-fabric:local
-~~~
-
-The container has no live configuration file; it reads environment variables and defaults to port 8080. If you override SERVER_PORT or server.port, update the container port and port mapping to match. Inject real secrets through your deployment platform and reuse the same credential keyring across restarts.
+Generate values with openssl rand -hex 32 and openssl rand -base64 32, then store them securely instead of regenerating on restart. The management API quickstart and query request shapes are in the [API usage guide](docs/api_usage.md). For a protected remote MCP deployment, use the OIDC profile above; the REST management JWT and MCP identity-provider access token are different credentials.
 
 ## Performance Expectations
 
@@ -172,6 +151,7 @@ The embedded [data-source management UI](docs/data-source-management-ui.md) is a
 - [Architecture Guide](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Adoption and Product Value Delivery Plan](docs/plans/gateway-delivery.md)
+- [First-adopter profile and supported preview hypothesis](docs/product/first-adopter-profile.md) (evaluation remains pending)
 - [Open-source adoption and product value program](docs/plans/gateway-delivery.md#productization-program) (planned delivery and evaluation)
 - [Configuration Guide](docs/configuration.md)
 - [Development Guide](docs/development.md)

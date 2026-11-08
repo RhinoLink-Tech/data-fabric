@@ -1,48 +1,42 @@
 # Data Fabric MCP Server
 
-Data Fabric exposes an optional MCP server over stdio or authenticated Streamable HTTP. Both transports reuse the configured data sources and unified query service. Remote calls require a standard Authorization: Bearer JWT and are authorized using the token identity.
+Data Fabric provides an optional MCP server over local stdio or remote Streamable HTTP. Both transports use the configured sources and shared query service. The complete source-build deployment and first-query walkthrough is [Self-hosted Remote MCP Deployment](docs/mcp-deployment.md); it is the recommended path for a reproducible first use.
 
 ## Requirements
 
-- Go 1.26.1 or later.
-- A configured metadata database.
-- Python 3 with sqlglot installed when SQL dialect translation tools are used.
-- Start the application from the repository root so the translation script can be located.
+- Go 1.26.1 or later for running from source.
+- A configured, reachable metadata database and a registered source for queries.
+- Python 3 and the pinned SQLGlot dependency in requirements-sql-translation.txt. The default runtime uses SQLGlot for read-only SQL analysis as well as translation.
+- Start from the repository root so scripts/sql_translate.py can be located.
+- The Docker image includes Python and the pinned SQLGlot package.
 
-## Configure and run
+## Local stdio
 
-Set the following in configs/config.yaml:
+MCP is disabled by default. For a trusted local client, enable MCP and select stdio:
 
 ~~~yaml
 mcp:
   enabled: true
-  transport: "stdio"
+  transport: stdio
 ~~~
 
-Then run:
+Then start the process from the repository root with go run ./cmd/server. Stdio occupies the process input and output; let the MCP client launch and manage it, and do not redirect application logs to the protocol output.
 
-~~~bash
-go run ./cmd/server
-~~~
+## Remote Streamable HTTP and authentication
 
-MCP is disabled by default. Stdio mode should be launched and managed by a trusted local MCP client. Do not redirect application output to the protocol client's stdout.
+The endpoint defaults to 127.0.0.1:8081 at /mcp. Use direct TLS by setting both tls_cert_file and tls_key_file, or bind to loopback and put an HTTPS reverse proxy in front. Without direct TLS, startup rejects non-loopback bind addresses.
 
-For a remote endpoint, set `transport: "streamable-http"`. It listens on `127.0.0.1:8081` by default at `/mcp`; put it behind an HTTPS reverse proxy, or configure both `tls_cert_file` and `tls_key_file` for direct TLS. Without direct TLS, startup rejects non-loopback bind addresses. Every HTTP request requires an unexpired Bearer JWT signed with the configured `SECURITY_JWT_SECRET`. Tokens must include `exp` and a `sub` identity claim (legacy `userId` is accepted); the token identity is used for owner and tenant authorization. The deployment's trusted identity service or operator issues these tokens. See [MCP 使用说明](MCP_DOCUMENTATION.md) for configuration examples.
+Remote HTTP always requires an Authorization: Bearer token. The verifier is selected by mcp.auth_mode:
 
-## Tools
+- local-jwt is for development. It validates a local HS256 JWT using SECURITY_JWT_SECRET.
+- oidc validates an access-token JWT against the configured HTTPS OIDC issuer discovery document and rotating JWKS, then checks issuer, audience, expiry, required scopes, and mapped identity claims. Configure mcp.oidc_issuer, mcp.oidc_audience, and mcp.oidc_required_scopes. The stable sub claim becomes the principal; the configured tenant claim (default tenant) and roles claim (default roles) feed the existing tenant and administrator authorization rules.
 
-- list_data_sources
-- get_data_source_info (does not return usernames or passwords)
-- execute_sql_query
-- fetch_next_batch (uses the query_id, slug and token returned by execute_sql_query)
-- validate_sql_query
-- list_tables
-- describe_table (column names, types, nullability, primary key, and indexes of one table; unsupported drivers fail clearly instead of guessing)
-- translate_sql
-- list_supported_dialects
+For server.mode release, remote MCP must use oidc; release mode also requires management authentication, database-enforced read-only access, and audit to remain enabled. In the documented deployment, REST management uses a short-lived local HS256 JWT while remote MCP uses the identity provider's access token. Do not send the management JWT to MCP or use SECURITY_JWT_SECRET to sign the production OIDC token.
 
-SQL translation supports MySQL, PostgreSQL, Trino, Spark, Oracle, SQL Server, Snowflake, SQLite, DuckDB and Redshift, with aliases for some compatible database types. Successful translation does not guarantee semantic equivalence on the target database.
+The gateway validates tokens; it does not issue OAuth tokens or provide dynamic client registration. Register each source under the principal and tenant expected from the caller's token. See [MCP deployment](docs/mcp-deployment.md) for the client setup and identity mapping.
 
-## Security
+## Tools and limits
 
-The stdio process runs with the permissions of its parent client and should be limited to trusted local clients. Streamable HTTP requires a valid Bearer JWT on every request and applies the existing owner, tenant, and administrator data-source rules. Protect remote traffic with HTTPS and use least-privilege database accounts. The self-hosted verifier does not provide an OAuth authorization server or dynamic client registration.
+The server exposes list_data_sources, get_data_source_info, execute_sql_query, fetch_next_batch, validate_sql_query, list_tables, describe_table, translate_sql, and list_supported_dialects. Source information does not include stored usernames or passwords.
+
+Queries remain subject to read-only validation, owner/tenant/source authorization, table/column policies where configured, bounded result and session limits, and audit behavior. SQL translation covers only the documented compatibility subset; successful translation does not guarantee equivalent execution semantics. The support catalog records which connector versions have an end-to-end contract.

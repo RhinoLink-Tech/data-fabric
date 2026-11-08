@@ -13,6 +13,8 @@ For using MCP locally next to your editor instead, read
 [Local stdio vs remote Streamable HTTP](#local-stdio-vs-remote-streamable-http)
 first — the quickstart below is the remote path.
 
+This is the current synthetic first-use profile linked from the [first-adopter brief](product/first-adopter-profile.md). The brief remains a hypothesis: no external team evaluation or production claim is recorded.
+
 ## What gets deployed
 
 When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are marked unknown and cannot produce a verified candidate backup. The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one

@@ -2,6 +2,8 @@
 
 英文完整指南：[Self-Hosted Remote MCP Deployment](mcp-deployment.md)。本文覆盖当前 MySQL 元数据库 + 远程 MCP 部署路径。
 
+这是当前的合成数据首次使用 profile，画像与边界见[首个采用者说明](product/first-adopter-profile.md)。该画像仍是假设；尚无外部团队评估或生产结论。
+
 ## 当前部署拓扑
 
 Compose 会启动四个服务：MySQL 元数据库、只读示例 MySQL、HTTP 管理 API、启用 OIDC 的远程 MCP。管理 API 仅绑定本机回环地址；MCP 通过 TLS 暴露。服务使用非 root 用户。当前 profile 是单机部署，不提供 HA/自动故障切换，也不会代替你运行 OIDC 身份提供方。
