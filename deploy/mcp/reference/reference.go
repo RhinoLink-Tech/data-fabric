@@ -82,6 +82,30 @@ type Environment struct {
 	replica *replicaProfile
 }
 
+// StopMetadataDatabase briefly stops the isolated reference stack's metadata
+// database for operational fault-injection acceptance scenarios.
+func (env *Environment) StopMetadataDatabase(ctx context.Context) error {
+	if env == nil || env.stack == nil {
+		return fmt.Errorf("reference metadata database is unavailable")
+	}
+	if _, err := env.stack.compose(ctx, "stop", "metadata-db"); err != nil {
+		return fmt.Errorf("stop reference metadata database: %w", err)
+	}
+	return nil
+}
+
+// StartMetadataDatabase restores the isolated reference stack's metadata
+// database and waits for its health check before returning.
+func (env *Environment) StartMetadataDatabase(ctx context.Context) error {
+	if env == nil || env.stack == nil {
+		return fmt.Errorf("reference metadata database is unavailable")
+	}
+	if err := env.stack.up(ctx, "metadata-db"); err != nil {
+		return fmt.Errorf("start reference metadata database: %w", err)
+	}
+	return nil
+}
+
 type sourceDefinition struct {
 	key       string
 	service   string

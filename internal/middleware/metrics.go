@@ -24,16 +24,19 @@ type PrometheusMetrics struct {
 	HttpRequestSize     *prometheus.HistogramVec
 	HttpResponseSize    *prometheus.HistogramVec
 
-	QueryTotal               *prometheus.CounterVec
-	QueryDuration            *prometheus.HistogramVec
-	QueryRowsRead            *prometheus.CounterVec
-	QueryErrors              *prometheus.CounterVec
-	LogicalQueryOutcomes     *prometheus.CounterVec
-	LogicalQueryDuration     *prometheus.HistogramVec
-	LogicalQueryRowsReturned *prometheus.CounterVec
-	LogicalQueryBatches      *prometheus.CounterVec
-	QueryAdmissionRejections *prometheus.CounterVec
-	AuditPersistenceFailures *prometheus.CounterVec
+	QueryTotal                          *prometheus.CounterVec
+	QueryDuration                       *prometheus.HistogramVec
+	QueryRowsRead                       *prometheus.CounterVec
+	QueryErrors                         *prometheus.CounterVec
+	LogicalQueryOutcomes                *prometheus.CounterVec
+	LogicalQueryDuration                *prometheus.HistogramVec
+	LogicalQueryRowsReturned            *prometheus.CounterVec
+	LogicalQueryBatches                 *prometheus.CounterVec
+	QueryAdmissionRejections            *prometheus.CounterVec
+	AuditPersistenceFailures            *prometheus.CounterVec
+	ManagedTablePolicyStatus            *prometheus.GaugeVec
+	ManagedTablePolicyLastSyncTimestamp prometheus.Gauge
+	ManagedTablePolicySyncFailures      prometheus.Counter
 
 	ConnectionPoolActive *prometheus.GaugeVec
 	ConnectionPoolIdle   *prometheus.GaugeVec
@@ -51,9 +54,27 @@ type PrometheusMetrics struct {
 }
 
 var (
-	metrics     *PrometheusMetrics
-	metricsOnce sync.Once
+	metrics              *PrometheusMetrics
+	metricsOnce          sync.Once
+	policyStatusMu       sync.RWMutex
+	policyStatusProvider func() ManagedTablePolicyStatus
 )
+
+// ManagedTablePolicyStatus contains the bounded, non-sensitive policy state
+// needed to refresh scrape-time gauges.
+type ManagedTablePolicyStatus struct {
+	Configured bool
+	Fresh      bool
+	LastSync   time.Time
+}
+
+// SetManagedTablePolicyStatusProvider supplies the local policy manager state
+// used by PrometheusHandler. A nil provider means managed policy is unconfigured.
+func SetManagedTablePolicyStatusProvider(provider func() ManagedTablePolicyStatus) {
+	policyStatusMu.Lock()
+	policyStatusProvider = provider
+	policyStatusMu.Unlock()
+}
 
 // InitMetrics initializes and registers Prometheus metrics once per process.
 func InitMetrics() {
@@ -162,6 +183,25 @@ func InitMetrics() {
 				},
 				[]string{"transport"},
 			),
+			ManagedTablePolicyStatus: promauto.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_managed_table_policy_status",
+					Help: "Managed table policy state; exactly one bounded state label is 1 (fresh, stale, or unconfigured)",
+				},
+				[]string{"state"},
+			),
+			ManagedTablePolicyLastSyncTimestamp: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_managed_table_policy_last_sync_timestamp_seconds",
+					Help: "Unix timestamp of the last successful managed table policy synchronization, or 0 when unconfigured or never synchronized",
+				},
+			),
+			ManagedTablePolicySyncFailures: promauto.NewCounter(
+				prometheus.CounterOpts{
+					Name: "data_fabric_managed_table_policy_sync_failures_total",
+					Help: "Managed table policy synchronization attempts that failed",
+				},
+			),
 			ConnectionPoolActive: promauto.NewGaugeVec(
 				prometheus.GaugeOpts{
 					Name: "data_fabric_connection_pool_active",
@@ -235,6 +275,9 @@ func InitMetrics() {
 				[]string{"database_type"},
 			),
 		}
+		for _, state := range []string{"fresh", "stale", "unconfigured"} {
+			metrics.ManagedTablePolicyStatus.WithLabelValues(state).Set(0)
+		}
 	})
 }
 
@@ -245,7 +288,51 @@ func GetMetrics() *PrometheusMetrics {
 
 // PrometheusHandler returns the default Prometheus registry scrape handler.
 func PrometheusHandler() http.Handler {
-	return promhttp.Handler()
+	handler := promhttp.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		refreshManagedTablePolicyMetrics()
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func refreshManagedTablePolicyMetrics() {
+	if metrics == nil {
+		return
+	}
+	policyStatusMu.RLock()
+	provider := policyStatusProvider
+	policyStatusMu.RUnlock()
+	status := ManagedTablePolicyStatus{}
+	if provider != nil {
+		status = provider()
+	}
+	state := "unconfigured"
+	if status.Configured {
+		state = "stale"
+		if status.Fresh {
+			state = "fresh"
+		}
+	}
+	for _, candidate := range []string{"fresh", "stale", "unconfigured"} {
+		value := 0.0
+		if candidate == state {
+			value = 1
+		}
+		metrics.ManagedTablePolicyStatus.WithLabelValues(candidate).Set(value)
+	}
+	lastSync := 0.0
+	if !status.LastSync.IsZero() {
+		lastSync = float64(status.LastSync.UnixNano()) / float64(time.Second)
+	}
+	metrics.ManagedTablePolicyLastSyncTimestamp.Set(lastSync)
+}
+
+// RecordManagedTablePolicySyncFailure records one failed refresh attempt.
+func RecordManagedTablePolicySyncFailure() {
+	if metrics == nil {
+		return
+	}
+	metrics.ManagedTablePolicySyncFailures.Inc()
 }
 
 // PrometheusMiddleware records one HTTP observation per completed request.

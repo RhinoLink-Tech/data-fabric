@@ -36,7 +36,10 @@ are reported to the service log and counted by the bounded
 configured; they do not change a completed query's result. See the
 [observability guide](../observability.md#audit-persistence-failures) for alert
 and recovery steps. Failed events are not automatically replayed, so an outage
-can leave a permanent audit gap even when the query itself succeeded.
+can leave a permanent audit gap even when the query itself succeeded. Public
+acceptance case A27 injects this failure only in the disposable synthetic
+reference stack, checks the bounded failure counter, restores the metadata
+database, and verifies a later correlated audit event.
 
 ## Review events
 

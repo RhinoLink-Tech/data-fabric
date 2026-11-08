@@ -95,10 +95,11 @@ type TablePolicyManager struct {
 	maxStaleness time.Duration
 	sourceLabel  string
 
-	mu            sync.Mutex
-	lastSyncError string
-	cancel        context.CancelFunc
-	done          chan struct{}
+	mu                  sync.Mutex
+	lastSyncError       string
+	syncFailureObserver func()
+	cancel              context.CancelFunc
+	done                chan struct{}
 }
 
 func NewTablePolicyManager(db *gorm.DB, authorizer *TableAuthorizer, initial TableAuthorizationConfig, sourceLabel string) (*TablePolicyManager, error) {
@@ -285,10 +286,25 @@ func (m *TablePolicyManager) setSyncError(err error) {
 		m.lastSyncError = err.Error()
 	}
 	current := m.lastSyncError
+	observer := m.syncFailureObserver
 	m.mu.Unlock()
+	if err != nil && observer != nil {
+		observer()
+	}
 	if current != "" && current != previous {
 		slog.Error("table policy replica could not synchronize", "error", current)
 	}
+}
+
+// SetSyncFailureObserver registers a bounded operational signal for failed
+// refresh attempts. The observer must not retain or expose the underlying error.
+func (m *TablePolicyManager) SetSyncFailureObserver(observer func()) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.syncFailureObserver = observer
+	m.mu.Unlock()
 }
 
 func (m *TablePolicyManager) Status() TablePolicyStatus {

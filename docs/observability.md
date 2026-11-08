@@ -25,6 +25,9 @@ The metrics endpoint stays admin-only regardless of the management API setting. 
 - `data_fabric_logical_query_rows_returned_total` and `data_fabric_logical_query_batches_total`: successful rows and batches accumulated across the initial response and continuations.
 - `data_fabric_query_admission_rejections_total`: requests rejected by the process-local query admission limits, labeled by the fixed `reason` values `concurrency_limit` or `request_rate_limit` (unexpected values are grouped as `other`).
 - `data_fabric_audit_persist_failures_total`: attempted audit event writes that failed, labeled by the bounded `transport` values `rest`, `mcp-http`, `mcp-stdio`, or `other`.
+- `data_fabric_managed_table_policy_status`: one-hot status with fixed `state` values `fresh`, `stale`, or `unconfigured`, refreshed on each scrape.
+- `data_fabric_managed_table_policy_last_sync_timestamp_seconds`: Unix time of the last successful managed-policy synchronization, or 0 when unconfigured or never synchronized.
+- `data_fabric_managed_table_policy_sync_failures_total`: failed managed-policy refresh attempts on this process.
 
 The initial /fetch request records one query observation. Continuation requests are counted as HTTP requests and do not increment the existing query execution counter again. The logical-query measurements are separate and cover the whole result lifecycle: an empty or single-batch result finishes immediately, while a multi-batch result finishes when its last successful page arrives or when a known terminal condition is observed. Budget exhaustion, cancellation or timeout after the serving session ends, authorization denial, session expiry, owner unavailability, backend failure after the session ends, request rejection, and tracker-capacity overflow use bounded outcome values. Retryable admission/rate-limit failures, stale tokens, invalid credentials, and backend failures that leave the session live do not close an active observation.
 
@@ -47,6 +50,76 @@ Existing data_fabric_query_total, data_fabric_query_duration_seconds, and data_f
 Metric labels use route templates and bounded values. The endpoint does not export SQL text, data-source IDs, raw unmatched URL paths, or backend error messages. Unknown HTTP methods, unmatched routes, and unknown driver types are grouped into fixed labels.
 
 Admission rejections are aggregated across tenants and callers. No tenant or user identifiers are included. For example, `rate(data_fabric_query_admission_rejections_total{reason="request_rate_limit"}[5m])` shows the recent per-second rate of requests rejected by the per-tenant request budget, including fail-closed rejection when the bounded tenant bucket table is full; use `reason="concurrency_limit"` to inspect concurrency pressure.
+
+## Admission and resource pressure
+
+Use the rejection counter to distinguish request-rate pressure from exhausted
+concurrent-query capacity:
+
+~~~promql
+sum by (reason) (rate(data_fabric_query_admission_rejections_total[5m]))
+~~~
+
+For an authorized point-in-time view of initialized source connection pools,
+query the admin API:
+
+~~~bash
+curl --fail --silent --show-error --header "Authorization: Bearer ${DATA_FABRIC_ADMIN_TOKEN}" http://localhost:8080/api/v1/database/connections/stats
+~~~
+
+The response includes aggregate open, active, idle, wait-count and wait-duration
+values plus per-pool diagnostics. It omits configured sources that have not
+initialized a pool. This endpoint is an admin diagnostic snapshot, not a
+time-series metric; compare it with the process-local logical-query outcomes,
+durations and admission rejection rate. A growing wait duration with
+concurrency rejections points to source or pool saturation; request-rate
+rejections indicate the configured per-tenant rate budget. Check source
+health, long-running result lifecycles and the workload profile before changing
+limits. Candidate task SLOs and capacity budgets must be justified by the
+end-to-end baseline tracked in [#441](https://github.com/RhinoLink-Tech/data-fabric/issues/441).
+
+## Managed table-policy freshness and synchronization
+
+Each process reports its own managed table-policy state. Exactly one
+`data_fabric_managed_table_policy_status{state=...}` series is 1: `fresh`
+means this replica synchronized within the configured maximum staleness window
+(3 seconds in the current implementation),
+`stale` means its last successful synchronization is too old, and
+`unconfigured` means managed table authorization is not active. Scrapes refresh
+the state dynamically, so a failed metadata-database connection can become
+stale even when the process remains alive. The timestamp stays at the last
+successful sync; it is not refreshed by failed attempts.
+
+Alert on a stale configured policy and inspect recent sync failures:
+
+~~~promql
+data_fabric_managed_table_policy_status{state="stale"} == 1
+~~~
+
+~~~promql
+increase(data_fabric_managed_table_policy_sync_failures_total[5m]) > 0
+~~~
+
+These measurements are process-local. Scrape every replica; compare revision
+and freshness through the admin table-policy status endpoint and, for routed
+replicas, each owner's `/internal/replica` status when diagnosing disagreement.
+An unconfigured policy is a separate state and should
+not be treated as an incident unless the deployment requires managed policy.
+
+On a stale-policy alert, restore metadata-database reachability, credentials,
+and write/read availability. Confirm that each replica returns to `fresh` and
+that its last-sync timestamp advances. Then verify a new correlated audit
+event is persisted. Preserve the affected time range as an audit gap because
+failed audit writes are not replayed automatically. The reference public
+acceptance case A27 injects a metadata-database outage in its disposable
+synthetic stack and checks both signals and recovery; it is not production
+availability evidence.
+
+This diagnostic and recovery guidance supports the operator restore work in
+[#452](https://github.com/RhinoLink-Tech/data-fabric/issues/452) and informs
+the independent adoption evaluation in
+[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458). Synthetic
+reference results are engineering evidence only.
 
 ## Audit persistence failures
 
