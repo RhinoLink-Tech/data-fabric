@@ -15,6 +15,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -255,6 +256,7 @@ func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandl
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		if recordErr := recorder.Record(recordCtx, event); recordErr != nil {
+			middleware.RecordAuditPersistenceFailure(transport)
 			slog.ErrorContext(recordCtx, "failed to persist MCP audit event", "correlation_id", correlation, "tool", name, "error", recordErr)
 		}
 		return result, err

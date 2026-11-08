@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
@@ -99,6 +100,7 @@ func recordMCPAuthFailure(recorder auditlog.Recorder, ctx context.Context, corre
 		Decision: auditlog.DecisionDeny, ReasonCode: reason, Outcome: "denied",
 		StatusCode: http.StatusUnauthorized, OccurredAt: time.Now().UTC(),
 	}); err != nil {
+		middleware.RecordAuditPersistenceFailure("mcp-http")
 		slog.ErrorContext(writeCtx, "failed to persist MCP authentication audit event", "correlation_id", correlationID, "error", err)
 	}
 }
@@ -115,6 +117,7 @@ func recordMCPAuthSuccess(recorder auditlog.Recorder, ctx context.Context, corre
 		ReasonCode: "token_validated", Outcome: "success", StatusCode: http.StatusOK,
 		OccurredAt: time.Now().UTC(),
 	}); err != nil {
+		middleware.RecordAuditPersistenceFailure("mcp-http")
 		slog.ErrorContext(writeCtx, "failed to persist MCP authentication audit event", "correlation_id", correlationID, "error", err)
 	}
 }
