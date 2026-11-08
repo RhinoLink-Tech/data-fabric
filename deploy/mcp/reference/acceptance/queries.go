@@ -703,7 +703,6 @@ func pageMutationSemantics(ctx context.Context, w wire) error {
 				}
 			}
 			note(fmt.Sprintf("pagination ORDER BY status (non-unique), update status of 2: pages=[%s %s %s], tie order unspecified", firstID, secondID, thirdID))
-			_ = terminal
 			return nil
 		}); err != nil {
 			return fmt.Errorf("non-unique-order update: %w", err)
