@@ -1,10 +1,10 @@
 # Prometheus Metrics
 
-Data Fabric exposes a Prometheus scrape endpoint at `GET /metrics` when running in HTTP server mode.
+Data Fabric exposes an admin-authenticated Prometheus scrape endpoint at GET /metrics on both the REST API and remote MCP HTTP server. Each endpoint exposes metrics for its own process; scrape every process/replica and aggregate externally. The MCP request endpoint remains at /mcp.
 
 ## Access control
 
-Scraping always requires a valid Bearer JWT with the `admin` role, even when `security.enable_auth` is disabled for the management API. Send the token in the standard `Authorization` header:
+Scraping the REST API always requires a valid Bearer JWT with the admin role, even when security.enable_auth is disabled for the management API. Remote MCP scraping requires a valid MCP Bearer token whose claims include the admin role. Send the token in the standard Authorization header:
 
 ~~~bash
 curl --fail --silent --show-error --header "Authorization: Bearer ${DATA_FABRIC_ADMIN_TOKEN}" http://localhost:8080/metrics

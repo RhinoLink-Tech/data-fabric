@@ -47,7 +47,20 @@ func (m *MCPServer) StreamableHTTPHandler(tokenValidator MCPTokenValidator) http
 	transport := server.NewStreamableHTTPServer(m.server)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, transport, m.auditRecorder))
+	mux.Handle("/metrics", m.adminMetricsHandler(tokenValidator))
 	return mux
+}
+
+func (m *MCPServer) adminMetricsHandler(tokenValidator MCPTokenValidator) http.Handler {
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := r.Context().Value(callerContextKey{}).(*security.Caller)
+		if caller == nil || !caller.IsAdmin() {
+			writeRemoteError(w, http.StatusForbidden, "forbidden", "administrator role required")
+			return
+		}
+		middleware.PrometheusHandler().ServeHTTP(w, r)
+	})
+	return authenticateMCPRequests(tokenValidator, metrics, m.auditRecorder)
 }
 
 func authenticateMCPRequests(tokenValidator MCPTokenValidator, next http.Handler, recorders ...auditlog.Recorder) http.Handler {
