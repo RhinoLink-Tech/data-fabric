@@ -99,6 +99,8 @@ services:
   # curl check confirms the 401 authentication gate over TLS.
   data-fabric-mcp:
     <<: *data-fabric-base
+    group_add:
+      - "${DATA_FABRIC_TLS_GID:-10001}"
     depends_on:
       # Serializes schema initialization: the API service migrates first and
       # this service's migration pass becomes a no-op against the same
