@@ -146,6 +146,8 @@ The setup must provide documented startup, registration, readiness/identity chec
 | A22 | Lose a source or use a bad source credential | Actionable safe error; other sources/identities remain isolated. |
 | A23 | Cancel or time out a query | Documented cancellation/timeout, followed by usable connections and released capacity. |
 | A24 | Review successful, denied and failed accesses | Identity/request correlation is available under the current audit contract, without tokens or result rows. |
+| A25 | Search permitted schema metadata | MCP returns stable, policy-filtered table and column matches; REST records the capability as unsupported. |
+| A26 | Observe one logical query across batches | REST and MCP report one bounded terminal outcome with complete rows, batches and duration across the initial request and continuations. |
 
 REST/MCP consistency means equivalent policy and result behavior for applicable tasks. It does not mean a process-local REST cursor can be continued by a different MCP process. The expiry case should use controlled test time/configuration rather than require a long wall-clock wait.
 

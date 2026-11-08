@@ -879,6 +879,31 @@ func (qs *queryService) LiveSessionCount(now time.Time) int {
 	return qs.sessionManager.liveSessionCount(now)
 }
 
+// HasLiveQuerySession reports whether a continuation can still be served by
+// this process. It is used only to classify logical-query lifecycle errors;
+// session identifiers are never exported as metric labels.
+func (qs *queryService) HasLiveQuerySession(queryID string) bool {
+	if qs.sessionManager == nil {
+		return false
+	}
+	_, err := qs.sessionManager.Get(queryID)
+	return err == nil
+}
+
+// QuerySessionExpiry returns the actual expiry for a live local continuation.
+func (qs *queryService) QuerySessionExpiry(queryID string) (time.Time, bool) {
+	if qs.sessionManager == nil {
+		return time.Time{}, false
+	}
+	qs.sessionManager.mutex.RLock()
+	defer qs.sessionManager.mutex.RUnlock()
+	session, exists := qs.sessionManager.sessions[queryID]
+	if !exists {
+		return time.Time{}, false
+	}
+	return session.ExpiresAt, true
+}
+
 func (qs *queryService) EndTransportSession(sessionID string) {
 	if sessionID != "" {
 		qs.sessionManager.deleteTransportSession(sessionID)

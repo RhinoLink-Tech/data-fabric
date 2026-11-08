@@ -909,6 +909,30 @@ func (ss *streamingService) LiveSessionCount(now time.Time) int {
 	return count
 }
 
+// HasLiveQuerySession reports whether this process still owns a continuation
+// session for the query. It does not expose any session identifiers externally.
+func (ss *streamingService) HasLiveQuerySession(queryID string) bool {
+	if ss.streamingSessionManager == nil {
+		return false
+	}
+	_, err := ss.streamingSessionManager.Get(queryID)
+	return err == nil
+}
+
+// QuerySessionExpiry returns the actual expiry for a live local continuation.
+func (ss *streamingService) QuerySessionExpiry(queryID string) (time.Time, bool) {
+	if ss.streamingSessionManager == nil {
+		return time.Time{}, false
+	}
+	ss.streamingSessionManager.mutex.RLock()
+	defer ss.streamingSessionManager.mutex.RUnlock()
+	session, exists := ss.streamingSessionManager.sessions[queryID]
+	if !exists {
+		return time.Time{}, false
+	}
+	return session.ExpiresAt, true
+}
+
 // EndTransportSession closes every query created by one remote MCP session.
 func (ss *streamingService) EndTransportSession(sessionID string) {
 	if sessionID == "" {
