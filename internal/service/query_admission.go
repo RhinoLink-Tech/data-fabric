@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	defaultMaxConcurrentQueries            = 100
-	defaultMaxConcurrentQueriesPerTenant   = 25
+	// The recommended single-process SQL profile is measured at four
+	// concurrent query tasks total and two per tenant (#441).
+	defaultMaxConcurrentQueries            = 4
+	defaultMaxConcurrentQueriesPerTenant   = 2
+	maxConcurrentQueryLimit                = 100
 	defaultMaxQueryRequestRateLimitBuckets = 10000
 )
 
@@ -36,20 +39,26 @@ type queryRequestRateBucket struct {
 }
 
 // NewQueryAdmissionLimiter returns a process-local limiter. Non-positive
-// limits use the product defaults of 100 total slots and 25 per tenant.
+// limits use the measured profile defaults of 4 total slots and 2 per tenant.
+// Explicit limits above maxConcurrentQueryLimit are clamped to that hard cap.
 func NewQueryAdmissionLimiter(maxConcurrent, maxPerTenant int) *QueryAdmissionLimiter {
 	return NewQueryAdmissionLimiterWithRateLimit(maxConcurrent, maxPerTenant, 0, 0)
 }
 
 // NewQueryAdmissionLimiterWithRateLimit returns a process-local limiter for
 // concurrent query work and, when configured, per-tenant query request rates.
-// A non-positive rate or burst disables the request-rate budget.
+// A non-positive rate or burst disables the request-rate budget. The process
+// and per-tenant concurrency limits never exceed maxConcurrentQueryLimit.
 func NewQueryAdmissionLimiterWithRateLimit(maxConcurrent, maxPerTenant, requestsPerMinutePerTenant, requestBurstPerTenant int) *QueryAdmissionLimiter {
 	if maxConcurrent <= 0 {
 		maxConcurrent = defaultMaxConcurrentQueries
+	} else if maxConcurrent > maxConcurrentQueryLimit {
+		maxConcurrent = maxConcurrentQueryLimit
 	}
 	if maxPerTenant <= 0 {
 		maxPerTenant = defaultMaxConcurrentQueriesPerTenant
+	} else if maxPerTenant > maxConcurrentQueryLimit {
+		maxPerTenant = maxConcurrentQueryLimit
 	}
 	return &QueryAdmissionLimiter{
 		maxConcurrent:              maxConcurrent,

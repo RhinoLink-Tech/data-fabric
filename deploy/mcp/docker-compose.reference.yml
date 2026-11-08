@@ -39,7 +39,8 @@ services:
     environment:
       <<: *reference-request-budgets
       QUERY_SESSION_TTL_SECONDS: ${DF_REFERENCE_SESSION_TTL_SECONDS:-1800}
-      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-25}
+      QUERY_MAX_CONCURRENT_QUERIES: ${DF_REFERENCE_TOTAL_CONCURRENCY:-4}
+      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-2}
     depends_on:
       sample-postgres:
         condition: service_healthy
@@ -63,7 +64,8 @@ services:
       <<: *reference-request-budgets
       SSL_CERT_DIR: /etc/ssl/certs:/etc/data-fabric/reference-ca
       QUERY_SESSION_TTL_SECONDS: ${DF_REFERENCE_SESSION_TTL_SECONDS:-1800}
-      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-25}
+      QUERY_MAX_CONCURRENT_QUERIES: ${DF_REFERENCE_TOTAL_CONCURRENCY:-4}
+      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-2}
     ports: !override
       - target: 8081
         host_ip: 127.0.0.1
