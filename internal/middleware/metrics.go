@@ -33,6 +33,8 @@ type PrometheusMetrics struct {
 	LogicalQueryRowsReturned            *prometheus.CounterVec
 	LogicalQueryBatches                 *prometheus.CounterVec
 	QueryAdmissionRejections            *prometheus.CounterVec
+	QueryAdmissionActiveReservations    prometheus.Gauge
+	QueryAdmissionMaxReservations       prometheus.Gauge
 	AuditPersistenceFailures            *prometheus.CounterVec
 	ManagedTablePolicyStatus            *prometheus.GaugeVec
 	ManagedTablePolicyLastSyncTimestamp prometheus.Gauge
@@ -58,6 +60,9 @@ var (
 	metricsOnce          sync.Once
 	policyStatusMu       sync.RWMutex
 	policyStatusProvider func() ManagedTablePolicyStatus
+
+	queryAdmissionCapacityMu       sync.RWMutex
+	queryAdmissionCapacityProvider func() (activeReservations, maxReservations int)
 )
 
 // ManagedTablePolicyStatus contains the bounded, non-sensitive policy state
@@ -74,6 +79,15 @@ func SetManagedTablePolicyStatusProvider(provider func() ManagedTablePolicyStatu
 	policyStatusMu.Lock()
 	policyStatusProvider = provider
 	policyStatusMu.Unlock()
+}
+
+// SetQueryAdmissionCapacityProvider supplies a live process-local limiter
+// snapshot used to refresh the active and configured reservation gauges at
+// scrape time. A nil provider reports zero values.
+func SetQueryAdmissionCapacityProvider(provider func() (activeReservations, maxReservations int)) {
+	queryAdmissionCapacityMu.Lock()
+	queryAdmissionCapacityProvider = provider
+	queryAdmissionCapacityMu.Unlock()
 }
 
 // InitMetrics initializes and registers Prometheus metrics once per process.
@@ -175,6 +189,18 @@ func InitMetrics() {
 					Help: "Number of query requests rejected by process-local admission limits",
 				},
 				[]string{"reason"},
+			),
+			QueryAdmissionActiveReservations: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_query_admission_active_reservations",
+					Help: "Current process-local query admission reservations, refreshed at scrape time",
+				},
+			),
+			QueryAdmissionMaxReservations: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_query_admission_max_reservations",
+					Help: "Configured process-local maximum query admission reservations",
+				},
 			),
 			AuditPersistenceFailures: promauto.NewCounterVec(
 				prometheus.CounterOpts{
@@ -291,8 +317,31 @@ func PrometheusHandler() http.Handler {
 	handler := promhttp.Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		refreshManagedTablePolicyMetrics()
+		refreshQueryAdmissionCapacityMetrics()
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func refreshQueryAdmissionCapacityMetrics() {
+	if metrics == nil {
+		return
+	}
+	queryAdmissionCapacityMu.RLock()
+	provider := queryAdmissionCapacityProvider
+	queryAdmissionCapacityMu.RUnlock()
+
+	active, limit := 0, 0
+	if provider != nil {
+		active, limit = provider()
+	}
+	if active < 0 {
+		active = 0
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	metrics.QueryAdmissionActiveReservations.Set(float64(active))
+	metrics.QueryAdmissionMaxReservations.Set(float64(limit))
 }
 
 func refreshManagedTablePolicyMetrics() {
