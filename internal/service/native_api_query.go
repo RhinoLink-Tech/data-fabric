@@ -108,7 +108,7 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		Entries:    entries,
 		TotalCount: int(totalRows),
 	}
-	if req.Type == 2 && batch.HasMore {
+	if batch.HasMore {
 		if !qs.sessionManager.Store(session) {
 			return nil, ErrQuerySessionUnavailable
 		}

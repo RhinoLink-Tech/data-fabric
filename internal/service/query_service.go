@@ -633,7 +633,7 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		TotalCount: int(totalCount),
 	}
 
-	if req.Type == 2 && len(entries) < int(totalCount) {
+	if len(entries) < int(totalCount) {
 		response.NextURI = qs.buildNextURI(session.QueryID, session.Slug, session.Token, req.BatchSize)
 
 		// Update session data

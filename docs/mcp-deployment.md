@@ -220,7 +220,7 @@ Then, inside a session, ask for the round trip the deployment is built for:
 3. `describe_table` — column names, types, and nullability of `orders`.
 4. `execute_sql_query` — `SELECT customer, amount FROM orders ORDER BY amount DESC`.
 
-The query returns the seeded rows. Write statements (`INSERT`, `UPDATE`,
+The query returns the seeded rows. For continuation, ordering, and data changes between pages, see [query result semantics](query-result-semantics.md). Write statements (`INSERT`, `UPDATE`,
 `DROP`, …) are rejected twice over: by the gateway's read-only validation and
 by the read-only session opened against MySQL — the sample source's user also
 holds only `SELECT` privileges.

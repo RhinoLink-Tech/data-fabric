@@ -29,4 +29,4 @@ The premerge subset emits ten records for A01, A05, A12, A17 and A19 on both tra
 
 REST records A03 and A04 as unsupported because it has no corresponding policy-filtered table metadata endpoints. It records A14–A16 as unsupported because REST authenticates using HS256 and the OIDC checks apply to MCP. A18 checks query denial in both transports and table description denial in MCP.
 
-The suite makes fault injections only within its own Compose project. Run it against synthetic fixtures. The result describes the pinned connectors and two public transports exercised by this reference environment.
+The suite makes fault injections only within its own Compose project. Run it against synthetic fixtures. The result describes the pinned connectors and two public transports exercised by this reference environment. The current matrix covers static interleaved sessions and token rotation; it does not prove cross-page snapshot semantics under source mutations. See [query result semantics](../query-result-semantics.md) and issue #455 for that separate contract.

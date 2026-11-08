@@ -1186,7 +1186,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		TotalCount: int(totalCount),
 	}
 
-	if req.Type == 2 && len(entries) < int(totalCount) {
+	if len(entries) < int(totalCount) {
 		// Add NextURI if there are more results
 		response.NextURI = ss.buildNextURI(session.QueryID, session.Slug, session.Token, req.BatchSize)
 
