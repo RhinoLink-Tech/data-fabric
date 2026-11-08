@@ -13,7 +13,9 @@ COPY requirements-sql-translation.txt /tmp/requirements-sql-translation.txt
 RUN python -m pip install --no-cache-dir --target=/opt/data-fabric/python --requirement /tmp/requirements-sql-translation.txt
 
 FROM alpine:3.22
-LABEL org.opencontainers.image.title="Data Fabric"
+ARG DATA_FABRIC_SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.title="Data Fabric" \
+      org.opencontainers.image.revision="${DATA_FABRIC_SOURCE_REVISION}"
 RUN apk --no-cache add ca-certificates tzdata python3 \
     && addgroup -S -g 10001 app \
     && adduser -S -D -H -u 10001 -G app appuser

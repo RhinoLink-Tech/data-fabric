@@ -19,7 +19,7 @@ Compose 会启动四个服务：MySQL 元数据库、只读示例 MySQL、HTTP �
 python3 scripts/mcp/onboard.py init
 ```
 
-命令会创建 `deploy/mcp/.env`，生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
+命令会创建 `deploy/mcp/.env`，若从 Git 检出运行，则记录当前源码 SHA；源码压缩包会标记为 `unknown`，不能用于可验证的候选备份。命令还会生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。本地 Compose 构建会把该 revision 写入镜像 OCI label，供恢复清单绑定源码和镜像身份。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
 
 在 `deploy/mcp/.env` 设置：
 
@@ -88,6 +88,6 @@ python3 ../../scripts/mcp/onboard.py doctor \
 
 连接示例 MCP server 后，按顺序执行 `list_data_sources`、`list_tables`、`describe_table` 和只读 `execute_sql_query`。示例来源只包含合成 `orders` 数据。
 
-`doctor` 发现初始化、keyring、OIDC、TLS、Compose 或 parser 问题时，按错误项中的配置名修复，再运行一次。不要通过重置元数据库或替换 keyring 来“修复”已有安装：换 key 可能使已保存来源凭据无法解密。备份、恢复和升级步骤见 [升级指南](upgrading-v1.2.0.md) 与 [MySQL 恢复流程](operations/mysql-upgrade-rehearsal.md)。
+`doctor` 发现初始化、keyring、OIDC、TLS、Compose 或 parser 问题时，按错误项中的配置名修复，再运行一次。不要通过重置元数据库或替换 keyring 来“修复”已有安装：换 key 可能使已保存来源凭据无法解密。当前 profile 的加密备份、校验和新项目恢复步骤见[备份与恢复操作手册](operations/mcp-profile-backup-recovery-zh.md)（[English](operations/mcp-profile-backup-recovery.md)）；版本升级边界见[升级指南](upgrading-v1.2.0.md)与 [MySQL 升级演练](operations/mysql-upgrade-rehearsal.md)。
 
 该 profile 当前是单机、MySQL 元数据库和 MySQL sample source。它不证明外部团队采用、生产可用性或商业购买意愿；这些仍须分别验证。
