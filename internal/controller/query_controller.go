@@ -36,10 +36,7 @@ func NewQueryController(unifiedQueryService unifiedservice.UnifiedQueryService) 
 
 // FetchQuery godoc
 // @Summary Execute a batch SQL query
-// @Description Executes a SQL query and returns batch data with pagination support.
-// This endpoint will attempt to open a streaming cursor on the backend when possible
-// and return the first batch of rows. If streaming is established, the response
-// includes a `nextUri` for continuing the stream via `/fetch/{query_id}/{slug}/{token}`.
+// @Description Executes SQL and returns the first bounded batch. When more rows remain, the response includes a `nextUri` for offset pagination or a streaming cursor, depending on the selected execution mode. Follow each returned URI until a successful response omits it.
 // @Tags queries
 // @Accept json
 // @Produce json

@@ -97,7 +97,7 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to execute SQL queries against data sources
 	executeSQLQueryTool := mcp.NewTool("execute_sql_query",
-		mcp.WithDescription("Execute a SQL query against a specified data source"),
+		mcp.WithDescription("Execute a read-only SQL query and return its first bounded batch. Continue with fetch_next_batch using the returned queryId, slug and token whenever nextUri is present; do not treat the first batch as complete based on its length."),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to query")),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL query to execute")),
 		mcp.WithString("source_dialect", mcp.Description("Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)")),
@@ -116,7 +116,7 @@ func (m *MCPServer) registerTools() {
 	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
 
 	fetchNextBatchTool := mcp.NewTool("fetch_next_batch",
-		mcp.WithDescription("Fetch the next page from a previous execute_sql_query call"),
+		mcp.WithDescription("Fetch the next page from execute_sql_query. Use the newest query_id, slug and token, and continue until the response omits nextUri. Each successful batch rotates the token."),
 		mcp.WithString("query_id", mcp.Required(), mcp.Description("Query ID returned by execute_sql_query")),
 		mcp.WithString("slug", mcp.Required(), mcp.Description("Query slug returned by execute_sql_query")),
 		mcp.WithString("token", mcp.Required(), mcp.Description("Current pagination token")),

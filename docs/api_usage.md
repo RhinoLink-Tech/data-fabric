@@ -142,7 +142,7 @@ Request fields:
 | `sql` | string | Yes | One read-only `SELECT` statement |
 | `parameters` | array | No | Ordered bind values (null, boolean, number, string), at most 64; bound to `?`/`$N` placeholders, never interpolated into the SQL text |
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
-| `type` | integer | No | `1` selects pagination; `2` requests streaming. If omitted, `query.execution_mode` decides using its configured mode and auto policy |
+| `type` | integer | No | `1` selects paginated batches; `2` prefers streaming. Explicit `query.execution_mode` configuration can override the hint; if omitted, auto policy decides |
 | `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 |
 | `timeout` | integer | No | Seconds allowed for the initial request; default 60, maximum 1,800 |
 
@@ -174,7 +174,7 @@ A successful response has this shape:
 
 The sample shows two rows for readability; a real response may contain up to the requested batch size.
 
-`executionMode` is `streaming` or `pagination`. `nextUri` is omitted when the response has no continuation session. For a multi-batch result, request `type: 2` and follow every returned `nextUri` until the server stops returning one.
+`executionMode` is `streaming` or `pagination`. Whenever additional rows remain, the response includes `nextUri` regardless of the request hint or automatic fallback. Follow the newest URI/token until a successful response omits `nextUri`. Do not infer completion from a short batch or from `totalCount` alone. See [query result semantics](query-result-semantics.md) for ordering, mutation and partial-result limits.
 
 ## Fetch the next batch
 
