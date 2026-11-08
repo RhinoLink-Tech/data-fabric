@@ -111,6 +111,17 @@ func (limiter *QueryAdmissionLimiter) Acquire(caller *security.Caller) (func(), 
 	}, true
 }
 
+// CapacitySnapshot returns the current process-local reservation count and
+// configured total reservation limit.
+func (limiter *QueryAdmissionLimiter) CapacitySnapshot() (active, limit int) {
+	if limiter == nil {
+		return 0, 0
+	}
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	return limiter.total, limiter.maxConcurrent
+}
+
 // AllowQueryRequest charges one query execution or continuation request to its
 // validated tenant bucket. Tenant-less callers use their validated user ID;
 // anonymous callers share one process-local bucket. New buckets are rejected

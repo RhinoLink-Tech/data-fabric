@@ -24,6 +24,8 @@ The metrics endpoint stays admin-only regardless of the management API setting. 
 - `data_fabric_logical_query_duration_seconds`: elapsed time from the initial query through the final page or observed terminal condition.
 - `data_fabric_logical_query_rows_returned_total` and `data_fabric_logical_query_batches_total`: successful rows and batches accumulated across the initial response and continuations.
 - `data_fabric_query_admission_rejections_total`: requests rejected by the process-local query admission limits, labeled by the fixed `reason` values `concurrency_limit` or `request_rate_limit` (unexpected values are grouped as `other`).
+- `data_fabric_query_admission_active_reservations`: active query/cursor reservations on this process, refreshed at scrape time.
+- `data_fabric_query_admission_max_reservations`: configured total query/cursor reservation limit for this process.
 - `data_fabric_audit_persist_failures_total`: attempted audit event writes that failed, labeled by the bounded `transport` values `rest`, `mcp-http`, `mcp-stdio`, or `other`.
 - `data_fabric_managed_table_policy_status`: one-hot status with fixed `state` values `fresh`, `stale`, or `unconfigured`, refreshed on each scrape.
 - `data_fabric_managed_table_policy_last_sync_timestamp_seconds`: Unix time of the last successful managed-policy synchronization, or 0 when unconfigured or never synchronized.
@@ -52,6 +54,26 @@ Metric labels use route templates and bounded values. The endpoint does not expo
 Admission rejections are aggregated across tenants and callers. No tenant or user identifiers are included. For example, `rate(data_fabric_query_admission_rejections_total{reason="request_rate_limit"}[5m])` shows the recent per-second rate of requests rejected by the per-tenant request budget, including fail-closed rejection when the bounded tenant bucket table is full; use `reason="concurrency_limit"` to inspect concurrency pressure.
 
 ## Admission and resource pressure
+
+The scrape-time gauges
+data_fabric_query_admission_active_reservations and
+data_fabric_query_admission_max_reservations show the current and configured
+query reservation counts for each process. Active reservations include a
+streaming query for its active cursor lifetime; pagination reserves only while
+a page request is executing. Scrape each REST/MCP process and keep the process
+identity when comparing utilization. These values contain no tenant labels and
+do not form a cluster-wide quota. The configured maximum is a guardrail, not a
+capacity promise beyond the measured profile.
+
+Show the instantaneous per-process reservation utilization while retaining
+Prometheus target labels such as instance:
+
+~~~promql
+data_fabric_query_admission_active_reservations
+/
+clamp_min(data_fabric_query_admission_max_reservations, 1)
+~~~
+
 
 Use the rejection counter to distinguish request-rate pressure from exhausted
 concurrent-query capacity:

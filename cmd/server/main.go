@@ -200,6 +200,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
+	middleware.SetQueryAdmissionCapacityProvider(queryAdmissionLimiter.CapacitySnapshot)
 	queryBudgets := service.QueryBudgetLimits{
 		MaxRows:     cfg.Query.MaxResultRows,
 		MaxBytes:    cfg.Query.MaxResultBytes,
@@ -489,6 +490,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		cfg.Query.RateLimitPerMinutePerTenant,
 		cfg.Query.RateLimitBurstPerTenant,
 	)
+	middleware.SetQueryAdmissionCapacityProvider(queryAdmissionLimiter.CapacitySnapshot)
 	queryBudgets := service.QueryBudgetLimits{
 		MaxRows:     cfg.Query.MaxResultRows,
 		MaxBytes:    cfg.Query.MaxResultBytes,
