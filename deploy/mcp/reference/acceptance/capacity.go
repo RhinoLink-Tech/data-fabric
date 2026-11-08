@@ -453,13 +453,25 @@ func runLoadGroup(ctx context.Context, encoder *json.Encoder, workload string, w
 		}
 	}
 	elapsed := time.Since(started)
+	result := "pass"
+	switch {
+	case failed > 0:
+		result = "fail"
+	case rejected > 0 && rateLimited > 0:
+		result = "pass_with_admission_rejections_and_rate_limits"
+	case rejected > 0:
+		result = "pass_with_admission_rejections"
+	case rateLimited > 0:
+		result = "pass_with_rate_limits"
+	}
 	summary := loadRecord{
-		Type: "summary", Workload: workload, Concurrency: len(workers),
+		Type: "summary", Workload: workload, Transport: string(workers[0].kind),
+		Source: workers[0].sourceID, Concurrency: len(workers),
 		ElapsedMS:      float64(elapsed.Microseconds()) / 1000,
 		AttemptedTasks: attempted, SuccessfulTasks: len(successful), AdmissionRejections: rejected,
 		RateLimitedTasks: rateLimited, FailedTasks: failed, GatewayRequests: requests,
 		RequestsPerSecond: float64(attempted) / elapsed.Seconds(),
-		Result:            "pass",
+		Result:            result,
 	}
 	if len(successful) > 0 {
 		summary.P50MS = percentileMS(successful, 0.50)
