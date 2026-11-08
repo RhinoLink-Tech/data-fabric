@@ -29,6 +29,7 @@ type PrometheusMetrics struct {
 	QueryRowsRead            *prometheus.CounterVec
 	QueryErrors              *prometheus.CounterVec
 	QueryAdmissionRejections *prometheus.CounterVec
+	AuditPersistenceFailures *prometheus.CounterVec
 
 	ConnectionPoolActive *prometheus.GaugeVec
 	ConnectionPoolIdle   *prometheus.GaugeVec
@@ -120,6 +121,13 @@ func InitMetrics() {
 					Help: "Number of query requests rejected by process-local admission limits",
 				},
 				[]string{"reason"},
+			),
+			AuditPersistenceFailures: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_audit_persist_failures_total",
+					Help: "Number of attempted audit event writes that failed",
+				},
+				[]string{"transport"},
 			),
 			ConnectionPoolActive: promauto.NewGaugeVec(
 				prometheus.GaugeOpts{
@@ -269,6 +277,16 @@ func RecordQueryAdmissionRejection(reason string) {
 	metrics.QueryAdmissionRejections.WithLabelValues(normalizeQueryAdmissionReason(reason)).Inc()
 }
 
+// RecordAuditPersistenceFailure records an attempted audit write failure using
+// a bounded transport label. It does not imply that auditing was enabled for
+// requests where no recorder was configured.
+func RecordAuditPersistenceFailure(transport string) {
+	if metrics == nil {
+		return
+	}
+	metrics.AuditPersistenceFailures.WithLabelValues(normalizeAuditTransport(transport)).Inc()
+}
+
 // UpdateConnectionPoolMetrics updates aggregate connection pool gauges by driver type.
 func UpdateConnectionPoolMetrics(_ string, databaseType string, active, idle int) {
 	if metrics == nil {
@@ -379,6 +397,19 @@ func normalizeQueryAdmissionReason(reason string) string {
 		return "concurrency_limit"
 	case "request_rate_limit":
 		return "request_rate_limit"
+	default:
+		return "other"
+	}
+}
+
+func normalizeAuditTransport(transport string) string {
+	switch strings.ToLower(strings.TrimSpace(transport)) {
+	case "rest":
+		return "rest"
+	case "mcp-http":
+		return "mcp-http"
+	case "mcp-stdio", "stdio":
+		return "mcp-stdio"
 	default:
 		return "other"
 	}

@@ -31,7 +31,12 @@ audit:
 
 The default retention is 90 days. Expired events are pruned at startup and
 daily. Release mode requires auditing to remain enabled. Audit write failures
-are reported to the service log; they do not change a completed query's result.
+are reported to the service log and counted by the bounded
+`data_fabric_audit_persist_failures_total` Prometheus metric when a recorder is
+configured; they do not change a completed query's result. See the
+[observability guide](../observability.md#audit-persistence-failures) for alert
+and recovery steps. Failed events are not automatically replayed, so an outage
+can leave a permanent audit gap even when the query itself succeeded.
 
 ## Review events
 
