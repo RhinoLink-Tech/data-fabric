@@ -34,6 +34,7 @@ type wire struct {
 	mcpSessions     map[string]*mcpclient.Client
 	mcpCorrelations map[string]string
 	mcpCaptures     map[string]*sessionCapture
+	observe         func(string)
 }
 
 func (w wire) withMCPState() wire {
@@ -91,13 +92,14 @@ type column struct {
 }
 
 type batch struct {
-	QueryID    string   `json:"queryId"`
-	Slug       string   `json:"slug"`
-	Token      string   `json:"token"`
-	NextURI    string   `json:"nextUri"`
-	Columns    []column `json:"columns"`
-	Entries    [][]any  `json:"entries"`
-	TotalCount int      `json:"totalCount"`
+	QueryID       string   `json:"queryId"`
+	Slug          string   `json:"slug"`
+	Token         string   `json:"token"`
+	NextURI       string   `json:"nextUri"`
+	Columns       []column `json:"columns"`
+	Entries       [][]any  `json:"entries"`
+	TotalCount    int      `json:"totalCount"`
+	ExecutionMode string   `json:"executionMode"`
 }
 
 type reply struct {
@@ -318,6 +320,28 @@ func callTool(ctx context.Context, client *mcpclient.Client, name string, args m
 		return reply{failed: true, message: content.Text}, nil
 	}
 	return reply{data: json.RawMessage(content.Text)}, nil
+}
+
+func (w wire) queryWithMode(ctx context.Context, actor, correlation string, source reference.Source, sql string, parameters []any, size, timeout int, mode string) (reply, error) {
+	queryType := 0
+	switch mode {
+	case "pagination":
+		queryType = 1
+	case "streaming":
+		queryType = 2
+	default:
+		return reply{}, fmt.Errorf("unsupported acceptance execution mode")
+	}
+	if w.kind == rest {
+		return w.restCall(ctx, actor, correlation, http.MethodPost, "/api/v1/fetch", map[string]any{
+			"dataSourceId": source.ID, "sql": sql, "parameters": parameters,
+			"type": queryType, "batch_size": size, "timeout": timeout,
+		})
+	}
+	return w.tool(ctx, actor, correlation, "execute_sql_query", map[string]any{
+		"datasource_id": source.ID, "sql": sql, "parameters": parameters,
+		"batch_size": size, "timeout": timeout, "execution_mode": mode,
+	})
 }
 
 func (w wire) query(ctx context.Context, actor, correlation string, source reference.Source, sql string, parameters []any, size, timeout int) (reply, error) {

@@ -116,6 +116,18 @@ func TestExecuteSQLQueryAppliesDefaultsAndBounds(t *testing.T) {
 			wantTimeout: 300,
 		},
 		{
+			name:        "pagination mode is forwarded",
+			overrides:   map[string]any{"execution_mode": "pagination"},
+			wantBatch:   10000,
+			wantTimeout: 60,
+		},
+		{
+			name:        "streaming mode is forwarded",
+			overrides:   map[string]any{"execution_mode": "streaming"},
+			wantBatch:   10000,
+			wantTimeout: 60,
+		},
+		{
 			name: "parameters pass through for the service to bind",
 			overrides: map[string]any{
 				"parameters":     []interface{}{float64(1), "text", nil, true},
@@ -148,8 +160,13 @@ func TestExecuteSQLQueryAppliesDefaultsAndBounds(t *testing.T) {
 			if got.Timeout != tt.wantTimeout {
 				t.Errorf("timeout = %d, want %d", got.Timeout, tt.wantTimeout)
 			}
-			if got.DataSourceID != "ds-1" || got.SQL != "SELECT customer FROM orders" || got.Type != 2 {
-				t.Errorf("request identity = %q/%q/type %d, want ds-1/SELECT customer FROM orders/type 2", got.DataSourceID, got.SQL, got.Type)
+			executionMode, _ := tt.overrides["execution_mode"].(string)
+			wantType, err := queryTypeForExecutionMode(executionMode)
+			if err != nil {
+				t.Fatalf("queryTypeForExecutionMode() error = %v", err)
+			}
+			if got.DataSourceID != "ds-1" || got.SQL != "SELECT customer FROM orders" || got.Type != wantType {
+				t.Errorf("request identity = %q/%q/type %d, want ds-1/SELECT customer FROM orders/type %d", got.DataSourceID, got.SQL, got.Type, wantType)
 			}
 			if tt.overrides["parameters"] != nil {
 				want := []interface{}{float64(1), "text", nil, true}
@@ -161,6 +178,23 @@ func TestExecuteSQLQueryAppliesDefaultsAndBounds(t *testing.T) {
 				t.Errorf("source dialect = %q, want %v", got.SourceDialect, want)
 			}
 		})
+	}
+}
+
+func TestExecuteSQLQueryRejectsUnsupportedExecutionMode(t *testing.T) {
+	service := &stubQueryService{}
+	srv := executeServer(service)
+	result, err := srv.handleExecuteSQLQuery(context.Background(), callToolRequest(
+		"execute_sql_query", executeArguments(map[string]any{"execution_mode": "background"}),
+	))
+	if err != nil {
+		t.Fatalf("handleExecuteSQLQuery() error = %v, want a tool-level error", err)
+	}
+	if !result.IsError {
+		t.Fatal("unsupported execution mode was accepted")
+	}
+	if service.captured != nil {
+		t.Fatal("query service was called for an unsupported execution mode")
 	}
 }
 

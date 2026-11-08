@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Add explicit pagination or streaming selection to MCP execute_sql_query and candidate-matched page-mutation outcomes to the public REST/MCP reference acceptance (#455).
 - Add tag-gated GHCR Preview image publishing with digest-pinned Compose startup, SQLGlot notices, SBOM and provenance (#442).
 - Add idempotent self-hosted MCP initialization, a bounded management-token helper, and a local profile doctor (#445).
 - Add age-encrypted current-profile backup verification and fresh-checkout restore preparation, bound to an OCI source-revision label (#452).

@@ -55,6 +55,7 @@ var matrix = []scenario{
 	{id: "A25", check: searchSchema, restUnsupported: "no public REST schema search", smoke: true},
 	{id: "A26", check: logicalQueryMetrics, smoke: true},
 	{id: "A27", check: managedPolicyAuditRecovery, smoke: true},
+	{id: "A28", check: pageMutationSemantics, smoke: true},
 }
 
 type evidence struct {
@@ -67,6 +68,7 @@ type evidence struct {
 	GatewayImage     string         `json:"gateway_image"`
 	GatewayImageID   string         `json:"gateway_image_id"`
 	Profile          map[string]any `json:"profile"`
+	Observations     []string       `json:"observations,omitempty"`
 	Reason           string         `json:"reason,omitempty"`
 }
 
@@ -95,8 +97,11 @@ func Check(ctx context.Context, env *reference.Environment, out io.Writer, smoke
 				record.Result, record.Reason = "unsupported", test.restUnsupported
 			} else {
 				started := time.Now()
+				var observations []string
 				w := (wire{kind: kind, env: env, http: httpClient}).withMCPState()
+				w.observe = func(value string) { observations = append(observations, value) }
 				err := test.check(ctx, w)
+				record.Observations = append([]string(nil), observations...)
 				cleanupErr := w.releaseMCPSessions(ctx)
 				err = errors.Join(err, cleanupErr)
 				if err != nil {

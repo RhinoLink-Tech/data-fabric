@@ -21,7 +21,7 @@ type toolContract struct {
 
 var documentedToolContract = map[string]toolContract{
 	"list_data_sources":       {properties: []string{}},
-	"execute_sql_query":       {required: []string{"datasource_id", "sql"}, properties: []string{"datasource_id", "sql", "source_dialect", "parameters", "batch_size", "timeout"}},
+	"execute_sql_query":       {required: []string{"datasource_id", "sql"}, properties: []string{"datasource_id", "sql", "source_dialect", "parameters", "batch_size", "timeout", "execution_mode"}},
 	"fetch_next_batch":        {required: []string{"query_id", "slug", "token"}, properties: []string{"query_id", "slug", "token", "batch_size"}},
 	"get_data_source_info":    {required: []string{"datasource_id"}, properties: []string{"datasource_id"}},
 	"validate_sql_query":      {required: []string{"datasource_id", "sql"}, properties: []string{"datasource_id", "sql", "source_dialect"}},

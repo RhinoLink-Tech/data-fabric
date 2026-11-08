@@ -113,7 +113,8 @@ func (m *MCPServer) registerTools() {
 				},
 			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
-		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")))
+		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")),
+		mcp.WithString("execution_mode", mcp.Description("Optional execution path: pagination re-executes bounded pages; streaming holds a source cursor. Default prefers streaming, subject to server configuration.")))
 	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
 
 	fetchNextBatchTool := mcp.NewTool("fetch_next_batch",
@@ -371,6 +372,17 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 	}, nil
 }
 
+func queryTypeForExecutionMode(mode string) (int, error) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "streaming":
+		return 2, nil
+	case "pagination":
+		return 1, nil
+	default:
+		return 0, errors.New("execution_mode must be pagination or streaming")
+	}
+}
+
 // handleExecuteSQLQuery handles the execute_sql_query tool call
 func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Extract parameters from the request
@@ -383,6 +395,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	}
 	batchSize := int(mcp.ParseInt(request, "batch_size", 10000))
 	timeout := int(mcp.ParseInt(request, "timeout", 60))
+	queryType, err := queryTypeForExecutionMode(mcp.ParseString(request, "execution_mode", ""))
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	if batchSize <= 0 {
 		batchSize = 10000
 	} else if batchSize > 10000 {
@@ -403,7 +419,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		DataSourceID:  datasourceID,
 		SQL:           sql,
 		SourceDialect: sourceDialect,
-		Type:          2,
+		Type:          queryType,
 		BatchSize:     batchSize,
 		Timeout:       timeout,
 		Parameters:    parameters,
