@@ -315,6 +315,10 @@ func verifyReleasedCapacity(ctx context.Context, w wire, source reference.Source
 
 func expireSessions(ctx context.Context, w wire) error {
 	source := w.env.Sources["postgresql"]
+	before, err := logicalQueryMetricSnapshot(ctx, w)
+	if err != nil {
+		return err
+	}
 	expiring, err := openAtCapacity(ctx, w, source)
 	if err != nil {
 		return err
@@ -329,6 +333,14 @@ func expireSessions(ctx context.Context, w wire) error {
 		return ctx.Err()
 	}
 	// The query session lifetime is intentionally shorter than this wait.
+	// The lifecycle tracker should emit one expiry outcome per retained result.
+	afterExpiry, err := logicalQueryMetricSnapshot(ctx, w)
+	if err != nil {
+		return err
+	}
+	if err := assertLogicalMetricDelta(before, afterExpiry, "session_expired", len(expiring), len(expiring), len(expiring)); err != nil {
+		return err
+	}
 	// Refresh the independent MCP transport session before issuing new work.
 	if err := w.releaseMCPActor(ctx, reader); err != nil {
 		return fmt.Errorf("renew acceptance session after query expiry wait: %w", err)
@@ -458,7 +470,11 @@ func sourceOutage(ctx context.Context, w wire) error {
 
 func queryDeadline(ctx context.Context, w wire) error {
 	source := w.env.Sources["postgresql"]
-	err := w.env.WithPostgresOrdersLock(ctx, func(locked context.Context) error {
+	before, err := logicalQueryMetricSnapshot(ctx, w)
+	if err != nil {
+		return err
+	}
+	err = w.env.WithPostgresOrdersLock(ctx, func(locked context.Context) error {
 		for range TenantCapacity {
 			started := time.Now()
 			r, err := w.query(locked, reader, "", source, orderedIDs, nil, 1, 1)
@@ -476,6 +492,13 @@ func queryDeadline(ctx context.Context, w wire) error {
 	})
 	if err != nil {
 		return fmt.Errorf("PostgreSQL lock/timeout check: %w", err)
+	}
+	afterTimeout, err := logicalQueryMetricSnapshot(ctx, w)
+	if err != nil {
+		return err
+	}
+	if err := assertLogicalMetricDelta(before, afterTimeout, "timeout", TenantCapacity, 0, 0); err != nil {
+		return err
 	}
 	return verifyReleasedCapacity(ctx, w, source)
 }

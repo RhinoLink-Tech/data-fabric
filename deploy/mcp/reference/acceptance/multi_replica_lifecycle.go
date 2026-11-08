@@ -28,6 +28,17 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 	if len(markerFields) != 9 || markerFields[1] != "reference" {
 		return fmt.Errorf("old REST owner did not issue a marker with the retiring key")
 	}
+	restMetricsBeforeUnavailable, err := ownerMetrics(ctx, env, "rest-a")
+	if err != nil {
+		return err
+	}
+	restUnavailableProbe, err := readQuery(ctx, rest, env.Sources["mysql"], orderedIDs, nil, 1)
+	if err != nil {
+		return err
+	}
+	if err := checkRESTPageOwner(env, restUnavailableProbe, "rest-a"); err != nil {
+		return err
+	}
 	if _, _, body, err := ownerRequest(ctx, env, "rest-a", "operator", http.MethodPost, "/internal/replica/drain"); err != nil {
 		return err
 	} else {
@@ -62,6 +73,20 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 	}
 	if _, err := waitOwnerRetired(ctx, env, "rest-a", 4*time.Second); err != nil {
 		return err
+	}
+	unavailable, err := rest.next(ctx, reader, restUnavailableProbe)
+	if err != nil {
+		return err
+	}
+	if err := unavailable.expectError(surface("rest"), http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE", sessionError); err != nil {
+		return fmt.Errorf("retired REST owner did not reject the probe continuation: %w", err)
+	}
+	restMetricsAfterUnavailable, err := ownerMetrics(ctx, env, "rest-a")
+	if err != nil {
+		return err
+	}
+	if err := assertOwnerLogicalOutcomeDelta(restMetricsBeforeUnavailable, restMetricsAfterUnavailable, "owner_unavailable", 1); err != nil {
+		return fmt.Errorf("retired REST continuation was not recorded once as owner unavailable: %w", err)
 	}
 
 	if err := env.SetRoutedNewOwner(ctx, replicarouting.MCP, "mcp-a"); err != nil {

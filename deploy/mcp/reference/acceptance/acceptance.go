@@ -38,7 +38,7 @@ var matrix = []scenario{
 	{id: "A08", check: interleavedBatches},
 	{id: "A09", check: rejectReplay},
 	{id: "A10", check: concurrentFetch},
-	{id: "A11", check: expireSessions},
+	{id: "A11", check: expireSessions, smoke: true},
 	{id: "A12", check: func(ctx context.Context, w wire) error { return w.rejectAuth(ctx, "") }, smoke: true},
 	{id: "A13", check: invalidTokens},
 	{id: "A14", check: wrongIssuer, restUnsupported: "REST uses HS256 authentication"},
@@ -50,17 +50,23 @@ var matrix = []scenario{
 	{id: "A20", check: unsafeStatements},
 	{id: "A21", check: malformedSQL},
 	{id: "A22", check: sourceOutage},
-	{id: "A23", check: queryDeadline},
+	{id: "A23", check: queryDeadline, smoke: true},
 	{id: "A24", check: auditEvidence},
 	{id: "A25", check: searchSchema, restUnsupported: "no public REST schema search", smoke: true},
+	{id: "A26", check: logicalQueryMetrics, smoke: true},
 }
 
 type evidence struct {
-	Case       string  `json:"case"`
-	Transport  surface `json:"transport"`
-	Result     string  `json:"result"`
-	DurationMS int64   `json:"duration_ms"`
-	Reason     string  `json:"reason,omitempty"`
+	Case             string         `json:"case"`
+	Transport        surface        `json:"transport"`
+	Result           string         `json:"result"`
+	DurationMS       int64          `json:"duration_ms"`
+	CandidateSHA     string         `json:"candidate_sha"`
+	WorkingTreeDirty bool           `json:"working_tree_dirty"`
+	GatewayImage     string         `json:"gateway_image"`
+	GatewayImageID   string         `json:"gateway_image_id"`
+	Profile          map[string]any `json:"profile"`
+	Reason           string         `json:"reason,omitempty"`
 }
 
 // Check writes a JSON line per selected case and transport. Failures are
@@ -78,7 +84,12 @@ func Check(ctx context.Context, env *reference.Environment, out io.Writer, smoke
 			if err := ctx.Err(); err != nil {
 				return errors.Join(errors.Join(failures...), err)
 			}
-			record := evidence{Case: test.id, Transport: kind, Result: "pass"}
+			record := evidence{
+				Case: test.id, Transport: kind, Result: "pass",
+				CandidateSHA: env.RunInfo.SourceRevision, WorkingTreeDirty: env.RunInfo.WorkingTreeDirty,
+				GatewayImage: env.RunInfo.GatewayImage, GatewayImageID: env.RunInfo.GatewayImageID,
+				Profile: acceptanceProfileForRun(env),
+			}
 			if kind == rest && test.restUnsupported != "" {
 				record.Result, record.Reason = "unsupported", test.restUnsupported
 			} else {

@@ -28,6 +28,10 @@ type PrometheusMetrics struct {
 	QueryDuration            *prometheus.HistogramVec
 	QueryRowsRead            *prometheus.CounterVec
 	QueryErrors              *prometheus.CounterVec
+	LogicalQueryOutcomes     *prometheus.CounterVec
+	LogicalQueryDuration     *prometheus.HistogramVec
+	LogicalQueryRowsReturned *prometheus.CounterVec
+	LogicalQueryBatches      *prometheus.CounterVec
 	QueryAdmissionRejections *prometheus.CounterVec
 	AuditPersistenceFailures *prometheus.CounterVec
 
@@ -114,6 +118,35 @@ func InitMetrics() {
 					Help: "Number of failed initial query executions by bounded error category",
 				},
 				[]string{"execution_mode", "error_type"},
+			),
+			LogicalQueryOutcomes: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_outcomes_total",
+					Help: "Terminal outcomes for logical queries across their initial and continuation batches",
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryDuration: promauto.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    "data_fabric_logical_query_duration_seconds",
+					Help:    "Elapsed time from initial query execution until its observed terminal outcome",
+					Buckets: prometheus.DefBuckets,
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryRowsReturned: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_rows_returned_total",
+					Help: "Rows returned before the observed logical-query outcome; values may be incomplete for tracking_overflow",
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryBatches: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_batches_total",
+					Help: "Successful batches returned across logical query lifecycles",
+				},
+				[]string{"execution_mode", "outcome"},
 			),
 			QueryAdmissionRejections: promauto.NewCounterVec(
 				prometheus.CounterOpts{
@@ -261,6 +294,29 @@ func RecordQueryMetrics(executionMode, status string, duration time.Duration, ro
 	}
 }
 
+// RecordLogicalQueryMetrics records a terminal observation for one query result
+// across its initial request and all successful continuation batches. The
+// outcome and execution mode are normalized to fixed label sets.
+func RecordLogicalQueryMetrics(executionMode, outcome string, duration time.Duration, rowsReturned, batches int64) {
+	if metrics == nil {
+		return
+	}
+	executionMode = normalizeExecutionMode(executionMode)
+	outcome = normalizeLogicalQueryOutcome(outcome)
+	if duration < 0 {
+		duration = 0
+	}
+	labels := []string{executionMode, outcome}
+	metrics.LogicalQueryOutcomes.WithLabelValues(labels...).Inc()
+	metrics.LogicalQueryDuration.WithLabelValues(labels...).Observe(duration.Seconds())
+	if rowsReturned > 0 {
+		metrics.LogicalQueryRowsReturned.WithLabelValues(labels...).Add(float64(rowsReturned))
+	}
+	if batches > 0 {
+		metrics.LogicalQueryBatches.WithLabelValues(labels...).Add(float64(batches))
+	}
+}
+
 // RecordQueryError records a failed query using a bounded category label.
 func RecordQueryError(executionMode, errorType string) {
 	if metrics == nil {
@@ -369,6 +425,17 @@ func normalizeQueryStatus(status string) string {
 		return "success"
 	case "error":
 		return "error"
+	default:
+		return "other"
+	}
+}
+
+func normalizeLogicalQueryOutcome(outcome string) string {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "success", "budget_duration", "budget_result", "canceled", "timeout",
+		"session_expired", "owner_unavailable", "backend_error", "authorization_denied",
+		"admission_rejected", "request_error", "tracking_overflow":
+		return strings.ToLower(strings.TrimSpace(outcome))
 	default:
 		return "other"
 	}

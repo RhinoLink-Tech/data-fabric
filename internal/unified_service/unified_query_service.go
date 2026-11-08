@@ -28,6 +28,7 @@ type UnifiedQueryService interface {
 type unifiedQueryService struct {
 	paginationService service.QueryService // The original QueryService implementation
 	streamingService  service.StreamingService
+	lifecycle         *logicalQueryTracker
 	config            *config.Config
 	history           *service.QueryHistory
 	owner             *OwnerLifecycle
@@ -54,6 +55,7 @@ func NewUnifiedQueryServiceWithOwner(
 	return &unifiedQueryService{
 		paginationService: paginationService,
 		streamingService:  streamingService,
+		lifecycle:         newLogicalQueryTracker(),
 		config:            config,
 		history:           service.NewQueryHistory(1000),
 		owner:             owner,
@@ -76,9 +78,11 @@ func (uqs *unifiedQueryService) GetQueryStats(ctx context.Context) (*model.Query
 // MCP traffic are covered alike; continuation fetches extend an already
 // recorded query and are not separate records.
 func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security.Caller, req *model.FetchQueryRequest) (*model.FetchQueryResponse, error) {
+	logicalStarted := time.Now()
 	if uqs.owner != nil {
 		workCtx, finish, err := uqs.owner.enter(ctx, true)
 		if err != nil {
+			middleware.RecordLogicalQueryMetrics(uqs.getExecutionMode(), initialLogicalQueryOutcome(err), time.Since(logicalStarted), 0, 0)
 			return nil, err
 		}
 		defer finish()
@@ -100,6 +104,7 @@ func (uqs *unifiedQueryService) FetchQuery(ctx context.Context, caller *security
 		rowsRead = int64(len(result.Entries))
 	}
 	middleware.RecordQueryMetrics(executionMode, status, time.Since(started), rowsRead)
+	uqs.recordInitialLogicalQuery(started, result, executionMode, err)
 
 	record := service.QueryRecord{
 		DataSourceID: req.DataSourceID,
@@ -245,12 +250,24 @@ func markExecutionMode(response *model.FetchQueryResponse, mode string) {
 // mode it probes the streaming session first, then falls back to pagination
 // only when no streaming session exists.
 func (uqs *unifiedQueryService) FetchNextBatch(ctx context.Context, caller *security.Caller, queryID, slug, token string, batchSize int) (response *model.FetchQueryResponse, err error) {
+	defer func() {
+		if response != nil {
+			uqs.lifecycle.recordPage(queryID, int64(len(response.Entries)), response.NextURI != "", time.Now())
+			return
+		}
+		if err != nil {
+			uqs.lifecycle.recordContinuationError(queryID, err, uqs.hasLiveQuerySession(queryID), time.Now())
+		}
+	}()
 	if uqs.routing != nil && uqs.routing.Verify(slug, queryID, time.Now()) != nil {
 		return nil, service.ErrQuerySessionUnavailable
 	}
 	if uqs.owner != nil {
 		workCtx, finish, err := uqs.owner.enter(ctx, false)
 		if err != nil {
+			if errors.Is(err, service.ErrQuerySessionUnavailable) {
+				uqs.lifecycle.finish(queryID, "owner_unavailable", time.Now())
+			}
 			return nil, err
 		}
 		defer finish()

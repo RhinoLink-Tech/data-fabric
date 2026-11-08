@@ -147,6 +147,10 @@ func checkQueryCancellationAndBudget(ctx context.Context, env *reference.Environ
 	if err := env.SetRoutedNewOwner(ctx, pool, slot); err != nil {
 		return err
 	}
+	beforeMetrics, err := ownerMetrics(ctx, env, slot)
+	if err != nil {
+		return err
+	}
 	first, err := readQuery(ctx, w, env.Sources["postgresql"],
 		"SELECT id FROM orders ORDER BY id LIMIT 3", nil, 1)
 	if err != nil {
@@ -198,6 +202,13 @@ func checkQueryCancellationAndBudget(ctx context.Context, env *reference.Environ
 		}
 	} else if err := replay.expectError(mcpHTTP, 0, "", sessionError); err != nil {
 		return fmt.Errorf("cancelled MCP continuation retained its cursor: %w", err)
+	}
+	afterMetrics, err := ownerMetrics(ctx, env, slot)
+	if err != nil {
+		return err
+	}
+	if err := assertOwnerLogicalOutcomeDelta(beforeMetrics, afterMetrics, "canceled", 1); err != nil {
+		return fmt.Errorf("%s cancellation was not recorded once as a logical-query outcome: %w", kind, err)
 	}
 	if err := w.releaseMCPSessions(ctx); err != nil {
 		return fmt.Errorf("release MCP transport session after cancellation: %w", err)
