@@ -86,10 +86,11 @@ func (env *Environment) WithPostgresOrdersLock(ctx context.Context, check func(c
 // AssertLogsOmit checks the two synthetic gateway processes without returning
 // any raw log lines or matching values to the caller.
 func (env *Environment) AssertLogsOmit(ctx context.Context, values ...string) error {
-	args := env.stack.composeArgs("logs", "--no-color",
-		"data-fabric-api", "data-fabric-api-b",
-		"data-fabric-mcp", "data-fabric-mcp-b",
-		"replica-ingress")
+	services := []string{"data-fabric-api", "data-fabric-mcp"}
+	if env.stack.multiReplica {
+		services = append(services, "data-fabric-api-b", "data-fabric-mcp-b", "replica-ingress")
+	}
+	args := env.stack.composeArgs(append([]string{"logs", "--no-color"}, services...)...)
 	rawLogs, err := env.stack.command(ctx, args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("read reference gateway logs: %w", err)

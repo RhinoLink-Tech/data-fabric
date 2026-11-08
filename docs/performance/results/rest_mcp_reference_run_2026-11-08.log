@@ -1,0 +1,22 @@
+Public acceptance profile full: query session TTL 8s, tenant capacity 2
+Reference project df-reference-f255812bbdcb on linux/amd64, Docker 29.8.0, Compose 5.5.1
+Checkout: f594b0e9246c8b836a2c858f7c9362c69c3301a9
+MySQL (metadata and source): mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
+PostgreSQL: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+Prepared local configuration and verified Docker in 138ms
+Building the gateway image...
+Gateway image df-reference-f255812bbdcb:local (sha256:5101c4e27528dcf42a1433fc4fd5cebe6c88fdb495016a39182bcbf3c1ddde26), prepared in 28.818s
+Starting the source databases and the HTTP API...
+Databases and API ready in 23.788s
+Registered 2 sources with app-a in 43ms
+Policy loaded and remote MCP ready in 12.85s
+app-b reused 2 sources via REST and MCP in 577ms
+Cross-tenant access, a restricted column, and invalid MCP audience rejected. Setup and smoke: 1m6.53s
+Container snapshot (name, CPU, memory/limit):
+df-reference-f255812bbdcb-data-fabric-api-1 0.20% 29.14MiB / 15.34GiB
+df-reference-f255812bbdcb-data-fabric-mcp-1 0.17% 32.57MiB / 15.34GiB
+df-reference-f255812bbdcb-metadata-db-1 0.51% 447.2MiB / 15.34GiB
+df-reference-f255812bbdcb-oidc-fixture-1 0.01% 11.09MiB / 15.34GiB
+df-reference-f255812bbdcb-sample-postgres-1 0.01% 36.74MiB / 15.34GiB
+df-reference-f255812bbdcb-sample-source-1 0.21% 436.8MiB / 15.34GiB
+Combined container memory: 993.54 MiB
