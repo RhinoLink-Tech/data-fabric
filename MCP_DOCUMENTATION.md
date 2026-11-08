@@ -1,13 +1,13 @@
 # Data Fabric MCP 使用说明
 
-Data Fabric 支持 MCP stdio 和远程 Streamable HTTP 两种传输。两种传输共用数据源配置和统一查询服务；远程请求必须携带标准 Authorization: Bearer JWT，并按令牌中的用户和租户权限访问数据源。
+Data Fabric 支持 MCP stdio 和远程 Streamable HTTP 两种传输。两种传输共用数据源配置和统一查询服务。远程请求始终携带 Authorization: Bearer JWT，但应由 mcp.auth_mode 决定验证方式：local-jwt 仅用于开发，release 模式的远程 MCP 必须使用 OIDC。完整的自托管首次使用路径见[部署指南](docs/mcp-deployment-zh.md)。
 
 ## 前置条件
 
-- Go 1.26.1 或更高版本。
-- 已配置并可访问 Data Fabric 元数据数据库。
-- 如果使用 SQL 方言转换功能，需要 Python 3，并在运行环境安装 sqlglot：python3 -m pip install -r requirements-sql-translation.txt。
-- 从仓库根目录启动程序，以便转换脚本能被定位。
+- 从源码运行需要 Go 1.26.1 或更高版本。
+- 已配置并可访问的元数据数据库，以及至少一个已登记的数据源。
+- Python 3 和 requirements-sql-translation.txt 中固定的 SQLGlot 依赖。默认运行时使用 SQLGlot 做只读 SQL 分析与方言转换；Docker 镜像已包含 Python 和该依赖。
+- 从仓库根目录启动程序，以便定位 scripts/sql_translate.py。
 
 ## 启用和启动
 
@@ -29,31 +29,18 @@ mcp.enabled 默认为 false，因此普通 HTTP 服务仍是默认启动模式�
 
 ## 远程 Streamable HTTP
 
-远程模式使用 MCP Streamable HTTP，默认监听 `127.0.0.1:8081`，端点为 `/mcp`。每个初始化、工具调用、GET 监听和会话请求都必须通过 `Authorization: Bearer <JWT>` 认证；未认证、无效、过期或缺少 exp 的令牌会在工具执行前被拒绝。令牌使用 Data Fabric 的 HS256 JWT 验证器（`SECURITY_JWT_SECRET`），必须包含有效的 `exp`，身份以标准 JWT `sub` 为准，并兼容已有 `userId` 声明；可带 `tenantId` 和 `roles` 声明用于租户和管理员授权。令牌由部署方的可信身份服务或运维人员签发；本传输提供令牌验证，不提供 OAuth 授权服务器。
+端点默认监听 127.0.0.1:8081，路径为 /mcp。可配置 tls_cert_file 和 tls_key_file 由服务直接提供 TLS；否则必须绑定 loopback，并放在 HTTPS 反向代理之后。未启用直接 TLS 时，启动校验会拒绝非 loopback 监听地址。
 
-推荐让 TLS 反向代理对外提供 HTTPS，并将 Data Fabric 绑定在 loopback：
+每个远程请求都必须携带 Authorization 请求头中的 Bearer token。mcp.auth_mode 决定令牌校验方式：
 
-~~~yaml
-mcp:
-  enabled: true
-  transport: "streamable-http"
-  address: "127.0.0.1:8081"
-~~~
+- local-jwt 使用 SECURITY_JWT_SECRET 校验本地 HS256 JWT，仅用于开发和本地集成。
+- oidc 使用配置的 HTTPS issuer discovery 与 JWKS 校验身份提供方签发的 access token，并检查 issuer、audience、有效期和必需 scope。release 模式下远程 MCP 必须配置为 oidc。
 
-若由 Data Fabric 直接提供 TLS，配置证书和私钥，并绑定到部署环境需要的地址：
+生产配置至少要设置 mcp.auth_mode: oidc、mcp.oidc_issuer、mcp.oidc_audience 和 mcp.oidc_required_scopes。默认 scope 为 data-fabric.query；默认 claim 映射为 sub（稳定 principal）、tenant、roles 和 preferred_username。可按身份提供方实际发出的 claim 名调整 mcp.oidc_scope_claim、mcp.oidc_tenant_claim、mcp.oidc_roles_claim 和 mcp.oidc_username_claim。issuer 必须为 HTTPS；audience 和 scope 必须与身份提供方针对 Data Fabric 资源签发的 access token 一致。
 
-~~~yaml
-mcp:
-  enabled: true
-  transport: "streamable-http"
-  address: "0.0.0.0:8081"
-  tls_cert_file: "/etc/data-fabric/tls.crt"
-  tls_key_file: "/etc/data-fabric/tls.key"
-~~~
+REST 管理 API 的短时 HS256 JWT 与远程 MCP 的 OIDC access token 是不同凭据。令牌的 sub 应与登记数据源时使用的 principal 对齐，tenant claim 应与数据源租户一致；不要将管理 JWT 交给 MCP，也不要把 SECURITY_JWT_SECRET 当作 OIDC 签名密钥。网关只验证 OIDC token，不签发 token，也不提供 OAuth 授权服务器或动态客户端注册。
 
-没有直接 TLS 证书时，程序拒绝绑定非 loopback 地址。通过反向代理部署时，客户端仍应使用 HTTPS 地址；不要把未加密的内部监听端口暴露到不可信网络。远程连接需要配置有效的 JWT 密钥；密钥不得提交到仓库。
-
-自托管远程部署（元数据库 + 示例数据源 + TLS + 客户端接入示例）的完整快速上手见 [自托管远程 MCP 部署指南](docs/mcp-deployment.md)。
+release 模式还要求管理认证、数据库只读会话和审计保持开启。自托管远程部署、客户端配置、principal/tenant 对齐和首次查询步骤见[部署指南](docs/mcp-deployment-zh.md)。
 
 ## 可用工具
 
@@ -73,4 +60,4 @@ mcp:
 
 MCP stdio 进程具有启动它的 MCP 客户端进程权限，适合本地可信客户端。远程 Streamable HTTP 始终要求有效 Bearer JWT，并在每次请求上重新验证令牌；工具执行使用 JWT 身份与现有数据源所有者、租户和管理员授权规则。远程部署必须通过 HTTPS 保护客户端到服务端的链路，可由 Data Fabric 直接终止 TLS，也可由绑定在 loopback 的服务置于 TLS 反向代理后。
 
-数据源信息工具不返回用户名和密码。查询仍受只读校验和数据库账号权限约束。Streamable HTTP 使用自托管 JWT 验证，不包含 OAuth 授权服务器或动态客户端注册功能。
+数据源信息工具不返回用户名和密码。查询仍受只读校验和数据库账号权限约束。生产 Streamable HTTP 使用 OIDC access token 验证；本地 local-jwt 模式只适合开发。Data Fabric 不签发 OAuth token，也不提供动态客户端注册功能。

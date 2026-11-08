@@ -20,4 +20,4 @@ The form is intentionally generic. Some connectors require connector-specific co
 
 ## Pilot status
 
-This interface is an engineering reference implementation. Reduced setup time or operator effort has not been established with a real team. Validate those outcomes using the [M4 pilot evidence protocol](../validation/real-team-pilot-evidence.md) before making a customer-value claim.
+This interface is an engineering reference implementation. Reduced setup time or operator effort has not been established with a real team. Validate those outcomes using the [M4 pilot evidence protocol](validation/real-team-pilot-evidence.md) before making a customer-value claim.

@@ -20,4 +20,4 @@ Data Fabric 在服务端提供自托管管理页面，地址为 /ui/。页面随
 
 ## 试点状态
 
-该界面是工程参考实现。真实团队的配置时间或操作负担尚未测量。对外描述客户价值前，请按 [M4 试点证据协议](../validation/real-team-pilot-evidence.md)验证这些结果。
+该界面是工程参考实现。真实团队的配置时间或操作负担尚未测量。对外描述客户价值前，请按 [M4 试点证据协议](validation/real-team-pilot-evidence.md)验证这些结果。
