@@ -33,7 +33,7 @@ var matrix = []scenario{
 	{id: "A03", check: listTables, restUnsupported: "no policy-filtered public REST table listing"},
 	{id: "A04", check: describeTable, restUnsupported: "no policy-filtered public REST table description"},
 	{id: "A05", check: bindParameters, smoke: true},
-	{id: "A06", check: normalizedValues},
+	{id: "A06", check: normalizedValues, smoke: true},
 	{id: "A07", check: filterAggregateJoin},
 	{id: "A08", check: interleavedBatches},
 	{id: "A09", check: rejectReplay},
