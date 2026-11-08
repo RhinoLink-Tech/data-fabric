@@ -137,10 +137,10 @@ func (s *composeStack) cleanup(output io.Writer, keep, ownedImage bool) error {
 	return os.RemoveAll(s.directory)
 }
 
-func (s *composeStack) recordResources(ctx context.Context, out io.Writer) error {
+func (s *composeStack) resourceSnapshot(ctx context.Context) (ResourceSnapshot, error) {
 	raw, err := s.compose(ctx, "ps", "--quiet")
 	if err != nil {
-		return err
+		return ResourceSnapshot{}, err
 	}
 	ids := strings.Fields(raw)
 	expected := 6
@@ -151,29 +151,60 @@ func (s *composeStack) recordResources(ctx context.Context, out io.Writer) error
 		expected++
 	}
 	if len(ids) != expected {
-		return fmt.Errorf("resource snapshot expected %d reference containers, got %d", expected, len(ids))
+		return ResourceSnapshot{}, fmt.Errorf("resource snapshot expected %d reference containers, got %d", expected, len(ids))
 	}
 	stats, err := s.docker(ctx, append([]string{
-		"stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}} {{.MemUsage}}",
+		"stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}",
 	}, ids...)...)
+	if err != nil {
+		return ResourceSnapshot{}, err
+	}
+	snapshot := ResourceSnapshot{CapturedAtUTC: time.Now().UTC().Format(time.RFC3339Nano)}
+	for _, line := range strings.Split(stats, "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			return ResourceSnapshot{}, fmt.Errorf("unexpected docker stats output")
+		}
+		cpuText := strings.TrimSuffix(strings.TrimSpace(fields[1]), "%")
+		cpu, err := strconv.ParseFloat(cpuText, 64)
+		if err != nil {
+			return ResourceSnapshot{}, fmt.Errorf("parse docker CPU sample: %w", err)
+		}
+		memoryText, limitText, ok := strings.Cut(fields[2], "/")
+		if !ok {
+			return ResourceSnapshot{}, fmt.Errorf("unexpected docker memory sample")
+		}
+		memory, err := memoryBytes(strings.TrimSpace(memoryText))
+		if err != nil {
+			return ResourceSnapshot{}, err
+		}
+		limit, err := memoryBytes(strings.TrimSpace(limitText))
+		if err != nil {
+			return ResourceSnapshot{}, err
+		}
+		container := ContainerResource{
+			Name: strings.TrimSpace(fields[0]), CPUPercent: cpu,
+			MemoryBytes: uint64(memory), MemoryLimitBytes: uint64(limit),
+		}
+		snapshot.Containers = append(snapshot.Containers, container)
+		snapshot.TotalMemoryBytes += container.MemoryBytes
+	}
+	return snapshot, nil
+}
+
+func (s *composeStack) recordResources(ctx context.Context, out io.Writer) error {
+	snapshot, err := s.resourceSnapshot(ctx)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "Container snapshot (name, CPU, memory/limit):")
-	var total float64
-	for _, line := range strings.Split(stats, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			return fmt.Errorf("unexpected docker stats output")
-		}
-		value, err := memoryBytes(fields[2])
-		if err != nil {
-			return err
-		}
-		total += value
-		fmt.Fprintln(out, line)
+	for _, container := range snapshot.Containers {
+		fmt.Fprintf(out, "%s %.2f%% %.2fMiB / %.2fMiB\n", container.Name,
+			container.CPUPercent, float64(container.MemoryBytes)/(1<<20),
+			float64(container.MemoryLimitBytes)/(1<<20))
 	}
-	fmt.Fprintf(out, "Combined container memory: %.2f MiB\n", total/(1<<20))
+	fmt.Fprintf(out, "Combined container memory: %.2f MiB\n",
+		float64(snapshot.TotalMemoryBytes)/(1<<20))
 	return nil
 }
 

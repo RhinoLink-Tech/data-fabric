@@ -49,18 +49,21 @@ type Source struct {
 
 // RunInfo identifies the disposable stack and candidate measured by an acceptance run.
 type RunInfo struct {
-	SourceRevision      string
-	WorkingTreeDirty    bool
-	DockerServerVersion string
-	ComposeVersion      string
-	GatewayImage        string
-	GatewayImageID      string
-	MySQLImage          string
-	PostgreSQLImage     string
-	SessionTTLSeconds   int
-	TenantConcurrency   int
-	MultiReplica        bool
-	TrinoIntegration    bool
+	SourceRevision           string
+	WorkingTreeDirty         bool
+	DockerServerVersion      string
+	ComposeVersion           string
+	GatewayImage             string
+	GatewayImageID           string
+	GatewayImageSizeBytes    uint64
+	MySQLImage               string
+	MySQLImageSizeBytes      uint64
+	PostgreSQLImage          string
+	PostgreSQLImageSizeBytes uint64
+	SessionTTLSeconds        int
+	TenantConcurrency        int
+	MultiReplica             bool
+	TrinoIntegration         bool
 }
 
 // Environment is valid during the Run callback. It uses generated credentials
@@ -214,9 +217,17 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if err != nil {
 		return err
 	}
+	imageSize, err := s.docker(ctx, "image", "inspect", "--format", "{{.Size}}", s.image)
+	if err != nil {
+		return err
+	}
 	env.RunInfo.GatewayImage = s.image
 	env.RunInfo.GatewayImageID = imageID
-	fmt.Fprintf(out, "Gateway image %s (%s), prepared in %s\n", s.image, imageID, elapsed(stage))
+	env.RunInfo.GatewayImageSizeBytes, err = strconv.ParseUint(imageSize, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse gateway image size: %w", err)
+	}
+	fmt.Fprintf(out, "Gateway image %s (%s, %d bytes), prepared in %s\n", s.image, imageID, env.RunInfo.GatewayImageSizeBytes, elapsed(stage))
 
 	stage = time.Now()
 	fmt.Fprintln(out, "Starting the source databases and the HTTP API...")
@@ -226,6 +237,22 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	}
 	if err := s.up(ctx, services...); err != nil {
 		return err
+	}
+	for _, image := range []struct {
+		reference string
+		target    *uint64
+	}{
+		{mysqlImage, &env.RunInfo.MySQLImageSizeBytes},
+		{postgresImage, &env.RunInfo.PostgreSQLImageSizeBytes},
+	} {
+		sizeText, sizeErr := s.docker(ctx, "image", "inspect", "--format", "{{.Size}}", image.reference)
+		if sizeErr != nil {
+			return sizeErr
+		}
+		*image.target, sizeErr = strconv.ParseUint(sizeText, 10, 64)
+		if sizeErr != nil {
+			return fmt.Errorf("parse reference source image size: %w", sizeErr)
+		}
 	}
 	env.APIURL, err = s.url(ctx, "data-fabric-api", "8080", "http")
 	if err != nil {

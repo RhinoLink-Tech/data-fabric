@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/deploy/mcp/reference"
 	"github.com/RhinoLink-Tech/data-fabric/deploy/mcp/reference/acceptance"
@@ -22,10 +23,17 @@ func main() {
 	multiReplica := flag.Bool("multi-replica", false, "run the containerized two-replica continuation acceptance cases")
 	benchmarkSamples := flag.Int("benchmark-samples", 0, "also measure warmed serial REST/MCP tasks (minimum 20 samples)")
 	benchmarkOutput := flag.String("benchmark-output", "", "write benchmark raw samples and summaries as JSONL")
+	loadDuration := flag.Duration("load-duration", 0, "run bounded concurrency and mixed-task soak (15s to 10m)")
+	loadOutput := flag.String("load-output", "", "write restart, capacity, source SQL and resource evidence as JSONL")
+	recoveryWait := flag.Duration("recovery-wait", time.Minute, "idle wait before the final resource-return snapshot")
 	flag.Parse()
 	if *benchmarkSamples < 0 || (*benchmarkSamples > 0 && *benchmarkSamples < 20) ||
 		(*benchmarkSamples == 0) != (*benchmarkOutput == "") {
 		fmt.Fprintln(os.Stderr, "benchmark requires both -benchmark-samples (20 or more) and -benchmark-output")
+		os.Exit(2)
+	}
+	if (*loadDuration == 0) != (*loadOutput == "") {
+		fmt.Fprintln(os.Stderr, "load requires both -load-duration (15s to 10m) and -load-output")
 		os.Exit(2)
 	}
 	options.Output = os.Stderr
@@ -64,6 +72,22 @@ func main() {
 					closeErr := output.Close()
 					if benchmarkErr != nil || closeErr != nil {
 						failures = append(failures, errors.Join(benchmarkErr, closeErr))
+					}
+				}
+			}
+		}
+		if *loadDuration > 0 {
+			if err := os.MkdirAll(filepath.Dir(*loadOutput), 0o755); err != nil {
+				failures = append(failures, fmt.Errorf("create load output directory: %w", err))
+			} else {
+				output, err := os.Create(*loadOutput)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("create load output: %w", err))
+				} else {
+					loadErr := acceptance.CapacityAndSoak(ctx, env, output, *loadDuration, *recoveryWait)
+					closeErr := output.Close()
+					if loadErr != nil || closeErr != nil {
+						failures = append(failures, errors.Join(loadErr, closeErr))
 					}
 				}
 			}

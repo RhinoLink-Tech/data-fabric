@@ -8,17 +8,16 @@ From the repository root, with Docker and Compose available:
 
 ```sh
 mkdir -p docs/performance/results
+run_date=$(date -u +%F)
 
-go run ./deploy/mcp/reference/cmd/acceptance \
-  -benchmark-samples 100 \
-  -benchmark-output docs/performance/results/rest_mcp_task_$(date -u +%F).jsonl \
-  > docs/performance/results/rest_mcp_acceptance_$(date -u +%F).jsonl \
-  2> /tmp/data-fabric-reference-run.log
+go run ./deploy/mcp/reference/cmd/acceptance   -benchmark-samples 100   -benchmark-output "docs/performance/results/rest_mcp_task_${run_date}.jsonl"   -load-duration 2m   -load-output "docs/performance/results/rest_mcp_load_${run_date}.jsonl"   -recovery-wait 1m   > "docs/performance/results/rest_mcp_acceptance_${run_date}.jsonl"   2> /tmp/data-fabric-reference-run.log
 ```
 
-The runner builds the production Dockerfile, creates a uniquely named disposable reference stack, generates temporary identities and credentials, runs the public acceptance matrix, then measures the tasks below. It removes the temporary stack and generated configuration at exit. The image build is part of the reported setup time; benchmark sample durations start after deployment, policy loading and five warm-up tasks for each source/transport/scenario.
+The runner builds the production Dockerfile, creates a uniquely named disposable reference stack, generates temporary identities and credentials, runs the public acceptance matrix, then measures the tasks below. It removes the temporary stack and generated configuration at exit. The image build and profile startup are included in setup timing; benchmark sample durations start after deployment, policy loading and five warm-up tasks for each source/transport/scenario.
 
-`-benchmark-samples` accepts 20–10,000 timed attempts per combination. The JSONL file has one environment record, raw warm-ups and timed attempts, and one percentile summary per combination. Acceptance failures are preserved in the acceptance JSONL and the runner still collects benchmark samples before exiting nonzero. Keep the acceptance JSONL and reference log alongside the raw benchmark file when publishing a run; the first contains denied/error outcomes and the second records startup stages, candidate checkout, image identity and container resource snapshots. These outputs contain only generated fixture identifiers and no bearer tokens or source credentials.
+`-benchmark-samples` accepts 20–10,000 timed attempts per combination. The task JSONL file has one environment record, raw warm-ups and timed attempts, and one percentile summary per combination. `-load-duration` accepts 15 seconds to 10 minutes and requires `-load-output`; its JSONL records REST/MCP restart-to-first-authorized-result, isolated per-task source statement counters, synchronized one/four-way small-query waves, two-tenant waves, mixed first-page/full-result tasks, a paced fixed-duration soak, and component resource samples before/during/after recovery. Each soak worker starts at most one task per second to keep this reference workload under the profile's configured request-rate ceiling. The mixed full-result task takes longer because it uses three gateway calls; it is not a deliberately slow source query or a large-data test.
+
+The acceptance JSONL preserves denied/error outcomes. The reference log records startup stages, candidate checkout, image identities/sizes and the initial idle component resource snapshot. The load JSONL records resource snapshots as structured per-container samples and normalized source statement digests. All output contains only generated fixture identifiers and no bearer tokens or source credentials. PostgreSQL statement counters are enabled only in this disposable reference profile; they are not part of the ordinary quickstart.
 
 ## Measured tasks
 
