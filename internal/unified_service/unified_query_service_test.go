@@ -194,6 +194,34 @@ func TestQueryAdmissionRejectionsAreCountedAcrossExecutionPaths(t *testing.T) {
 	})
 }
 
+func TestQueryAdmissionCapacityGaugesReflectLiveProcessSnapshot(t *testing.T) {
+	middleware.InitMetrics()
+	limiter := service.NewQueryAdmissionLimiter(4, 2)
+	middleware.SetQueryAdmissionCapacityProvider(limiter.CapacitySnapshot)
+	t.Cleanup(func() {
+		middleware.SetQueryAdmissionCapacityProvider(nil)
+	})
+
+	assertGauge := func(metric string, want float64) {
+		t.Helper()
+		got := prometheusMetricValue(t, scrapePrometheusMetrics(t), metric)
+		if got != want {
+			t.Fatalf("%s = %v, want %v", metric, got, want)
+		}
+	}
+	assertGauge("data_fabric_query_admission_active_reservations", 0)
+	assertGauge("data_fabric_query_admission_max_reservations", 4)
+
+	release, admitted := limiter.Acquire(&security.Caller{UserID: "alice", TenantID: "tenant-a"})
+	if !admitted {
+		t.Fatal("query admission unexpectedly rejected an available slot")
+	}
+	assertGauge("data_fabric_query_admission_active_reservations", 1)
+	assertGauge("data_fabric_query_admission_max_reservations", 4)
+	release()
+	assertGauge("data_fabric_query_admission_active_reservations", 0)
+}
+
 func prometheusMetricValueOrZero(t *testing.T, exposition, seriesPrefix string) float64 {
 	t.Helper()
 	for _, line := range strings.Split(exposition, "\n") {
