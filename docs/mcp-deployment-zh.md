@@ -30,7 +30,7 @@ python3 scripts/mcp/onboard.py init
 - `MCP_OIDC_REQUIRED_SCOPES`：至少包含 `data-fabric.query`
 - 若 provider 的 claim 名不同，再设置 `MCP_OIDC_TENANT_CLAIM`、`MCP_OIDC_ROLES_CLAIM`、`MCP_OIDC_USERNAME_CLAIM`
 
-初始化生成的自签名 TLS 证书仅用于 `localhost`、`data-fabric.local` 和 `127.0.0.1` 私有试用。互联网部署应替换为域名证书。MCP 私钥通过 `DATA_FABRIC_TLS_GID` 指定的数字 supplementary group 交给非 root 容器读取，权限为 `0640`；不要把私钥改成 world-readable。私钥目录也必须允许该组进入。
+初始化生成的自签名 TLS 证书仅用于 `localhost`、`data-fabric.local` 和 `127.0.0.1` 私有试用。互联网部署应替换为域名证书。MCP 私钥通过 `DATA_FABRIC_TLS_GID` 指定的数字 supplementary group 交给非 root 容器读取，权限为 `0640`；不要把私钥改成 world-readable。私钥目录也必须允许该组进入。初始化会先校验已有 keyring 结构、active ID 和密钥长度；发现不一致时停止，不会自动替换密钥。
 
 ## 2. 启动与诊断
 
@@ -84,7 +84,7 @@ python3 ../../scripts/mcp/onboard.py doctor \
   --source-type mysql --source-config source.json
 ```
 
-该检查只把选择的连接配置发往本机 loopback 管理 API 的 connection-test 路由；不会注册数据源，也不会在输出中打印凭据。失败时会给出 correlation ID，供本机日志排查。标准输出和日志不要粘贴到公共 issue 中。
+该检查只把选择的连接配置发往本机 loopback 管理 API 的 connection-test 路由；不会注册数据源，也不会在输出中打印凭据。只有 API 明确返回 healthy 才报告成功；HTTP 200 但连接状态为 unhealthy 仍报告失败。失败时会给出 correlation ID，供本机日志排查。标准输出和日志不要粘贴到公共 issue 中。
 
 ## 4. 首次任务和恢复
 

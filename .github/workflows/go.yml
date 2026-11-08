@@ -511,6 +511,9 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Run self-hosted onboarding regression tests
+        run: python -m unittest discover -s scripts/mcp -p "test_*.py"
+
       - name: Test contract selection and required gate
         run: python -m unittest discover -s scripts/ci -p "test_*.py"
 
