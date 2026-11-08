@@ -554,6 +554,14 @@ func emptyMutationPage(page batch, queryID, mode string, total int) error {
 func pageMutationSemantics(ctx context.Context, w wire) error {
 	return forEachSource(w, func(sourceKey string, source reference.Source) error {
 		run := func(check func() error) error {
+			if w.kind == mcpHTTP && w.env.RunInfo.MultiReplica {
+				// The multi-replica reference profile deliberately uses a short, fixed
+				// MCP owner-session TTL. Each run is an independent data scenario;
+				// use a fresh transport session so earlier scenarios cannot expire it.
+				if err := w.releaseMCPActor(ctx, reader); err != nil {
+					return fmt.Errorf("release MCP session before page-mutation scenario: %w", err)
+				}
+			}
 			if err := w.env.ResetSyntheticOrders(ctx, sourceKey); err != nil {
 				return err
 			}
