@@ -16,6 +16,7 @@ services:
       - ./sample-source-init-reference.sql:/docker-entrypoint-initdb.d/90-reference.sql:ro
   sample-postgres:
     image: ${DF_REFERENCE_POSTGRES_IMAGE:?run the reference command}
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
       POSTGRES_DB: sample
       POSTGRES_USER: postgres
@@ -24,6 +25,7 @@ services:
     volumes:
       - reference-postgres-data:/var/lib/postgresql/data
       - ./sample-source-init-postgres.sh:/docker-entrypoint-initdb.d/10-sample.sh:ro
+      - ./sample-source-init-performance.sql:/docker-entrypoint-initdb.d/20-reference-performance.sql:ro
       - ./sample-source-init-reference.sql:/docker-entrypoint-initdb.d/90-reference.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "sample"]

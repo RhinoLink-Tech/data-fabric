@@ -130,6 +130,7 @@ func (r reply) failureKind() string {
 		switch r.code {
 		case "TABLE_ACCESS_DENIED", "DATASOURCE_ACCESS_DENIED", "DATASOURCE_NOT_FOUND",
 			"QUERY_SESSION_UNAVAILABLE", "QUERY_ENGINE_ERROR", "QUERY_TIMEOUT",
+			"VALIDATION_ERROR", "INVALID_REQUEST", "RATE_LIMIT_EXCEEDED",
 			"QUERY_CANCELLED", "INVALID_QUERY", "COUNT_UNSUPPORTED",
 			"QUERY_ADMISSION_LIMIT", "QUERY_RATE_LIMIT_EXCEEDED", "DATASOURCE_INACTIVE",
 			"SQL_INJECTION_DETECTED", "SQL_SYNTAX_ERROR":
@@ -285,9 +286,25 @@ func (w wire) tool(ctx context.Context, actor, correlation, name string, args ma
 	return callTool(ctx, client, name, args)
 }
 
+var errMCPRateLimited = errors.New("MCP request rate limited")
+
+func isMCPRateLimit(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "status 429") ||
+		strings.Contains(message, "too many requests") ||
+		strings.Contains(message, "query_rate_limit_exceeded") ||
+		strings.Contains(message, "rate_limit_exceeded")
+}
+
 func callTool(ctx context.Context, client *mcpclient.Client, name string, args map[string]any) (reply, error) {
 	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: name, Arguments: args}})
 	if err != nil {
+		if isMCPRateLimit(err) {
+			return reply{}, errMCPRateLimited
+		}
 		return reply{}, fmt.Errorf("call MCP tool %s: %T", name, err)
 	}
 	if result == nil || len(result.Content) != 1 {
