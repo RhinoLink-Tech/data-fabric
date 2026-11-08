@@ -60,6 +60,61 @@ def is_placeholder(value):
     return not normalized or normalized in PLACEHOLDERS or (normalized.startswith("<") and normalized.endswith(">"))
 
 
+def validate_credential_keyring(ring_value, active_id):
+    ring_value, active_id = ring_value.strip(), active_id.strip()
+    existing_ring = None
+    if not is_placeholder(ring_value):
+        try:
+            existing_ring = json.loads(ring_value)
+        except json.JSONDecodeError as exc:
+            raise OnboardingError("existing credential keyring is not valid JSON; fix it manually before initializing") from exc
+        if not isinstance(existing_ring, dict):
+            raise OnboardingError("existing credential keyring must be a JSON object; restore a verified backup before initializing")
+    if is_placeholder(active_id):
+        if is_placeholder(ring_value):
+            active_id = "key-1"
+        else:
+            if len(existing_ring) != 1:
+                raise OnboardingError("existing keyring has no active ID and multiple keys; set DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID manually")
+            active_id = next(iter(existing_ring))
+    if not active_id or ":" in active_id:
+        raise OnboardingError("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID must be non-empty and must not contain ':'")
+    if existing_ring is not None:
+        if active_id not in existing_ring:
+            raise OnboardingError("existing credential keyring does not contain its active ID; restore a verified backup before initializing")
+        for key_id, encoded_key in existing_ring.items():
+            if not isinstance(key_id, str) or not key_id or ":" in key_id or not isinstance(encoded_key, str):
+                raise OnboardingError("existing credential keyring has an invalid key ID or value; restore a verified backup before initializing")
+            try:
+                decoded_key = base64.b64decode(encoded_key, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise OnboardingError("existing credential keyring contains invalid base64; restore a verified backup before initializing") from exc
+            if len(decoded_key) != 32:
+                raise OnboardingError("existing credential keyring keys must be 32 bytes; restore a verified backup before initializing")
+    return existing_ring, active_id
+
+
+def selected_source_result(code, response_body):
+    connection_status, envelope_ok = "", False
+    if len(response_body) <= 1_048_576:
+        try:
+            envelope = json.loads(response_body)
+            data = envelope.get("data") if isinstance(envelope, dict) else None
+            raw_status = data.get("status", "") if isinstance(data, dict) else ""
+            if raw_status in {"healthy", "unhealthy", "error"}:
+                connection_status = raw_status
+            envelope_ok = envelope.get("success") is True if isinstance(envelope, dict) else False
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+            pass
+    if not 200 <= code < 300:
+        return False, f"selected-source connection failed with HTTP {code}; check the source type and local API response"
+    if envelope_ok and connection_status == "healthy":
+        return True, "selected-source connection succeeded"
+    if connection_status and connection_status != "healthy":
+        return False, f"selected-source connection failed with health state {connection_status}; check the host, port, database and credentials"
+    return False, "selected-source check returned no healthy result; inspect local API logs"
+
+
 def replace_env_values(text, replacements):
     lines, seen, output = text.splitlines(), set(), []
     for line in lines:
@@ -170,21 +225,10 @@ def command_init(args):
         if is_placeholder(current.get(key, "")):
             replacements[key] = secrets.token_urlsafe(32)
     ring_value = current.get("DATA_FABRIC_CREDENTIAL_KEYS", "").strip()
-    active_id = current.get("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "").strip()
-    if is_placeholder(active_id):
-        if is_placeholder(ring_value):
-            active_id = "key-1"
-        else:
-            try:
-                existing_ring = json.loads(ring_value)
-            except json.JSONDecodeError as exc:
-                raise OnboardingError("existing credential keyring is not valid JSON; fix it manually before initializing") from exc
-            if not isinstance(existing_ring, dict) or len(existing_ring) != 1:
-                raise OnboardingError("existing keyring has no active ID and multiple keys; set DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID manually")
-            active_id = next(iter(existing_ring))
+    configured_active_id = current.get("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "").strip()
+    existing_ring, active_id = validate_credential_keyring(ring_value, configured_active_id)
+    if is_placeholder(configured_active_id):
         replacements["DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID"] = active_id
-    if not active_id or ":" in active_id:
-        raise OnboardingError("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID must be non-empty and must not contain ':'")
     if is_placeholder(ring_value):
         replacements["DATA_FABRIC_CREDENTIAL_KEYS"] = json.dumps({active_id: base64.b64encode(secrets.token_bytes(32)).decode("ascii")}, separators=(",", ":"))
     tls_gid = current.get("DATA_FABRIC_TLS_GID", "").strip()
@@ -452,16 +496,17 @@ def source_connection_check(args, directory, env_path, values, results):
     request = urllib.request.Request(url, data=json.dumps(config, separators=(",", ":")).encode("utf-8"), method="POST", headers={
         "Content-Type": "application/json", "Authorization": f"Bearer {token}", "X-Correlation-ID": request_id,
     })
+    response_body = b""
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             code = response.status
+            response_body = response.read(1_048_577)
     except urllib.error.HTTPError as exc:
         code = exc.code
     except (OSError, urllib.error.URLError, TimeoutError):
-        add_result(results, False, f"selected-source request could not reach the loopback API; correlation ID {request_id}")
+        add_result(results, False, f"selected-source request could not reach the loopback API; check the local API listener; correlation ID {request_id}")
         return
-    ok = 200 <= code < 300
-    result = "selected-source connection succeeded" if ok else f"selected-source connection failed with HTTP {code}"
+    ok, result = selected_source_result(code, response_body)
     add_result(results, ok, f"{result}; correlation ID {request_id}")
 
 

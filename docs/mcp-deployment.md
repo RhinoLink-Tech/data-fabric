@@ -60,8 +60,9 @@ The initializer creates `deploy/mcp/.env` with fresh database passwords, a
 self-signed certificate. It writes `.env` atomically with mode `0600`, creates
 the private key with mode `0640` for the configured container group, and never
 replaces non-empty secrets or existing TLS files. Re-running it fills only
-missing values. It refuses ambiguous existing keyrings and partial TLS pairs
-instead of guessing or overwriting data.
+missing values. It refuses malformed or ambiguous existing keyrings, keyring
+active-ID mismatches, and partial TLS pairs instead of guessing or overwriting
+data.
 
 Set `MCP_OIDC_ISSUER` and `MCP_OIDC_AUDIENCE` in `.env` to the HTTPS issuer and
 resource audience registered with your identity provider. Keep production
@@ -169,7 +170,9 @@ an owner-only file (`chmod 600 source.json`) or pipe it on stdin, then run
 `python3 ../../scripts/mcp/onboard.py doctor --source-type mysql
 --source-config source.json` with `DF_MANAGEMENT_TOKEN` set. The check posts the
 configuration only to the loopback management API, never prints source
-credentials, and returns a correlation ID for sanitized follow-up. Delete any
+credentials, and returns a correlation ID for sanitized follow-up. A
+connection check is successful only when the API reports a healthy connection;
+HTTP 200 with an unhealthy connection is reported as a failure. Delete any
 temporary file when finished.
 
 ### 6. Register the sample source
