@@ -36,6 +36,9 @@ type StatementStatistic struct {
 	CountStatement        bool    `json:"count_statement"`
 	Calls                 uint64  `json:"calls"`
 	RowsReturned          uint64  `json:"rows_returned"`
+	HistoryCalls          uint64  `json:"history_calls,omitempty"`
+	HistoryRowsReturned   uint64  `json:"history_rows_returned,omitempty"`
+	HistoryAvailable      bool    `json:"history_available,omitempty"`
 	RowsExamined          uint64  `json:"rows_examined,omitempty"`
 	RowsExaminedAvailable bool    `json:"rows_examined_available"`
 	TotalExecutionTimeMS  float64 `json:"total_execution_time_ms"`
@@ -96,7 +99,7 @@ func (env *Environment) ResetSourceStatementStatistics(ctx context.Context, sour
 	switch source {
 	case "mysql":
 		service = "sample-source"
-		command = `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --database=sample --batch --skip-column-names --execute="TRUNCATE TABLE performance_schema.events_statements_summary_by_digest"`
+		command = `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --database=sample --batch --skip-column-names --execute="UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME = 'events_statements_history_long'; TRUNCATE TABLE performance_schema.events_statements_history_long; TRUNCATE TABLE performance_schema.events_statements_summary_by_digest"`
 	case "postgresql":
 		service = "sample-postgres"
 		command = `PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d sample -At -c "SELECT pg_stat_statements_reset()"`
@@ -120,7 +123,41 @@ func (env *Environment) SourceStatementStatistics(ctx context.Context, source st
 	switch source {
 	case "mysql":
 		service = "sample-source"
-		command = `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --database=sample --batch --raw --skip-column-names --execute="SELECT COALESCE(DIGEST, ''), REPLACE(REPLACE(REPLACE(COALESCE(DIGEST_TEXT, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '), COALESCE(COUNT_STAR, 0), COALESCE(SUM_ROWS_SENT, 0), COALESCE(SUM_ROWS_EXAMINED, 0), COALESCE(SUM_TIMER_WAIT, 0) FROM performance_schema.events_statements_summary_by_digest WHERE SCHEMA_NAME = 'sample' AND (DIGEST_TEXT LIKE '%orders%' OR DIGEST_TEXT LIKE '%order_items%') ORDER BY DIGEST_TEXT"`
+		command = `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --database=sample --batch --raw --skip-column-names --execute="
+WITH history_counts AS (
+  SELECT DIGEST, MIN(DIGEST_TEXT) AS DIGEST_TEXT, COUNT(*) AS HISTORY_CALLS,
+    COALESCE(SUM(ROWS_SENT), 0) AS HISTORY_ROWS_SENT
+  FROM performance_schema.events_statements_history_long
+  WHERE CURRENT_SCHEMA = 'sample' AND DIGEST IS NOT NULL
+    AND (DIGEST_TEXT LIKE '%orders%' OR DIGEST_TEXT LIKE '%order_items%')
+    AND DIGEST_TEXT NOT LIKE '%performance_schema%'
+  GROUP BY DIGEST
+),
+combined AS (
+  SELECT D.DIGEST, COALESCE(D.DIGEST_TEXT, H.DIGEST_TEXT) AS DIGEST_TEXT,
+    COALESCE(D.COUNT_STAR, 0) AS COUNT_STAR,
+    COALESCE(D.SUM_ROWS_SENT, 0) AS SUM_ROWS_SENT,
+    COALESCE(D.SUM_ROWS_EXAMINED, 0) AS SUM_ROWS_EXAMINED,
+    COALESCE(D.SUM_TIMER_WAIT, 0) AS SUM_TIMER_WAIT,
+    COALESCE(H.HISTORY_CALLS, 0) AS HISTORY_CALLS,
+    COALESCE(H.HISTORY_ROWS_SENT, 0) AS HISTORY_ROWS_SENT
+  FROM performance_schema.events_statements_summary_by_digest AS D
+  LEFT JOIN history_counts AS H ON H.DIGEST = D.DIGEST
+  WHERE D.SCHEMA_NAME = 'sample'
+    AND (D.DIGEST_TEXT LIKE '%orders%' OR D.DIGEST_TEXT LIKE '%order_items%')
+    AND D.DIGEST_TEXT NOT LIKE '%performance_schema%'
+  UNION ALL
+  SELECT H.DIGEST, H.DIGEST_TEXT, 0, 0, 0, 0, H.HISTORY_CALLS, H.HISTORY_ROWS_SENT
+  FROM history_counts AS H
+  LEFT JOIN performance_schema.events_statements_summary_by_digest AS D ON D.DIGEST = H.DIGEST
+  WHERE D.DIGEST IS NULL
+)
+SELECT COALESCE(DIGEST, ''),
+  REPLACE(REPLACE(REPLACE(COALESCE(DIGEST_TEXT, ''), CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' '),
+  COUNT_STAR, SUM_ROWS_SENT, SUM_ROWS_EXAMINED, SUM_TIMER_WAIT, HISTORY_CALLS, HISTORY_ROWS_SENT
+FROM combined
+ORDER BY DIGEST_TEXT
+"`
 	case "postgresql":
 		service = "sample-postgres"
 		command = `PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d sample -At -F '|' -c "SELECT queryid::text, calls::text, rows::text, total_exec_time::text, regexp_replace(query, '[[:space:]]+', ' ', 'g') FROM pg_stat_statements WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) AND (query ILIKE '%orders%' OR query ILIKE '%order_items%') AND query NOT ILIKE '%pg_stat_statements%' ORDER BY queryid"`
@@ -144,7 +181,7 @@ func (env *Environment) SourceStatementStatistics(ctx context.Context, source st
 		var statistic StatementStatistic
 		statistic.Source = source
 		if source == "mysql" {
-			if len(fields) != 6 {
+			if len(fields) != 8 {
 				return nil, fmt.Errorf("unexpected MySQL statement statistics row")
 			}
 			statistic.StatementID, statistic.Query = fields[0], fields[1]
@@ -155,6 +192,13 @@ func (env *Environment) SourceStatementStatistics(ctx context.Context, source st
 			if err == nil {
 				statistic.RowsExamined, err = parseUint(fields[4])
 			}
+			if err == nil {
+				statistic.HistoryCalls, err = parseUint(fields[6])
+			}
+			if err == nil {
+				statistic.HistoryRowsReturned, err = parseUint(fields[7])
+			}
+			statistic.HistoryAvailable = true
 			if err == nil {
 				var picoseconds uint64
 				picoseconds, err = parseUint(fields[5])

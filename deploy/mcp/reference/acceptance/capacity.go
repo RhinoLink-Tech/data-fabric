@@ -16,69 +16,72 @@ import (
 )
 
 type loadRecord struct {
-	Type                     string                      `json:"type"`
-	StartedAtUTC             string                      `json:"started_at_utc,omitempty"`
-	CandidateSHA             string                      `json:"candidate_sha,omitempty"`
-	WorkingTreeDirty         bool                        `json:"working_tree_dirty,omitempty"`
-	GatewayImage             string                      `json:"gateway_image,omitempty"`
-	GatewayImageID           string                      `json:"gateway_image_id,omitempty"`
-	GatewayImageSizeBytes    uint64                      `json:"gateway_image_size_bytes,omitempty"`
-	MySQLImage               string                      `json:"mysql_image,omitempty"`
-	MySQLImageSizeBytes      uint64                      `json:"mysql_image_size_bytes,omitempty"`
-	PostgreSQLImage          string                      `json:"postgresql_image,omitempty"`
-	PostgreSQLImageSizeBytes uint64                      `json:"postgresql_image_size_bytes,omitempty"`
-	Platform                 string                      `json:"platform,omitempty"`
-	GoVersion                string                      `json:"go_version,omitempty"`
-	CPUCount                 int                         `json:"cpu_count,omitempty"`
-	MemoryTotalBytes         uint64                      `json:"memory_total_bytes,omitempty"`
-	DockerVersion            string                      `json:"docker_server_version,omitempty"`
-	ComposeVersion           string                      `json:"compose_version,omitempty"`
-	SessionTTLSeconds        int                         `json:"session_ttl_seconds,omitempty"`
-	TenantConcurrency        int                         `json:"tenant_concurrency,omitempty"`
-	FixtureRows              int                         `json:"fixture_rows,omitempty"`
-	Workload                 string                      `json:"workload,omitempty"`
-	Phase                    string                      `json:"phase,omitempty"`
-	Transport                string                      `json:"transport,omitempty"`
-	Source                   string                      `json:"source,omitempty"`
-	Scenario                 string                      `json:"scenario,omitempty"`
-	Tenant                   string                      `json:"tenant,omitempty"`
-	Service                  string                      `json:"service,omitempty"`
-	Wave                     int                         `json:"wave,omitempty"`
-	Worker                   int                         `json:"worker,omitempty"`
-	Concurrency              int                         `json:"concurrency,omitempty"`
-	DurationNS               int64                       `json:"duration_ns,omitempty"`
-	ElapsedMS                float64                     `json:"elapsed_ms,omitempty"`
-	ServiceRestartMS         float64                     `json:"service_restart_ms,omitempty"`
-	FirstAuthorizedResultMS  float64                     `json:"first_authorized_result_after_restart_ms,omitempty"`
-	FirstRequestMS           float64                     `json:"first_successful_request_ms,omitempty"`
-	FailedAttempts           int                         `json:"failed_attempts,omitempty"`
-	GatewayRequests          int                         `json:"gateway_request_count,omitempty"`
-	RowsReturned             int                         `json:"rows_returned,omitempty"`
-	OutputBytes              int64                       `json:"output_bytes,omitempty"`
-	ResultBudgetBytes        int64                       `json:"result_budget_bytes,omitempty"`
-	GatewayMemoryLimitBytes  int64                       `json:"gateway_memory_limit_bytes,omitempty"`
-	Connections              *connectionPoolEvidence     `json:"connections,omitempty"`
-	Result                   string                      `json:"result,omitempty"`
-	Error                    string                      `json:"error,omitempty"`
-	AttemptedTasks           int                         `json:"attempted_tasks,omitempty"`
-	SuccessfulTasks          int                         `json:"successful_tasks,omitempty"`
-	AdmissionRejections      int                         `json:"admission_rejections,omitempty"`
-	RateLimitedTasks         int                         `json:"rate_limited_tasks,omitempty"`
-	FailedTasks              int                         `json:"failed_tasks,omitempty"`
-	RequestsPerSecond        float64                     `json:"tasks_per_second,omitempty"`
-	P50MS                    float64                     `json:"p50_ms,omitempty"`
-	P95MS                    float64                     `json:"p95_ms,omitempty"`
-	P99MS                    float64                     `json:"p99_ms,omitempty"`
-	RecoveryWaitSeconds      int                         `json:"recovery_wait_seconds,omitempty"`
-	Resource                 *reference.ResourceSnapshot `json:"resource,omitempty"`
-	StatementID              string                      `json:"statement_id,omitempty"`
-	Statement                string                      `json:"statement,omitempty"`
-	CountStatement           bool                        `json:"count_statement,omitempty"`
-	StatementCalls           uint64                      `json:"statement_calls,omitempty"`
-	RowsExamined             uint64                      `json:"rows_examined,omitempty"`
-	RowsReturnedByStatement  uint64                      `json:"statement_rows_returned,omitempty"`
-	RowsExaminedAvailable    bool                        `json:"rows_examined_available,omitempty"`
-	StatementExecutionTimeMS float64                     `json:"statement_execution_time_ms,omitempty"`
+	Type                      string                      `json:"type"`
+	StartedAtUTC              string                      `json:"started_at_utc,omitempty"`
+	CandidateSHA              string                      `json:"candidate_sha,omitempty"`
+	WorkingTreeDirty          bool                        `json:"working_tree_dirty,omitempty"`
+	GatewayImage              string                      `json:"gateway_image,omitempty"`
+	GatewayImageID            string                      `json:"gateway_image_id,omitempty"`
+	GatewayImageSizeBytes     uint64                      `json:"gateway_image_size_bytes,omitempty"`
+	MySQLImage                string                      `json:"mysql_image,omitempty"`
+	MySQLImageSizeBytes       uint64                      `json:"mysql_image_size_bytes,omitempty"`
+	PostgreSQLImage           string                      `json:"postgresql_image,omitempty"`
+	PostgreSQLImageSizeBytes  uint64                      `json:"postgresql_image_size_bytes,omitempty"`
+	Platform                  string                      `json:"platform,omitempty"`
+	GoVersion                 string                      `json:"go_version,omitempty"`
+	CPUCount                  int                         `json:"cpu_count,omitempty"`
+	MemoryTotalBytes          uint64                      `json:"memory_total_bytes,omitempty"`
+	DockerVersion             string                      `json:"docker_server_version,omitempty"`
+	ComposeVersion            string                      `json:"compose_version,omitempty"`
+	SessionTTLSeconds         int                         `json:"session_ttl_seconds,omitempty"`
+	TenantConcurrency         int                         `json:"tenant_concurrency,omitempty"`
+	FixtureRows               int                         `json:"fixture_rows,omitempty"`
+	Workload                  string                      `json:"workload,omitempty"`
+	Phase                     string                      `json:"phase,omitempty"`
+	Transport                 string                      `json:"transport,omitempty"`
+	Source                    string                      `json:"source,omitempty"`
+	Scenario                  string                      `json:"scenario,omitempty"`
+	Tenant                    string                      `json:"tenant,omitempty"`
+	Service                   string                      `json:"service,omitempty"`
+	Wave                      int                         `json:"wave,omitempty"`
+	Worker                    int                         `json:"worker,omitempty"`
+	Concurrency               int                         `json:"concurrency,omitempty"`
+	DurationNS                int64                       `json:"duration_ns,omitempty"`
+	ElapsedMS                 float64                     `json:"elapsed_ms,omitempty"`
+	ServiceRestartMS          float64                     `json:"service_restart_ms,omitempty"`
+	FirstAuthorizedResultMS   float64                     `json:"first_authorized_result_after_restart_ms,omitempty"`
+	FirstRequestMS            float64                     `json:"first_successful_request_ms,omitempty"`
+	FailedAttempts            int                         `json:"failed_attempts,omitempty"`
+	GatewayRequests           int                         `json:"gateway_request_count,omitempty"`
+	RowsReturned              int                         `json:"rows_returned,omitempty"`
+	OutputBytes               int64                       `json:"output_bytes,omitempty"`
+	ResultBudgetBytes         int64                       `json:"result_budget_bytes,omitempty"`
+	GatewayMemoryLimitBytes   int64                       `json:"gateway_memory_limit_bytes,omitempty"`
+	Connections               *connectionPoolEvidence     `json:"connections,omitempty"`
+	Result                    string                      `json:"result,omitempty"`
+	Error                     string                      `json:"error,omitempty"`
+	AttemptedTasks            int                         `json:"attempted_tasks,omitempty"`
+	SuccessfulTasks           int                         `json:"successful_tasks,omitempty"`
+	AdmissionRejections       int                         `json:"admission_rejections,omitempty"`
+	RateLimitedTasks          int                         `json:"rate_limited_tasks,omitempty"`
+	FailedTasks               int                         `json:"failed_tasks,omitempty"`
+	RequestsPerSecond         float64                     `json:"tasks_per_second,omitempty"`
+	P50MS                     float64                     `json:"p50_ms,omitempty"`
+	P95MS                     float64                     `json:"p95_ms,omitempty"`
+	P99MS                     float64                     `json:"p99_ms,omitempty"`
+	RecoveryWaitSeconds       int                         `json:"recovery_wait_seconds,omitempty"`
+	Resource                  *reference.ResourceSnapshot `json:"resource,omitempty"`
+	StatementID               string                      `json:"statement_id,omitempty"`
+	Statement                 string                      `json:"statement,omitempty"`
+	CountStatement            bool                        `json:"count_statement,omitempty"`
+	StatementCalls            uint64                      `json:"statement_calls,omitempty"`
+	StatementHistoryCalls     uint64                      `json:"statement_history_calls,omitempty"`
+	StatementHistoryRows      uint64                      `json:"statement_history_rows_returned,omitempty"`
+	StatementHistoryAvailable bool                        `json:"statement_history_available,omitempty"`
+	RowsExamined              uint64                      `json:"rows_examined,omitempty"`
+	RowsReturnedByStatement   uint64                      `json:"statement_rows_returned,omitempty"`
+	RowsExaminedAvailable     bool                        `json:"rows_examined_available,omitempty"`
+	StatementExecutionTimeMS  float64                     `json:"statement_execution_time_ms,omitempty"`
 }
 
 type loadWorker struct {
@@ -303,7 +306,9 @@ func measureSourceCost(ctx context.Context, env *reference.Environment, encoder 
 				Type: "source_statement", Workload: "per-task source SQL instrumentation",
 				Transport: string(kind), Source: sourceID, Scenario: scenario,
 				StatementID: stat.StatementID, Statement: stat.Query, CountStatement: stat.CountStatement,
-				StatementCalls: stat.Calls, RowsReturnedByStatement: stat.RowsReturned,
+				StatementCalls:        stat.Calls,
+				StatementHistoryCalls: stat.HistoryCalls, StatementHistoryRows: stat.HistoryRowsReturned,
+				StatementHistoryAvailable: stat.HistoryAvailable, RowsReturnedByStatement: stat.RowsReturned,
 				RowsExamined: stat.RowsExamined, RowsExaminedAvailable: stat.RowsExaminedAvailable,
 				StatementExecutionTimeMS: stat.TotalExecutionTimeMS, Result: "pass",
 			}); err != nil {
@@ -330,7 +335,9 @@ func emitStatementStatistics(ctx context.Context, env *reference.Environment, en
 			Type: "source_statement", Workload: workload, Phase: phase,
 			Transport: string(kind), Source: sourceID, StatementID: stat.StatementID,
 			Statement: stat.Query, CountStatement: stat.CountStatement, StatementCalls: stat.Calls,
-			RowsReturnedByStatement: stat.RowsReturned, RowsExamined: stat.RowsExamined,
+			StatementHistoryCalls: stat.HistoryCalls, StatementHistoryRows: stat.HistoryRowsReturned,
+			StatementHistoryAvailable: stat.HistoryAvailable,
+			RowsReturnedByStatement:   stat.RowsReturned, RowsExamined: stat.RowsExamined,
 			RowsExaminedAvailable:    stat.RowsExaminedAvailable,
 			StatementExecutionTimeMS: stat.TotalExecutionTimeMS, Result: "pass",
 		}); err != nil {
@@ -731,7 +738,9 @@ func runSoak(ctx context.Context, env *reference.Environment, encoder *json.Enco
 				Type: "source_statement", Workload: "soak source SQL aggregate",
 				Source: sourceID, StatementID: stat.StatementID, Statement: stat.Query,
 				CountStatement: stat.CountStatement, StatementCalls: stat.Calls,
-				RowsReturnedByStatement: stat.RowsReturned, RowsExamined: stat.RowsExamined,
+				StatementHistoryCalls: stat.HistoryCalls, StatementHistoryRows: stat.HistoryRowsReturned,
+				StatementHistoryAvailable: stat.HistoryAvailable,
+				RowsReturnedByStatement:   stat.RowsReturned, RowsExamined: stat.RowsExamined,
 				RowsExaminedAvailable:    stat.RowsExaminedAvailable,
 				StatementExecutionTimeMS: stat.TotalExecutionTimeMS, Result: "pass",
 			}); err != nil {
@@ -749,6 +758,30 @@ func runSoak(ctx context.Context, env *reference.Environment, encoder *json.Enco
 		}
 	}
 	for _, sourceID := range []string{"mysql", "postgresql"} {
+		connectionCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		connections, connectionErr := waitForSourceConnections(connectionCtx, env, sourceID)
+		cancel()
+		connectionRecord := loadRecord{
+			Type: "source_connection", Workload: "source query connections after soak recovery",
+			Source: sourceID, Phase: "after-recovery-wait", Result: "pass",
+		}
+		if connectionErr == nil {
+			connectionRecord.Connections = &connectionPoolEvidence{
+				Source: connections.Source, Total: connections.Total,
+				Active: connections.Active, Idle: connections.Idle,
+			}
+			if connections.Active != 0 {
+				connectionErr = fmt.Errorf("source query connections remain active after recovery")
+			}
+		}
+		if connectionErr != nil {
+			connectionRecord.Result = "fail"
+			connectionRecord.Error = "source query connections did not return to idle or close after recovery"
+			failures = append(failures, fmt.Errorf("%s source connection recovery: %w", sourceID, connectionErr))
+		}
+		if err := writeLoadRecord(encoder, connectionRecord); err != nil {
+			failures = append(failures, err)
+		}
 		if err := emitStatementStatistics(ctx, env, encoder, sourceID, "", "soak source SQL aggregate after recovery", "after-recovery-wait"); err != nil {
 			failures = append(failures, err)
 		}
