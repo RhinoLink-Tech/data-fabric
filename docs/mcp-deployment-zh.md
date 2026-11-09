@@ -89,8 +89,9 @@ python3 ../../scripts/mcp/onboard.py doctor \
 该检查只把选择的连接配置发往本机 loopback 管理 API 的 connection-test 路由；不会注册数据源，也不会在输出中打印凭据。只有 API 明确返回 healthy 才报告成功；HTTP 200 但连接状态为 unhealthy 仍报告失败。失败时会给出 correlation ID，供本机日志排查。标准输出和日志不要粘贴到公共 issue 中。
 
 ## 4. 首次任务和恢复
+管理页面内置了可复制的 MCP 连接命令、首次查询任务和第二应用身份说明，详见[数据源管理界面与首次授权任务](data-source-management-ui-zh.md)。
 
-连接示例 MCP server 后，按顺序执行 `list_data_sources`、`list_tables`、`describe_table` 和只读 `execute_sql_query`。示例来源只包含合成 `orders` 数据。 查询分页、排序和跨页数据变化边界见[查询结果语义](query-result-semantics-zh.md)。
+连接示例 MCP server 后，按顺序执行 `list_data_sources`、`list_tables`、`describe_table` 和只读 `execute_sql_query`。示例来源只包含合成 `orders` 数据。查询分页、排序和跨页数据变化边界见[查询结果语义](query-result-semantics-zh.md)。
 
 `doctor` 发现初始化、keyring、OIDC、TLS、Compose 或 parser 问题时，按错误项中的配置名修复，再运行一次。不要通过重置元数据库或替换 keyring 来“修复”已有安装：换 key 可能使已保存来源凭据无法解密。当前 profile 的加密备份、校验和新项目恢复步骤见[备份与恢复操作手册](operations/mcp-profile-backup-recovery-zh.md)（[English](operations/mcp-profile-backup-recovery.md)）；版本升级边界见[升级指南](upgrading-v1.2.0.md)与 [MySQL 升级演练](operations/mysql-upgrade-rehearsal.md)。
 

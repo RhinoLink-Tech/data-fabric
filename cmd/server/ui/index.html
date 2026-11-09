@@ -23,6 +23,41 @@
         <div><h2>访问凭据</h2><p>如果服务启用了认证，请填写已有且具备相应数据源权限的 Bearer JWT。令牌只保留在当前页面内存中。</p></div>
         <div class="token"><label class="sr-only" for="bearerToken">Bearer JWT</label><input id="bearerToken" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴 Bearer JWT"><button id="clearToken" class="button quiet" type="button">清除</button></div>
       </section>
+      <section class="card first-use-card" aria-labelledby="firstUseTitle">
+        <div class="card-head first-use-head">
+          <div><p class="eyebrow">FIRST AUTHORIZED QUERY</p><h2 id="firstUseTitle">完成首次授权查询</h2><p>数据源在这里登记；schema 浏览和查询通过远程 MCP 工具完成。</p></div>
+        </div>
+        <div class="first-use-content">
+          <ol class="first-use-steps">
+            <li><strong>登记并验证。</strong> 使用与目标租户相符的管理身份添加数据源，先测试连接，再保存并确认数据源已启用。</li>
+            <li><strong>连接 MCP 客户端。</strong> 使用身份提供方签发的 MCP OIDC access token。上方管理 JWT 只用于管理 API，不能拿来连接 MCP。</li>
+            <li><strong>完成第一个任务。</strong> 按顺序调用列出的 MCP 工具；让网关按当前身份和策略过滤数据源与 schema。</li>
+          </ol>
+          <div class="first-use-panels">
+            <section class="first-use-panel" aria-labelledby="mcpClientTitle">
+              <h3 id="mcpClientTitle">Claude Code 连接示例</h3>
+              <p>将 MCP_HOST 设置为网关主机名；若部署端口不同，也要调整命令中的 8443。请在运行 Claude Code 的机器上设置有效的 MCP_ACCESS_TOKEN。客户端配置中的 header 会保存 token，请按本机凭据策略保护配置文件。本地自签名证书需按部署指南设置 NODE_EXTRA_CA_CERTS；不要关闭 TLS 校验。</p>
+              <pre class="copy-block"><code id="mcpClientCommand">export MCP_HOST=localhost
+: "${MCP_ACCESS_TOKEN:?Set an OIDC access token first}"
+claude mcp add --transport http data-fabric "https://$MCP_HOST:8443/mcp" --header "Authorization: Bearer $MCP_ACCESS_TOKEN"</code></pre>
+              <button id="copyMCPCommand" class="button secondary" type="button">复制连接命令</button>
+            </section>
+            <section class="first-use-panel" aria-labelledby="firstTaskTitle">
+              <h3 id="firstTaskTitle">首次查询任务</h3>
+              <p>将任务提示复制到已连接的 MCP 客户端。synthetic orders 示例仅用于本地验证。</p>
+              <pre class="copy-block"><code id="firstQueryPrompt">在 Data Fabric MCP 中：
+1. 调用 list_data_sources，选择当前身份获准访问的数据源。
+2. 调用 list_tables 和 describe_table，确认策略允许读取的表与列。
+3. 调用 execute_sql_query 执行有界只读 SQL，使用可见列，并说明是否还有下一页。
+4. 不要请求、复制或输出数据源凭据。
+5. 若策略限制表或列，确认它们不可见或会被拒绝；不要尝试绕过策略。
+本地 synthetic orders 示例：SELECT customer, amount FROM orders ORDER BY amount DESC</code></pre>
+              <button id="copyFirstTaskPrompt" class="button secondary" type="button">复制首次任务提示</button>
+            </section>
+          </div>
+          <p class="first-use-note"><strong>第二个应用：</strong>为它使用独立的 OIDC principal，并按批准策略映射到同一 tenant；验证它能复用已登记来源但看不到数据源凭据。再用未授权 tenant 验证拒绝行为。若部署配置了表/列策略，也要确认受限表和列不可见或会被拒绝。token 过期时从身份提供方重新签发并更新客户端连接，不要切换成管理员身份绕过策略。</p>
+        </div>
+      </section>
       <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
       <section class="card">
         <div class="card-head"><div><h2>已配置的数据源</h2><p id="sourceSummary">正在读取数据源…</p></div><div class="toolbar"><button id="refreshButton" class="button secondary" type="button">↻ 刷新</button><button id="addButton" class="button primary" type="button">添加数据源</button></div></div>

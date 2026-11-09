@@ -208,6 +208,7 @@ are encrypted at rest with the credential-vault key from step 1 and are never
 returned by any API or tool.
 
 ### 7. Connect a client and run the first query
+For the embedded management page's copyable MCP setup, first-query prompt, and second-application identity steps, see the [management UI guide](data-source-management-ui.md).
 
 With Claude Code (self-signed trial certificate shown; export
 `NODE_EXTRA_CA_CERTS` to the full path of `tls/tls.crt`):
