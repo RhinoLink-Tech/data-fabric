@@ -29,11 +29,11 @@ The tag-gated `publish-container.yml` workflow builds one `linux/amd64` GHCR ima
 
 The Dockerfile includes the pinned SQLGlot runtime, project license, third-party notices, dependency pin file, and a generated Go-module license bundle for both shipped binaries. Its manifest binds the unmodified license materials to module versions and SHA-256 values; the image build fails when a dependency has no license terms, with the documented GoHive README exception. It defaults to non-root UID 10001. The contributor path can still build from source; adopters should use [the digest-pinned deployment overlay](mcp-deployment.md#run-a-published-image-without-compiling-source), which removes the build definition and pulls the selected image.
 
-The first tag and package visibility still require maintainer release action. Verify that the GHCR package is public and that its digest, source SHA, release notes and supported profile match before directing adopters to it. The preview profile is linux/amd64 only.
+The maintainer confirmed v2.1.0-preview.1 and its linux/amd64, single-host MySQL profile on 2026-11-09. The tag and package are still unpublished until the exact-SHA push CI and manual final-image preflight pass. After the tag workflow publishes the image, verify its public visibility, source SHA, digest, SBOM, provenance, and supported profile. Then dispatch the [published-image acceptance workflow](../.github/workflows/release-image-acceptance.yml) from the release tag with that exact tag@sha256 reference. It first follows the documented onboarding and digest-pinned Compose overlay on a clean runner with Go removed from PATH, then verifies API health. A separate job checks the exact image revision and platform and runs full REST/MCP plus two-replica acceptance against that image. Create the GitHub Release after that acceptance passes. The preview profile is linux/amd64 only.
 
 ## Current candidate documents
 
-- [Proposed v2.1.0-preview.1 candidate review](releases/v2.1.0-preview.1-candidate.md)
+- [Maintainer-approved v2.1.0-preview.1 Preview candidate review](releases/v2.1.0-preview.1-candidate.md)
 - [中文候选评审](releases/v2.1.0-preview.1-candidate-zh.md)
 - [v2.0.0 core release candidate review (historical snapshot)](releases/v2.0.0-candidate.md)
 - [Upgrade guide from v1.2.0](upgrading-v1.2.0.md)

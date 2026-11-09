@@ -233,7 +233,7 @@ holds only `SELECT` privileges.
 
 ## Run a published image without compiling source
 
-The source-build quickstart above remains useful for contributors. After a Preview image is published, the release path runs both gateway processes from the exact same registry image digest and does not build Go or install Python packages on the host.
+The source-build quickstart above remains useful for contributors. The release path runs both gateway processes from the same published Preview tag@sha256 image and does not build Go or install Python packages on the host. Use the reference only after the tag workflow succeeds and the matching GitHub Release records the public digest.
 
 1. Copy the `tag@sha256` image reference from the matching GitHub Release record and add it to `deploy/mcp/.env`:
 
@@ -248,7 +248,7 @@ The source-build quickstart above remains useful for contributors. After a Previ
    docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
    ```
 
-The release overlay removes the Compose build definition and always pulls the selected image. Use the version and digest from the release record; the placeholder above is not a usable image reference. **No container image is published yet.** Until the first approved tag is published, use the source-build quickstart above.
+The release overlay removes the Compose build definition and always pulls the selected image. Use only the version and digest recorded by the successful tag workflow and matching GitHub Release; the placeholder above is not a usable image reference. If that release record is not available, continue using the source-build quickstart.
 
 ## PostgreSQL sample source variant
 
