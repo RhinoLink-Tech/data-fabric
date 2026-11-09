@@ -770,6 +770,10 @@ jobs:
       - name: Smoke test SQL translation in the final image
         run: bash scripts/release/smoke_sql_translation_image.sh data-fabric:ci
 
+      - name: Verify the image includes Go dependency license materials
+        run: |
+          docker run --rm --entrypoint /usr/bin/python3 data-fabric:ci -c 'import json; d=json.load(open("/app/third-party-licenses/go/MANIFEST.json")); assert d["SchemaVersion"] == 1 and len(d["Modules"]) > 0; print("Go license materials verified")'
+
       - name: Smoke test container user and entrypoint
         shell: bash
         run: |
