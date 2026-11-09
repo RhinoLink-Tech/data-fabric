@@ -33,5 +33,7 @@ The first tag and package visibility still require maintainer release action. Ve
 
 ## Current candidate documents
 
-- [v2.0.0 core release candidate review](releases/v2.0.0-candidate.md)
+- [Proposed v2.1.0-preview.1 candidate review](releases/v2.1.0-preview.1-candidate.md)
+- [中文候选评审](releases/v2.1.0-preview.1-candidate-zh.md)
+- [v2.0.0 core release candidate review (historical snapshot)](releases/v2.0.0-candidate.md)
 - [Upgrade guide from v1.2.0](upgrading-v1.2.0.md)

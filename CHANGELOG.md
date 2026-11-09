@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 - Add age-encrypted current-profile backup verification and fresh-checkout restore preparation, bound to an OCI source-revision label (#452).
 - Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
 
+- Bundle unmodified Go module license and notice materials for the shipped server and replica-ingress binaries, with a deterministic SHA-256 manifest (#442).
+
 ### Fixed
 - Validate values standardized as UUID and reject malformed strings and byte slices instead of passing them through unchanged (#144).
 
