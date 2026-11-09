@@ -63,7 +63,7 @@
     if (!response.ok || (payload && payload.success === false)) {
       const error = payload && payload.error;
       const message = (error && typeof error === "object" && error.message) || (typeof error === "string" && error) || (payload && payload.message) || ("请求失败（HTTP " + response.status + "）");
-      throw new ApiError(redact(message, options.sanitizeWith), error && typeof error === "object" ? error.code : "", payload && payload.correlationId, response.status);
+      throw new ApiError(redact(message, options.sanitizeWith), error && typeof error === "object" ? error.code : "", (payload && payload.correlationId) || response.headers.get("X-Correlation-ID"), response.status);
     }
     return payload && Object.prototype.hasOwnProperty.call(payload, "data") ? payload.data : payload;
   }
@@ -249,6 +249,23 @@
       await loadSources(); showNotice("数据源已删除。", "success");
     } catch (error) { showNotice("删除失败：" + errorText(error), "error"); }
   }
+  async function copyGuideText(elementID, successMessage) {
+    const value = $(elementID).textContent || "";
+    let copied = false;
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try { await navigator.clipboard.writeText(value); copied = true; } catch (_) {}
+    }
+    if (!copied && document.execCommand) {
+      const temporary = document.createElement("textarea");
+      temporary.value = value; temporary.setAttribute("readonly", ""); temporary.style.position = "fixed"; temporary.style.opacity = "0";
+      document.body.appendChild(temporary); temporary.select();
+      try { copied = document.execCommand("copy"); } catch (_) {}
+      temporary.remove();
+    }
+    showNotice(copied ? successMessage : "无法访问剪贴板，请手动选择示例文本复制。", copied ? "success" : "error");
+  }
+  $("copyMCPCommand").addEventListener("click", () => { void copyGuideText("mcpClientCommand", "MCP 连接命令已复制。请替换主机名并使用独立的 OIDC token。"); });
+  $("copyFirstTaskPrompt").addEventListener("click", () => { void copyGuideText("firstQueryPrompt", "首次查询任务提示已复制。请在已连接的 MCP 客户端中使用。"); });
   $("addButton").addEventListener("click", openCreateDialog); $("emptyAddButton").addEventListener("click", openCreateDialog);
   $("refreshButton").addEventListener("click", loadSources);
   $("clearToken").addEventListener("click", () => { tokenInput.value = ""; showNotice("当前页面中的访问令牌已清除。"); loadSources(); });
