@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-const maxResponse = 2 << 20
+const maxResponse = 8 << 20
 
 type surface string
 
@@ -134,14 +135,14 @@ func (r reply) failureKind() string {
 			"QUERY_SESSION_UNAVAILABLE", "QUERY_ENGINE_ERROR", "QUERY_TIMEOUT",
 			"VALIDATION_ERROR", "INVALID_REQUEST", "RATE_LIMIT_EXCEEDED",
 			"QUERY_CANCELLED", "INVALID_QUERY", "COUNT_UNSUPPORTED",
-			"QUERY_ADMISSION_LIMIT", "QUERY_RATE_LIMIT_EXCEEDED", "DATASOURCE_INACTIVE",
+			"QUERY_ADMISSION_LIMIT", "QUERY_RATE_LIMIT_EXCEEDED", "QUERY_RESULT_LIMIT_EXCEEDED", "DATASOURCE_INACTIVE",
 			"SQL_INJECTION_DETECTED", "SQL_SYNTAX_ERROR":
 			return fmt.Sprintf("HTTP %d %s", r.status, r.code)
 		}
 		return fmt.Sprintf("HTTP %d", r.status)
 	}
 	switch r.message {
-	case sessionError, sourceDenied, tableDenied, readonlyError, invalidQuery, capacityError,
+	case sessionError, sourceDenied, tableDenied, readonlyError, invalidQuery, capacityError, resultBudgetMessage,
 		unsafeQuery, sourceFailure, queryTimeout, queryCancelled, sourceHidden, tableHidden:
 		return r.message
 	}
@@ -358,8 +359,15 @@ func (w wire) query(ctx context.Context, actor, correlation string, source refer
 }
 
 func (w wire) next(ctx context.Context, actor string, previous batch) (reply, error) {
+	return w.nextWithBatchSize(ctx, actor, previous, 1)
+}
+
+func (w wire) nextWithBatchSize(ctx context.Context, actor string, previous batch, batchSize int) (reply, error) {
 	if previous.NextURI == "" || previous.Token == "" || previous.Slug == "" || previous.QueryID == "" {
 		return reply{}, fmt.Errorf("missing continuation credentials")
+	}
+	if batchSize < 1 || batchSize > 10000 {
+		return reply{}, fmt.Errorf("invalid continuation batch size")
 	}
 	if w.kind == rest {
 		path, err := url.Parse(previous.NextURI)
@@ -368,16 +376,20 @@ func (w wire) next(ctx context.Context, actor string, previous batch) (reply, er
 			return reply{}, fmt.Errorf("invalid relative continuation URI")
 		}
 		query := path.Query()
-		query.Set("batch_size", "1")
+		query.Set("batch_size", strconv.Itoa(batchSize))
 		path.RawQuery = query.Encode()
 		return w.restCall(ctx, actor, "", http.MethodGet, path.String(), nil)
 	}
-	return w.tool(ctx, actor, "", "fetch_next_batch", nextArguments(previous))
+	return w.tool(ctx, actor, "", "fetch_next_batch", nextArgumentsWithBatchSize(previous, batchSize))
 }
 
 func nextArguments(previous batch) map[string]any {
+	return nextArgumentsWithBatchSize(previous, 1)
+}
+
+func nextArgumentsWithBatchSize(previous batch, batchSize int) map[string]any {
 	return map[string]any{
-		"query_id": previous.QueryID, "slug": previous.Slug, "token": previous.Token, "batch_size": 1,
+		"query_id": previous.QueryID, "slug": previous.Slug, "token": previous.Token, "batch_size": batchSize,
 	}
 }
 

@@ -23,9 +23,10 @@ import (
 
 // Reference replica timing and capacity settings are surfaced in acceptance evidence.
 const (
-	ReferenceOwnerDrainTimeoutSeconds   = 3
-	ReferenceRoutedMCPSessionTTLSeconds = 10
-	ReferenceMaxRoutedMCPSessions       = 32
+	ReferenceOwnerDrainTimeoutSeconds         = 3
+	ReferenceRoutedMCPSessionTTLSeconds       = 10
+	ReferenceMaxRoutedMCPSessions             = 32
+	ReferenceMaxQueryResultBytes        int64 = 64 << 20
 )
 
 // Options controls a reference run. All Docker resources are scoped to a unique
@@ -39,6 +40,7 @@ type Options struct {
 	MaxConcurrentQueriesPerTenant int
 	MultiReplica                  bool
 	TrinoIntegration              bool
+	GatewayMemoryLimitBytes       int64
 }
 
 type Source struct {
@@ -56,6 +58,8 @@ type RunInfo struct {
 	GatewayImage             string
 	GatewayImageID           string
 	GatewayImageSizeBytes    uint64
+	GatewayMemoryLimitBytes  int64
+	QueryResultBudgetBytes   int64
 	MySQLImage               string
 	MySQLImageSizeBytes      uint64
 	PostgreSQLImage          string
@@ -136,6 +140,10 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 	if options.MaxConcurrentQueriesPerTenant < 0 || options.MaxConcurrentQueriesPerTenant > 100 {
 		return fmt.Errorf("reference per-tenant concurrency must be between 0 and 100")
 	}
+	if options.GatewayMemoryLimitBytes != 0 &&
+		(options.GatewayMemoryLimitBytes < 64<<20 || options.GatewayMemoryLimitBytes > 64<<30) {
+		return fmt.Errorf("reference gateway memory limit must be 64 MiB to 64 GiB")
+	}
 	root, err := repositoryRoot(options.RepoRoot)
 	if err != nil {
 		return err
@@ -160,9 +168,11 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		stack: s, restKey: s.env["JWT_SECRET"],
 		RunInfo: RunInfo{
 			MySQLImage: mysqlImage, PostgreSQLImage: postgresImage,
-			SessionTTLSeconds: optionDefault(options.SessionTTLSeconds, 1800),
-			TenantConcurrency: optionDefault(options.MaxConcurrentQueriesPerTenant, 25),
-			MultiReplica:      options.MultiReplica, TrinoIntegration: options.TrinoIntegration,
+			SessionTTLSeconds:       optionDefault(options.SessionTTLSeconds, 1800),
+			TenantConcurrency:       optionDefault(options.MaxConcurrentQueriesPerTenant, 25),
+			GatewayMemoryLimitBytes: options.GatewayMemoryLimitBytes,
+			QueryResultBudgetBytes:  ReferenceMaxQueryResultBytes,
+			MultiReplica:            options.MultiReplica, TrinoIntegration: options.TrinoIntegration,
 		},
 	}
 	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
@@ -375,6 +385,7 @@ func newStack(root, directory string, options Options) *composeStack {
 		"DF_REFERENCE_TRINO_IMAGE":             trinoImage,
 		"DF_REFERENCE_CONCURRENT_PER_TENANT":   strconv.Itoa(concurrent),
 		"DF_REFERENCE_SESSION_TTL_SECONDS":     strconv.Itoa(ttl),
+		"DF_REFERENCE_QUERY_RESULT_BYTES":      strconv.FormatInt(ReferenceMaxQueryResultBytes, 10),
 		"DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID": "reference",
 		"MCP_OIDC_ISSUER":                      issuerURL,
 		"MCP_OIDC_AUDIENCE":                    audience,
@@ -414,7 +425,8 @@ func newStack(root, directory string, options Options) *composeStack {
 	return &composeStack{
 		root: root, directory: directory, project: project, image: image,
 		env: env, redact: strings.NewReplacer(secrets...), multiReplica: options.MultiReplica,
-		trinoIntegration: options.TrinoIntegration,
+		trinoIntegration:        options.TrinoIntegration,
+		gatewayMemoryLimitBytes: options.GatewayMemoryLimitBytes,
 	}
 }
 
