@@ -117,6 +117,19 @@ No production latency SLO, maximum sustainable capacity, cloud monthly price, re
 
 **Raw evidence:** [public acceptance JSONL](results/rest_mcp_acceptance_2026-11-08_2693852.jsonl), [800 serial samples and summaries](results/rest_mcp_task_2026-11-08_2693852.jsonl), [restart/capacity/SQL/resource JSONL](results/rest_mcp_load_2026-11-08_2693852.jsonl), and [reference build/startup log](results/rest_mcp_reference_run_2026-11-08_2693852.log). The runner's code and command are reproducible from the candidate SHA above.
 
+
+## Resource and counter follow-up (2026-11-09)
+
+**Clean code candidate:** 9f6670fcccbc3b59d03af154d7a8829f095d88ff. The reference runner image was df-reference-0785e52426a7:local, image ID sha256:91293ccc480168a7bf1a5eefb26423776d0a09353e9095936a040e5c368a0aa6. Docker Server 29.8.0 and Compose 5.5.1 ran on the same WSL2 Ubuntu 26.04.1 / Linux amd64 host profile above. Each API and MCP container had a 512 MiB memory+swap cap.
+
+The smoke matrix recorded **23 pass, 1 unsupported, 0 fail**. Unsupported case A25 is REST schema search, which has no public REST schema-search surface; this is preserved as a surface gap. All 16 capacity summaries were pass or pass_with_rate_limits; the mixed MCP/PostgreSQL burst recorded 7/12 successes and 5 rate limits. The paced two-minute soak completed **960/960 tasks**, 1,920 public calls, 7.99 tasks/second, with P50/P95/P99 of 192.58 / 429.23 / 452.23 ms.
+
+After a 60-second recovery wait, the gateway samples were 39.3 MiB API and 36.2 MiB MCP, both below their 512 MiB cgroup limits. MySQL had 0 active / 8 idle query connections; PostgreSQL had 0 active / 15 idle. Whole-stack memory increased from 1,090,435,152 bytes immediately before soak to 1,109,372,434 bytes after recovery (+18.1 MiB, 1.74%). This is the observed residual for this local profile, not proof of a leak, a general memory guarantee, or a production SLO.
+
+The soak reset source statistics after worker warm-up and captured them again after recovery. PostgreSQL reconciled to 480 data calls / 1,440 rows and 480 exact-count calls / 480 rows. On MySQL, the finite events_statements_history_long ring recorded 480 data statements / 480 rows and 480 count statements / 480 rows. The digest summary recorded 480/480 for both in this capped run. In a second clean uncapped run on the same code candidate, raw history still recorded 480/480 for each statement while the digest summary reported 479 data calls / 480 rows and 480 count calls / 480 rows; the one-call data discrepancy remained after 60 seconds. This isolates the intermittent difference to the concurrent digest summary counter, not a missing source query in the retained event history. Treat concurrent digest COUNT_STAR as approximate; use per-task instrumentation or bounded raw event history for exact fixture-run accounting. The event-history consumer is enabled only in the disposable test source.
+
+**Raw evidence:** [smoke acceptance](results/rest_mcp_acceptance_2026-11-09_9f6670f.jsonl), [uncapped MySQL counter diagnosis](results/rest_mcp_load_2026-11-09_9f6670f.jsonl), [512 MiB capacity and soak run](results/rest_mcp_load_2026-11-09_9f6670f_512mib.jsonl), and the [separate large-result run](results/resource_envelope_2026-11-09_bbdb6b4.jsonl) on the clean large-result candidate.
+
 ## Previous serial-only run (historical; 2026-11-07)
 
 **Run time:** 2026-11-07 16:22 UTC<br>
@@ -148,6 +161,6 @@ These values describe an earlier local serial synthetic run and remain useful da
 
 This baseline is serial and uses three fixture rows. It is suitable for comparing public-boundary overhead and checking that first-page/full-result behavior works on both connector paths. It does not establish concurrency capacity, a production latency SLO, large-result scaling, cancellation latency, or sustained resource return. P99 from 100 samples is the single slowest observation. Host CPU/memory and Docker/Compose versions plus candidate/image identities are included where the host exposes them.
 
-The current run instruments per-task source statement counts and exact `COUNT(*)` cost, separately from the three public calls needed to finish the sample result. The concurrent MySQL soak digest counters did not reconcile exactly to 480 successful tasks (478 data calls and 479 COUNT calls), so use isolated per-task counters for exact cost and retain the aggregate mismatch as an instrumentation follow-up. Pagination behavior is specific to these MySQL/PostgreSQL fixtures and this three-row task.
+The 2026-11-08 run recorded a concurrent MySQL digest mismatch. The 2026-11-09 follow-up above compares the digest summary to retained MySQL statement events and explains the one-call summary undercount observed in one of two clean reruns. Keep concurrent digest aggregates approximate; the bounded source-event history is a reference-run diagnostic, not production telemetry. Pagination behavior remains specific to these MySQL/PostgreSQL fixtures and this three-row task.
 
 The pre-existing in-process PostgreSQL microbenchmark is a separate lower-bound measurement; see [PostgreSQL gateway benchmark](postgres-gateway-benchmark.md). Whole-container release footprint measurements are recorded in [deployment footprint](deployment-footprint.md).
