@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v2.1.0-preview.1] - 2026-11-09
+
 ### Added
 - Add configurable, bounded process-wide query and active-stream capacity with defaults aligned to the measured four-way, two-tenant profile (#451).
 - Add explicit pagination or streaming selection to MCP execute_sql_query and candidate-matched page-mutation outcomes to the public REST/MCP reference acceptance (#455).
@@ -13,6 +15,10 @@ All notable changes to this project will be documented in this file.
 - Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
 
 - Bundle unmodified Go module license and notice materials for the shipped server and replica-ingress binaries, with a deterministic SHA-256 manifest (#442).
+- Add a guided first authorized query, copyable remote MCP setup, and second-application reuse path to the embedded source-management UI (#446).
+
+### Changed
+- Preserve the HTTP X-Correlation-ID response header in management UI errors when the standardized response body omits a correlation ID (#446).
 
 ### Fixed
 - Validate values standardized as UUID and reject malformed strings and byte slices instead of passing them through unchanged (#144).

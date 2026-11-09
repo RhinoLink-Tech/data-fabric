@@ -40,7 +40,7 @@ docker compose up -d --build
 python3 ../../scripts/mcp/onboard.py doctor
 ```
 
-本地开发者可继续用源码构建。发布镜像可用时，从 GitHub Release 复制完整的 `tag@sha256` 到 `.env` 中的 `DATA_FABRIC_IMAGE`，然后用：
+开发者可继续用源码构建。tag workflow 成功且匹配的 GitHub Release 记录了公开 digest 后，再将完整 `tag@sha256` 镜像引用复制到 `.env` 的 `DATA_FABRIC_IMAGE`，然后用：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.release.yml pull
