@@ -23,14 +23,15 @@ const (
 )
 
 type composeStack struct {
-	root             string
-	directory        string
-	project          string
-	image            string
-	env              map[string]string
-	redact           *strings.Replacer
-	multiReplica     bool
-	trinoIntegration bool
+	root                    string
+	directory               string
+	project                 string
+	image                   string
+	env                     map[string]string
+	redact                  *strings.Replacer
+	multiReplica            bool
+	trinoIntegration        bool
+	gatewayMemoryLimitBytes int64
 }
 
 func (s *composeStack) composeArgs(args ...string) []string {
@@ -63,7 +64,12 @@ func (s *composeStack) command(ctx context.Context, args ...string) *exec.Cmd {
 }
 
 func (s *composeStack) docker(ctx context.Context, args ...string) (string, error) {
+	return s.dockerWithStdin(ctx, nil, args...)
+}
+
+func (s *composeStack) dockerWithStdin(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
 	cmd := s.command(ctx, args...)
+	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
@@ -81,9 +87,44 @@ func (s *composeStack) compose(ctx context.Context, args ...string) (string, err
 	return s.docker(ctx, s.composeArgs(args...)...)
 }
 
+func (s *composeStack) composeWithStdin(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
+	return s.dockerWithStdin(ctx, stdin, s.composeArgs(args...)...)
+}
+
 func (s *composeStack) up(ctx context.Context, services ...string) error {
-	_, err := s.compose(ctx, append([]string{"up", "-d", "--wait", "--wait-timeout", "180", "--no-build"}, services...)...)
-	return err
+	if _, err := s.compose(ctx, append([]string{"up", "-d", "--wait", "--wait-timeout", "180", "--no-build"}, services...)...); err != nil {
+		return err
+	}
+	if s.gatewayMemoryLimitBytes == 0 {
+		return nil
+	}
+	for _, service := range services {
+		if service != "data-fabric-api" && service != "data-fabric-mcp" &&
+			service != "data-fabric-api-b" && service != "data-fabric-mcp-b" {
+			continue
+		}
+		idsText, err := s.compose(ctx, "ps", "--quiet", service)
+		if err != nil {
+			return fmt.Errorf("locate reference gateway container for %s: %w", service, err)
+		}
+		ids := strings.Fields(idsText)
+		if len(ids) != 1 {
+			return fmt.Errorf("expected one reference gateway container for %s, got %d", service, len(ids))
+		}
+		limit := strconv.FormatInt(s.gatewayMemoryLimitBytes, 10)
+		if _, err := s.docker(ctx, "update", "--memory", limit, "--memory-swap", limit, ids[0]); err != nil {
+			return fmt.Errorf("apply reference gateway memory limit to %s: %w", service, err)
+		}
+		configured, err := s.docker(ctx, "inspect", "--format", "{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}", ids[0])
+		if err != nil {
+			return fmt.Errorf("verify reference gateway memory limit for %s: %w", service, err)
+		}
+		fields := strings.Fields(configured)
+		if len(fields) != 2 || fields[0] != limit || fields[1] != limit {
+			return fmt.Errorf("reference gateway memory limit for %s was not applied", service)
+		}
+	}
+	return nil
 }
 
 func (s *composeStack) url(ctx context.Context, service, port, scheme string) (string, error) {
@@ -138,7 +179,7 @@ func (s *composeStack) cleanup(output io.Writer, keep, ownedImage bool) error {
 }
 
 func (s *composeStack) resourceSnapshot(ctx context.Context) (ResourceSnapshot, error) {
-	raw, err := s.compose(ctx, "ps", "--quiet")
+	raw, err := s.docker(ctx, "ps", "--quiet", "--filter", "label=com.docker.compose.project="+s.project)
 	if err != nil {
 		return ResourceSnapshot{}, err
 	}

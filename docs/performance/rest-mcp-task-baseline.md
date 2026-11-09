@@ -19,6 +19,8 @@ The runner builds the production Dockerfile, creates a uniquely named disposable
 
 The acceptance JSONL preserves denied/error outcomes. The reference log records startup stages, candidate checkout, image identities/sizes and the initial idle component resource snapshot. The load JSONL records resource snapshots as structured per-container samples and normalized source statement digests. All output contains only generated fixture identifiers and no bearer tokens or source credentials. PostgreSQL statement counters are enabled only in this disposable reference profile; they are not part of the ordinary quickstart.
 
+For a separate large-result and gateway memory check, see the [synthetic resource envelope](resource-envelope.md). It exercises the cumulative output-byte budget under an explicit cgroup cap; the small fixture baseline above does not measure that envelope.
+
 ## Measured tasks
 
 | Scenario | Work | What the duration includes |

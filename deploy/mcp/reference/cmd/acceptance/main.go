@@ -26,10 +26,20 @@ func main() {
 	loadDuration := flag.Duration("load-duration", 0, "run bounded concurrency and mixed-task soak (15s to 10m)")
 	loadOutput := flag.String("load-output", "", "write restart, capacity, source SQL and resource evidence as JSONL")
 	recoveryWait := flag.Duration("recovery-wait", time.Minute, "idle wait before the final resource-return snapshot")
+	gatewayMemoryLimitMiB := flag.Int("gateway-memory-limit-mib", 0, "apply an opt-in memory and swap cap to each gateway process")
+	largeResultOutput := flag.String("large-result-output", "", "run synthetic large-result output-budget checks and write resource evidence as JSONL")
 	flag.Parse()
 	if *benchmarkSamples < 0 || (*benchmarkSamples > 0 && *benchmarkSamples < 20) ||
 		(*benchmarkSamples == 0) != (*benchmarkOutput == "") {
 		fmt.Fprintln(os.Stderr, "benchmark requires both -benchmark-samples (20 or more) and -benchmark-output")
+		os.Exit(2)
+	}
+	if *gatewayMemoryLimitMiB < 0 || *gatewayMemoryLimitMiB > 65536 {
+		fmt.Fprintln(os.Stderr, "gateway memory limit must be 0 to 65536 MiB")
+		os.Exit(2)
+	}
+	if *largeResultOutput != "" && *gatewayMemoryLimitMiB == 0 {
+		fmt.Fprintln(os.Stderr, "large-result-output requires a positive gateway-memory-limit-mib")
 		os.Exit(2)
 	}
 	if (*loadDuration == 0) != (*loadOutput == "") {
@@ -38,6 +48,7 @@ func main() {
 	}
 	options.Output = os.Stderr
 	options.MultiReplica = *multiReplica
+	options.GatewayMemoryLimitBytes = int64(*gatewayMemoryLimitMiB) << 20
 	options.SessionTTLSeconds = acceptance.SessionTTLSeconds
 	options.MaxConcurrentQueriesPerTenant = acceptance.TenantCapacity
 	if *smoke {
@@ -72,6 +83,22 @@ func main() {
 					closeErr := output.Close()
 					if benchmarkErr != nil || closeErr != nil {
 						failures = append(failures, errors.Join(benchmarkErr, closeErr))
+					}
+				}
+			}
+		}
+		if *largeResultOutput != "" {
+			if err := os.MkdirAll(filepath.Dir(*largeResultOutput), 0o755); err != nil {
+				failures = append(failures, fmt.Errorf("create large-result output directory: %w", err))
+			} else {
+				output, err := os.Create(*largeResultOutput)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("create large-result output: %w", err))
+				} else {
+					largeErr := acceptance.LargeResultOutput(ctx, env, output, *recoveryWait)
+					closeErr := output.Close()
+					if largeErr != nil || closeErr != nil {
+						failures = append(failures, errors.Join(largeErr, closeErr))
 					}
 				}
 			}

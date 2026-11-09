@@ -54,6 +54,10 @@ type loadRecord struct {
 	FailedAttempts           int                         `json:"failed_attempts,omitempty"`
 	GatewayRequests          int                         `json:"gateway_request_count,omitempty"`
 	RowsReturned             int                         `json:"rows_returned,omitempty"`
+	OutputBytes              int64                       `json:"output_bytes,omitempty"`
+	ResultBudgetBytes        int64                       `json:"result_budget_bytes,omitempty"`
+	GatewayMemoryLimitBytes  int64                       `json:"gateway_memory_limit_bytes,omitempty"`
+	Connections              *connectionPoolEvidence     `json:"connections,omitempty"`
 	Result                   string                      `json:"result,omitempty"`
 	Error                    string                      `json:"error,omitempty"`
 	AttemptedTasks           int                         `json:"attempted_tasks,omitempty"`
@@ -551,6 +555,11 @@ func emitResourceSnapshot(ctx context.Context, env *reference.Environment, encod
 	if err != nil {
 		return err
 	}
+	if env.RunInfo.GatewayMemoryLimitBytes > 0 {
+		if err := assertGatewayMemoryCaps(snapshot, env.RunInfo.GatewayMemoryLimitBytes); err != nil {
+			return err
+		}
+	}
 	return writeLoadRecord(encoder, loadRecord{
 		Type: "resource", Phase: phase, Workload: "whole-stack instantaneous Docker component sample",
 		Resource: &snapshot, Result: "pass",
@@ -737,6 +746,11 @@ func runSoak(ctx context.Context, env *reference.Environment, encoder *json.Enco
 			timer.Stop()
 			failures = append(failures, ctx.Err())
 		case <-timer.C:
+		}
+	}
+	for _, sourceID := range []string{"mysql", "postgresql"} {
+		if err := emitStatementStatistics(ctx, env, encoder, sourceID, "", "soak source SQL aggregate after recovery", "after-recovery-wait"); err != nil {
+			failures = append(failures, err)
 		}
 	}
 	if err := emitResourceSnapshot(ctx, env, encoder, "after-recovery-wait"); err != nil {

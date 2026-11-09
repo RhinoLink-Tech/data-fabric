@@ -3,6 +3,7 @@ package reference
 import (
 	"context"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -188,4 +189,66 @@ func parseUint(value string) (uint64, error) {
 		return 0, err
 	}
 	return parsed, nil
+}
+
+// SourceConnectionSnapshot reports connections owned by the synthetic
+// sample_reader account. Active connections must return to idle (or close) once
+// a reference query has finished.
+type SourceConnectionSnapshot struct {
+	Source string
+	Total  int
+	Active int
+	Idle   int
+}
+
+// CaptureSourceConnectionSnapshot reads the connection state from an isolated
+// reference source database. It never connects to a user configured source.
+func (env *Environment) CaptureSourceConnectionSnapshot(ctx context.Context, source string) (SourceConnectionSnapshot, error) {
+	if env == nil || env.stack == nil {
+		return SourceConnectionSnapshot{}, fmt.Errorf("reference source connection snapshot is unavailable")
+	}
+	var service, command string
+	quote := string(rune(34))
+	var stdin io.Reader
+	switch source {
+	case "mysql":
+		service = "sample-source"
+		password := env.stack.env["SAMPLE_READER_PASSWORD"]
+		if password == "" {
+			return SourceConnectionSnapshot{}, fmt.Errorf("reference MySQL reader credential is unavailable")
+		}
+		stdin = strings.NewReader(password + string(rune(10)))
+		command = "IFS= read -r MYSQL_PWD && export MYSQL_PWD && mysql -usample_reader" +
+			" --database=sample --batch --skip-column-names --execute=" + quote +
+			"SELECT COUNT(*), COALESCE(SUM(COMMAND <> 'Sleep'), 0) FROM information_schema.PROCESSLIST WHERE USER = 'sample_reader' AND DB = 'sample' AND ID <> CONNECTION_ID()" + quote
+	case "postgresql":
+		service = "sample-postgres"
+		command = "psql -U postgres -d sample -At -F '|' -c " + quote +
+			"SELECT COUNT(*), COUNT(*) FILTER (WHERE state IS DISTINCT FROM 'idle') FROM pg_stat_activity WHERE usename = 'sample_reader' AND datname = current_database() AND pid <> pg_backend_pid()" + quote
+	default:
+		return SourceConnectionSnapshot{}, fmt.Errorf("unsupported reference source connection target")
+	}
+	output, err := env.stack.composeWithStdin(ctx, stdin, "exec", "-T", service, "sh", "-lc", command)
+	if err != nil {
+		return SourceConnectionSnapshot{}, fmt.Errorf("read %s source connection state: %w", source, err)
+	}
+	fields := strings.Fields(strings.TrimSpace(output))
+	if source == "postgresql" {
+		fields = strings.Split(strings.TrimSpace(output), "|")
+	}
+	if len(fields) != 2 {
+		return SourceConnectionSnapshot{}, fmt.Errorf("unexpected %s source connection snapshot", source)
+	}
+	first, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return SourceConnectionSnapshot{}, fmt.Errorf("parse %s source connection count: %w", source, err)
+	}
+	second, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return SourceConnectionSnapshot{}, fmt.Errorf("parse %s source connection count: %w", source, err)
+	}
+	if first < second {
+		return SourceConnectionSnapshot{}, fmt.Errorf("%s active source connections exceeded total", source)
+	}
+	return SourceConnectionSnapshot{Source: source, Total: first, Active: second, Idle: first - second}, nil
 }
