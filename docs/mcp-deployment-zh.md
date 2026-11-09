@@ -47,6 +47,8 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml pull
 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 ```
 
+该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**目前尚未发布公开 Preview 镜像**；在首个版本 tag 和 GHCR digest 可验证前，继续使用上面的源码构建 quickstart。
+
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 
 下面的可选命令会向 OIDC discovery URL 和 JWKS endpoint 分别发送 HTTPS GET；受限网络环境下不要添加 `--probe-oidc`。执行前先设置身份与租户变量：

@@ -6,7 +6,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/main ./cmd/server \
-    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/replica-ingress ./cmd/replica-ingress
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/replica-ingress ./cmd/replica-ingress \
+    && go build -trimpath -o /app/license-bundle-generator ./cmd/license-bundle \
+    && /app/license-bundle-generator --output /app/go-third-party-licenses
 
 FROM python:3.12-alpine3.22 AS sql-runtime
 COPY requirements-sql-translation.txt /tmp/requirements-sql-translation.txt
@@ -30,6 +32,7 @@ COPY --from=builder --chown=10001:10001 /app/replica-ingress /app/replica-ingres
 COPY --from=builder --chown=10001:10001 /app/configs/config.yaml.example /app/configs/config.yaml.example
 COPY --from=builder --chown=10001:10001 /app/LICENSE /app/LICENSE
 COPY --from=builder --chown=10001:10001 /app/THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
+COPY --from=builder --chown=10001:10001 /app/go-third-party-licenses /app/third-party-licenses/go
 COPY --from=builder --chown=10001:10001 /app/requirements-sql-translation.txt /app/requirements-sql-translation.txt
 COPY --from=builder --chown=10001:10001 /app/scripts/sql_translate.py /app/scripts/sql_translate.py
 COPY --from=sql-runtime --chown=10001:10001 /opt/data-fabric/python /opt/data-fabric/python
