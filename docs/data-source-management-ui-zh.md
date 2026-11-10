@@ -36,7 +36,7 @@ English guide: [Data-source Management UI](data-source-management-ui.md)。
 4. 调用 execute_sql_query 执行有界只读 SQL，并按任务选择文档支持的分页或流式模式。默认本地 synthetic orders 示例为 SELECT customer, amount FROM orders ORDER BY amount DESC；外部评估时应使用经批准的任务和数据范围。
 5. 用第二个应用的独立 OIDC principal 重复任务，并按获准策略映射到同一 tenant。第二个应用应复用已登记数据源和策略，不应获得数据库用户名或密码。再用未授权 tenant 验证数据源和行不可见。若配置了表/列策略，也要确认受限对象不可见或会被拒绝。
 
-至少邀请两名不熟悉仓库内部实现的操作者，在同一环境中分别使用基线 artifact 和候选 artifact 完成同一任务。记录每个 artifact 的 tag/digest、客户端版本、主动操作时间与总耗时、失败尝试、预期/实际结果和维护者介入情况。合成演练证据应与模型质量、真实团队采用和客户价值分开标注。使用合成数据或明确获准的数据；记录中不放密钥和原始数据。
+至少邀请两名不熟悉仓库内部实现的操作者，在同一环境中分别使用基线 artifact 和候选 artifact 完成同一任务。记录每个 artifact 的 tag/digest、客户端版本、主动操作时间与总耗时、失败尝试、预期/实际结果和维护者介入情况。合成演练证据应与模型质量、真实团队采用和客户价值分开标注。使用合成数据或明确获准的数据；记录中不放密钥和原始数据。执行时请遵循[独立首次使用演练协议](validation/independent-first-use-zh.md)，锁定 artifact、控制镜像传输并记录每轮结果。
 
 ## 安全排障与 correlation ID
 
