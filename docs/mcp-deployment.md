@@ -286,6 +286,8 @@ The source-build quickstart above remains useful for contributors. The release p
 
 The release overlay removes the Compose build definition and always pulls the selected image. Use only the version and digest recorded by the successful tag workflow and matching GitHub Release; the placeholder above is not a usable image reference. If that release record is not available, continue using the source-build quickstart.
 
+**Current candidate status:** v2.1.0-preview.1 has a published image at `ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.1@sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`, but the GHCR package is private and the GitHub Release is still a draft. Do not use this release profile for an anonymous install until the package is public and the exact-digest acceptance is recorded.
+
 ## PostgreSQL sample source variant
 
 This optional source override is outside the first MySQL Preview profile. Its `postgres:18` tag is not digest-pinned; pin and revalidate it before using the override as a reproducible release profile.
