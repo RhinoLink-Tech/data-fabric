@@ -65,7 +65,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PATH=/usr/bin:/bin
+          no_go_bin="$(mktemp -d)"
+          cleanup_no_go_bin() { /bin/rm -rf -- "$no_go_bin"; }
+          trap cleanup_no_go_bin EXIT
+          for tool in python3 openssl git docker; do
+            tool_path="$(command -v "$tool")"
+            ln -s "$tool_path" "$no_go_bin/$tool"
+          done
+          export PATH="$no_go_bin"
           if command -v go >/dev/null 2>&1; then
             echo "Go must not be available for the published-image installation smoke" >&2
             exit 1
