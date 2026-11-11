@@ -8,6 +8,38 @@
 
 Compose 会启动四个服务：MySQL 元数据库、只读示例 MySQL、HTTP 管理 API、启用 OIDC 的远程 MCP。管理 API 仅绑定本机回环地址；MCP 通过 TLS 暴露。服务使用非 root 用户。当前 profile 是单机部署，不提供 HA/自动故障切换，也不会代替你运行 OIDC 身份提供方。
 
+## 可选：接入本机 DataSemanticHub 做容器级验收
+
+默认部署 profile 自带元数据库和样例库。要在本机 Docker 网络中用现有
+MySQL/MariaDB 做容器级验证，可使用
+[外部 MySQL Compose profile](../deploy/mcp/docker-compose.external-mysql.yml)
+和 WSL 验收脚本：
+
+```bash
+cd /home/fengfei/data-fabric
+scripts/mcp/dsh-local-acceptance.sh \
+  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64 位十六进制 digest>'
+```
+
+脚本默认使用 `/home/fengfei/DataSemanticHub/deploy`、
+`datasemantichub-mariadb` 和 `datasemantichub-network`；可通过
+`--deploy-dir`、`--db-container`、`--network` 覆盖。它会检查 deploy
+目录中声明了 MariaDB 服务，仅在原容器处于停止状态时启动它，并让一个
+Data Fabric API 容器加入现有网络。API 默认只绑定本机 loopback 的
+18180 端口；端口冲突时可传 `--api-port`。
+
+验收镜像必须已存在于本地 Docker 引擎；脚本不会拉取镜像。运行时会创建
+带随机名称的合成元数据库和样例源库，样例源账号只有 `SELECT`、
+`SHOW VIEW` 权限；随后验证 API 健康状态、未认证请求拒绝、数据源注册，
+并通过 Docker 网络查询两条合成记录。收尾会删除临时 API 项目、schema、
+账号和本地密钥文件，并将 MariaDB 恢复到原先的运行/停止状态。不会读取或
+使用 DataSemanticHub 中已有的 schema 和数据。
+
+此本地 profile 覆盖 release 镜像的 REST 与 MySQL 运行链路，但不覆盖
+OIDC/MCP、双副本、GHCR 匿名拉取，也不能替代
+[#446 的独立操作者演练](https://github.com/RhinoLink-Tech/data-fabric/issues/446)。
+公开发布前仍须分别通过 published-image workflow 和独立操作者验收。
+
 ## 前提
 
 - Docker Engine 24+、Docker Compose plugin 2.24+

@@ -37,6 +37,42 @@ operator  ──HTTP, loopback────────▶ data-fabric-api :8080 
 | `data-fabric-api` | The gateway's HTTP management API on loopback: registration, health, readiness. |
 | `data-fabric-mcp` | The gateway's remote MCP endpoint: Streamable HTTP with direct TLS. Starts after `data-fabric-api` is healthy so schema initialization is serialized. |
 
+## Optional: local DataSemanticHub integration
+
+The standard profile owns its metadata and sample databases. For a container-level
+check against an existing local MySQL/MariaDB network, use the API-only
+[external MySQL Compose profile](../deploy/mcp/docker-compose.external-mysql.yml)
+and the WSL acceptance runner:
+
+```bash
+cd /home/fengfei/data-fabric
+scripts/mcp/dsh-local-acceptance.sh \
+  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64-hex-digest>'
+```
+
+The runner defaults to `/home/fengfei/DataSemanticHub/deploy`,
+`datasemantichub-mariadb`, and `datasemantichub-network`; override those with
+`--deploy-dir`, `--db-container`, and `--network` when needed. It verifies
+the deploy directory's MariaDB service, starts that existing container only
+when it was stopped, and joins one Data Fabric API container to the existing
+network. The API listens on loopback port 18180 by default; `--api-port`
+changes it.
+
+The runner requires an immutable Data Fabric image that is already present in
+the local Docker engine. It never pulls images. It creates uniquely named,
+synthetic metadata and source databases; the source account receives only
+`SELECT` and `SHOW VIEW`. It checks API health and authentication, registers
+the synthetic source, and queries two seeded rows across the Docker network.
+Cleanup removes the temporary API project, schemas, accounts, and local secret
+files, then restores the MariaDB container to its original running/stopped
+state. Existing DataSemanticHub schemas and data are not used.
+
+This local profile covers the release image's REST and MySQL runtime path. It
+does not exercise OIDC/MCP, replicas, anonymous GHCR pulls, or the independent
+operator rehearsal required by [issue #446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+Keep the published-image workflow and independent rehearsal as separate
+release gates.
+
 ## Prerequisites
 
 - Docker Engine 24+ with Docker Compose plugin 2.24+ (the release and PostgreSQL overlays use Compose merge tags)
