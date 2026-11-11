@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_ref: ${{ steps.image.outputs.image_ref }}
+      release_tag: ${{ steps.image.outputs.release_tag }}
     steps:
       - name: Require an immutable digest for this release tag
         id: image
@@ -25,25 +26,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
-            echo "Dispatch this workflow from the release tag" >&2
+          prefix="ghcr.io/rhinolink-tech/data-fabric:"
+          if [[ "$IMAGE_REF" != "$prefix"* ]]; then
+            echo "Image must use ghcr.io/rhinolink-tech/data-fabric:<release-tag>@sha256:<64-hex>" >&2
             exit 1
           fi
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+          tagged_digest="${IMAGE_REF#"$prefix"}"
+          release_tag="${tagged_digest%@sha256:*}"
+          digest="${tagged_digest##*@sha256:}"
+          if [[ "$tagged_digest" != "$release_tag@sha256:$digest" ]]; then
+            echo "Image reference must contain one release tag and one sha256 digest" >&2
+            exit 1
+          fi
+          if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
             echo "Release tag must be a supported semver tag" >&2
             exit 1
           fi
-          prefix="ghcr.io/rhinolink-tech/data-fabric:${GITHUB_REF_NAME}@sha256:"
-          if [[ "$IMAGE_REF" != "$prefix"* ]]; then
-            echo "Image must use the exact release tag and immutable sha256 digest: $prefix<64-hex>" >&2
-            exit 1
-          fi
-          digest="${IMAGE_REF#"$prefix"}"
           if [[ ! "$digest" =~ ^[a-f0-9]{64}$ ]]; then
             echo "Image digest must be 64 lowercase hexadecimal characters" >&2
             exit 1
           fi
           echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
   documented_host_install:
     name: Install the published image without Go
@@ -57,7 +61,7 @@ jobs:
       - name: Check out the tagged deployment files
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.validate_image.outputs.release_tag }}
           fetch-depth: 1
 
       - name: Initialize and start the documented digest-pinned profile
@@ -78,7 +82,8 @@ jobs:
             exit 1
           fi
           python3 ../../scripts/mcp/onboard.py init --directory "$PWD"
-          python3 - "$IMAGE_REF" "$GITHUB_SHA" <<'PY'
+          source_revision="$(git rev-parse HEAD)"
+          python3 - "$IMAGE_REF" "$source_revision" <<'PY'
           from pathlib import Path
           import re
           import sys
@@ -159,7 +164,7 @@ jobs:
       - name: Check out the tagged source
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.validate_image.outputs.release_tag }}
           fetch-depth: 1
 
       - name: Set up Go
@@ -181,11 +186,12 @@ jobs:
             echo "Expected linux/amd64, found $platform" >&2
             exit 1
           fi
-          if [[ "$revision" != "$GITHUB_SHA" ]]; then
-            echo "Image source revision $revision does not match release tag SHA $GITHUB_SHA" >&2
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$revision" != "$source_revision" ]]; then
+            echo "Image source revision $revision does not match release tag SHA $source_revision" >&2
             exit 1
           fi
-          printf 'Verified image: %s\nSource SHA: %s\nPlatform: %s\n' "$IMAGE_REF" "$revision" "$platform" | tee "$RUNNER_TEMP/published-image-acceptance.log"
+          printf 'Verified image: %s\nSource SHA: %s\nPlatform: %s\n' "$IMAGE_REF" "$source_revision" "$platform" | tee "$RUNNER_TEMP/published-image-acceptance.log"
 
       - name: Run full standalone REST and MCP acceptance
         env:
