@@ -147,7 +147,10 @@ func (tm *TokenManager) Start(ctx context.Context) {
 			case <-tm.stopChan:
 				return
 			case <-ticker.C:
-				tm.checkAndRotateTokens(ctx)
+				// Use the cancellable run context: Stop cancels it and waits for
+				// this goroutine, so a provider call blocked on the parent context
+				// would hold shutdown open (#517).
+				tm.checkAndRotateTokens(runCtx)
 			}
 		}
 	}()

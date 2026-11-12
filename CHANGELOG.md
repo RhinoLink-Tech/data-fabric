@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Cancel the periodic token refresh with the manager's own context so shutdown cannot wait on a blocked provider call (#517).
 - Honor the configured PostgreSQL schema in MCP table discovery when table authorization is disabled (#493).
 - Preserve exact signed 64-bit integer bind parameters received by MCP over HTTP and stdio (#486).
 - Include the selected connector type when creating a source from the management UI and report unsuccessful connection probes as failures (#484, #485).
