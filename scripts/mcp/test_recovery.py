@@ -95,6 +95,30 @@ class ReleaseArchiveTests(unittest.TestCase):
             compose.assert_not_called()
         self.assertFalse(args.output.exists())
 
+    def test_restore_mismatch_fails_before_creating_payload(self):
+        target = self.config.parent
+        (target / "docker-compose.recovery.yml").write_text("services: {}\n")
+        (target / ".env.example").write_text("")
+        work = self.base / "decrypted"
+        payload = work / "payload"
+        payload.mkdir(parents=True)
+        args = SimpleNamespace(archive=self.base / "backup.age", identity_file=self.base / "identity",
+                               staging_dir=self.base / "staging", target_deploy_dir=target,
+                               project_name="restore-project", api_port=18080, mcp_port=18443,
+                               release_source_archive=self.archive)
+        manifest = {"source_revision": "a" * 40, "app_image_reference": self.release["image"]}
+        with mock.patch.object(recovery, "require_fresh_compose_project"), \
+             mock.patch.object(recovery, "require_free_loopback_port"), \
+             mock.patch.object(recovery, "decrypt_archive", return_value=(work, payload)), \
+             mock.patch.object(recovery, "load_and_validate_payload", return_value=manifest), \
+             mock.patch.object(recovery, "release_source_identity", return_value=("c" * 40, self.release["image"])), \
+             mock.patch.object(recovery, "run") as run:
+            with self.assertRaisesRegex(recovery.RecoveryError, "does not match the backup"):
+                recovery.restore(args)
+            run.assert_not_called()
+        self.assertFalse((target / ".env").exists())
+        self.assertFalse((target / "recovery").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
