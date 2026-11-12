@@ -125,6 +125,8 @@ python3 ../../scripts/mcp/onboard.py doctor \
 该检查只把选择的连接配置发往本机 loopback 管理 API 的 connection-test 路由；不会注册数据源，也不会在输出中打印凭据。只有 API 明确返回 healthy 才报告成功；HTTP 200 但连接状态为 unhealthy 仍报告失败。失败时会给出 correlation ID，供本机日志排查。标准输出和日志不要粘贴到公共 issue 中。
 
 ## 4. 首次任务和恢复
+
+使用 Codex 或 WorkBuddy 时，按 [Data Fabric Skill 接入指南](agent-skill-zh.md) 配置连接、安装 Skill，并运行合成订单验收。
 管理页面内置了可复制的 MCP 连接命令、首次查询任务和第二应用身份说明，详见[数据源管理界面与首次授权任务](data-source-management-ui-zh.md)。
 
 连接示例 MCP server 后，按顺序执行 `list_data_sources`、`list_tables`、`describe_table` 和只读 `execute_sql_query`。示例来源只包含合成 `orders` 数据。查询分页、排序和跨页数据变化边界见[查询结果语义](query-result-semantics-zh.md)。

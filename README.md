@@ -146,7 +146,7 @@ The embedded [data-source management UI](docs/data-source-management-ui.md) is a
 
 - [API Usage Guide](docs/api_usage.md)
 - [Data-source Management UI](docs/data-source-management-ui.md)
-- [Data Fabric Agent Skill](docs/agent-skill.md)
+- [Data Fabric Agent Skill for Codex and WorkBuddy](docs/agent-skill.md)
 - [DeepSeek Function-Calling Example](examples/deepseek-agent/README.md)
 - [Architecture Guide](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)

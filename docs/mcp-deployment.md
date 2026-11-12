@@ -348,19 +348,11 @@ claude mcp add --transport http data-fabric https://<host>:8443/mcp \
 With a self-signed certificate, start `claude` with
 `NODE_EXTRA_CA_CERTS=/path/to/tls.crt` so the Node runtime trusts it.
 
-### Codex
+### Codex and WorkBuddy
 
-Add the server to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.data-fabric]
-url = "https://<host>:8443/mcp"
-http_headers = { "Authorization" = "Bearer <OIDC access token>" }
-```
-
-Codex verifies TLS with the system trust store: add the certificate to it
-(`security add-trusted-cert` on macOS, `update-ca-certificates` on Debian)
-or use a real certificate.
+Use the [Data Fabric Agent Skill setup guide](agent-skill.md) to configure
+Streamable HTTP with the deployment's access token, install the same Skill
+bundle in either client, and run a bounded sample query.
 
 ### DeepSeek-backed agent host
 

@@ -6,30 +6,71 @@ the [Agent Skills format](https://agentskills.io/specification) and teaches a
 compatible agent client to discover sources, resolve source ambiguity,
 inspect schema, validate read-only SQL, and retrieve bounded result batches.
 
-## Install and connect
+## Prepare the connection
 
-1. Obtain a checkout or release archive of this repository.
-2. Import or copy the complete `skills/data-fabric-query/` directory using
-   the client's supported Agent Skills installation mechanism. Preserve the
-   folder name and its `references/` directory. Do not copy only `SKILL.md`.
-3. Connect the client to a configured Data Fabric MCP server, or an adapter
-   providing the equivalent capabilities. See the [MCP deployment guide](mcp-deployment.md)
-   for server setup and the [tool reference](mcp-tools.md) for its public API.
-   Use the deployment's existing authentication configuration; the bundle
-   does not configure a connection or contain database credentials.
-4. Ask a question against an identified source, for example: "Use our orders
-   source to show the five largest orders. Inspect the available schema
-   first." If the source name is ambiguous, the skill asks for a choice.
+[中文接入指南](agent-skill-zh.md)
 
-Client discovery paths and activation controls differ, so this bundle does
-not prescribe a client-specific configuration file, tool namespace, model,
-or installation command. A model API alone does not load skills or execute
-tools: it needs an agent client with skill and tool support.
+Use a reachable HTTPS Streamable HTTP endpoint ending in `/mcp`, a data
+source the caller can read, and an access token issued by the deployment's
+OIDC provider. The gateway checks the configured issuer, audience, and
+scopes, including `data-fabric.query` by default. Trust the gateway's
+certificate in the client and obtain a fresh token from the provider when
+it expires. Use the provider's JWT access token and reserve the management
+token for the REST API. See the
+[MCP deployment guide](mcp-deployment.md#5-prepare-management-and-mcp-access-tokens).
 
-For applications calling the DeepSeek API directly, see the separate
-[DeepSeek function-calling reference client](../examples/deepseek-agent/README.md).
-It maps DeepSeek function calls to authenticated Data Fabric MCP tools; it is
-not required when using an MCP-capable host directly.
+Obtain the repository checkout or a release source archive. Install the
+complete `skills/data-fabric-query/` directory with its `references/`
+directory and license. For other Agent Skills hosts, use the host's skill
+installer and connect Data Fabric MCP or an equivalent tool adapter.
+
+## Codex
+
+1. Copy `data-fabric-query/` into `.agents/skills/` in the project where you
+   want to use it. The resulting path is
+   `.agents/skills/data-fabric-query/SKILL.md`.
+2. Set `MCP_ACCESS_TOKEN` in the environment that launches Codex. Update the
+   URL in the [Codex example](../examples/mcp-clients/codex.config.toml) and
+   add that block to your Codex `config.toml`, or register the same server
+   using the CLI.
+
+   ```sh
+   codex mcp add data-fabric --url https://data-fabric.example.com/mcp --bearer-token-env-var MCP_ACCESS_TOKEN
+   ```
+
+3. Start a new session in the project. Use `/mcp` to check the tools, then
+   invoke `$data-fabric-query` with a data question. Review any tool approval
+   prompts for the sample read-only calls.
+
+See [Codex Skills](https://learn.chatgpt.com/docs/build-skills) and
+[Codex MCP](https://learn.chatgpt.com/docs/extend/mcp).
+
+## WorkBuddy
+
+1. From the Data Fabric repository root, package the Skill. The ZIP has
+   `data-fabric-query/` as its top-level folder.
+
+   ```sh
+   python3 -m zipfile -c data-fabric-query.zip skills/data-fabric-query
+   ```
+
+2. In **Skills → Add Skill → Upload Skill**, select the ZIP and confirm that
+   `data-fabric-query` appears among the installed skills.
+3. In **Connectors → Custom Connector**, configure `streamableHttp` and
+   your `/mcp` URL using the
+   [WorkBuddy example](../examples/mcp-clients/workbuddy.mcp.json). Supply the
+   `Authorization` header as `Bearer <OIDC_ACCESS_TOKEN>` in the local
+   connector configuration. Verify the connection and enable it.
+4. In a new chat, select or explicitly request `data-fabric-query` and ask
+   your data question.
+
+See WorkBuddy's [Skill upload](https://intl.cloud.tencent.com/zh/document/product/1316/84503),
+[custom connector](https://intl.cloud.tencent.com/zh/document/product/1316/84494),
+and [MCP configuration](https://open.workbuddy.cn/docs/connector) guides.
+
+For applications calling the DeepSeek API directly, the
+[DeepSeek function-calling example](../examples/deepseek-agent/README.md)
+maps model function calls to the same authenticated MCP tools.
 
 ## Bundle contents and limits
 
@@ -47,6 +88,30 @@ It does not register data sources, grant access, install a server, or broaden
 the server's supported SQL subset. Result size is bounded per batch; that
 does not guarantee a cheap backend scan. Additional pages are fetched only
 when needed, and partial results must be identified as such.
+
+## Verify with synthetic orders
+
+Start an isolated MySQL sample deployment and register `sample-mysql` using
+the [MCP deployment guide](mcp-deployment.md#quickstart). Grant the test caller read
+access to `sample.orders`. Run the same task in each client.
+
+> Use data-fabric-query with the connected Data Fabric MCP tools. Find the
+> sample MySQL source and inspect the orders table and its id column.
+> Validate the read-only SQL, then return all order IDs in ascending order.
+> Set batch_size to 2 for both execution and continuation. Report the IDs
+> and whether the result is complete.
+
+Check the tool calls for source discovery, table listing, column inspection,
+successful SQL validation, execution, and continuation. Expect `[1, 2]`
+with a `nextUri`, then `[3]` with an empty or absent `nextUri`. The final
+answer should report `[1, 2, 3]` as complete. Record the client version,
+gateway image version, and row count per batch.
+
+If tools are missing, check that the connector is enabled, the URL ends in
+`/mcp`, and the client trusts the certificate. For a 401, check the token
+expiry, issuer, audience, and scope. If the connection works but the sample
+is absent, check the caller's read grant. See the
+[MCP tool reference](mcp-tools.md) for other errors.
 
 ## Validate changes
 

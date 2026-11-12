@@ -146,6 +146,7 @@ Data Fabric 是查询网关，不是查询加速器。相比应用直连引擎�
 
 - [API 使用指南](docs/api_usage.md)
 - [数据源管理界面](docs/data-source-management-ui-zh.md)
+- [Codex 与 WorkBuddy 的 Data Fabric Skill 接入](docs/agent-skill-zh.md)
 - [DeepSeek API 函数调用示例](examples/deepseek-agent/README.md)
 - [架构设计](docs/architecture.md)
 - [产品路线图](docs/roadmap.md)
