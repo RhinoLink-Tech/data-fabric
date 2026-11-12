@@ -796,14 +796,17 @@ func (e *MetadataExtractor) scanColumnRow(rows *sql.Rows, dbType model.DatabaseT
 		*colDefault = defaultVal
 		*colComment = sql.NullString{Valid: false}
 	default:
-		// information_schema reports nullability as the strings "YES"/"NO";
-		// scanning that into a bool always fails and silently drops the
-		// column, so scan the string and convert (#184).
+		// Catalog queries return strings: information_schema uses YES/NO
+		// while Oracle's ALL_TAB_COLUMNS uses Y/N.
 		var nullable string
 		if err := rows.Scan(colName, colType, &nullable, colDefault, colComment); err != nil {
 			return err
 		}
-		*isNullable = strings.EqualFold(nullable, "YES")
+		nullableFlag := "YES"
+		if dbType == model.DatabaseTypeOracle {
+			nullableFlag = "Y"
+		}
+		*isNullable = strings.EqualFold(nullable, nullableFlag)
 	}
 	return nil
 }
