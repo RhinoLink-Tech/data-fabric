@@ -58,3 +58,11 @@ This page manages data sources only. Schema discovery, query execution, tenant i
 ## Pilot status
 
 This interface is an engineering reference implementation. Reduced setup time or operator effort has not been established with a real team. Validate those outcomes using the [M4 pilot evidence protocol](validation/real-team-pilot-evidence.md) before making a customer-value claim.
+
+## Running UI regression tests
+
+Contributors can run the embedded UI regression tests with Node.js 22:
+
+```bash
+node --test scripts/ui/*.test.js
+```

@@ -59,3 +59,11 @@ English guide: [Data-source Management UI](data-source-management-ui.md)。
 ## 试点状态
 
 该界面是工程参考实现。真实团队的配置时间或操作负担尚未测量。对外描述客户价值前，请按 [M4 试点证据协议](validation/real-team-pilot-evidence.md)验证这些结果。
+
+## 运行 UI 回归测试
+
+贡献者可以使用 Node.js 22 运行内嵌界面的回归测试：
+
+```bash
+node --test scripts/ui/*.test.js
+```
