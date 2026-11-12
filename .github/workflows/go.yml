@@ -99,6 +99,11 @@ jobs:
           set -o pipefail
           go test -count=1 -v ./internal/database/drivers/traditional -run '^(TestPostgreSQLDriverContract|TestMySQLDriverContract)$' 2>&1 | tee "$RUNNER_TEMP/live-contract.log"
 
+      - name: Verify PostgreSQL MCP schema discovery
+        env:
+          DATA_FABRIC_POSTGRES_SCHEMA_TEST_DSN: ${{ env.DATA_FABRIC_POSTGRES_CONTRACT_DSN }}
+        run: go test -count=1 -v ./internal/mcp -run '^TestPostgresListAndDescribeConfiguredSchemaContract$'
+
       - name: Require both reference contracts to run and pass
         if: always()
         run: python3 scripts/ci/contract_checks.py require --job reference-contracts --log "$RUNNER_TEMP/live-contract.log"
