@@ -1,0 +1,3 @@
+[mcp_servers.data-fabric]
+url = "https://data-fabric.example.com/mcp"
+bearer_token_env_var = "MCP_ACCESS_TOKEN"

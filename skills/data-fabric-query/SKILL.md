@@ -47,7 +47,7 @@ requires a configured federation-engine source and supported catalogs.
 
 When the application supplies an approved, source-specific context asset, check its source profile and version before using it. Describe each referenced table and compare the required columns and types. If the source or schema no longer matches, stop, mark that asset version stale, and have its owner refresh the query and increment the version. Do not guess a replacement column.
 
-Use the asset's parameterized template, validate it, and pass values separately. The gateway rechecks the current caller's policy and read-only rules on every execution; an asset never grants access. See the [warehouse batch-route example](../../examples/warehouse-batch-route/README.md).
+Use the asset's parameterized template, validate it, and pass values separately. The gateway rechecks the current caller's policy and read-only rules on every execution; an asset never grants access. See the [warehouse batch-route example](https://github.com/RhinoLink-Tech/data-fabric/blob/v2.1.0-preview.1/examples/warehouse-batch-route/README.md).
 
 ## Validate, execute, and bound the result
 
@@ -72,8 +72,9 @@ reference. Distinguish an empty successful result from a failed call.
 Fetch another page only if the current result is insufficient for the user's
 request and within the task's row budget. Map the latest response's `queryId`
 to the continuation tool's `query_id`, passing that response's `slug` and
-`token`. Replace these values after each successful page. Do not fetch pages
-concurrently or reuse a consumed token.
+`token`. Send the same explicit `batch_size` on each continuation to preserve
+the page bound. Replace the continuation values after each successful page.
+Do not fetch pages concurrently or reuse a consumed token.
 
 An absent or empty `nextUri` means the result is complete. A non-empty
 `nextUri` means the result is partial, even if a page is short or empty.

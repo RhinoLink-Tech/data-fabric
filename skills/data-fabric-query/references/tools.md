@@ -77,7 +77,8 @@ strings; text-typed values, including exact decimal text, remain strings.
 Preserve these distinctions when presenting results.
 
 For the next MCP call, map the latest response's **`queryId` to `query_id`**
-and pass its `slug` and `token` unchanged. Use the connected continuation tool
+and pass its `slug` and `token` unchanged, with the same explicit
+`batch_size` used for execution. Use the connected continuation tool
 rather than making a new HTTP request to `nextUri`. After each successful
 page, replace the stored continuation values with those in that response.
 Tokens rotate, are single-use, and are tied to the caller and in-memory
