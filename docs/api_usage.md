@@ -259,4 +259,4 @@ History is process-local, retains at most the most recent 1,000 records, and is 
 
 This guide corrects the published examples and [OpenAPI contract](../specs/001-phase1-enhanced-single-source/contracts/openapi.yaml) to match the routes and response models in the current server. It does not change runtime API behavior. Clients should use `POST /api/v1/fetch` for SQL execution; `POST /api/v1/query/validate` only validates a query.
 
-The MCP `execute_sql_query` tool accepts the same `parameters` array. The MCP SDK decodes JSON-RPC arguments with standard JSON parsing, so integers beyond ±2^53 degrade to floating point before the gateway receives them; the HTTP API has no such limit and preserves full 64-bit integers exactly.
+The MCP `execute_sql_query` tool accepts the same `parameters` array. REST and MCP preserve integer digits received in JSON for signed 64-bit bind values. Clients must also serialize the integer exactly: for example, JavaScript `Number` cannot represent every integer beyond ±(2^53 − 1). A string remains a string parameter and is not automatically converted to an integer.

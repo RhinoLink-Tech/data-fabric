@@ -102,7 +102,30 @@ func bindParameters(ctx context.Context, w wire) error {
 		if err != nil {
 			return err
 		}
-		return rows(page)
+		if err := rows(page); err != nil {
+			return err
+		}
+
+		// Adjacent values beyond 2^53 must select different existing fixture
+		// rows. This exercises JSON decoding, normalization, and actual driver
+		// binding without requiring a second synthetic data set.
+		exactSQL := "SELECT id FROM orders WHERE id = " + placeholder + " - 9007199254740992 + 1"
+		for _, tc := range []struct {
+			value json.Number
+			want  string
+		}{
+			{json.Number("9007199254740992"), "1"},
+			{json.Number("9007199254740993"), "2"},
+		} {
+			page, err = readQuery(ctx, w, source, exactSQL, []any{tc.value}, 10)
+			if err != nil {
+				return fmt.Errorf("exact integer bind: %w", err)
+			}
+			if err := rows(page, id(tc.want)); err != nil {
+				return fmt.Errorf("exact integer bind: %w", err)
+			}
+		}
+		return nil
 	})
 }
 
