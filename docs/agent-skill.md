@@ -54,8 +54,10 @@ See [Codex Skills](https://learn.chatgpt.com/docs/build-skills) and
    python3 -m zipfile -c data-fabric-query.zip skills/data-fabric-query
    ```
 
-2. In **Skills → Add Skill → Upload Skill**, select the ZIP and confirm that
-   `data-fabric-query` appears among the installed skills.
+2. Open **Skills → Add Skill → Upload Skill → Select ZIP file** and choose
+   the bundle. When WorkBuddy reports that the Skill is safe, select
+   **Continue installation** if prompted. Confirm that `data-fabric-query`
+   appears among the installed skills.
 3. In **Connectors → Custom Connector**, configure `streamableHttp` and
    your `/mcp` URL using the
    [WorkBuddy example](../examples/mcp-clients/workbuddy.mcp.json). Supply the

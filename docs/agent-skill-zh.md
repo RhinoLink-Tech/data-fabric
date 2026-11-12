@@ -31,7 +31,7 @@
    python3 -m zipfile -c data-fabric-query.zip skills/data-fabric-query
    ```
 
-2. 打开 **技能 → 添加技能 → 上传技能**，选择 ZIP。确认 `data-fabric-query` 出现在已安装技能列表中。
+2. 从左侧打开 **专家·技能·连接器 → 技能**，再选择 **添加技能 → 上传技能 → 选择 ZIP 文件**。安全检测结果显示「安全」后，如有提示，点击 **继续安装**。确认 `data-fabric-query` 出现在已安装技能列表中。
 3. 打开 **连接器 → 自定义连接器**，按 [WorkBuddy 配置示例](../examples/mcp-clients/workbuddy.mcp.json) 设置 `streamableHttp` 和实际的 `/mcp` 地址。仅在本机连接器配置中填入 `Authorization` 的 `Bearer <OIDC_ACCESS_TOKEN>` 值。验证连接并启用。
 4. 在新会话中选择 `data-fabric-query`，或明确要求使用它，并写下查询任务。
 
