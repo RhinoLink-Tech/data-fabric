@@ -6,7 +6,7 @@
 
 ## 当前已发布的 Preview
 
-`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的安装方式见下方“使用发布镜像”步骤；请从[对应 GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)复制完整 tag 与 digest。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
+`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的全新安装请使用[版本化发布镜像指南](releases/v2.1.0-preview.1-install-zh.md)。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
 
 ## 当前部署拓扑
 
@@ -106,7 +106,7 @@ python3 ../../scripts/mcp/onboard.py doctor --probe-oidc \
 ```bash
 export DF_USER_ID='<provider JWT 中稳定的 sub>'
 export DF_TENANT_ID='quickstart'
-export DF_MANAGEMENT_TOKEN="$(python3 scripts/mcp/onboard.py token \
+export DF_MANAGEMENT_TOKEN="$(python3 ../../scripts/mcp/onboard.py token \
   --user "$DF_USER_ID" --tenant "$DF_TENANT_ID")"
 ```
 

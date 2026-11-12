@@ -17,7 +17,7 @@ This is the current synthetic first-use profile linked from the [first-adopter b
 
 ## Current published Preview
 
-`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation, use [Run a published image without compiling source](#run-a-published-image-without-compiling-source) and copy the tag plus digest from the [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation from a clean host, use the [version-specific published-image guide](releases/v2.1.0-preview.1-install.md). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
 
 ## What gets deployed
 
