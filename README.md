@@ -88,7 +88,7 @@ Pass `sourceDialect` to translate inside the [compatibility matrix](SQL_TRANSLAT
 
 ## Quick Start
 
-The recommended clean install and first authorized task is the [published-image path in the self-hosted remote MCP deployment guide](docs/mcp-deployment.md#run-a-published-image-without-compiling-source). The published [v2.1.0-preview.1 release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) includes a public, digest-pinned `linux/amd64` image. The source-build path remains available for contributors.
+The recommended clean install and first authorized task is the [v2.1.0-preview.1 published-image guide](docs/releases/v2.1.0-preview.1-install.md). The published [v2.1.0-preview.1 release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) includes a public, digest-pinned `linux/amd64` image. The source-build path remains available for contributors.
 
 The sample profile uses MySQL metadata and separate REST and MCP processes. Its seeded data is synthetic. It demonstrates the documented path; it does not establish external adoption, production capacity, or an SLA. See the [first-adopter profile](docs/product/first-adopter-profile.md), [connector support catalog](docs/data-source-support.md), and [current operating limits](docs/roadmap.md#current-operating-limits) for the scope and open evidence.
 
