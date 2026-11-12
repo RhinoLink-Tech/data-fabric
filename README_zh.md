@@ -88,7 +88,7 @@ SQL v1 是面向常见 `SELECT` 工作负载的统一**只读**子集——不�
 
 ## 快速开始
 
-当前公开预览版为 [v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)，提供 digest 固定的 `linux/amd64` 镜像。建议按[自托管远程 MCP 部署指南](docs/mcp-deployment-zh.md)中的发布镜像路径安装；完整 digest 和验收范围见 Release。源码构建仍适用于开发和本地修改。
+当前公开预览版为 [v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)，提供 digest 固定的 `linux/amd64` 镜像。建议按 [v2.1.0-preview.1 发布镜像安装指南](docs/releases/v2.1.0-preview.1-install-zh.md)操作；完整 digest 和验收范围见 Release。源码构建仍适用于开发和本地修改。
 
 示例配置使用 MySQL 元数据数据库，并由 REST 与 MCP 两个独立进程共享；预置数据为合成数据。它演示已记录的路径，不证明外部团队采用、生产容量或 SLA。请同时查看[首个采用者画像](docs/product/first-adopter-profile.md)（当前仍是待验证假设）、[数据源支持目录](docs/data-source-support.md)和[当前运行边界](docs/roadmap.md#current-operating-limits)。
 

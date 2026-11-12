@@ -10,7 +10,7 @@ A fetch response contains columns, entries, totalCount, an optional nextUri, and
 
 If nextUri is present, request that exact continuation and use the newest session token returned by each successful batch. A successful response that omits nextUri is the API's completion indicator: the selected path has no further batch according to the count/cursor state it observed. This does not promise a cross-page snapshot when source rows change. Batch length is not a completion signal: a short page can still have a continuation, and a full page can be final. Follow nextUri for type 1, type 2, automatic mode, and a fallback to pagination alike.
 
-totalCount is calculated separately from the returned page. For the PostgreSQL/MySQL profile it describes the SQL result count observed by that count operation, with the request's bound parameters and SQL limit scope preserved. It is not a cross-page snapshot count and may disagree with rows traversed if the source changes while the query is starting or pages are being fetched. A count that cannot be computed safely may fail the request rather than report a fabricated value.
+totalCount is calculated separately from the returned page. For the PostgreSQL/MySQL profile it describes the SQL result count observed by that count operation, with the request's bound parameters and SQL limit scope preserved. It is not a cross-page snapshot count and may disagree with rows traversed if the source changes while the query is starting or pages are being fetched. A count that cannot be computed safely may fail the request rather than report a fabricated value. For example, some databases reject derived counts when a DISTINCT query has repeated output labels; give the columns unique aliases and retry.
 
 ## Execution modes
 

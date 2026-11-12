@@ -707,12 +707,20 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	// For now, we'll execute a query to list tables based on the database type
 	// This is a simplified approach - in a real implementation, you'd want more robust table discovery
 	var sql string
+	var parameters []interface{}
 	dbType := dataSource.Type
 	switch dbType {
 	case "mysql", "mariadb":
 		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
 	case "postgres", "postgresql":
-		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+		// PostgreSQL schema names are values, not SQL fragments. Keep the
+		// historical public default when no source schema is configured.
+		schema := dataSource.Config.Schema
+		if schema == "" {
+			schema = "public"
+		}
+		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = $1"
+		parameters = []interface{}{schema}
 	case "oracle":
 		sql = "SELECT table_name FROM user_tables"
 	case "sqlserver":
@@ -725,6 +733,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	req := &model.FetchQueryRequest{
 		DataSourceID: datasourceID,
 		SQL:          sql,
+		Parameters:   parameters,
 		BatchSize:    1000, // Limit the number of tables returned
 		Timeout:      30,
 	}
