@@ -11,8 +11,10 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
 
 type stubPaginationService struct {
@@ -143,6 +145,114 @@ func TestFetchQueryRecordsPrometheusMetricsOnce(t *testing.T) {
 	}
 	if got := prometheusMetricValue(t, body, `data_fabric_query_errors_total{error_type="execution_error",execution_mode="pagination"}`); got != 1 {
 		t.Errorf("query errors = %v, want 1", got)
+	}
+}
+
+func TestQueryAdmissionRejectionsAreCountedAcrossExecutionPaths(t *testing.T) {
+	middleware.InitMetrics()
+	concurrencyMetric := `data_fabric_query_admission_rejections_total{reason="concurrency_limit"}`
+	rateMetric := `data_fabric_query_admission_rejections_total{reason="request_rate_limit"}`
+
+	assertIncrement := func(metric string, run func() error) {
+		t.Helper()
+		before := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+		if err := run(); err == nil {
+			t.Fatalf("operation unexpectedly succeeded; expected admission rejection for %s", metric)
+		}
+		after := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+		if after != before+1 {
+			t.Fatalf("metric %s = %v, want %v", metric, after, before+1)
+		}
+	}
+
+	assertIncrement(rateMetric, func() error {
+		unified := newTestUnifiedService(nil, service.ErrQueryRateLimitExceeded)
+		_, err := unified.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{DataSourceID: "ds", SQL: "SELECT 1"})
+		return err
+	})
+
+	assertIncrement(concurrencyMetric, func() error {
+		pagination := &routingPaginationStub{}
+		streaming := &routingStreamingStub{fetchErr: service.ErrMaxConcurrentStreams}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModeStreaming}}, pagination, streaming)
+		_, err := unified.FetchQuery(context.Background(), nil, &model.FetchQueryRequest{DataSourceID: "ds", Type: 2, SQL: "SELECT 1"})
+		return err
+	})
+
+	assertIncrement(concurrencyMetric, func() error {
+		pagination := &routingPaginationStub{nextErr: service.ErrQueryAdmissionLimit}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModePagination}}, pagination, &routingStreamingStub{})
+		_, err := unified.FetchNextBatch(context.Background(), nil, "q", "slug", "token", 100)
+		return err
+	})
+
+	assertIncrement(rateMetric, func() error {
+		streaming := &routingStreamingStub{nextErr: service.ErrQueryRateLimitExceeded}
+		unified := newRoutingService(&config.Config{Query: config.QueryConfig{ExecutionMode: executionModeStreaming}}, &routingPaginationStub{}, streaming)
+		_, err := unified.FetchNextBatch(context.Background(), nil, "q", "slug", "token", 100)
+		return err
+	})
+}
+
+func TestQueryAdmissionCapacityGaugesReflectLiveProcessSnapshot(t *testing.T) {
+	middleware.InitMetrics()
+	limiter := service.NewQueryAdmissionLimiter(4, 2)
+	middleware.SetQueryAdmissionCapacityProvider(limiter.CapacitySnapshot)
+	t.Cleanup(func() {
+		middleware.SetQueryAdmissionCapacityProvider(nil)
+	})
+
+	assertGauge := func(metric string, want float64) {
+		t.Helper()
+		got := prometheusMetricValue(t, scrapePrometheusMetrics(t), metric)
+		if got != want {
+			t.Fatalf("%s = %v, want %v", metric, got, want)
+		}
+	}
+	assertGauge("data_fabric_query_admission_active_reservations", 0)
+	assertGauge("data_fabric_query_admission_max_reservations", 4)
+
+	release, admitted := limiter.Acquire(&security.Caller{UserID: "alice", TenantID: "tenant-a"})
+	if !admitted {
+		t.Fatal("query admission unexpectedly rejected an available slot")
+	}
+	assertGauge("data_fabric_query_admission_active_reservations", 1)
+	assertGauge("data_fabric_query_admission_max_reservations", 4)
+	release()
+	assertGauge("data_fabric_query_admission_active_reservations", 0)
+}
+
+func prometheusMetricValueOrZero(t *testing.T, exposition, seriesPrefix string) float64 {
+	t.Helper()
+	for _, line := range strings.Split(exposition, "\n") {
+		if strings.HasPrefix(line, seriesPrefix+" ") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				t.Fatalf("malformed metric sample: %q", line)
+			}
+			value, err := strconv.ParseFloat(fields[len(fields)-1], 64)
+			if err != nil {
+				t.Fatalf("parse metric value from %q: %v", line, err)
+			}
+			return value
+		}
+	}
+	return 0
+}
+
+func TestQueryAdmissionMetricUsesBoundedReasonLabels(t *testing.T) {
+	middleware.InitMetrics()
+	metric := `data_fabric_query_admission_rejections_total{reason="other"}`
+	before := prometheusMetricValueOrZero(t, scrapePrometheusMetrics(t), metric)
+
+	middleware.RecordQueryAdmissionRejection("tenant-secret-value")
+	body := scrapePrometheusMetrics(t)
+	after := prometheusMetricValueOrZero(t, body, metric)
+	if after != before+1 {
+		t.Fatalf("other rejection metric = %v, want %v", after, before+1)
+	}
+	if strings.Contains(body, "tenant-secret-value") {
+		t.Fatal("admission rejection metric exposed an unbounded reason label")
 	}
 }
 
@@ -336,6 +446,53 @@ func TestAutoModeFallsBackOnlyBeforeStreamingStarts(t *testing.T) {
 			t.Fatalf("query calls = streaming:%d pagination:%d, want none", streaming.fetchCalls, pagination.fetchCalls)
 		}
 	})
+}
+
+type admissionSourceRepository struct {
+	repository.DataSourceRepository
+	source *model.DataSource
+}
+
+func (r admissionSourceRepository) GetByID(_ context.Context, id string) (*model.DataSource, error) {
+	if id != r.source.ID {
+		return nil, repository.ErrDataSourceNotFound
+	}
+	return r.source, nil
+}
+
+func TestAutoFallbackCannotBypassSharedTenantAdmission(t *testing.T) {
+	caller := &security.Caller{UserID: "alice", TenantID: "tenant-a"}
+	limiter := service.NewQueryAdmissionLimiter(100, 1)
+	release, admitted := limiter.Acquire(caller)
+	if !admitted {
+		t.Fatal("failed to occupy tenant-a's shared query slot")
+	}
+	defer release()
+
+	pagination := service.NewQueryServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(
+		admissionSourceRepository{source: &model.DataSource{
+			ID: "source-1", Type: model.DatabaseTypePostgreSQL,
+			OwnerID: "alice", Status: model.DataSourceStatusActive,
+		}}, nil, false, nil, nil, limiter,
+		sql_translator.NewSQLTranslationManager(false),
+	)
+	streaming := &routingStreamingStub{
+		supported: true,
+		fetchErr:  service.ErrMaxConcurrentStreams,
+	}
+	unified := NewUnifiedQueryService(pagination, streaming, &config.Config{
+		Query: config.QueryConfig{ExecutionMode: executionModeAuto, PreferStreaming: true},
+	})
+
+	_, err := unified.FetchQuery(context.Background(), caller, &model.FetchQueryRequest{
+		DataSourceID: "source-1", Type: 2, BatchSize: 100, SQL: "SELECT 1",
+	})
+	if !errors.Is(err, service.ErrQueryAdmissionLimit) {
+		t.Fatalf("auto fallback error = %v, want shared admission rejection", err)
+	}
+	if streaming.fetchCalls != 1 {
+		t.Fatalf("streaming attempts = %d, want one before pagination fallback", streaming.fetchCalls)
+	}
 }
 
 func TestFetchNextBatchAutoDetectsSessionEngine(t *testing.T) {

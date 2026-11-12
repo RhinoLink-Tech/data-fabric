@@ -10,13 +10,14 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
 )
 
 // fetchNativeAPIQuery executes through the source protocol while preserving
 // the gateway's existing paginated fetch response.
-func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *security.Caller, datasource *model.DataSource, req *model.FetchQueryRequest, query string, tables []sqlanalysis.TableReference, parameters []interface{}, executor execution.NativeAPIExecutor) (*model.FetchQueryResponse, error) {
+func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *security.Caller, datasource *model.DataSource, req *model.FetchQueryRequest, query string, tables []sqlanalysis.TableReference, parameters []interface{}, executor execution.NativeAPIExecutor, budget queryBudgetState) (*model.FetchQueryResponse, error) {
 	batchSize := req.BatchSize
 	if batchSize <= 0 {
 		batchSize = 10000
@@ -42,17 +43,48 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 	batch, sourceColumns, totalRows, err := cursor.NextBatch(ctx, batchSize)
 	if err != nil {
 		_ = cursor.Close()
+		if budget.expired(time.Now()) {
+			qs.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to execute native API query: %w", err)
+	}
+	if budget.expired(time.Now()) {
+		_ = cursor.Close()
+		qs.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
 	}
 	columns := qs.buildExecutionColumnInfo(sourceColumns, datasource.Type)
 	entries := encodeExecutionRows(batch.Rows, columns)
+	if err := budget.accountPage(columns, entries); err != nil {
+		_ = cursor.Close()
+		if err == ErrQueryResultLimitExceeded {
+			qs.stats.RecordBudgetExceeded()
+		}
+		return nil, err
+	}
+	if budget.expired(time.Now()) {
+		_ = cursor.Close()
+		qs.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
 
 	createdAt := time.Now()
+	queryID := qs.generateSessionID()
+	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(qs.sessionManager.ttl))
+	if budget.deadline.Before(expiresAt) {
+		expiresAt = budget.deadline
+	}
+	slug, err := querySessionSlug(ctx, queryID, expiresAt, qs.generateSlug)
+	if err != nil {
+		_ = cursor.Close()
+		return nil, err
+	}
 	session := &QuerySession{
-		QueryID:      qs.generateSessionID(),
-		Slug:         qs.generateSlug(),
+		QueryID:      queryID,
+		Slug:         slug,
 		Token:        qs.generateToken(),
-		CreatorID:    caller.Key(),
+		creator:      querySessionPrincipalFromContext(ctx, caller),
 		DataSourceID: req.DataSourceID,
 		SQL:          query,
 		Tables:       tables,
@@ -65,7 +97,8 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		Entries:      entries,
 		Cursor:       cursor,
 		CreatedAt:    createdAt,
-		ExpiresAt:    createdAt.Add(qs.sessionManager.ttl),
+		ExpiresAt:    expiresAt,
+		budget:       budget,
 	}
 	response := &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
@@ -75,9 +108,11 @@ func (qs *queryService) fetchNativeAPIQuery(ctx context.Context, caller *securit
 		Entries:    entries,
 		TotalCount: int(totalRows),
 	}
-	if req.Type == 2 && batch.HasMore {
+	if batch.HasMore {
+		if !qs.sessionManager.Store(session) {
+			return nil, ErrQuerySessionUnavailable
+		}
 		response.NextURI = qs.buildNextURI(session.QueryID, session.Slug, session.Token, batchSize)
-		qs.sessionManager.Store(session)
 	} else {
 		_ = cursor.Close()
 	}

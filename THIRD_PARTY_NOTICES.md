@@ -38,3 +38,40 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## SQLGlot
+
+- Package: `sqlglot==30.23.0` (runtime dependency in `requirements-sql-translation.txt`).
+- Source: https://github.com/tobymao/sqlglot/tree/v30.23.0
+- License: MIT.
+
+### MIT License
+
+MIT License
+
+Copyright (c) 2026 Toby Mao
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Go module dependencies in the container image
+
+The container image includes a generated license-material bundle at /app/third-party-licenses/go/. It contains unchanged top-level LICENSE, COPYING, NOTICE, and COPYRIGHT files for the versioned Go modules imported by cmd/server and cmd/replica-ingress. MANIFEST.json binds each file to its module path and version and records its SHA-256. The image build fails if an imported module has no recognized license material, except for the pinned sqlflow.org/gohive module: its README license statement is bundled, and the declared Apache License 2.0 terms are included at /app/LICENSE.
+
+This inventory preserves dependency-provided materials; it is not a legal compatibility opinion.

@@ -101,41 +101,119 @@ func SupportCatalog(registry *DriverRegistry) []ConnectorSupport {
 
 func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.DatabaseType) {
 	switch dbType {
+	case model.DatabaseTypeHDFSJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "Only the local file-client adapter path is covered; no live Hadoop release, Kerberos, or HDFS authorization policy has been contract-tested."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array of objects, or JSON Lines file, capped at 64 MiB and 100,000 records; directory scans, multiple files, compression, and streaming are not supported.",
+			"Only flat top-level scalar fields are exposed as SQL columns; nested objects and arrays are rejected.",
+			"The complete file and decoded records are held in gateway memory before filtering and pagination.",
+			"The local file-client fixture does not establish compatibility with a live HDFS release.")
+	case model.DatabaseTypeHDFSText:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS Text adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, UTF-8 text metadata and bounded reads, LF/CRLF parsing, blank and unterminated final lines, restricted read-only SQL, COUNT(*), and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter reads one configured UTF-8 text file up to 64 MiB and 100,000 lines; directory scans, multiple files, compression, and streaming are not supported.",
+			"Each physical line is exposed as line_number and line; structured or multiline record parsing is not provided.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, or other Hadoop releases.",
+		}
+	case model.DatabaseTypeHDFSCSV:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS CSV adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, file metadata and reads, header-based CSV parsing, restricted read-only SQL, and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter is limited to one configured CSV file up to 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; only flat row-oriented data is supported.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
+	case model.DatabaseTypeHDFSParquet:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS Parquet adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, file metadata and reads, restricted read-only Parquet SQL, and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter is limited to one configured Parquet file up to 64 MiB and 100,000 rows; directory and partition scans, multiple files, column pruning, predicate pushdown, and row-group pruning are not supported.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
+	case model.DatabaseTypeHDFSAvro:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS Avro adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, Avro OCF file metadata and reads, nullable-field decoding, restricted read-only SQL, COUNT(*), and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter reads one configured Avro OCF file up to 64 MiB and 100,000 records; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Only flat records with supported primitive or nullable primitive fields are queryable; nested, named, and non-primitive fields are rejected. The live fixture uses uncompressed OCF.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
+	case model.DatabaseTypeHDFSORC:
+		profile.Status = ConnectorStatusEndToEndVerified
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Apache Hadoop 3.5.0 only"
+		profile.VerifiedServerVersions = []string{"3.5.0"}
+		profile.VersionPolicy = "Only the HDFS ORC adapter against the pinned Apache Hadoop 3.5.0 single-node cluster has a live contract result; other Hadoop releases and HDFS formats are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The live contract covers HDFS simple-user RPC on Hadoop 3.5.0 only; Kerberos and authorization policies are not covered."
+		profile.Limitations = []string{
+			"The live contract verifies NameNode/DataNode RPC, ORC file metadata and reads, primitive-column decoding, restricted read-only SQL, COUNT(*), and write rejection against Apache Hadoop 3.5.0.",
+			"The adapter reads one configured ORC file up to 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Only flat primitive fields supported by the shared ORC reader are queryable; nested and repeated fields are rejected. The complete file is read into gateway memory before SQL evaluation.",
+			"The single-node contract does not cover Kerberos, HDFS authorization policies, HA, other Hadoop releases, or other HDFS formats.",
+		}
 	case model.DatabaseTypePostgreSQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "17.11 only"
-		profile.VerifiedServerVersions = []string{"17.11"}
-		profile.VersionPolicy = "Only PostgreSQL 17.11 has a pinned driver contract result; no other server version is implied to be compatible."
+		profile.SupportedVersionRange = "15.19, 16.15, 17.11, and 18.6 only"
+		profile.VerifiedServerVersions = []string{"15.19", "16.15", "17.11", "18.6"}
+		profile.VersionPolicy = "Only PostgreSQL 15.19, 16.15, 17.11, and 18.6 have pinned driver contract results; no other server version is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the PostgreSQL 17.11 contract test."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the PostgreSQL 15.19, 16.15, 17.11, and 18.6 driver contracts. TLS certificate/hostname verification is covered by the PostgreSQL 17.11 TLS contract."
 		profile.Limitations = []string{
-			"The PostgreSQL contract test covers password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 17.11.",
-			"The TLS contract verifies sslmode=verify-full with a trusted CA and rejects an untrusted CA or hostname mismatch; other TLS modes and PostgreSQL versions are not covered.",
+			"The PostgreSQL contract tests cover password authentication, read-only session enforcement, SQL execution, pagination, type scanning, cancellation, and query errors against PostgreSQL 15.19, 16.15, 17.11, and 18.6.",
+			"The TLS contract verifies sslmode=verify-full with a trusted CA and rejects an untrusted CA or hostname mismatch against PostgreSQL 17.11 only; other TLS modes and versions are not covered.",
 		}
 	case model.DatabaseTypeMySQL:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "8.0.46 only"
-		profile.VerifiedServerVersions = []string{"8.0.46"}
-		profile.VersionPolicy = "Only MySQL 8.0.46 has a pinned driver contract result; no other server version or MySQL-compatible product is implied to be compatible."
+		profile.SupportedVersionRange = "8.0.46 and 8.4.13 only"
+		profile.VerifiedServerVersions = []string{"8.0.46", "8.4.13"}
+		profile.VersionPolicy = "Only MySQL 8.0.46 and 8.4.13 have pinned driver contract results; no other server version or MySQL-compatible product is implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MySQL 8.0.46 contract tests."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MySQL 8.0.46 and 8.4.13 driver contracts; TLS certificate/hostname verification is covered by both version-specific TLS contracts."
 		profile.Limitations = []string{
-			"The MySQL contract test covers password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46.",
-			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MySQL versions are not covered.",
+			"The MySQL contract tests cover password authentication, connection and health checks, schema and value scanning, pagination, database-side read-only sessions, cancellation, and query errors against MySQL 8.0.46 and 8.4.13.",
+			"The TLS contracts verify a trusted private CA and hostname, reject an untrusted CA or hostname mismatch, and confirm ssl=false remains plaintext against MySQL 8.0.46 and 8.4.13 only. Other MySQL versions are not covered.",
 		}
 	case model.DatabaseTypeMariaDB:
 		profile.Status = ConnectorStatusEndToEndVerified
 		profile.EndToEndVerified = true
-		profile.SupportedVersionRange = "11.8.9 only"
-		profile.VerifiedServerVersions = []string{"11.8.9"}
-		profile.VersionPolicy = "Only MariaDB 11.8.9 has a pinned contract result; other MariaDB versions and MySQL are not implied to be compatible."
+		profile.SupportedVersionRange = "10.11.19, 11.4.13, 11.8.9, and 12.3.3 only"
+		profile.VerifiedServerVersions = []string{"10.11.19", "11.4.13", "11.8.9", "12.3.3"}
+		profile.VersionPolicy = "Only MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3 have pinned contract results; other MariaDB versions and MySQL are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification are covered by the MariaDB 11.8.9 contract tests."
+		profile.AuthenticationDisclosure = "Password authentication is covered by the MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3 driver contracts. TLS certificate/hostname verification is covered by the MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3 contracts."
 		profile.Limitations = []string{
-			"The MariaDB contract test exercises the shared MySQL-protocol driver against MariaDB 11.8.9, including database-side read-only sessions.",
-			"The TLS contract verifies a trusted private CA and hostname, rejects an untrusted CA or hostname mismatch, and confirms ssl=false remains plaintext. Other MariaDB versions are not covered.",
+			"The MariaDB contract tests exercise the shared MySQL-protocol driver against MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, including database-side read-only sessions.",
+			"The TLS contracts verify a trusted private CA and hostname, reject an untrusted CA or hostname mismatch, and confirm ssl=false remains plaintext against MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. Other MariaDB versions are not covered.",
 		}
 	case model.DatabaseTypeTiDB:
 		profile.Status = ConnectorStatusEndToEndVerified
@@ -169,10 +247,10 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"26.8.20.9"}
 		profile.VersionPolicy = "Only ClickHouse 26.8.20.9 has a pinned native-protocol contract result; other ClickHouse versions are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "Password authentication is covered by the ClickHouse 26.8.20.9 contract test; TLS is not covered by this baseline."
+		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification with a private CA are covered by the ClickHouse 26.8.20.9 contract tests."
 		profile.Limitations = []string{
 			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
-			"Gateway read-only session initialization is not supported for ClickHouse; use a server account with restricted privileges. TLS behavior and other ClickHouse versions are not covered by this baseline.",
+			"The TLS contract verifies a trusted CA and matching host, rejects an untrusted CA and hostname mismatch, and confirms system roots reject the private test CA when no custom CA is configured. Gateway read-only session initialization is not supported; use a server account with restricted privileges. Other ClickHouse versions are not covered by this baseline.",
 		}
 	case model.DatabaseTypeMongoDB:
 		profile.Status = ConnectorStatusExperimental
@@ -195,10 +273,11 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.VerifiedServerVersions = []string{"16.0.4305.5"}
 		profile.VersionPolicy = "Only SQL Server 16.0.4305.5 has a pinned contract result; other SQL Server versions are not implied to be compatible."
 		profile.AuthenticationMethods = []string{"username/password"}
-		profile.AuthenticationDisclosure = "SQL authentication is covered by the SQL Server 16.0.4305.5 contract test; the test trusts the container's self-signed TLS certificate, so production certificate validation is not covered."
+		profile.AuthenticationDisclosure = "SQL authentication and TLS certificate/hostname verification are covered by the SQL Server 16.0.4305.5 contract tests."
 		profile.Limitations = []string{
-			"The SQL Server contract test covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, and query errors against SQL Server 16.0.4305.5.",
-			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account. Production TLS certificate validation and other SQL Server versions are not covered by this baseline.",
+			"The SQL Server 16.0.4305.5 contract covers SQL authentication, connection and health checks, database selection, value scanning, pagination, cancellation, query errors, and TLS certificate/hostname verification with a generated CA.",
+			"TLS verification rejects an untrusted CA and hostname mismatch; the contract also confirms the explicit TrustServerCertificate compatibility path and that ssl=false leaves query traffic unencrypted. Other SQL Server versions are not covered.",
+			"Database-side read-only session enforcement is not supported; use a least-privilege SQL Server account.",
 		}
 	case model.DatabaseTypeOracle:
 		profile.Status = ConnectorStatusEndToEndVerified
@@ -280,6 +359,20 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"Only primitive top-level columns and uncompressed, ZLIB, and Snappy stripes are supported. Nested/repeated types, other codecs, partition scans, multiple objects, and stripe-statistics pushdown are not supported.",
 			"The ORC decoder currently has a restricted compatibility baseline; compatibility with additional ORC writers and S3 providers has not been established.",
 		}
+	case model.DatabaseTypeS3Delta:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "Garage v2.4.1 only"
+		profile.VerifiedServerVersions = []string{"Garage v2.4.1"}
+		profile.VersionPolicy = "The S3 Delta adapter has a pinned live contract against Garage v2.4.1 only; AWS S3 and other S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed S3 access-key requests are covered against Garage v2.4.1; IAM roles, session tokens, and provider-specific authorization are not covered by this baseline."
+		profile.Limitations = []string{
+			"The Garage v2.4.1 contract covers signed Parquet and Delta log upload, snapshot discovery, health and schema checks, filtered and paginated read-only SQL, counts, and write rejection; cancellation remains covered by a local protocol fixture.",
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"The Garage result does not establish compatibility with AWS S3, other S3-compatible providers, or other Garage releases.",
+		}
 	case model.DatabaseTypeMinIOCSV:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true
@@ -293,6 +386,34 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"MinIO CSV uses the same config-aware, read-only S3 CSV SQL adapter as S3-compatible sources. It supports one configured CSV object and a limited SELECT subset, and downloads the full object into gateway memory.",
 			"Set additionalProps.endpoint_url to the MinIO endpoint and force_path_style to true. TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
 		}
+	case model.DatabaseTypeMinIOJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has a JSON contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "MinIO root access key and secret key authentication are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed upload and read of JSON objects, arrays, and JSON Lines; metadata and health checks; schema discovery; filtered read-only SQL; counts; and write rejection.",
+			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
+			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are outside the adapter boundary.",
+			"TLS, STS, distributed MinIO deployments, AWS S3, and other MinIO releases are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMinIOAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has an Avro OCF contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "MinIO root access key and secret key authentication are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed Avro OCF upload and reads, health checks, schema discovery, filtered and ordered read-only SQL, pagination, counts, and write rejection.",
+			"The adapter exposes one configured Avro OCF object as one SQL table and downloads the full object into gateway memory before decoding and applying filters or pagination.",
+			"Only flat records with primitive fields or nullable unions of null and one primitive type are supported. Nested records, arrays, maps, named unions, schema registries, multiple objects, and partition scans are not supported.",
+			"Only null, deflate, and Snappy OCF codecs are supported by the current decoder. TLS, STS, AWS S3, distributed MinIO deployments, and other releases are not covered.",
+		}
 	case model.DatabaseTypeMinIOParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.EndToEndVerified = true
@@ -305,6 +426,34 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 			"The MinIO contract covers bucket creation, Parquet upload, metadata and health checks, schema discovery, a restricted read-only SQL query, filtering, ordering, pagination, COUNT(*), and write rejection.",
 			"The adapter exposes one configured flat-schema Parquet object as one SQL table; it uses ranged object reads but currently decodes the object's rows before applying the supported SQL filters and page.",
 			"Nested or repeated fields, partition scans, multiple objects, schema evolution, TLS, STS, distributed MinIO deployments, and other releases are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMinIODelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has a Delta contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed MinIO access-key requests are covered by the pinned source-build contract; session tokens, TLS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The live MinIO contract covers snapshot discovery for one simple Delta log, signed Parquet and log upload, health checks, schema metadata, restricted read-only SQL, pagination, counts, and write rejection; cancellation remains covered by a local protocol fixture.",
+			"The adapter reads one unpartitioned Delta table with Parquet files, JSON transaction logs, and reader protocol version 1; checkpoints, deletion vectors, partitioning, empty tables, and newer reader features are rejected.",
+			"Queries may download up to 64 MiB of active data files into gateway memory; the table must have at most 256 active files and 100,000 decoded rows.",
+			"TLS, session-token authentication, AWS S3, other S3-compatible providers, and other MinIO releases are not covered by this baseline.",
+		}
+	case model.DatabaseTypeMinIOORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "Only the pinned MinIO RELEASE.2025-04-22T22-12-26Z source build has an ORC contract result; other MinIO releases and S3-compatible providers are not implied to be compatible."
+		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
+		profile.AuthenticationDisclosure = "Signed MinIO root access key and secret key requests are covered by the pinned source-build contract; TLS, STS, and other authentication modes are not covered."
+		profile.Limitations = []string{
+			"The MinIO contract covers signed ORC upload and reads, health checks, flat-schema metadata, filtered and ordered read-only SQL, pagination, COUNT(*), LIMIT 0 schema discovery, and write rejection.",
+			"The adapter exposes one configured ORC object as one SQL table and reads object ranges but decodes the full object into gateway memory before SQL filtering and pagination.",
+			"Only primitive top-level columns and the codecs supported by the shared ORC decoder are available; nested/repeated columns, multi-object scans, partition discovery, and write operations are not supported.",
+			"TLS, STS, AWS S3, distributed MinIO deployments, other MinIO releases, and additional ORC writer compatibility are not covered by this baseline.",
 		}
 	case model.DatabaseTypeApacheDoris:
 		profile.Status = ConnectorStatusEndToEndVerified
@@ -354,7 +503,16 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured CSV file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
 			"CSV fields are parsed into inferred scalar values in gateway memory before filtering and pagination; flat row-oriented data only is supported.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed:
+	case model.DatabaseTypeHDFSParquet:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The Hadoop 3.5.0 live contract covers HDFS simple-user RPC only; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Parquet file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
+			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
+			"The live contract uses a single-node NameNode/DataNode cluster and does not cover Kerberos, HDFS authorization policies, HA, or large-file performance.")
+	case model.DatabaseTypeHDFSParquetCompressed:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
 		profile.AuthenticationDisclosure = "The local file-client fixture covers configured user forwarding only; Kerberos and HDFS authorization behavior are not covered."
@@ -363,26 +521,54 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"Parquet page compression is decoded by the shared Parquet reader; externally compressed files and codecs rejected by that reader are not supported.",
 			"The configured file is read into gateway memory before row decoding; this flat-file adapter does not provide column pruning, predicate pushdown, or row-group pruning.",
 			"The deterministic local fixture does not establish compatibility with a live HDFS release.")
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneJSON, model.DatabaseTypeOzoneCSV, model.DatabaseTypeOzoneDelta:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"S3 access key/secret key (SigV4) through Ozone S3 Gateway"}
 		profile.AuthenticationDisclosure = "Access-key signing is implemented through the S3-compatible gateway client; compatibility with a live Apache Ozone release has not yet been contract-tested."
-		if dbType == model.DatabaseTypeOzoneParquet {
+		if dbType == model.DatabaseTypeOzoneCSV {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured CSV object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only CSV SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
+				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, directory or multi-object scans, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneJSON {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured JSON object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through the restricted read-only JSON SQL subset.",
+				"Only flat top-level scalar fields are queryable; nested objects and arrays are rejected. Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneParquet {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured Parquet object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only Parquet SQL subset.",
+				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneORC {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured ORC object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
+				"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through the restricted read-only ORC SQL subset. Nested and repeated fields are rejected.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, and live Ozone compatibility are not covered.")
 		} else if dbType == model.DatabaseTypeOzoneText {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured UTF-8 text object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 lines, downloaded into gateway memory, and exposed through the restricted read-only text SQL subset.",
 				"Path-style S3 requests are used. Native Ozone Kerberos, volume/bucket administration, multiple-object scans, multiline parsing, and live Ozone compatibility are not covered.")
+		} else if dbType == model.DatabaseTypeOzoneDelta {
+			profile.Limitations = append(profile.Limitations,
+				"The adapter reads one configured unpartitioned Delta table through the explicitly configured Ozone S3 Gateway endpoint; it uses the latest supported JSON transaction-log snapshot and Parquet data files.",
+				"The table must use reader protocol version 1, fewer than 1,000 JSON log objects, at most 256 active data files, and no more than 100,000 decoded rows. The default data limit is 16 MiB and can be raised to 64 MiB.",
+				"Checkpoints, partitioning, deletion vectors, time travel, writes, native Ozone RPC, Kerberos, and live Ozone compatibility are not supported or covered.")
 		} else {
 			profile.Limitations = append(profile.Limitations,
 				"The adapter reads one configured Avro OCF object from one bucket through the explicitly configured S3 Gateway endpoint; it does not use native Ozone RPC or expose volume administration.",
 				"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through the restricted read-only Avro SQL subset.",
 				"Only flat records with supported primitive or nullable primitive fields are queryable. Path-style S3 requests are used; native Ozone Kerberos, volume/bucket administration, multiple-object scans, nested schemas, and live Ozone compatibility are not covered.")
 		}
+	case model.DatabaseTypeHDFSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
+		profile.AuthenticationDisclosure = "The adapter uses HDFS simple-user RPC; Kerberos and HDFS authorization behavior are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC file, capped at 64 MiB and 100,000 rows; directory scans, multiple files, partitions, and streaming are not supported.",
+			"Only flat primitive fields supported by the shared ORC reader are queryable; nested and repeated fields are rejected, and data is read into gateway memory.",
+			"The Hadoop 3.5.0 live contract covers one single-node cluster and does not establish Kerberos, HDFS authorization, HA, or compatibility with other Hadoop releases.")
 	case model.DatabaseTypeHDFSAvro:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
@@ -427,6 +613,46 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Status = ConnectorStatusExperimental
 		profile.Limitations = append(profile.Limitations,
 			"The gateway query path supports one configured CSV object and a limited SELECT subset; it downloads the full object into gateway memory.")
+	case model.DatabaseTypeGCSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Google Cloud Storage HMAC access ID and secret (XML API interoperability)"}
+		profile.AuthenticationDisclosure = "A deterministic local S3-compatible protocol fixture covers AWS Signature V4 request construction; no live Google Cloud Storage contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV object through the Cloud Storage XML API interoperability endpoint; OAuth/ADC, service-account JSON, directory scans, multi-object scans, and writes are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset.",
+			"The local protocol fixture does not establish compatibility with a live Google Cloud Storage deployment or bucket configuration.")
+	case model.DatabaseTypeOSSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
+			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
+	case model.DatabaseTypeAlibabaOSSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests and STS token propagation; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
+			"Only uncompressed, ZLIB, and Snappy ORC stripes are supported by the current decoder. The deterministic protocol fixture does not establish compatibility with a live Alibaba OSS release.")
+	case model.DatabaseTypeAlibabaOSSAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests and STS token propagation; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Avro OCF object from one bucket; directory scans, multiple objects, raw datum streams, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level primitive fields and nullable primitive unions are supported.",
+			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
+	case model.DatabaseTypeAlibabaOSSJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
+		profile.AuthenticationDisclosure = "The local OSS SDK protocol fixture covers signed access-key requests and optional STS token propagation; no live OSS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array of records, or JSON Lines object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are supported by default; flatten_nested=true enables supported nested scalar fields.",
+			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
 	case model.DatabaseTypeAlibabaOSSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}
@@ -435,6 +661,38 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"Deterministic protocol-fixture coverage does not establish compatibility with a particular Alibaba OSS service release; no live OSS version contract is recorded.")
+	case model.DatabaseTypeTencentCOSCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; temporary credentials/STS token propagation and live COS release compatibility are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV object from one bucket; directory scans, multiple objects, compression, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
+			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array of records, or JSON Lines object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are supported by default; flatten_nested=true enables supported nested scalar fields.",
+			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC object from one bucket; directory scans, multiple objects, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
+			"Only uncompressed, ZLIB, and Snappy ORC stripes are supported by the current decoder. The deterministic protocol fixture does not establish compatibility with a live Tencent COS release.")
+	case model.DatabaseTypeTencentCOSAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; temporary credentials/STS token propagation and live COS release compatibility are not covered."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Avro OCF object from one bucket; directory scans, multiple objects, raw datum streams, schema registries, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level primitive fields and nullable primitive unions are supported.",
+			"The deterministic local protocol fixture does not establish compatibility with a Tencent COS service release.")
 	case model.DatabaseTypeTencentCOSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
@@ -443,6 +701,46 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured object with a flat primitive Parquet schema and a restricted read-only SELECT subset; nested and repeated fields are rejected.",
 			"The complete object is downloaded into gateway memory before Parquet decoding and SQL filtering, so this baseline is intended for bounded objects.",
 			"The deterministic SDK protocol fixture does not establish compatibility with a Tencent COS service release.")
+	case model.DatabaseTypeTencentCOSDelta:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey"}
+		profile.AuthenticationDisclosure = "The local COS SDK protocol fixture covers signed SecretId/SecretKey requests; no live Tencent COS release contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured unpartitioned Delta table from one bucket through Tencent COS; it uses the latest supported JSON transaction-log snapshot and Parquet data files.",
+			"Checkpoint-based logs, partitioning, deletion vectors, time travel, writes, and streaming are not supported. Active data files and transaction logs are downloaded into gateway memory within these bounds: at most 256 active files, 64 MiB of data (16 MiB by default), and 100,000 decoded rows.",
+			"The deterministic local COS protocol fixture does not establish compatibility with a live Tencent COS release.")
+	case model.DatabaseTypeAzureBlobORC:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured ORC object; directory scans, multiple blobs, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested and repeated ORC fields are rejected.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
+	case model.DatabaseTypeAzureBlobAvro:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured Avro Object Container File (OCF); directory scans, multiple blobs, raw datum streams, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Nested Avro fields and unsupported unions are rejected.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
+	case model.DatabaseTypeAzureBlobCSV:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured CSV blob; directory scans, multiple blobs, compression, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 rows, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Header, delimiter, skipped header rows, and null markers are configurable.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
+	case model.DatabaseTypeAzureBlobJSON:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
+		profile.AuthenticationDisclosure = "The local Azure SDK protocol fixture covers Shared Key request signing and SAS query propagation; no live Azure Storage version contract is recorded."
+		profile.Limitations = append(profile.Limitations,
+			"The adapter reads one configured JSON object, array, or JSON Lines blob; directory scans, multiple blobs, and streaming are not supported.",
+			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are queryable.",
+			"The local Azure SDK protocol fixture does not establish compatibility with a live Azure Storage release or deployment.")
 	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Azure Shared Key account key or SAS token"}
@@ -485,11 +783,27 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The local protocol fixture does not establish compatibility with a live Azure Storage release.")
 	case model.DatabaseTypeMinIOIceberg:
 		profile.Status = ConnectorStatusExperimental
+		profile.EndToEndVerified = true
+		profile.SupportedVersionRange = "RELEASE.2025-04-22T22-12-26Z only"
+		profile.VerifiedServerVersions = []string{"RELEASE.2025-04-22T22-12-26Z"}
+		profile.VersionPolicy = "The pinned contract verifies MinIO S3 FileIO object access and the configured read path; the REST catalog is simulated, so external catalog implementations are not covered."
 		profile.AuthenticationMethods = []string{"Iceberg REST catalog credentials and MinIO S3-compatible access key/secret key"}
-		profile.AuthenticationDisclosure = "Local REST catalog and configuration fixtures cover query routing and MinIO FileIO property mapping; no live MinIO or REST Catalog release contract is recorded."
-		profile.Limitations = append(profile.Limitations,
+		profile.AuthenticationDisclosure = "MinIO access key and secret key use is covered by the pinned live contract; external REST catalog authentication is not exercised."
+		profile.Limitations = []string{
 			"The adapter exposes one configured table through an Iceberg REST catalog and MinIO S3 FileIO; catalog_uri, warehouse, namespace, table_name, endpoint, and MinIO credentials are required.",
-			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.")
+			"Queries use the shared Iceberg read-only SQL subset and row limit. Writes, a built-in REST catalog, catalog-wide table enumeration, and direct metadata-file discovery are not supported.",
+			"The pinned live contract verifies MinIO object access and the configured read path using a local REST fixture; it does not establish compatibility with external REST catalog servers.",
+		}
+	case model.DatabaseTypeTencentCOSIceberg:
+		profile.Status = ConnectorStatusExperimental
+		profile.AuthenticationMethods = []string{"Tencent Cloud SecretId and SecretKey plus Iceberg REST catalog credentials"}
+		profile.AuthenticationDisclosure = "The pinned MinIO S3-compatible contract exercises COS adapter credential mapping; no live Tencent COS release or external REST catalog contract is recorded."
+		profile.Limitations = []string{
+			"The adapter exposes one configured table via an external Iceberg REST catalog and COS S3-compatible storage; the catalog must return COS-readable s3:// table locations and the configured region must match the bucket region.",
+			"Queries use the shared read-only Iceberg SQL subset and row limit. Writes, built-in catalog management, catalog-wide enumeration, and Iceberg time travel are not supported.",
+			"COS compatibility is not implied by the S3-compatible API; virtual-hosted addressing is enabled by default and can be overridden for compatible environments.",
+			"The pinned MinIO contract exercises the COS wrapper against MinIO S3 FileIO, not against a live Tencent COS service or external catalog.",
+		}
 	case model.DatabaseTypeMinIOORC:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"MinIO S3-compatible access key and secret key (SigV4)"}
@@ -512,6 +826,12 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
 			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are rejected or outside the adapter boundary.")
+	case model.DatabaseTypeTrino:
+		profile.Limitations = []string{
+			"No versioned driver-contract range or exact server version is recorded in this catalog.",
+			"A separate opt-in Trino 484 integration profile verifies the listed read-only query, timeout, coordinator-recovery, and engine-error paths through public REST and MCP; see [the validation report](validation/trino-integration.md). It does not establish compatibility for other Trino versions, authentication modes, connectors, SQL features, worker topologies, or production workloads.",
+			"This supplemental integration profile does not change the versioned driver-contract status or compatibility range recorded by this catalog.",
+		}
 	}
 }
 
@@ -687,7 +1007,7 @@ func CompatibilityByType(catalog []ConnectorSupport) map[string]ConnectorSupport
 func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 	var out strings.Builder
 	out.WriteString("# Data Source Support Catalog\n\n")
-	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists are intentional when no pinned evidence exists. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
+	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists mean no versioned driver-contract evidence is recorded in the runtime catalog; connector-specific integration profiles may provide narrower supplemental evidence. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
 	out.WriteString("| Type | Category | Registered | Status | End-to-end verified | Version range | Exact versions verified | Version policy | Compatibility mode | Version detection | Operations | Authentication methods | Authentication note | Capabilities | Version-dependent capabilities | Limitations |\n")
 	out.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, profile := range catalog {
@@ -718,7 +1038,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 			profile.ServerVersionDetection, operations, authentication, profile.AuthenticationDisclosure,
 			capabilitySummary(profile.Capabilities), versionCapabilities, limitations))
 	}
-	out.WriteString("\n`endToEndVerified` is true only after a versioned contract test passes. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); new connector verification work should be scoped to a concrete user need and a pinned server version. For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
+	out.WriteString("\n`endToEndVerified` is true only after a versioned driver-contract test passes and is recorded in the runtime catalog. No compatibility range is declared for a source until the project records the evidence; connection attempts are allowed and the detected version is reported when available. Authentication methods are reported only when catalogued. For executed evidence, see [the driver contract test report](driver-contract-tests.md); new connector verification work should be scoped to a concrete user need and a pinned server version. For Delta Lake and Apache Hudi range semantics and adapter boundaries, see [the table-format read contracts](table-format-read-contracts.md).\n\nRegenerate this page after catalog changes with `go run ./cmd/generate-support-catalog`.\n")
 	return out.String()
 }
 

@@ -74,14 +74,32 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeHDFSAvro, func() drivers.Driver {
 		return &file_system.HDFSAvroDriver{}
 	})
+	dr.register(model.DatabaseTypeHDFSORC, func() drivers.Driver {
+		return &file_system.HDFSORCDriver{}
+	})
 	dr.register(model.DatabaseTypeOzoneParquet, func() drivers.Driver {
 		return &file_system.OzoneParquetDriver{}
+	})
+	dr.register(model.DatabaseTypeOzoneORC, func() drivers.Driver {
+		return &file_system.OzoneORCDriver{}
 	})
 	dr.register(model.DatabaseTypeOzoneText, func() drivers.Driver {
 		return &file_system.OzoneTextDriver{}
 	})
 	dr.register(model.DatabaseTypeOzoneAvro, func() drivers.Driver {
 		return &file_system.OzoneAvroDriver{}
+	})
+	dr.register(model.DatabaseTypeOzoneJSON, func() drivers.Driver {
+		return &file_system.OzoneJSONDriver{}
+	})
+	dr.register(model.DatabaseTypeOzoneCSV, func() drivers.Driver {
+		return &file_system.OzoneCSVDriver{}
+	})
+	dr.register(model.DatabaseTypeOzoneDelta, func() drivers.Driver {
+		return &object_storage.OzoneDeltaDriver{}
+	})
+	dr.register(model.DatabaseTypeHDFSJSON, func() drivers.Driver {
+		return &file_system.HDFSJSONDriver{}
 	})
 	dr.register(model.DatabaseTypeHDFSText, func() drivers.Driver {
 		return &file_system.HDFSTextDriver{}
@@ -207,6 +225,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeS3CSV, func() drivers.Driver {
 		return &object_storage.S3CSVDriver{}
 	})
+	dr.register(model.DatabaseTypeGCSCSV, func() drivers.Driver {
+		return &object_storage.GCSCSVDriver{}
+	})
 	dr.register(model.DatabaseTypeS3JSON, func() drivers.Driver {
 		return &object_storage.S3JSONDriver{}
 	})
@@ -231,8 +252,43 @@ func (dr *DriverRegistry) registerDrivers() {
 	dr.register(model.DatabaseTypeAlibabaOSSParquet, func() drivers.Driver {
 		return &object_storage.OSSParquetDriver{}
 	})
+	dr.register(model.DatabaseTypeOSSCSV, func() drivers.Driver {
+		return &object_storage.OSSCSVDriver{}
+	})
+	dr.register(model.DatabaseTypeAlibabaOSSJSON, func() drivers.Driver {
+		return &object_storage.OSSJSONDriver{}
+	})
+	dr.register(model.DatabaseTypeAlibabaOSSAvro, func() drivers.Driver {
+		return &object_storage.OSSAvroDriver{}
+	})
+	dr.register(model.DatabaseTypeAlibabaOSSORC, func() drivers.Driver {
+		return &object_storage.OSSORCDriver{}
+	})
 	dr.register(model.DatabaseTypeTencentCOSParquet, func() drivers.Driver {
 		return &object_storage.COSParquetDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSCSV, func() drivers.Driver {
+		return &object_storage.COSCSVDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSJSON, func() drivers.Driver {
+		return &object_storage.COSJSONDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSORC, func() drivers.Driver {
+		return &object_storage.COSORCDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSAvro, func() drivers.Driver {
+		return &object_storage.COSAvroDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSDelta, func() drivers.Driver {
+		return &object_storage.COSDeltaDriver{}
+	})
+	dr.register(model.DatabaseTypeAzureBlobAvro, func() drivers.Driver { return &object_storage.AzureBlobAvroDriver{} })
+	dr.register(model.DatabaseTypeAzureBlobORC, func() drivers.Driver { return &object_storage.AzureBlobORCDriver{} })
+	dr.register(model.DatabaseTypeAzureBlobCSV, func() drivers.Driver {
+		return &object_storage.AzureBlobCSVDriver{}
+	})
+	dr.register(model.DatabaseTypeAzureBlobJSON, func() drivers.Driver {
+		return &object_storage.AzureBlobJSONDriver{}
 	})
 	dr.register(model.DatabaseTypeAzureBlobParquet, func() drivers.Driver {
 		return &object_storage.AzureBlobParquetDriver{}
@@ -242,6 +298,9 @@ func (dr *DriverRegistry) registerDrivers() {
 	})
 	dr.register(model.DatabaseTypeMinIOIceberg, func() drivers.Driver {
 		return &object_storage.MinIOIcebergDriver{}
+	})
+	dr.register(model.DatabaseTypeTencentCOSIceberg, func() drivers.Driver {
+		return &object_storage.COSIcebergDriver{}
 	})
 	dr.register(model.DatabaseTypeAzureDelta, func() drivers.Driver {
 		return &object_storage.AzureDeltaDriver{}

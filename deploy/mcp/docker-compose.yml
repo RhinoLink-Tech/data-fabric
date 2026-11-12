@@ -18,9 +18,12 @@ name: data-fabric-mcp
 # settings, and the credential vault keyring. Remote MCP has separate OIDC
 # resource-token validation settings below.
 x-data-fabric-base: &data-fabric-base
+  image: ${DATA_FABRIC_IMAGE:-data-fabric:local}
   build:
     context: ../..
     dockerfile: Dockerfile
+    args:
+      DATA_FABRIC_SOURCE_REVISION: ${DATA_FABRIC_SOURCE_REVISION:-unknown}
   restart: unless-stopped
   environment: &data-fabric-env
     SERVER_MODE: release
@@ -34,10 +37,12 @@ x-data-fabric-base: &data-fabric-base
     SECURITY_ENABLE_AUTH: "true"
     DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID: ${DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID:?set DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID in .env}
     DATA_FABRIC_CREDENTIAL_KEYS: ${DATA_FABRIC_CREDENTIAL_KEYS:?set DATA_FABRIC_CREDENTIAL_KEYS in .env}
+    QUERY_MAX_CONCURRENT_QUERIES: ${QUERY_MAX_CONCURRENT_QUERIES:-4}
+    QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT:-2}
 
 services:
   metadata-db:
-    image: mysql:8.4
+    image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${METADATA_DB_ROOT_PASSWORD:?set METADATA_DB_ROOT_PASSWORD in .env}
@@ -54,7 +59,7 @@ services:
     # No published ports: the metadata database stays on the internal network.
 
   sample-source:
-    image: mysql:8.4
+    image: mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${SAMPLE_SOURCE_ROOT_PASSWORD:?set SAMPLE_SOURCE_ROOT_PASSWORD in .env}
@@ -98,6 +103,8 @@ services:
   # curl check confirms the 401 authentication gate over TLS.
   data-fabric-mcp:
     <<: *data-fabric-base
+    group_add:
+      - "${DATA_FABRIC_TLS_GID:-10001}"
     depends_on:
       # Serializes schema initialization: the API service migrates first and
       # this service's migration pass becomes a no-op against the same

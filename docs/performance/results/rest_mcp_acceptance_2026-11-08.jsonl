@@ -1,0 +1,50 @@
+{"case":"A01","transport":"rest","result":"pass","duration_ms":37}
+{"case":"A01","transport":"mcp-http","result":"pass","duration_ms":157}
+{"case":"A02","transport":"rest","result":"pass","duration_ms":17}
+{"case":"A02","transport":"mcp-http","result":"pass","duration_ms":66}
+{"case":"A03","transport":"rest","result":"unsupported","duration_ms":0,"reason":"no policy-filtered public REST table listing"}
+{"case":"A03","transport":"mcp-http","result":"pass","duration_ms":72}
+{"case":"A04","transport":"rest","result":"unsupported","duration_ms":0,"reason":"no policy-filtered public REST table description"}
+{"case":"A04","transport":"mcp-http","result":"pass","duration_ms":88}
+{"case":"A05","transport":"rest","result":"pass","duration_ms":426}
+{"case":"A05","transport":"mcp-http","result":"pass","duration_ms":497}
+{"case":"A06","transport":"rest","result":"pass","duration_ms":212}
+{"case":"A06","transport":"mcp-http","result":"pass","duration_ms":279}
+{"case":"A07","transport":"rest","result":"pass","duration_ms":206}
+{"case":"A07","transport":"mcp-http","result":"pass","duration_ms":272}
+{"case":"A08","transport":"rest","result":"pass","duration_ms":1079}
+{"case":"A08","transport":"mcp-http","result":"pass","duration_ms":1196}
+{"case":"A09","transport":"rest","result":"pass","duration_ms":648}
+{"case":"A09","transport":"mcp-http","result":"pass","duration_ms":754}
+{"case":"A10","transport":"rest","result":"pass","duration_ms":660}
+{"case":"A10","transport":"mcp-http","result":"pass","duration_ms":747}
+{"case":"A11","transport":"rest","result":"pass","duration_ms":18379}
+{"case":"A11","transport":"mcp-http","result":"pass","duration_ms":18644}
+{"case":"A12","transport":"rest","result":"pass","duration_ms":10}
+{"case":"A12","transport":"mcp-http","result":"pass","duration_ms":9}
+{"case":"A13","transport":"rest","result":"pass","duration_ms":88}
+{"case":"A13","transport":"mcp-http","result":"pass","duration_ms":108}
+{"case":"A14","transport":"rest","result":"unsupported","duration_ms":0,"reason":"REST uses HS256 authentication"}
+{"case":"A14","transport":"mcp-http","result":"pass","duration_ms":10}
+{"case":"A15","transport":"rest","result":"unsupported","duration_ms":0,"reason":"REST uses HS256 authentication"}
+{"case":"A15","transport":"mcp-http","result":"pass","duration_ms":12}
+{"case":"A16","transport":"rest","result":"unsupported","duration_ms":0,"reason":"REST uses HS256 authentication"}
+{"case":"A16","transport":"mcp-http","result":"pass","duration_ms":9}
+{"case":"A17","transport":"rest","result":"pass","duration_ms":45}
+{"case":"A17","transport":"mcp-http","result":"pass","duration_ms":140}
+{"case":"A18","transport":"rest","result":"pass","duration_ms":208}
+{"case":"A18","transport":"mcp-http","result":"pass","duration_ms":300}
+{"case":"A19","transport":"rest","result":"pass","duration_ms":856}
+{"case":"A19","transport":"mcp-http","result":"pass","duration_ms":1005}
+{"case":"A20","transport":"rest","result":"pass","duration_ms":654}
+{"case":"A20","transport":"mcp-http","result":"pass","duration_ms":779}
+{"case":"A21","transport":"rest","result":"pass","duration_ms":232}
+{"case":"A21","transport":"mcp-http","result":"pass","duration_ms":267}
+{"case":"A22","transport":"rest","result":"pass","duration_ms":14696}
+{"case":"A22","transport":"mcp-http","result":"pass","duration_ms":14921}
+{"case":"A23","transport":"rest","result":"pass","duration_ms":3005}
+{"case":"A23","transport":"mcp-http","result":"pass","duration_ms":3148}
+{"case":"A24","transport":"rest","result":"pass","duration_ms":689}
+{"case":"A24","transport":"mcp-http","result":"pass","duration_ms":732}
+{"case":"A25","transport":"rest","result":"unsupported","duration_ms":0,"reason":"no public REST schema search"}
+{"case":"A25","transport":"mcp-http","result":"pass","duration_ms":206}

@@ -717,10 +717,18 @@ components:
         - delta_lake
         - hudi
         # Object storage and file formats
+        - azure_blob_avro
+        - azure_blob_orc
+        - azure_blob_csv
+        - azure_blob_json
         - azure_blob_parquet
         - azure_delta
         - azure_parquet
         - cos_parquet
+        - cos_orc
+        - cos_avro
+        - cos_delta
+        - cos_iceberg
         - minio_avro
         - minio_csv
         - minio_delta
@@ -730,18 +738,28 @@ components:
         - minio_parquet
         - oss_delta
         - oss_parquet
+        - oss_orc
         - s3_avro
         - s3_csv
+        - gcs_csv
         - s3_delta
         - s3_json
         - s3_orc
         - s3_parquet
         # Distributed file systems
         - hdfs_avro
+        - hdfs_orc
         - hdfs_parquet
         - hdfs_csv
         - hdfs_text
         - hdfs_parquet_compressed
+        - ozone_avro
+        - ozone_csv
+        - ozone_delta
+        - ozone_json
+        - ozone_parquet
+        - ozone_orc
+        - ozone_text
       description: Data source types with a driver registered in the current runtime
 
     DataSourceStatus:

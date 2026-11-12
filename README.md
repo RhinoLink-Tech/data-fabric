@@ -30,9 +30,15 @@
 | Agents need a safe tool surface | Optional [MCP server](MCP_SERVER.md) for discover → validate → query → fetch batches |
 | Cross-source SQL is optional, not default | Single-source drivers by default; plug in Trino / Presto / OpenLooKeng when needed |
 
+## Product overview video
+
+[![Watch the Data Fabric product overview — Chinese narration](assets/data-fabric-overview.svg)](https://scrimba.com/explain/guide0ui5us658?fullscreen=1)
+
+Explore deployment, data-source management, unified queries, access policies, observability, and MCP/Skill integration with Codex and WorkBuddy. This illustrated product overview has Chinese narration; follow the [deployment guide](docs/mcp-deployment.md) and [client setup guide](docs/agent-skill.md) for configuration steps.
+
 ## AI application scenarios
 
-- **AI agents:** MCP over local stdio or authenticated Streamable HTTP — discover sources, validate read-only SQL, run queries, fetch batches. See the [MCP guide](MCP_SERVER.md) and [agent skill notes](docs/agent-skill.md).
+- **AI agents:** MCP over local stdio or authenticated Streamable HTTP — discover sources, validate read-only SQL, run queries, fetch batches. Release-mode remote MCP requires OIDC. See the [MCP guide](MCP_SERVER.md) and [agent skill notes](docs/agent-skill.md).
 - **RAG retrieval:** Pull structured / semi-structured records from registered sources. Chunking, embeddings, and ranking stay in your RAG stack.
 - **Text-to-SQL:** Route model-generated read-only SQL through one API; translate only within the published compatibility matrix.
 - **AI analytics:** Give assistants one entry point; attach a federation engine only for cross-source SQL.
@@ -70,9 +76,7 @@ flowchart LR
 
 ## Data sources and honesty about support
 
-Data Fabric publishes a **support catalog** that separates *registered implementation* from *end-to-end verified* support, and declared version ranges from exact versions tested. A successful connection test alone is not a verification claim. Some connectors are experimental.
-
-Before you rely on a connector, read the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md).
+Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. The catalog separates registered implementations from end-to-end verified support, declared version ranges from exact tested versions, and protocol fixtures from live-service evidence. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations remain experimental. Consult the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
 
 The standard build ships as one executable with registered drivers compiled in; connections open only for configured sources.
 
@@ -84,56 +88,34 @@ Pass `sourceDialect` to translate inside the [compatibility matrix](SQL_TRANSLAT
 
 ## Quick Start
 
-### Requirements
+The recommended clean install and first authorized task is the [published-image path in the self-hosted remote MCP deployment guide](docs/mcp-deployment.md#run-a-published-image-without-compiling-source). The published [v2.1.0-preview.1 release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) includes a public, digest-pinned `linux/amd64` image. The source-build path remains available for contributors.
 
-- Go **1.26.1+** (from source) or Docker Engine (container build)
-- A reachable **metadata database**
-- Network access to the sources you will register
-- `JWT_SECRET` (≥ 32 bytes) and a credential-encryption keyring via env vars
+The sample profile uses MySQL metadata and separate REST and MCP processes. Its seeded data is synthetic. It demonstrates the documented path; it does not establish external adoption, production capacity, or an SLA. See the [first-adopter profile](docs/product/first-adopter-profile.md), [connector support catalog](docs/data-source-support.md), and [current operating limits](docs/roadmap.md#current-operating-limits) for the scope and open evidence.
 
-> There is **no published one-command Compose stack or prebuilt public image yet**. You build locally and bring your own metadata DB. That is the main friction today.
+The Preview profile is a single-host deployment, not an HA, SLA, or production-readiness claim. Its Compose prerequisites are Docker Engine 24 or later, Docker Compose 2.24 or later, OpenSSL, Python 3 with its standard library, and an OIDC provider that can issue an access token for the configured audience and query scope. The published-image path does not require Go, source compilation, or host Python package installation.
 
-### Run from source
+### Run the gateway from source for development
+
+A direct source run requires Go 1.26.1 or later, Python 3, a reachable MySQL metadata database, and network access to the data sources. The default SQLGlot runtime is used for read-only SQL analysis and dialect translation. From the repository root, install the pinned parser dependency in a virtual environment:
 
 ```bash
-git clone https://github.com/RhinoLink-Tech/data-fabric.git
-cd data-fabric
-cp configs/config.yaml.example configs/config.yaml
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-sql-translation.txt
 go mod download
+cp configs/config.yaml.example configs/config.yaml
 ```
 
-Edit `configs/config.yaml` for the metadata database, then:
+Set the metadata database fields in configs/config.yaml. Supply a stable JWT secret and credential keyring through a secret manager or environment variables; preserve the same keyring across restarts so saved source credentials remain decryptable.
 
 ```bash
-export JWT_SECRET="$(openssl rand -hex 32)"
+export SECURITY_JWT_SECRET="$(openssl rand -hex 32)"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
 export DATA_FABRIC_CREDENTIAL_KEYS="{\"dev-v1\":\"$(openssl rand -base64 32)\"}"
 go run ./cmd/server
 ```
 
-Reuse the same secrets across restarts. Health check: `GET /health`. More detail: [configuration guide](docs/configuration.md).
-
-### Build and run with Docker
-
-Create the MySQL metadata DB/account first, then:
-
-```bash
-docker build -t data-fabric:local .
-docker run --rm --name data-fabric \
-  --add-host=host.docker.internal:host-gateway \
-  -p 8080:8080 \
-  -e DATABASE_HOST=host.docker.internal \
-  -e DATABASE_PORT=3306 \
-  -e DATABASE_DATABASE=data_fabric \
-  -e DATABASE_USERNAME=data_fabric \
-  -e DATABASE_PASSWORD="<metadata database password>" \
-  -e SECURITY_JWT_SECRET="<stable secret with at least 32 bytes>" \
-  -e DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1 \
-  -e DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64-encoded 32-byte key>"}' \
-  data-fabric:local
-```
-
-The image listens on **8080** as a non-root user and takes config from environment variables.
+Generate values with openssl rand -hex 32 and openssl rand -base64 32, then store them securely instead of regenerating on restart. Health check: `GET /health`; more detail in the [configuration guide](docs/configuration.md). The management API quickstart and query request shapes are in the [API usage guide](docs/api_usage.md). For a protected remote MCP deployment, use the OIDC profile above; the REST management JWT and MCP identity-provider access token are different credentials.
 
 ## Performance expectations
 
@@ -162,24 +144,32 @@ Local WSL benchmarks (PostgreSQL, synthetic data) and deployment footprint numbe
 | POST | `/api/v1/fetch` | Run query, first batch | Bearer always; needs read access |
 | GET | `/api/v1/fetch/:query_id/:slug/:token` | Later batches | Bearer always; creator only |
 
-Details: [API usage guide](docs/api_usage.md).
+See the [API usage guide](docs/api_usage.md) for request fields, response structures, and authentication behavior.
+The embedded [data-source management UI](docs/data-source-management-ui.md) is available at /ui/.
 
 ## Documentation
 
 - [API Usage Guide](docs/api_usage.md)
 - [MCP Server](MCP_SERVER.md)
-- [Data Fabric Agent Skill](docs/agent-skill.md)
+- [Data-source Management UI](docs/data-source-management-ui.md)
+- [Data Fabric Agent Skill for Codex and WorkBuddy](docs/agent-skill.md)
 - [DeepSeek Function-Calling Example](examples/deepseek-agent/README.md)
-- [Architecture](docs/architecture.md)
-- [Configuration](docs/configuration.md)
-- [Development](docs/development.md)
-- [Contributing](CONTRIBUTING.md)
+- [Architecture Guide](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
+- [Adoption and Product Value Delivery Plan](docs/plans/gateway-delivery.md)
+- [First-adopter profile and supported preview hypothesis](docs/product/first-adopter-profile.md) (evaluation remains pending)
+- [Open-source adoption and product value program](docs/plans/gateway-delivery.md#productization-program) (planned delivery and evaluation)
+- [Configuration Guide](docs/configuration.md)
+- [Development Guide](docs/development.md)
+- [Contributing Guide](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 - [Support](SUPPORT.md)
 
 ## Cross-source query engines
 
-Trino, Presto, and OpenLooKeng adapters can be registered as sources. The support catalog marks them as **implementation-present, not end-to-end verified**. Live coordinator verification is deferred in [#179](https://github.com/RhinoLink-Tech/data-fabric/issues/179).
+When cross-source SQL is needed, Data Fabric can connect to compatible federation engines through a shared adapter. Trino, Presto, and OpenLooKeng adapters are implemented and can be registered as data sources. The generated support catalog records versioned driver-contract evidence and currently keeps these adapters at implementation-present. Separately, the opt-in [Trino 484 integration profile](docs/validation/trino-integration.md) verifies the listed read-only query, timeout, coordinator-recovery, and engine-error paths through public REST and MCP. This bounded profile does not establish compatibility for other Trino versions, authentication modes, connectors, SQL features, worker topologies, or production workloads.
+
+See the [API usage guide](docs/api_usage.md) for connection setup and the [SQL v1 contract](SQL_TRANSLATION_FEATURES.md) for the supported SQL compatibility scope.
 
 ## Contribute
 

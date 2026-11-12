@@ -4,8 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
+
+## [v2.1.0-preview.1] - 2026-11-11
+
 ### Added
+- Add configurable, bounded process-wide query and active-stream capacity with defaults aligned to the measured four-way, two-tenant profile (#451).
+- Add explicit pagination or streaming selection to MCP execute_sql_query and candidate-matched page-mutation outcomes to the public REST/MCP reference acceptance (#455).
+- Add tag-gated GHCR Preview image publishing with digest-pinned Compose startup, SQLGlot notices, SBOM and provenance (#442).
+- Add idempotent self-hosted MCP initialization, a bounded management-token helper, and a local profile doctor (#445).
+- Add age-encrypted current-profile backup verification and fresh-checkout restore preparation, bound to an OCI source-revision label (#452).
 - Publish a provider-neutral Data Fabric Agent Skill for schema-aware, read-only queries and bounded result retrieval, with an official format-validation check in CI (#182).
+
+- Bundle unmodified Go module license and notice materials for the shipped server and replica-ingress binaries, with a deterministic SHA-256 manifest (#442).
+- Add a guided first authorized query, copyable remote MCP setup, and second-application reuse path to the embedded source-management UI (#446).
+
+### Changed
+- Preserve the HTTP X-Correlation-ID response header in management UI errors when the standardized response body omits a correlation ID (#446).
 
 ### Fixed
 - Validate values standardized as UUID and reject malformed strings and byte slices instead of passing them through unchanged (#144).

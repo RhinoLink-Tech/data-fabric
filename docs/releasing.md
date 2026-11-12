@@ -2,7 +2,7 @@
 
 ## Current automation
 
-The Go workflow checks pull requests and pushes to master. It does not publish binaries or container images. GitHub Releases are currently created by a maintainer.
+The Go workflow checks pull requests and pushes to master. The `publish-container.yml` workflow publishes only on an annotated semver tag that points to master; pull requests do not publish images. GitHub Releases are still created by a maintainer.
 
 ## Release checklist
 
@@ -25,9 +25,19 @@ The Go workflow checks pull requests and pushes to master. It does not publish b
 
 ## Container images
 
-Container publishing is not configured, so releases do not currently publish an image automatically. The repository Dockerfile builds with the Go version declared by the project, defaults to port 8080, and runs as a non-root user. Build and smoke-check a local image with the Docker instructions in [README.md](../README.md) before treating a container image as a release artifact.
+The tag-gated `publish-container.yml` workflow builds one `linux/amd64` GHCR image from an annotated semver tag on master. Before building, it requires a successful Go CI push run for the exact SHA with successful affected-contract selection, unit/build, PostgreSQL/MySQL reference contracts, and public REST/MCP acceptance. It rejects an existing version or source tag, publishes version and source-SHA tags, and attaches BuildKit SBOM and max-mode provenance. The workflow summary records the source SHA and immutable `tag@sha256` reference. Pull requests do not publish images.
+
+The Dockerfile includes the pinned SQLGlot runtime, project license, third-party notices, dependency pin file, and a generated Go-module license bundle for both shipped binaries. Its manifest binds the unmodified license materials to module versions and SHA-256 values; the image build fails when a dependency has no license terms, with the documented GoHive README exception. It defaults to non-root UID 10001. The contributor path can still build from source; adopters should use [the digest-pinned deployment overlay](mcp-deployment.md#run-a-published-image-without-compiling-source), which removes the build definition and pulls the selected image.
+
+### v2.1.0-preview.1 publication record
+
+The maintainer approved v2.1.0-preview.1 and its linux/amd64, single-host MySQL profile on 2026-11-09. The Preview was published on 2026-11-11 as [GitHub Release v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1). Its annotated tag points to source SHA `570c2975fedbc886a37003a8b64b68caa699678c`; the public image digest is `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. The published-image acceptance workflow passed the documented install with Go removed from PATH, exact image revision/platform checks, REST/MCP acceptance, and two-replica acceptance. Issue #442 remains open for first-adopter evidence, and #446 tracks the separate independent-operator rehearsal.
+
+For a future container release, verify public visibility, source SHA, digest, SBOM, provenance, and the supported profile after the tag workflow publishes the image. Then dispatch the [published-image acceptance workflow](../.github/workflows/release-image-acceptance.yml) from that release tag with its exact tag@sha256 reference. Create the GitHub Release after that acceptance passes. The current Preview profile is linux/amd64 only.
 
 ## Current candidate documents
 
-- [v2.0.0 core release candidate review](releases/v2.0.0-candidate.md)
+- [Maintainer-approved v2.1.0-preview.1 Preview candidate review](releases/v2.1.0-preview.1-candidate.md)
+- [中文候选评审](releases/v2.1.0-preview.1-candidate-zh.md)
+- [v2.0.0 core release candidate review (historical snapshot)](releases/v2.0.0-candidate.md)
 - [Upgrade guide from v1.2.0](upgrading-v1.2.0.md)

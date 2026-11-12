@@ -100,7 +100,7 @@ func TestListObjectCSVTablesWithAndWithoutTablePolicy(t *testing.T) {
 		}), wantCount: 1},
 		{name: "metadata denied", policy: security.NewTableAuthorizer(security.TableAuthorizationConfig{Enabled: true}), wantCount: 0},
 	} {
-		for _, dbType := range []model.DatabaseType{model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3CSV} {
+		for _, dbType := range []model.DatabaseType{model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3CSV, model.DatabaseTypeGCSCSV} {
 			t.Run(string(dbType)+"/"+tc.name, func(t *testing.T) {
 				source.Type = dbType
 				server := NewMCPServerWithTableAuthorizer(nil, describeTableRepo{source: source}, metadataSource, tc.policy)

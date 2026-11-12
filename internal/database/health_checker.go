@@ -430,15 +430,24 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 				return err
 			}
 		}
-		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneText || dbType == model.DatabaseTypeOzoneAvro {
+		if dbType == model.DatabaseTypeOzoneParquet || dbType == model.DatabaseTypeOzoneORC || dbType == model.DatabaseTypeOzoneText || dbType == model.DatabaseTypeOzoneAvro || dbType == model.DatabaseTypeOzoneJSON || dbType == model.DatabaseTypeOzoneCSV {
 			switch dbType {
 			case model.DatabaseTypeOzoneText:
 				return file_system.ValidateOzoneTextConfig(config)
 			case model.DatabaseTypeOzoneAvro:
 				return file_system.ValidateOzoneAvroConfig(config)
+			case model.DatabaseTypeOzoneJSON:
+				return file_system.ValidateOzoneJSONConfig(config)
+			case model.DatabaseTypeOzoneCSV:
+				return file_system.ValidateOzoneCSVConfig(config)
+			case model.DatabaseTypeOzoneORC:
+				return file_system.ValidateOzoneORCConfig(config)
 			default:
 				return file_system.ValidateOzoneParquetConfig(config)
 			}
+		}
+		if dbType == model.DatabaseTypeGCSCSV {
+			return object_storage.ValidateGCSCSVConfig(config)
 		}
 		if dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeMinIOCSV {
 			return hc.validateS3CSVConfig(config)
@@ -473,11 +482,29 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeMinIOIceberg {
 			return hc.validateMinIOIcebergConfig(config)
 		}
+		if dbType == model.DatabaseTypeTencentCOSIceberg {
+			return object_storage.ValidateCOSIcebergConfig(config)
+		}
 		if dbType == model.DatabaseTypeAlibabaOSSParquet {
 			return hc.validateOSSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeOSSCSV {
+			return object_storage.ValidateOSSCSVConfig(config)
+		}
+		if dbType == model.DatabaseTypeAlibabaOSSJSON {
+			return object_storage.ValidateOSSJSONConfig(config)
+		}
+		if dbType == model.DatabaseTypeAlibabaOSSAvro {
+			return object_storage.ValidateOSSAvroConfig(config)
+		}
+		if dbType == model.DatabaseTypeAlibabaOSSORC {
+			return object_storage.ValidateOSSORCConfig(config)
+		}
 		if dbType == model.DatabaseTypeOSSDelta {
 			return hc.validateOSSDeltaConfig(config)
+		}
+		if dbType == model.DatabaseTypeOzoneDelta {
+			return object_storage.ValidateOzoneDeltaConfig(config)
 		}
 		if dbType == model.DatabaseTypeMinIODelta {
 			return hc.validateMinIODeltaConfig(config)
@@ -488,12 +515,45 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 		if dbType == model.DatabaseTypeTencentCOSParquet {
 			return hc.validateCOSParquetConfig(config)
 		}
+		if dbType == model.DatabaseTypeTencentCOSCSV {
+			return object_storage.ValidateCOSCSVConfig(config)
+		}
+		if dbType == model.DatabaseTypeTencentCOSJSON {
+			return object_storage.ValidateCOSJSONConfig(config)
+		}
+		if dbType == model.DatabaseTypeTencentCOSORC {
+			return object_storage.ValidateCOSORCConfig(config)
+		}
+		if dbType == model.DatabaseTypeTencentCOSAvro {
+			return object_storage.ValidateCOSAvroConfig(config)
+		}
+		if dbType == model.DatabaseTypeTencentCOSDelta {
+			return object_storage.ValidateCOSDeltaConfig(config)
+		}
+		if dbType == model.DatabaseTypeAzureBlobORC {
+			return object_storage.ValidateAzureBlobORCConfig(config)
+		}
+		if dbType == model.DatabaseTypeAzureBlobAvro {
+			return object_storage.ValidateAzureBlobAvroConfig(config)
+		}
+		if dbType == model.DatabaseTypeAzureBlobCSV {
+			return object_storage.ValidateAzureBlobCSVConfig(config)
+		}
+		if dbType == model.DatabaseTypeAzureBlobJSON {
+			return object_storage.ValidateAzureBlobJSONConfig(config)
+		}
 		if dbType == model.DatabaseTypeAzureBlobParquet || dbType == model.DatabaseTypeAzureParquet {
 			return hc.validateAzureParquetConfig(config)
 		}
 		// Object storage (S3, etc.) requires bucket and region
 		return hc.validateObjectStorageConfig(config, driver)
 	case drivers.CategoryFileSystem:
+		if dbType == model.DatabaseTypeHDFSJSON {
+			if err := applyDriverDefaultPort(config, driver); err != nil {
+				return err
+			}
+			return file_system.ValidateHDFSJSONConfig(config)
+		}
 		if dbType == model.DatabaseTypeHDFSText {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err
@@ -512,9 +572,12 @@ func (hc *HealthChecker) ValidateDataSourceConfiguration(config *model.DataSourc
 			}
 			return file_system.ValidateHDFSParquetConfig(config)
 		}
-		if dbType == model.DatabaseTypeHDFSAvro {
+		if dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeHDFSORC {
 			if err := applyDriverDefaultPort(config, driver); err != nil {
 				return err
+			}
+			if dbType == model.DatabaseTypeHDFSORC {
+				return file_system.ValidateHDFSORCConfig(config)
 			}
 			return file_system.ValidateHDFSAvroConfig(config)
 		}

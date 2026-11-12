@@ -1,0 +1,35 @@
+asset:
+  id: warehouse.batch-route.initial-phase
+  version: 1
+  status: reference
+source:
+  profile: isolated-warehouse-reference-pg17
+  type: postgresql
+  version: "17"
+  schema: public
+  schema_identity: reference-shape-v1
+tables:
+  pallet_tasks:
+    batch_no: bigint
+    status: text
+    pallet_started_command_id: text
+    empty_started_command_id: text
+  tray_records:
+    id: bigint
+    batch_no: bigint
+    tray_type: text
+    status: text
+task:
+  parameter: { name: batch_no, type: bigint, binding: positional-1 }
+  states: [PENDING, SENDING, ACCEPTED, RUNNING, PAUSED]
+  relationship: tray_records.batch_no belongs to pallet_tasks.batch_no
+  rule: A previous batch's successful empty phase is historical; it cannot set the new batch's route.
+  expected: { route_origin: WAIT, next_destination: FULL_PALLET }
+  query: route.sql
+permission:
+  mode: read-only
+  execution: Apply the current caller's source/table/column policy on every query.
+  bypass: false
+schema_change:
+  mismatch: Mark this asset version stale and stop before execution.
+  refresh: Owner reviews the schema, updates the query, increments the version, and replays the task.

@@ -34,6 +34,7 @@ type Event struct {
 	DataSourceID     string    `json:"dataSourceId,omitempty" gorm:"size:255;index"`
 	Tables           []string  `json:"tables,omitempty" gorm:"serializer:json;type:json"`
 	QueryFingerprint string    `json:"queryFingerprint,omitempty" gorm:"size:64"`
+	PolicyRevision   string    `json:"policyRevision,omitempty" gorm:"size:64;index"`
 	Decision         string    `json:"decision" gorm:"size:16;not null;index"`
 	ReasonCode       string    `json:"reasonCode,omitempty" gorm:"size:128"`
 	Outcome          string    `json:"outcome" gorm:"size:16;not null;index"`

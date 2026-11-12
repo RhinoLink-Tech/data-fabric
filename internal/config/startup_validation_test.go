@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
 func validStartupConfig() Config {
@@ -35,6 +37,19 @@ func validStartupConfig() Config {
 			Transport: MCPTransportStdio,
 			Address:   "127.0.0.1:8081",
 		},
+	}
+}
+
+func TestValidateStartupDefersManagedTablePolicyValidation(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.TableAuthorization = security.TableAuthorizationConfig{
+		Enabled: true,
+		DataSources: map[string]security.DataSourceTablePolicy{
+			"": {},
+		},
+	}
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want DB-managed policy validation to occur after metadata DB is available", err)
 	}
 }
 
@@ -100,6 +115,17 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 		{"negative timeout", func(c *Config) { c.Server.ReadTimeout = -time.Second }, "server.read_timeout"},
 		{"zero body limit", func(c *Config) { c.Server.MaxRequestBodyBytes = 0 }, "server.max_request_body_bytes"},
 		{"invalid query execution mode", func(c *Config) { c.Query.ExecutionMode = "background" }, "query.execution_mode"},
+		{"negative query session TTL", func(c *Config) { c.Query.SessionTTLSeconds = -1 }, "query.session_ttl_seconds"},
+		{"oversized query session TTL", func(c *Config) { c.Query.SessionTTLSeconds = 1801 }, "query.session_ttl_seconds"},
+		{"negative process query limit", func(c *Config) { c.Query.MaxConcurrentQueries = -1 }, "query.max_concurrent_queries"},
+		{"oversized process query limit", func(c *Config) { c.Query.MaxConcurrentQueries = 101 }, "query.max_concurrent_queries"},
+		{"negative per-tenant query limit", func(c *Config) { c.Query.MaxConcurrentQueriesPerTenant = -1 }, "query.max_concurrent_queries_per_tenant"},
+		{"oversized per-tenant query limit", func(c *Config) { c.Query.MaxConcurrentQueriesPerTenant = 101 }, "query.max_concurrent_queries_per_tenant"},
+		{"negative tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = -1 }, "query.rate_limit_per_minute_per_tenant"},
+		{"negative tenant query burst", func(c *Config) { c.Query.RateLimitBurstPerTenant = -1 }, "query.rate_limit_burst_per_tenant"},
+		{"incomplete tenant query rate", func(c *Config) { c.Query.RateLimitPerMinutePerTenant = 120 }, "must both be zero"},
+		{"negative query result rows", func(c *Config) { c.Query.MaxResultRows = -1 }, "query.max_result_rows"},
+		{"oversized query result bytes", func(c *Config) { c.Query.MaxResultBytes = 1 << 31 }, "query.max_result_bytes"},
 		{"missing JWT secret", func(c *Config) { c.Security.JWTSecret = "" }, "security.jwt_secret"},
 	}
 	for _, tc := range tests {
@@ -111,6 +137,15 @@ func TestValidateStartupRejectsInvalidHTTPSettings(t *testing.T) {
 				t.Fatalf("ValidateStartup() error = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateStartupCapsQueryDurationToShortSessionTTL(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Query.SessionTTLSeconds = 8
+	cfg.Query.MaxDurationSeconds = 300
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want the effective deadline to be capped to the shorter session TTL", err)
 	}
 }
 
@@ -222,5 +257,31 @@ func TestValidateStartupOIDCRemoteMCPDoesNotRequireLocalJWTSecret(t *testing.T) 
 	cfg.Security.JWTSecret = ""
 	if err := cfg.ValidateStartup(); err != nil {
 		t.Fatalf("ValidateStartup() error = %v, want OIDC to replace the local MCP JWT secret", err)
+	}
+}
+
+func TestValidateStartupRESTDrainConfiguration(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Routing.Enabled = true
+	cfg.Routing.PolicyRevision = "policy-v1"
+	if err := cfg.ValidateStartup(); err != nil || cfg.Routing.DrainTimeout() != 120*time.Second {
+		t.Fatalf("default drain timeout = %v, error = %v", cfg.Routing.DrainTimeout(), err)
+	}
+	for _, seconds := range []int{-1, 1801} {
+		cfg.Routing.DrainTimeoutSeconds = seconds
+		if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "routing.drain_timeout_seconds") {
+			t.Fatalf("drain timeout %d: error = %v", seconds, err)
+		}
+	}
+	cfg.Routing.DrainTimeoutSeconds = 1800
+	cfg.MCP.Enabled = true
+	cfg.MCP.Transport = MCPTransportStreamableHTTP
+	cfg.MCP.Address = "127.0.0.1:8081"
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("remote MCP routing configuration: error = %v", err)
+	}
+	cfg.MCP.Transport = MCPTransportStdio
+	if err := cfg.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "requires the streamable-http transport") {
+		t.Fatalf("stdio routing enabled: error = %v", err)
 	}
 }

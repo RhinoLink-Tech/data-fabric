@@ -5,7 +5,8 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-mariadb-tls-$RANDOM-$RANDOM"
 image_tag="data-fabric-mariadb-tls:$RANDOM-$RANDOM"
-mariadb_image="mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68"
+mariadb_image="${DATA_FABRIC_MARIADB_TLS_IMAGE:-mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68}"
+mariadb_expected_version="${DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION:-11.8.9}"
 
 cleanup() {
   docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -87,7 +88,7 @@ DATA_FABRIC_MARIADB_TLS_CONTRACT_HOST=localhost \
   DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE=data_fabric_contract \
   DATA_FABRIC_MARIADB_TLS_ROOT_CA="$work_dir/ca.crt" \
   DATA_FABRIC_MARIADB_TLS_BAD_CA="$work_dir/bad-ca.crt" \
-  DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION=11.8.9 \
+  DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION="$mariadb_expected_version" \
   go test ./internal/database/drivers/traditional -run '^TestMariaDBTLSVerification$' -count=1 -v || {
     docker logs "$container_name" 2>&1 | grep -iE 'error|ready for connections|ssl' | tail -40 || true
     exit 1

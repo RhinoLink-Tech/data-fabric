@@ -1,0 +1,36 @@
+# API-only integration profile that joins an existing MySQL/MariaDB Docker network.
+# Use an isolated metadata schema on the existing database service.
+services:
+  data-fabric-api:
+    image: ${DATA_FABRIC_IMAGE:?set DATA_FABRIC_IMAGE to a locally available tag@sha256 image}
+    pull_policy: never
+    restart: "no"
+    environment:
+      SERVER_MODE: release
+      SERVER_PORT: "8080"
+      DATABASE_HOST: ${EXTERNAL_MYSQL_HOST:?set EXTERNAL_MYSQL_HOST}
+      DATABASE_PORT: ${EXTERNAL_MYSQL_PORT:-3306}
+      DATABASE_DATABASE: ${METADATA_DB_NAME:?set METADATA_DB_NAME}
+      DATABASE_USERNAME: ${METADATA_DB_USER:?set METADATA_DB_USER}
+      DATABASE_PASSWORD: ${METADATA_DB_PASSWORD:?set METADATA_DB_PASSWORD}
+      SECURITY_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      SECURITY_ENABLE_AUTH: "true"
+      DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID: ${DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID:?set DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID}
+      DATA_FABRIC_CREDENTIAL_KEYS: ${DATA_FABRIC_CREDENTIAL_KEYS:?set DATA_FABRIC_CREDENTIAL_KEYS}
+      QUERY_MAX_CONCURRENT_QUERIES: ${QUERY_MAX_CONCURRENT_QUERIES:-4}
+      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT:-2}
+    ports:
+      - "127.0.0.1:${API_PORT:-18180}:8080"
+    networks:
+      - external-mysql
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+
+networks:
+  external-mysql:
+    external: true
+    name: ${DATA_FABRIC_EXTERNAL_NETWORK:?set DATA_FABRIC_EXTERNAL_NETWORK to the existing Docker network}

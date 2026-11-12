@@ -1,0 +1,12 @@
+# Run the published, digest-pinned image from GHCR without a local source build.
+# Set DATA_FABRIC_IMAGE to the exact tag@sha256 reference from the release record.
+# Requires Docker Compose 2.24+ for !reset.
+services:
+  data-fabric-api:
+    image: ${DATA_FABRIC_IMAGE:?set DATA_FABRIC_IMAGE to the published tag@sha256 digest}
+    pull_policy: always
+    build: !reset null
+  data-fabric-mcp:
+    image: ${DATA_FABRIC_IMAGE:?set DATA_FABRIC_IMAGE to the published tag@sha256 digest}
+    pull_policy: always
+    build: !reset null

@@ -1,0 +1,217 @@
+name: Published image acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Immutable public GHCR image reference for this release tag (tag@sha256)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate_image:
+    name: Validate the release image reference
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.image.outputs.image_ref }}
+      release_tag: ${{ steps.image.outputs.release_tag }}
+    steps:
+      - name: Require an immutable digest for this release tag
+        id: image
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/rhinolink-tech/data-fabric:"
+          if [[ "$IMAGE_REF" != "$prefix"* ]]; then
+            echo "Image must use ghcr.io/rhinolink-tech/data-fabric:<release-tag>@sha256:<64-hex>" >&2
+            exit 1
+          fi
+          tagged_digest="${IMAGE_REF#"$prefix"}"
+          release_tag="${tagged_digest%@sha256:*}"
+          digest="${tagged_digest##*@sha256:}"
+          if [[ "$tagged_digest" != "$release_tag@sha256:$digest" ]]; then
+            echo "Image reference must contain one release tag and one sha256 digest" >&2
+            exit 1
+          fi
+          if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            echo "Release tag must be a supported semver tag" >&2
+            exit 1
+          fi
+          if [[ ! "$digest" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Image digest must be 64 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+          echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+  documented_host_install:
+    name: Install the published image without Go
+    needs: validate_image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+      COMPOSE_PROJECT_NAME: df-release-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out the tagged deployment files
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate_image.outputs.release_tag }}
+          fetch-depth: 1
+
+      - name: Initialize and start the documented digest-pinned profile
+        working-directory: deploy/mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          no_go_bin="$(mktemp -d)"
+          cleanup_no_go_bin() { /bin/rm -rf -- "$no_go_bin"; }
+          trap cleanup_no_go_bin EXIT
+          for tool in python3 openssl git docker; do
+            tool_path="$(command -v "$tool")"
+            ln -s "$tool_path" "$no_go_bin/$tool"
+          done
+          export PATH="$no_go_bin"
+          if command -v go >/dev/null 2>&1; then
+            echo "Go must not be available for the published-image installation smoke" >&2
+            exit 1
+          fi
+          python3 ../../scripts/mcp/onboard.py init --directory "$PWD"
+          source_revision="$(git rev-parse HEAD)"
+          python3 - "$IMAGE_REF" "$source_revision" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path('.env')
+          values = {
+              'DATA_FABRIC_IMAGE': sys.argv[1],
+              'DATA_FABRIC_SOURCE_REVISION': sys.argv[2],
+              'MCP_OIDC_ISSUER': 'https://issuer.example.invalid',
+              'MCP_OIDC_AUDIENCE': 'published-image-install-smoke',
+          }
+          lines = path.read_text(encoding='utf-8').splitlines()
+          for key, value in values.items():
+              pattern = re.compile(rf'^{re.escape(key)}=.*$')
+              matches = [index for index, line in enumerate(lines) if pattern.match(line)]
+              if matches:
+                  lines[matches[0]] = f'{key}={value}'
+                  for index in reversed(matches[1:]):
+                      del lines[index]
+              else:
+                  lines.append(f'{key}={value}')
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          path.chmod(0o600)
+          PY
+          compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.yml -f docker-compose.release.yml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" pull data-fabric-api
+          "${compose[@]}" up -d metadata-db sample-source data-fabric-api
+          python3 - <<'PY'
+          import sys
+          import time
+          from urllib.error import URLError
+          from urllib.request import urlopen
+
+          deadline = time.monotonic() + 240
+          last_error = 'API health endpoint did not return HTTP 200'
+          while time.monotonic() < deadline:
+              try:
+                  with urlopen('http://127.0.0.1:8080/health', timeout=3) as response:
+                      if response.status == 200:
+                          print('Published image API is healthy on the documented loopback endpoint.')
+                          break
+                      last_error = f'health endpoint returned HTTP {response.status}'
+              except (OSError, URLError) as error:
+                  last_error = str(error)
+              time.sleep(3)
+          else:
+              print(last_error, file=sys.stderr)
+              sys.exit(1)
+          PY
+          container_id="$("${compose[@]}" ps -q data-fabric-api)"
+          actual_image="$(docker inspect --format '{{.Config.Image}}' "$container_id")"
+          if [[ "$actual_image" != "$IMAGE_REF" ]]; then
+            echo "Compose started $actual_image instead of the immutable release image $IMAGE_REF" >&2
+            exit 1
+          fi
+          echo "Started documented profile from $actual_image with no Go toolchain."
+
+      - name: Remove the isolated smoke stack
+        if: always()
+        working-directory: deploy/mcp
+        env:
+          IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+          COMPOSE_PROJECT_NAME: df-release-${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f .env ]]; then
+            docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.yml -f docker-compose.release.yml down --volumes --remove-orphans || true
+          fi
+
+  published_image_acceptance:
+    name: Verify REST and MCP behavior on the published image
+    needs: validate_image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate_image.outputs.release_tag }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Pull and verify image platform and source revision
+        env:
+          IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE_REF"
+          platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_REF")"
+          revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_REF")"
+          if [[ "$platform" != "linux/amd64" ]]; then
+            echo "Expected linux/amd64, found $platform" >&2
+            exit 1
+          fi
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$revision" != "$source_revision" ]]; then
+            echo "Image source revision $revision does not match release tag SHA $source_revision" >&2
+            exit 1
+          fi
+          printf 'Verified image: %s\nSource SHA: %s\nPlatform: %s\n' "$IMAGE_REF" "$source_revision" "$platform" | tee "$RUNNER_TEMP/published-image-acceptance.log"
+
+      - name: Run full standalone REST and MCP acceptance
+        env:
+          IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/acceptance -repo "$GITHUB_WORKSPACE" -image "$IMAGE_REF" 2>&1 | tee -a "$RUNNER_TEMP/published-image-acceptance.log"
+
+      - name: Run two-replica REST and MCP acceptance
+        env:
+          IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/acceptance -repo "$GITHUB_WORKSPACE" -image "$IMAGE_REF" -multi-replica 2>&1 | tee -a "$RUNNER_TEMP/published-image-acceptance.log"
+
+      - name: Upload published-image acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-image-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/published-image-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30

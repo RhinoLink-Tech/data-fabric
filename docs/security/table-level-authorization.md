@@ -63,6 +63,24 @@ Table authorization requires the configured SQLGlot AST analyzer. If table autho
 
 `list_tables` filters table identities before serializing its response. `describe_table` checks metadata permission before reading columns, indexes, or keys, then removes columns outside the configured allowlist. Pass the optional `schema` argument when the same table name exists in multiple schemas. An unqualified ambiguous table name is rejected. Column denials and unresolved column-policy denials are written to structured application logs with caller and table context; raw SQL and result values are not logged by this policy check.
 
-Policy updates are read from configuration at server startup, so restart the service after changing them. The `admin_override` option is off unless explicitly enabled. When enabled, administrator access is logged with the caller, data source, permission, and a bounded list of table names.
+## Versioned policy updates
+
+The first enabled startup seeds revision 1 from `table_authorization` in the shared metadata database. The database head becomes authoritative after that point; YAML is bootstrap configuration and cannot disable or replace an existing managed policy. This uses the metadata database already required by the service and adds no mandatory runtime service. Keep every owner pointed at the same transactional metadata database, not an asynchronously lagging read replica.
+
+Administrators can inspect and preflight policy changes before publishing:
+
+- REST: `GET /internal/table-policy`, `GET /internal/table-policy/versions/{revision}`, `GET /internal/table-policy/publications`, and `POST /internal/table-policy/validate`.
+- REST publication: `POST /internal/table-policy/publish` with `expectedRevision` and a complete `policy` object.
+- Remote MCP: `get_table_policy`, `validate_table_policy`, `publish_table_policy`, and `list_table_policy_publications`. These tools are registered only while managed table authorization is active.
+
+All endpoints and tools require the administrator role. Publication uses compare-and-swap: a stale `expectedRevision` conflicts instead of overwriting a newer policy. Invalid policies leave the active revision unchanged. Successful publication stores the immutable version, advances the head, and writes the publisher/outcome record in one metadata transaction. If that record cannot be committed, the policy is not activated and the API reports that audit was not recorded. Historical versions are read-only; rollback republishes a prior configuration as a new, higher revision.
+
+Each REST request and MCP tool call pins one immutable policy snapshot. New requests and every query continuation recheck the active policy; a continuation denied after revocation is retired. An already-running request may finish using the snapshot it pinned at its boundary.
+
+Healthy replicas poll every 250 ms. The declared revocation propagation window is at most 3 seconds. Owners expose the dynamic table-policy revision and freshness at `/internal/replica`, separately from the static routing/authentication `policyRevision`. A replica that has not successfully synchronized for 3 seconds fails closed for table queries and table metadata, including continuations. Keep routes closed until all serving owners report the intended fresh revision. The reference two-replica acceptance verifies this contract.
+
+The publication history is transactional with policy activation. General access-audit write failures retain the existing behavior documented in [Access audit events](audit-events.md); this feature does not promise that every access event is durably stored.
+
+The `admin_override` option is off unless explicitly enabled. When enabled, administrator table access is still logged with the caller, data source, permission, and a bounded list of table names.
 
 MCP over stdio uses the trusted local system caller with the administrator role. If `admin_override` is enabled for a source, local stdio requests bypass its table rules. Remote MCP requests use their authenticated caller identity.

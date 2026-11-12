@@ -189,14 +189,14 @@ func SQLDialectForDataSource(dbType model.DatabaseType) (string, bool) {
 	case model.DatabaseTypeApacheDruid:
 		return "druid", true
 	case model.DatabaseTypeApacheIceberg, model.DatabaseTypeDeltaLake, model.DatabaseTypeApacheHudi,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta,
-		model.DatabaseTypeMinIODelta:
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeAzureDelta,
+		model.DatabaseTypeMinIODelta, model.DatabaseTypeOzoneDelta, model.DatabaseTypeTencentCOSDelta:
 		return "spark", true
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeGCSCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeAlibabaOSSAvro, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeMinIOParquet,
 		model.DatabaseTypeMinIOCSV, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
-		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro,
-		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
+		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSORC,
+		model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return "mysql", true
 	default:
 		return "", false
@@ -832,10 +832,10 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 
 	// Object Storage - No SQL, API-based
 	case model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeS3Avro,
-		model.DatabaseTypeS3CSV, model.DatabaseTypeS3JSON, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
+		model.DatabaseTypeS3CSV, model.DatabaseTypeGCSCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeAlibabaOSSAvro, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeMinIOParquet, model.DatabaseTypeMinIOCSV,
 		model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeAlibabaOSSParquet,
-		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro,
-		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeAzureDelta:
+		model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSORC,
+		model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeAzureDelta, model.DatabaseTypeOzoneDelta, model.DatabaseTypeTencentCOSDelta:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,
@@ -859,7 +859,7 @@ func GetDataSourceSQLConfig(dbType model.DatabaseType) DataSourceSQLConfig {
 		}
 
 	// Flat-file adapters
-	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
+	case model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro:
 		return DataSourceSQLConfig{
 			SupportsTimeTravel:      false,
 			SupportsWindowFunctions: false,

@@ -4,6 +4,288 @@
 
 Data Fabric is configured primarily through a YAML configuration file located at `configs/config.yaml`. This document explains all available configuration options and their purposes.
 
+## Tencent COS Avro data source
+
+The cos_avro connector exposes one configured Tencent COS Avro Object
+Container File (OCF) as a read-only SQL table. Set the bucket in database,
+SecretId and SecretKey in username and password, region in
+additionalProps.region, and the object key in additionalProps.object_key (or
+the legacy host field). An HTTP(S) endpoint origin can be provided in
+additionalProps.endpoint_url; otherwise the COS SDK uses the regional endpoint.
+The https option defaults to true for the regional endpoint.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| https | true | Use HTTPS with the default regional endpoint |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+The adapter uses SecretId and SecretKey credentials; temporary COS credentials
+and STS session tokens are not supported. It reads one OCF object into gateway
+memory and supports the shared read-only SQL subset over top-level primitive
+fields and nullable primitive unions. Nested and complex Avro fields, raw datum
+streams, schema registries, directory scans, multiple objects, writes, and
+streaming are not supported. The local COS protocol fixture covers signed
+requests, schema discovery, bounded reads, cancellation, and SQL behavior; it
+does not establish a live Tencent COS version contract.
+
+## Tencent COS Delta Lake data source
+
+The cos_delta connector exposes the latest supported snapshot of one
+unpartitioned Delta Lake table stored in Tencent COS through a read-only SQL
+interface. Set the bucket in database, SecretId and SecretKey in username and
+password, the COS region in additionalProps.region, and the table directory in
+additionalProps.table_path (or the legacy host field). The directory must
+contain _delta_log. An HTTP(S) endpoint origin can be provided in
+additionalProps.endpoint_url; otherwise the COS SDK uses the regional endpoint.
+The https option defaults to true.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Last table-path segment | SQL table name |
+| batch_size | 1,000 | Parquet rows decoded per batch; maximum 10,000 |
+| max_table_bytes | 16 MiB | Active data-file limit; configurable up to 64 MiB |
+| https | true | Use HTTPS with the default regional endpoint |
+
+The adapter reads JSON transaction-log commits and Parquet data files, supports
+reader protocol version 1, and rejects checkpoints, partitioned tables,
+deletion vectors, time travel, writes, and streaming. It accepts at most 256
+active data files and 100,000 rows. The data and transaction logs are downloaded
+into gateway memory within the configured limits. The deterministic local COS
+protocol fixture covers request signing, bounded reads, SQL, metadata,
+cancellation, and write rejection; it does not establish compatibility with a
+live Tencent COS release. The connector remains experimental until a pinned
+live-service contract is recorded.
+
+## Tencent COS ORC data source
+
+The cos_orc connector exposes one configured Tencent COS .orc object as a
+read-only SQL table. Set the bucket in database, SecretId and SecretKey in
+username and password, region in additionalProps.region, and the object key in
+additionalProps.object_key (or the legacy host field). An HTTP(S) endpoint
+origin can be provided in additionalProps.endpoint_url; otherwise the COS SDK
+uses the regional endpoint. The https option defaults to true and controls the
+scheme used for the regional endpoint.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| https | true | Use HTTPS with the default regional endpoint |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded rows; this is also the hard maximum |
+
+The adapter uses SecretId and SecretKey credentials; temporary COS credentials
+and STS session tokens are not supported by this baseline. It reads one ORC
+object into gateway memory and supports the shared read-only SQL subset over
+top-level primitive columns. Nested and repeated ORC
+fields, directory scans, multiple objects, writes, and streaming are not
+supported. The local COS protocol fixture covers signed requests, schema
+discovery, bounded reads, cancellation, and SQL behavior; it does not establish
+a live Tencent COS version contract.
+
+## Alibaba OSS CSV data source
+
+The `oss_csv` connector exposes one configured OSS `.csv` object as a
+read-only SQL table. Set the bucket in `database`, the access key ID and secret
+in `username` and `password`, and the object key in
+`additionalProps.object_key` (or the legacy `host` field). Set
+`additionalProps.endpoint_url` to the OSS HTTP(S) endpoint origin. The
+`endpoint` property is accepted as an alias.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `session_token` | — | STS session token (`security_token` is an alias) |
+| `force_path_style` | `false` | Use path-style bucket addressing |
+| `delimiter` | `,` | One-character CSV delimiter |
+| `has_header` | `true` | Treat the first non-skipped record as column names |
+| `skip_header_rows` | `0` | Number of initial records to skip |
+| `null_values` | — | CSV values treated as SQL NULL |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+
+The adapter reads one object into gateway memory and supports the shared
+read-only CSV SQL subset. It rejects writes, files over the configured byte
+limit, and results with more than 100,000 CSV rows. The local OSS protocol
+fixture validates the signed SDK request path; it does not claim a live OSS
+service version contract.
+
+## Alibaba OSS JSON data source
+
+The `oss_json` connector exposes one configured OSS JSON object as a read-only
+SQL table. Set the bucket in `database`, the access key ID and secret in
+`username` and `password`, and the object key in `additionalProps.object_key`
+(or the legacy `host` field). Set the required endpoint origin in
+`additionalProps.endpoint_url`; `additionalProps.endpoint` is an alias. Object
+keys must end in `.json`, `.jsonl`, or `.ndjson`.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `session_token` | — | Optional STS token (`security_token` is an alias) |
+| `force_path_style` | `false` | Use path-style bucket addressing |
+| `flatten_nested` | `false` | Expose supported nested scalar fields as underscore-separated columns; collisions and arrays are rejected |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| `max_records` | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+JSON objects, arrays of records, and JSON Lines are supported. By default only
+top-level scalar fields are queryable; `flatten_nested=true` enables supported
+nested scalar fields. The adapter downloads one object into gateway memory and
+uses the shared read-only SQL subset. Prefix scans, multiple objects, writes,
+and streaming are not supported. The local OSS SDK fixture covers signed
+requests and STS token propagation; it does not establish a live OSS version
+contract.
+
+## Alibaba OSS Avro data source
+
+The oss_avro connector exposes one configured Alibaba OSS Avro Object
+Container File (OCF) as a read-only SQL table. Set the bucket in database,
+the access key ID and secret in username and password, the object key in
+additionalProps.object_key (or the legacy host field), and the required
+HTTP(S) endpoint origin in additionalProps.endpoint_url. The endpoint
+property is accepted as an alias. Object keys must end in .avro.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| session_token | - | Optional STS token (security_token is an alias) |
+| force_path_style | false | Use path-style bucket addressing |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded rows; this is also the hard maximum |
+
+The adapter reads one OCF object into gateway memory and supports the shared
+read-only SQL subset over top-level primitive fields and nullable primitive
+unions. Nested and other complex Avro field types, directory scans, multiple
+objects, raw datum streams, writes, and streaming are not supported. The local
+OSS protocol fixture covers signed requests and STS token propagation; it does
+not establish a live OSS version contract.
+
+## Alibaba OSS ORC data source
+
+The oss_orc connector exposes one configured Alibaba OSS .orc object as a
+read-only SQL table. Set the bucket in database, the access key ID and secret
+in username and password, and the object key in
+additionalProps.object_key (or the legacy host field). Set the required
+HTTP(S) endpoint origin in additionalProps.endpoint_url; endpoint is an
+alias. Object keys must end in .orc.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| table_name | Object filename without extension | SQL table name |
+| session_token |  | Optional STS token (security_token is an alias) |
+| force_path_style | false | Use path-style bucket addressing |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| max_rows | 100,000 | Maximum decoded rows; this is also the hard maximum |
+
+The adapter reads one ORC object into gateway memory and supports the shared
+read-only SQL subset over top-level primitive columns. Nested and repeated ORC
+fields, directory scans, multiple objects, writes, and streaming are not
+supported. The local OSS protocol fixture covers signed requests, STS token
+propagation, schema discovery, bounded reads, and SQL behavior; it does not
+establish a live OSS version contract.
+
+## Tencent COS CSV data source
+
+The `cos_csv` connector exposes one configured Tencent COS `.csv` object as a
+read-only SQL table. Set the bucket in `database`, SecretId and SecretKey in
+`username` and `password`, the region in `additionalProps.region`, and the
+object key in `additionalProps.object_key` (or the legacy `host` field).
+`additionalProps.endpoint_url` is an optional HTTP(S) endpoint override.
+COS uses HTTPS for the standard regional endpoint. When `endpoint_url` is set,
+its scheme controls whether the connection uses TLS.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `https` | `true` | TLS for the standard regional endpoint; `endpoint_url` takes precedence |
+| `delimiter` | `,` | One-character CSV delimiter |
+| `has_header` | `true` | Treat the first non-skipped record as column names |
+| `skip_header_rows` | `0` | Number of initial records to skip |
+| `null_values` | — | CSV values treated as SQL NULL |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+
+The adapter reads one object into gateway memory and supports the shared
+read-only CSV SQL subset. It rejects writes, objects over the configured byte
+limit, and results with more than 100,000 rows. The local COS protocol fixture
+checks signed requests but does not claim a live COS service version contract.
+
+## Google Cloud Storage CSV data source
+
+The gcs_csv connector exposes one configured Google Cloud Storage .csv
+object as a bounded, read-only SQL table through the Cloud Storage XML API
+interoperability endpoint. Set the bucket in database, the HMAC access ID
+and secret in username and password, and the object key in
+additionalProps.object_key (or the legacy host field). HMAC credentials are
+distinct from service-account JSON keys and OAuth credentials. The default
+endpoint is https://storage.googleapis.com; path-style requests are enabled
+by default. Set additionalProps.region to the bucket location for the
+Signature V4 credential scope; it defaults to us-east-1.
+
+Optional additionalProps fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| region | us-east-1 | Signature V4 region scope; configure the bucket location where appropriate |
+| endpoint_url | https://storage.googleapis.com | HTTP(S) XML API endpoint override |
+| force_path_style | true | Use storage.googleapis.com/bucket/object addressing |
+| table_name | Object filename without extension | SQL table name |
+| delimiter | , | One-character CSV delimiter |
+| has_header | true | Treat the first non-skipped record as column names |
+| skip_header_rows | 0 | Number of initial records to skip |
+| null_values | — | CSV values treated as SQL NULL |
+| max_file_bytes | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+
+The adapter requires permissions to read object metadata and object contents.
+It reads one object into gateway memory and supports the shared restricted
+read-only CSV SQL subset. It rejects writes, objects over the configured byte
+limit, and results with more than 100,000 rows. OAuth/ADC, service-account
+JSON, directory or multi-object scans, and streaming are not supported by this
+baseline. The deterministic protocol fixture does not establish compatibility
+with a live Google Cloud Storage deployment.
+
+## Tencent COS JSON data source
+
+The `cos_json` connector exposes one configured Tencent COS JSON object as a
+read-only SQL table. Set the bucket in `database`, SecretId and SecretKey in
+`username` and `password`, the region in `additionalProps.region`, and the
+object key in `additionalProps.object_key` (or the legacy `host` field). The
+object key must end in `.json`, `.jsonl`, or `.ndjson`. An optional
+`additionalProps.endpoint_url` overrides the regional COS endpoint.
+
+Optional `additionalProps` fields:
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `table_name` | Object filename without extension | SQL table name |
+| `https` | `true` | TLS for the standard regional endpoint; `endpoint_url` takes precedence |
+| `flatten_nested` | `false` | Expose supported nested scalar fields as underscore-separated columns; collisions and arrays are rejected |
+| `max_file_bytes` | 16 MiB | Per-object read limit; configurable up to 64 MiB |
+| `max_records` | 100,000 | Maximum decoded records; this is also the hard maximum |
+
+JSON objects, arrays of records, and JSON Lines are supported. By default only
+top-level scalar fields are queryable; `flatten_nested=true` enables supported
+nested scalar fields. The adapter downloads one object into gateway memory and
+uses the shared read-only SQL subset. Prefix scans, multiple objects, writes,
+and streaming are not supported. Local SDK fixtures cover signed COS requests
+and the configured limits; they do not establish a live Tencent COS version
+contract.
+
 ## Access audit events
 
 REST API and MCP access outcomes are stored in the metadata database when
@@ -52,11 +334,22 @@ logging:
 query:
   prefer_streaming: true
   execution_mode: "auto"
+  session_ttl_seconds: 1800
+
+routing:
+  enabled: false
+  deployment_id: ""
+  owner_slot: ""
+  policy_revision: ""
+  drain_timeout_seconds: 120
 
 mcp:
   enabled: false
   transport: "stdio"
   address: "127.0.0.1:8081"
+  max_concurrent_requests: 64
+  routed_session_ttl_seconds: 3600
+  max_routed_sessions: 1024
   auth_mode: "local-jwt"
   oidc_issuer: ""
   oidc_audience: ""
@@ -142,10 +435,20 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `logging.format` | String | `json` |
 | `query.prefer_streaming` | Boolean | `true` |
 | `query.execution_mode` | String | `auto` (`auto`, `streaming`, or `pagination`) |
+| `query.session_ttl_seconds` | Integer | `1800`; fixed lifetime of a pagination or streaming query session. Values `1`–`1800` set the lifetime. `0` uses the default. |
+| `query.max_concurrent_queries_per_tenant` | Integer | `25`; limits combined active streams and in-flight paginated queries per tenant (falls back to user ID when no tenant claim is present) |
+| `query.max_concurrent_streams_per_tenant` | Integer | Deprecated alias for `query.max_concurrent_queries_per_tenant` |
+| `query.rate_limit_per_minute_per_tenant` | Integer | `120`; shared query execution and continuation request budget per tenant |
+| `query.rate_limit_burst_per_tenant` | Integer | `20`; initial burst capacity for the per-tenant query request budget |
+| `query.max_result_rows` | Integer | `100000`; cumulative rows returned by one logical query across its initial page and continuations (maximum 10,000,000; 0 uses the default) |
+| `query.max_result_bytes` | Integer | `67108864`; cumulative UTF-8 bytes from JSON-marshalling a page object containing only `columns` and `entries` including object keys, delimiters, and repeated column metadata across all delivered pages (maximum 1 GiB; 0 uses the default) |
+| `query.max_duration_seconds` | Integer | `300`; absolute time limit for one logical query, including helper COUNT work and continuations (maximum 1800; 0 uses the default; effective deadline is capped at the session TTL) |
 | `mcp.enabled` | Boolean | `false` |
 | `mcp.transport` | String | `stdio` |
 | `mcp.address` | String | `127.0.0.1:8081` |
 | `mcp.max_concurrent_requests` | Integer | `64`; caps in-flight requests on the streamable-HTTP entrance (body size falls back to `server.max_request_body_bytes`) |
+| `mcp.routed_session_ttl_seconds` | Integer seconds | `3600`; absolute lifetime of each owner-bound remote MCP session when routing is enabled (0 selects the default; maximum 86400) |
+| `mcp.max_routed_sessions` | Integer | `1024`; bounded owner-local remote MCP session registry when routing is enabled (0 selects the default; maximum 65536) |
 | `mcp.auth_mode` | String | `local-jwt` (development); `oidc` for remote MCP in release mode |
 | `mcp.oidc_issuer` | HTTPS URL | Empty; required for OIDC |
 | `mcp.oidc_audience` | String | Empty; required for OIDC |
@@ -155,6 +458,31 @@ In `release` mode, authentication and read-only session enforcement cannot be di
 | `mcp.oidc_roles_claim` | Claim path | `roles` |
 | `mcp.oidc_username_claim` | Claim path | `preferred_username` |
 | `mcp.oidc_jwks_refresh_interval` | Duration | `5m` (1m–1h) |
+
+### Replica Routing Configuration
+
+| Field | Type | Default |
+|-------|------|---------|
+| `routing.enabled` | Boolean | `false`; keeps the standalone session contract unless explicitly enabled |
+| `routing.deployment_id` | String | Empty; required for routed owners, lowercase letters, digits and hyphens |
+| `routing.owner_slot` | String | Empty; required for routed owners, lowercase letters, digits and hyphens |
+| `routing.policy_revision` | String | Empty; required for routed owners and reported on the private owner status route |
+| `routing.drain_timeout_seconds` | Integer seconds | `120`; range 0-1800, where 0 selects the default |
+
+Routing keys are separate from JWT and credential-vault keys. Configure
+`DATA_FABRIC_ROUTING_KEYS` as a JSON object from lowercase key IDs to unpadded
+base64url values containing 32-64 random bytes, and set
+`DATA_FABRIC_ROUTING_ACTIVE_KEY_ID` to a configured key ID. A deployment uses
+the same routing deployment ID and overlapping verification key ring at its
+ingress and owners. Each live owner needs a unique slot in its REST or MCP
+pool. Read [Replica routing and drain](replica-routing.md) before enabling
+routing.
+
+Routing is optional for the REST API and remote Streamable HTTP MCP. Routed
+stdio is rejected because it has no remote transport session header. The
+operator keeps the private owner listener reachable only by the ingress and
+operations tooling. Use the loaded policy revision to verify every serving
+owner before reopening routes after a policy change.
 
 In `auto` mode, `type: 1` explicitly keeps a request on pagination. `type: 2`
 requests streaming. Requests without a type use pagination for batches below
@@ -169,6 +497,27 @@ The response includes `executionMode` with the engine that handled the request
 (`streaming` or `pagination`). Explicit `query.execution_mode: streaming` and
 `pagination` force the configured path; `auto` applies the selection rules
 above.
+
+The gateway enforces a shared process-wide cap of 100 query operations. A
+stream keeps its reservation while the result cursor is open; a paginated query
+holds a reservation only while its initial query or one continuation batch is
+using the source. Limits are process-local and are not shared across replicas.
+Set `query.max_concurrent_queries_per_tenant` to a positive integer to tune the
+tenant cap. The older `query.max_concurrent_streams_per_tenant` key remains
+supported as a deprecated alias.
+
+Query execution and continuation requests also share a process-local token
+bucket per tenant across HTTP and MCP. The default budget is 120 requests per
+minute with a burst of 20; tenant-less authenticated callers are bucketed by
+user ID. The process keeps at most 10,000 tenant/user buckets. A new identity
+without a bucket receives the standard HTTP 429 `QUERY_RATE_LIMIT_EXCEEDED`
+response (or the same stable message through MCP) while the table is full;
+existing identities keep their independent budgets. Idle buckets older than 10
+minutes are pruned at most once per minute, allowing new identities to use the
+freed capacity. Set `query.rate_limit_per_minute_per_tenant` and
+`query.rate_limit_burst_per_tenant` to `0` to disable this query-specific
+budget. Rejections happen before the connector is used. The bucket table does
+not coordinate across gateway replicas.
 
 
 ## SQL dialect translation runtime
@@ -537,9 +886,37 @@ Data Fabric does not run an Iceberg catalog for this source.
 The adapter exposes only the configured table and supports the shared Iceberg
 read-only SQL subset: projections, supported AND filters, LIMIT/OFFSET, and
 COUNT(*). Writes, catalog-wide table enumeration, ORDER BY, and direct
-metadata-file discovery are not supported. Local fixtures verify REST catalog
-query routing and MinIO FileIO property mapping; they do not establish
-compatibility with a live MinIO or REST Catalog release.
+metadata-file discovery are not supported. A pinned live MinIO contract verifies S3 FileIO metadata/data object reads and the configured query path through a local REST catalog fixture. It does not
+establish compatibility with an external REST Catalog server; see the driver
+contract test report.
+
+## Tencent COS Iceberg source
+
+The `cos_iceberg` source exposes one configured Iceberg table through an
+external Iceberg REST catalog. Data Fabric does not run a catalog or query
+engine for this source. The catalog must return a COS-readable `s3://` table
+location.
+
+| Data-source field or property | Tencent COS Iceberg meaning |
+| --- | --- |
+| `host` or `additionalProps.catalog_uri` | HTTP(S) Iceberg REST catalog URL. A URL path is allowed; credentials, query strings, and fragments are not. |
+| `database` or `additionalProps.warehouse` | Iceberg warehouse name. |
+| `schema` or `additionalProps.namespace` | Iceberg namespace; defaults to schema. |
+| `additionalProps.table_name` | Required, unqualified SQL table name exposed by this source. |
+| `username` and `password` | Tencent COS SecretId and SecretKey used by Iceberg S3 FileIO. |
+| `additionalProps.region` | Required COS signing and bucket region. It must match the bucket's region. |
+| `additionalProps.endpoint_url` or `s3.endpoint` | Optional HTTP(S) COS S3-compatible endpoint origin. Defaults to `https://cos.<region>.myqcloud.com`. |
+| `additionalProps.force_path_style` | Defaults to false, enabling virtual-hosted addressing. Set true only for compatible test or service endpoints. |
+| `additionalProps.session_token` | Optional S3-compatible session token. |
+| `additionalProps.catalog_token` or `catalog_credential` | Optional REST catalog bearer token or credential, separate from COS storage credentials. |
+| `additionalProps.max_rows` | Iceberg SQL scan limit; defaults to 10000 and can be configured up to 100000. |
+
+The adapter exposes only the configured table and supports the shared Iceberg
+read-only SQL subset. Writes, built-in catalog management, catalog-wide table
+enumeration, ORDER BY, and Iceberg time travel are not supported. The local
+fixture verifies the shared query path and COS settings mapping; it does not
+establish compatibility with a live Tencent COS release or an external catalog
+implementation. See the [support catalog](data-source-support.md).
 
 ## MinIO Parquet source
 
@@ -599,6 +976,108 @@ The adapter has deterministic unified-query coverage and a pinned live contract
 against Garage v2.4.1 using SigV4 access-key credentials. That contract does
 not imply compatibility with AWS S3 or other providers and versions; consult
 the [support catalog](data-source-support.md) before production use.
+
+## Azure Blob ORC source
+
+The azure_blob_orc source type exposes one configured ORC object as a
+read-only SQL table. It supports the existing flat primitive ORC schema subset;
+nested and repeated fields are rejected. The object is downloaded into gateway
+memory and limited to 64 MiB and 100,000 rows. The default object-size limit is
+16 MiB and can be raised up to the 64 MiB hard cap.
+
+| Data-source field or property | Azure Blob ORC meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | ORC blob name ending in .orc; host is a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_rows | Maximum rows; defaults to 100,000 and cannot exceed 100,000. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Writes are not supported.
+
+## Azure Blob Avro source
+
+The azure_blob_avro source type exposes one configured Avro Object Container
+File (OCF) as a read-only SQL table. The adapter reads the embedded writer
+schema and records from the object. Raw Avro datum streams and directory scans
+are not supported. The object is downloaded into gateway memory and limited to
+64 MiB and 100,000 rows. The default object-size limit is 16 MiB and can be
+raised up to the 64 MiB hard cap.
+
+| Data-source field or property | Azure Blob Avro meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | Avro OCF blob name ending in .avro; host is a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_rows | Maximum records; defaults to 100,000 and cannot exceed 100,000. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Nested Avro fields and unsupported
+unions are rejected. Writes are not supported.
+
+## Azure Blob JSON source
+
+The azure_blob_json source type exposes one configured JSON blob as a read-only
+SQL table. It accepts a single JSON object, an array of objects, or JSON Lines
+(`.jsonl` and `.ndjson`). The adapter uses the shared JSON parser and query
+path; directory scans, multiple blobs, and streaming are not supported. Objects
+are downloaded into gateway memory and limited to 64 MiB and 100,000 records.
+The default object-size limit is 16 MiB and can be raised up to the 64 MiB hard
+cap.
+
+| Data-source field or property | Azure Blob JSON meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint; use for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | JSON blob name; accepts `.json`, `.jsonl`, and `.ndjson`; host is a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_records | Maximum records; defaults to 100,000 and cannot exceed 100,000. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL, IN,
+LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Queryable fields must be top-level
+scalars; nested values and writes are rejected.
+
+## Azure Blob CSV source
+
+The azure_blob_csv source type exposes one configured CSV blob as a read-only
+SQL table. It reuses the shared CSV parser and query path; directory scans,
+multiple blobs, compression, and streaming are not supported. Objects are
+downloaded into gateway memory and limited to 64 MiB and 100,000 rows by
+default. The default object-size limit is 16 MiB and can be raised up to the
+64 MiB hard cap.
+
+| Data-source field or property | Azure Blob CSV meaning |
+| --- | --- |
+| database | Azure container name. |
+| username | Storage account name. |
+| password | Storage account key; optional when sas_token is set. |
+| additionalProps.sas_token | Optional SAS query token. A leading question mark is accepted. |
+| additionalProps.endpoint_url | Optional HTTP(S) storage endpoint; use this for compatible gateways and local emulators. Credentials, query strings, and fragments are not allowed. |
+| additionalProps.object_key | CSV blob name; host is accepted as a fallback. |
+| additionalProps.table_name | SQL table name; defaults to the blob filename without its extension. |
+| additionalProps.max_file_bytes | Maximum CSV object size in bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.delimiter | One-character field delimiter; defaults to a comma. |
+| additionalProps.has_header | Whether the first non-skipped row contains column names; defaults to true. |
+| additionalProps.skip_header_rows | Number of leading rows to skip before CSV parsing; defaults to 0. |
+| additionalProps.null_values | Optional string array of values exposed as SQL NULL. |
+
+The adapter supports read-only projection, filters joined by AND, IS NULL,
+IN, LIKE, ORDER BY, LIMIT, OFFSET, and COUNT(*). Writes and unsupported SQL
+are rejected.
 
 ## Azure Blob Parquet source
 
@@ -802,7 +1281,7 @@ Notable behaviors:
 - **Fleet endpoints are admin-only.** `/api/v1/database/health` and `/api/v1/database/connections/stats` enumerate every stored data source, so they require the `admin` role when `security.enable_auth` is on.
 - **`security.enable_auth: false` boundary.** The switch only governs the data-source management API, where no identity exists to check: management requests then run in a legacy-equivalent mode, and created rows stay legacy. `/api/v1/fetch` is authenticated either way (#6), and its authorization checks still apply.
 
-The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Optional per-user and per-tenant table permissions are documented in [Table and Column Authorization](security/table-level-authorization.md).
+The service validates Bearer JWTs but does not provide a built-in login flow or token issuer. The deployment must issue tokens from a trusted identity source and protect the JWT signing secret: anyone who can sign tokens can assert a user ID, tenant, or role. Optional per-user and per-tenant table permissions are documented in [Table and Column Authorization](security/table-level-authorization.md), including versioned updates through the shared metadata database.
 
 ## Environment Variables
 
@@ -838,6 +1317,14 @@ Every service-config field supports this mapping:
 | `logging.format` | `LOGGING_FORMAT` |
 | `query.prefer_streaming` | `QUERY_PREFER_STREAMING` |
 | `query.execution_mode` | `QUERY_EXECUTION_MODE` |
+| `query.session_ttl_seconds` | `QUERY_SESSION_TTL_SECONDS` |
+| `query.max_concurrent_queries_per_tenant` | `QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT` |
+| `query.max_concurrent_streams_per_tenant` (deprecated) | `QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT` |
+| `query.rate_limit_per_minute_per_tenant` | `QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT` |
+| `query.rate_limit_burst_per_tenant` | `QUERY_RATE_LIMIT_BURST_PER_TENANT` |
+| `query.max_result_rows` | `QUERY_MAX_RESULT_ROWS` |
+| `query.max_result_bytes` | `QUERY_MAX_RESULT_BYTES` |
+| `query.max_duration_seconds` | `QUERY_MAX_DURATION_SECONDS` |
 | `mcp.enabled` | `MCP_ENABLED` |
 | `mcp.transport` | `MCP_TRANSPORT` |
 | <code>mcp.max_concurrent_requests</code> | <code>MCP_MAX_CONCURRENT_REQUESTS</code> |
@@ -973,6 +1460,23 @@ multiple files, partition pruning, row-group or column pruning, streaming,
 Kerberos, and HDFS HA guarantees are outside this adapter's contract. The
 configured username is forwarded as the HDFS simple-user identity.
 
+## HDFS JSON data sources
+
+An HDFS JSON source reads one configured .json, .jsonl, .ndjson, or
+.jsonlines file as a read-only SQL table. Supported document forms are one JSON
+object, an array of objects, or JSON Lines records. Use the NameNode host, RPC
+port (8020 by default), HDFS simple-user identity, and absolute file path
+conventions described above. The table name defaults to the file name without
+its extension and can be overridden with additionalProps.table_name.
+
+The max_file_bytes property defaults to 16 MiB and can be raised to 64 MiB;
+files with more than 100,000 records are rejected. Only flat top-level scalar
+fields are queryable. Nested objects, arrays as field values, directory scans,
+multiple files, compression, writes, Kerberos, and HDFS HA are not supported.
+Filtering, ordering, pagination, and COUNT(*) use the shared bounded read-only
+SQL subset. The complete file is decoded into gateway memory before SQL
+filtering, and no live Hadoop release compatibility is claimed yet.
+
 ## HDFS Avro OCF data sources
 
 An HDFS Avro source exposes one configured Avro Object Container File as one
@@ -989,6 +1493,22 @@ adapter. The read-only SQL subset supports projections, supported WHERE
 comparisons and IS NULL checks, ORDER BY, LIMIT/OFFSET, and COUNT(*). Directory
 scans, multiple files, streaming, Kerberos, and HDFS HA guarantees are not
 provided. HDFS files and decoded records are held in gateway memory.
+
+## HDFS ORC data sources
+
+An HDFS ORC source exposes one configured `.orc` file as a read-only SQL table.
+Configure the NameNode host, RPC port (8020 by default), HDFS simple-user
+identity, and an absolute HDFS file path. The table name defaults to the file
+name without its extension and can be overridden with
+`additionalProps.table_name`. `max_file_bytes` defaults to 16 MiB and can be
+raised to 64 MiB. Queries reject files that decode to more than 100,000 rows.
+
+The adapter reuses the shared ORC reader and SQL subset. Flat primitive columns
+are supported; nested and repeated fields are rejected. The file is read into
+gateway memory before SQL evaluation, so this connector does not provide
+predicate or column pushdown, directory scans, multi-file reads, streaming,
+Kerberos, or HDFS HA. Its live integration contract covers Apache Hadoop 3.5.0
+with simple-user access on a single-node cluster.
 
 ## HDFS plain-text data sources
 
@@ -1016,17 +1536,26 @@ max_file_bytes setting described in the HDFS Parquet section.
 
 ## Apache Ozone object formats through S3 Gateway
 
-The experimental ozone_parquet, ozone_text, and ozone_avro sources read one configured object by using Apache Ozone's S3-compatible gateway. Configure the bucket in database, the object key in additionalProps.object_key (or host), and the gateway origin in additionalProps.endpoint_url. Keys must end in .parquet, .txt or .log, or .avro for the selected source type. The endpoint defaults to port 9878 when the URL has no explicit port.
+The experimental ozone_parquet, ozone_orc, ozone_text, ozone_avro, ozone_json, ozone_csv, and ozone_delta sources use Apache Ozone's S3-compatible gateway. File adapters read one configured object; ozone_delta reads one configured Delta Lake table snapshot. Configure the bucket in database, the object key in additionalProps.object_key (or host) for file adapters, the table path in additionalProps.table_path (or host) for Delta, and the gateway origin in additionalProps.endpoint_url. File keys must end in .parquet, .orc, .txt or .log, .avro, .json/.jsonl/.ndjson/.jsonlines, or .csv for the selected source type. The endpoint defaults to port 9878 when the URL has no explicit port.
 
 | Data-source field | Ozone meaning |
 | --- | --- |
 | database | Bucket name. |
 | host or additionalProps.object_key | One relative object key for the selected format; object_key takes precedence. |
+| additionalProps.table_path | Required for ozone_delta unless host supplies the table path; a relative unpartitioned Delta table root. |
 | username and password | Required S3 access key and secret key; signed with SigV4. |
 | additionalProps.session_token | Optional session token paired with the access key and secret key. |
 | additionalProps.endpoint_url | Required S3 Gateway HTTP(S) origin without a path, credentials, query, or fragment. |
 | additionalProps.region | S3 signing region; defaults to us-east-1. |
 | additionalProps.table_name | SQL table name; defaults from the object key. |
 | additionalProps.max_file_bytes | Maximum object bytes; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.max_table_bytes | Delta data-byte limit; defaults to 16 MiB and cannot exceed 64 MiB. |
+| additionalProps.delimiter | CSV field separator; defaults to a comma and must be one character. |
+| additionalProps.has_header | Whether the first non-skipped CSV row contains column names; defaults to true. |
+| additionalProps.skip_header_rows | Number of leading CSV rows to skip before optional header parsing; defaults to 0. |
+| additionalProps.null_values | CSV field values treated as SQL NULL; accepts a list or comma-separated string. |
+| additionalProps.quote_char | CSV quoting character; only the standard double quote is supported. |
 
-Requests use path-style addressing. The Parquet adapter exposes one object as a bounded read-only SQL table; the text adapter exposes each physical line as line_number BIGINT and line VARCHAR; Avro exposes one OCF object through the restricted flat-record SQL subset. Each format caps objects at 64 MiB and results at 100,000 rows, lines, or records. The adapters do not implement native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.
+For `ozone_delta`, set `additionalProps.table_path` to a relative, unpartitioned Delta table path and optionally set `additionalProps.table_name`. The adapter reads the latest supported version-1 transaction-log snapshot and Parquet files. `additionalProps.max_table_bytes` defaults to 16 MiB and can be set up to 64 MiB; at most 256 active data files and 100,000 rows are supported. Checkpoints, partitioning, deletion vectors, time travel, writes, and native Ozone RPC are not supported.
+
+Requests use path-style addressing. The Parquet and ORC adapters expose one object as a bounded read-only SQL table; the text adapter exposes each physical line as line_number BIGINT and line VARCHAR; Avro exposes one OCF object through the restricted flat-record SQL subset; JSON exposes one object, object array, or JSON Lines file with top-level scalar fields through the restricted read-only SQL subset; CSV exposes one row-oriented file with configurable header, delimiter, skipped header rows, and null markers. Each format caps objects at 64 MiB and results at 100,000 rows, lines, or records. The adapters do not implement native Ozone RPC, Kerberos, object listing, multi-file scans, or bucket/volume administration. See the Ozone support status document for exact limitations and compatibility evidence.

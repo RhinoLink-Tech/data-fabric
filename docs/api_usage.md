@@ -34,9 +34,13 @@ For openGauss, use the same **sslMode** and **sslRootCert** fields. Set **sslMod
 
 For MySQL, set `ssl: true` to verify the server certificate and hostname with the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against MySQL 8.0.46.
 
-MariaDB uses the same MySQL-protocol connector settings. The pinned MariaDB 11.8.9 contract verifies certificate and hostname validation with a private CA; other MariaDB versions are not covered by that test.
+MariaDB uses the same MySQL-protocol connector settings. Pinned driver and TLS contracts cover MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. TLS contracts verify certificate and hostname validation with a private CA; other MariaDB versions remain unverified.
+
+For SQL Server, set `ssl: true` to require encrypted query traffic and validate the server certificate and hostname against the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make it readable inside the Data Fabric process; this setting requires `ssl: true`. The hostname is checked against the configured data-source host. `ssl: false` leaves query traffic unencrypted; the SQL Server protocol may still use TLS for the login packet. An explicit `additionalProps.trustservercertificate=true` bypasses certificate checks and is intended only for compatibility testing. This TLS contract is verified against SQL Server 16.0.4305.5.
 
 For TiDB, set `ssl: true` to require TLS and verify the server certificate and hostname using the process' system trust roots. For a private CA, also set `sslRootCert` to its PEM file path and make the file readable inside the Data Fabric process; `sslRootCert` requires `ssl: true`. `ssl: false` keeps the existing plaintext behavior. This TLS behavior is contract-tested against TiDB v8.5.8.
+
+For ClickHouse native-protocol connections, set `ssl: true` and use the server's secure native port (commonly `9440`; set the data-source port explicitly). The certificate and configured host are verified with system trust roots. For a private CA, set `sslRootCert` to its PEM file path and make it readable inside the Data Fabric process. Certificate verification cannot be disabled through the gateway; `ssl: false` retains plaintext connections. This behavior is contract-tested against ClickHouse 26.8.20.9.
 
 Successful responses use this envelope:
 
@@ -138,7 +142,7 @@ Request fields:
 | `sql` | string | Yes | One read-only `SELECT` statement |
 | `parameters` | array | No | Ordered bind values (null, boolean, number, string), at most 64; bound to `?`/`$N` placeholders, never interpolated into the SQL text |
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
-| `type` | integer | No | `1` selects pagination; `2` requests streaming. If omitted, `query.execution_mode` decides using its configured mode and auto policy |
+| `type` | integer | No | `1` selects paginated batches; `2` prefers streaming. Explicit `query.execution_mode` configuration can override the hint; if omitted, auto policy decides |
 | `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 |
 | `timeout` | integer | No | Seconds allowed for the initial request; default 60, maximum 1,800 |
 
@@ -170,7 +174,7 @@ A successful response has this shape:
 
 The sample shows two rows for readability; a real response may contain up to the requested batch size.
 
-`executionMode` is `streaming` or `pagination`. `nextUri` is omitted when the response has no continuation session. For a multi-batch result, request `type: 2` and follow every returned `nextUri` until the server stops returning one.
+`executionMode` is `streaming` or `pagination`. Whenever additional rows remain, the response includes `nextUri` regardless of the request hint or automatic fallback. Follow the newest URI/token until a successful response omits `nextUri`. Do not infer completion from a short batch or from `totalCount` alone. See [query result semantics](query-result-semantics.md) for ordering, mutation and partial-result limits.
 
 ## Fetch the next batch
 
@@ -186,7 +190,7 @@ Tokens are random UUIDv4 values. Each successful continuation rotates the token,
 cannot be replayed to fetch another batch. Follow only the newest `nextUri`. Treat the URI as
 secret and redact its token segment from proxy and access logs.
 
-A query session expires 30 minutes after it is created; fetching batches does not extend the expiry.
+By default, a query session expires 30 minutes after creation. Set `query.session_ttl_seconds` to shorten the lifetime. Fetching batches does not extend the expiry.
 Requests after expiry are rejected. Pagination and native API sessions are removed by a cleanup sweep
 that runs every 5 minutes. Streaming cursors are swept every minute and closed during cleanup. A
 process restart discards all in-memory sessions and cursors.

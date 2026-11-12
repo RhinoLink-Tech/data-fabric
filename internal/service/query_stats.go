@@ -10,14 +10,15 @@ import (
 // QueryStatsTracker aggregates initial query attempts across execution modes.
 // Continuation batches do not represent a new user query and are not recorded.
 type QueryStatsTracker struct {
-	mutex               sync.RWMutex
-	totalQueries        int64
-	successfulQueries   int64
-	failedQueries       int64
-	totalExecutionTime  time.Duration
-	lastQueryTime       time.Time
-	queriesByType       map[string]int64
-	queriesByDataSource map[string]int64
+	mutex                 sync.RWMutex
+	totalQueries          int64
+	successfulQueries     int64
+	failedQueries         int64
+	budgetExceededQueries int64
+	totalExecutionTime    time.Duration
+	lastQueryTime         time.Time
+	queriesByType         map[string]int64
+	queriesByDataSource   map[string]int64
 }
 
 func NewQueryStatsTracker() *QueryStatsTracker {
@@ -53,6 +54,17 @@ func (t *QueryStatsTracker) Record(dataSourceID string, databaseType model.Datab
 	}
 }
 
+// RecordBudgetExceeded increments a bounded, owner-local counter without
+// attaching query, tenant, SQL, or credential identifiers.
+func (t *QueryStatsTracker) RecordBudgetExceeded() {
+	if t == nil {
+		return
+	}
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	t.budgetExceededQueries++
+}
+
 // Snapshot returns a detached public view, so API callers cannot mutate the
 // tracker's internal aggregation maps.
 func (t *QueryStatsTracker) Snapshot() *model.QueryStats {
@@ -79,12 +91,13 @@ func (t *QueryStatsTracker) Snapshot() *model.QueryStats {
 		averageSeconds = t.totalExecutionTime.Seconds() / float64(t.totalQueries)
 	}
 	return &model.QueryStats{
-		TotalQueries:        t.totalQueries,
-		SuccessfulQueries:   t.successfulQueries,
-		FailedQueries:       t.failedQueries,
-		AvgExecutionTime:    averageSeconds,
-		LastQueryTime:       t.lastQueryTime,
-		QueriesByType:       byType,
-		QueriesByDataSource: byDataSource,
+		TotalQueries:          t.totalQueries,
+		SuccessfulQueries:     t.successfulQueries,
+		FailedQueries:         t.failedQueries,
+		BudgetExceededQueries: t.budgetExceededQueries,
+		AvgExecutionTime:      averageSeconds,
+		LastQueryTime:         t.lastQueryTime,
+		QueriesByType:         byType,
+		QueriesByDataSource:   byDataSource,
 	}
 }

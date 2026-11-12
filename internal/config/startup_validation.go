@@ -17,12 +17,32 @@ func (c Config) ValidateStartup() error {
 	if err := c.Query.Validate(); err != nil {
 		return err
 	}
+	if c.Routing.DrainTimeoutSeconds < 0 || c.Routing.DrainTimeoutSeconds > 1800 {
+		return fmt.Errorf("routing.drain_timeout_seconds must be between 0 and 1800")
+	}
+	if c.Routing.Enabled && (strings.TrimSpace(c.Routing.PolicyRevision) == "" || len(c.Routing.PolicyRevision) > 64) {
+		return fmt.Errorf("routing.policy_revision is required and must be at most 64 bytes")
+	}
+	if c.Routing.Enabled && c.MCP.Enabled {
+		transport := strings.TrimSpace(c.MCP.Transport)
+		if transport == "" {
+			transport = MCPTransportStdio
+		}
+		if transport != MCPTransportStreamableHTTP {
+			return fmt.Errorf("routing.enabled with mcp.enabled requires the streamable-http transport")
+		}
+		if c.MCP.RoutedSessionTTLSeconds < 0 || c.MCP.RoutedSessionTTLSeconds > maxRoutedSessionTTLSeconds {
+			return fmt.Errorf("mcp.routed_session_ttl_seconds must be between 0 and %d", maxRoutedSessionTTLSeconds)
+		}
+		if c.MCP.MaxRoutedSessions < 0 || c.MCP.MaxRoutedSessions > maxRoutedSessions {
+			return fmt.Errorf("mcp.max_routed_sessions must be between 0 and %d", maxRoutedSessions)
+		}
+	}
 	if err := c.SQLTranslation.Validate(); err != nil {
 		return err
 	}
-	if err := c.TableAuthorization.Validate(); err != nil {
-		return err
-	}
+	// Validate the active table policy after opening the metadata DB. A managed
+	// DB revision is authoritative and may intentionally supersede stale local YAML.
 	if c.MCP.Enabled {
 		if err := c.MCP.Validate(); err != nil {
 			return err
@@ -122,6 +142,39 @@ func (c ServerConfig) Validate() error {
 }
 
 func (c QueryConfig) Validate() error {
+	if c.MaxConcurrentQueries < 0 || c.MaxConcurrentQueries > 100 {
+		return fmt.Errorf("query.max_concurrent_queries must be between 0 and 100")
+	}
+	if c.MaxConcurrentQueriesPerTenant < 0 || c.MaxConcurrentQueriesPerTenant > 100 {
+		return fmt.Errorf("query.max_concurrent_queries_per_tenant must be between 0 and 100")
+	}
+	if c.MaxConcurrentStreamsPerTenant < 0 || c.MaxConcurrentStreamsPerTenant > 100 {
+		return fmt.Errorf("query.max_concurrent_streams_per_tenant must be between 0 and 100")
+	}
+	if c.SessionTTLSeconds < 0 || c.SessionTTLSeconds > maxQuerySessionTTLSeconds {
+		return fmt.Errorf("query.session_ttl_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
+	}
+	if c.MaxConcurrentQueriesPerTenant < 0 {
+		return fmt.Errorf("query.max_concurrent_queries_per_tenant cannot be negative")
+	}
+	if c.RateLimitPerMinutePerTenant < 0 {
+		return fmt.Errorf("query.rate_limit_per_minute_per_tenant cannot be negative")
+	}
+	if c.RateLimitBurstPerTenant < 0 {
+		return fmt.Errorf("query.rate_limit_burst_per_tenant cannot be negative")
+	}
+	if c.MaxResultRows < 0 || c.MaxResultRows > 10000000 {
+		return fmt.Errorf("query.max_result_rows must be between 0 and 10000000")
+	}
+	if c.MaxResultBytes < 0 || c.MaxResultBytes > 1<<30 {
+		return fmt.Errorf("query.max_result_bytes must be between 0 and 1073741824")
+	}
+	if c.MaxDurationSeconds < 0 || c.MaxDurationSeconds > maxQuerySessionTTLSeconds {
+		return fmt.Errorf("query.max_duration_seconds must be between 0 and %d", maxQuerySessionTTLSeconds)
+	}
+	if (c.RateLimitPerMinutePerTenant == 0) != (c.RateLimitBurstPerTenant == 0) {
+		return fmt.Errorf("query.rate_limit_per_minute_per_tenant and query.rate_limit_burst_per_tenant must both be zero to disable query rate limiting")
+	}
 	switch strings.TrimSpace(c.ExecutionMode) {
 	case "auto", "streaming", "pagination":
 		return nil

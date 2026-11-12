@@ -1,5 +1,7 @@
 # Self-Hosted Remote MCP Deployment
 
+中文部署说明：[docs/mcp-deployment-zh.md](mcp-deployment-zh.md)。
+
 This guide takes a clean environment to a healthy, authenticated remote MCP
 endpoint for Data Fabric: a metadata database, a seeded sample source, and the
 gateway serving MCP over Streamable HTTP with TLS (#186). Everything runs on
@@ -11,10 +13,17 @@ For using MCP locally next to your editor instead, read
 [Local stdio vs remote Streamable HTTP](#local-stdio-vs-remote-streamable-http)
 first — the quickstart below is the remote path.
 
+This is the current synthetic first-use profile linked from the [first-adopter brief](product/first-adopter-profile.md). The brief remains a hypothesis: no external team evaluation or production claim is recorded.
+
+## Current published Preview
+
+`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation, use [Run a published image without compiling source](#run-a-published-image-without-compiling-source) and copy the tag plus digest from the [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+
 ## What gets deployed
 
-The Compose stack in [`deploy/mcp/`](../deploy/mcp/) builds one image from the
-repository `Dockerfile` and runs four services on a private network. The
+When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are marked unknown and cannot produce a verified candidate backup. The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
+image from the repository `Dockerfile`; the release overlay pulls an immutable
+image digest. Both profiles run four services on a private network. The
 gateway runs either the HTTP API or MCP in a given process — never both — so
 the stack runs one container per mode against the shared metadata database:
 
@@ -32,66 +41,82 @@ operator  ──HTTP, loopback────────▶ data-fabric-api :8080 
 | `data-fabric-api` | The gateway's HTTP management API on loopback: registration, health, readiness. |
 | `data-fabric-mcp` | The gateway's remote MCP endpoint: Streamable HTTP with direct TLS. Starts after `data-fabric-api` is healthy so schema initialization is serialized. |
 
+## Optional: local DataSemanticHub integration
+
+The standard profile owns its metadata and sample databases. For a container-level
+check against an existing local MySQL/MariaDB network, use the API-only
+[external MySQL Compose profile](../deploy/mcp/docker-compose.external-mysql.yml)
+and the WSL acceptance runner:
+
+```bash
+cd /home/fengfei/data-fabric
+scripts/mcp/dsh-local-acceptance.sh \
+  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64-hex-digest>'
+```
+
+The runner defaults to `/home/fengfei/DataSemanticHub/deploy`,
+`datasemantichub-mariadb`, and `datasemantichub-network`; override those with
+`--deploy-dir`, `--db-container`, and `--network` when needed. It verifies
+the deploy directory's MariaDB service, starts that existing container only
+when it was stopped, and joins one Data Fabric API container to the existing
+network. The API listens on loopback port 18180 by default; `--api-port`
+changes it.
+
+The runner requires an immutable Data Fabric image that is already present in
+the local Docker engine. It never pulls images. It creates uniquely named,
+synthetic metadata and source databases; the source account receives only
+`SELECT` and `SHOW VIEW`. It checks API health and authentication, registers
+the synthetic source, and queries two seeded rows across the Docker network.
+Cleanup removes the temporary API project, schemas, accounts, and local secret
+files, then restores the MariaDB container to its original running/stopped
+state. Existing DataSemanticHub schemas and data are not used.
+
+This local profile covers the release image's REST and MySQL runtime path. It
+does not exercise OIDC/MCP, replicas, anonymous GHCR pulls, or the independent
+operator rehearsal required by [issue #446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+Keep the published-image workflow and independent rehearsal as separate
+release gates.
+
 ## Prerequisites
 
-- Docker Engine 24+ with the Compose plugin
-- `openssl` for secrets and a self-signed certificate
+- Docker Engine 24+ with Docker Compose plugin 2.24+ (the release and PostgreSQL overlays use Compose merge tags)
+- `openssl` for the local TLS certificate
 - An OIDC-compatible identity provider configured to issue access tokens for
   the Data Fabric MCP audience and required query scope
-- `python3` with [PyJWT](https://pypi.org/project/PyJWT/) (`pip install pyjwt`)
-  to mint a local token for the HTTP management API quickstart
+- `python3` (standard library only) for setup, diagnostics and short-lived management tokens
 
 ## Quickstart
 
 All commands run from `deploy/mcp/`.
 
-### 1. Create the deployment secrets
+### 1. Initialize secrets and local TLS
 
 ```bash
-cp .env.example .env
+python3 ../../scripts/mcp/onboard.py init
 ```
 
-Fill in the database and vault secrets, plus the OIDC issuer and audience
-registered with your identity provider. Generate each secret with
-`openssl rand -base64 32`; for the credential vault, wrap one generated key in
-the JSON object shown in the file:
+The initializer creates `deploy/mcp/.env` with fresh database passwords, a
+32-byte credential-vault key, a management JWT secret and a localhost
+self-signed certificate. It writes `.env` atomically with mode `0600`, creates
+the private key with mode `0640` for the configured container group, and never
+replaces non-empty secrets or existing TLS files. Re-running it fills only
+missing values. It refuses malformed or ambiguous existing keyrings, keyring
+active-ID mismatches, and partial TLS pairs instead of guessing or overwriting
+data.
 
-```bash
-KEY=$(openssl rand -base64 32)
-# DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=key-1
-# DATA_FABRIC_CREDENTIAL_KEYS={"key-1":"<value of $KEY>"}
-```
+Set `MCP_OIDC_ISSUER` and `MCP_OIDC_AUDIENCE` in `.env` to the HTTPS issuer and
+resource audience registered with your identity provider. Keep production
+identity-provider access tokens separate from the local management API token.
 
-The gateway fails fast at startup when a secret is missing, a known
-placeholder, or too short — placeholder-only secrets are a hard requirement
-here, not a suggestion.
+### 2. TLS certificate and private-key access
 
-### 2. Create the TLS certificate
-
-The MCP listener refuses to bind a non-loopback address without TLS, so the
-stack serves HTTPS directly. For a private trial, generate a self-signed
-certificate covering the name clients will use:
-
-```bash
-mkdir -p tls
-openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-  -keyout tls/tls.key -out tls/tls.crt \
-  -subj "/CN=data-fabric.local" \
-  -addext "subjectAltName=DNS:data-fabric.local,DNS:localhost,IP:127.0.0.1"
-```
-
-For internet-facing deployments, use a real certificate for your domain in
-place of both files — nothing else changes.
-
-The gateway containers run as a non-root user, so make sure that user can read
-the mounted key. For the quickstart:
-
-```bash
-chmod 644 tls/tls.crt tls/tls.key
-```
-
-For a longer-lived deployment, prefer tightening ownership to the container's
-UID over leaving the private key world-readable.
+The initializer creates a self-signed certificate for `localhost`,
+`data-fabric.local`, and `127.0.0.1`. Use a real certificate pair for an
+internet-facing deployment. When replacing the files, keep the private key
+readable by the non-root MCP container through the numeric
+`DATA_FABRIC_TLS_GID` supplementary group; use a restricted group and mode
+`0640`. Do not make the private key world-readable. The directory must allow
+that group to traverse it.
 
 ### 3. Start the stack
 
@@ -107,6 +132,17 @@ curl -s http://127.0.0.1:8080/health && echo
 curl -sk https://localhost:8443/mcp -o /dev/null -w '%{http_code}\n'   # 401
 ```
 
+Run the local profile doctor after the services start:
+
+```bash
+python3 ../../scripts/mcp/onboard.py doctor
+```
+
+It checks Compose configuration and service health, the API health endpoint,
+the MCP TLS/auth boundary, and the packaged SQL translation parser. It does not
+probe every registered data source. An unauthenticated `401` from the MCP probe
+is expected and confirms that TLS and the authentication gate respond.
+
 The `data-fabric-mcp` container's own health check is a TCP probe on its
 listener — an MCP-only process serves no HTTP `/health` — and the `401` from
 curl is the real end-to-end confirmation: TLS is up and the authentication
@@ -120,11 +156,18 @@ validates it against the configured discovery metadata and signing keys. The
 deployment does not run an identity provider or mint OIDC access tokens.
 
 ```bash
-export JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
-
-# This local token registers the sample source through the management API.
-export AGENT_JWT=$(python3 -c "import jwt,time; print(jwt.encode({'userId':'agent-1','username':'agent-1','tenantId':'quickstart','iat':int(time.time()),'exp':int(time.time())+86400}, '$JWT_SECRET', algorithm='HS256'))")
+# Use the stable `sub` value included in your identity provider's access token.
+export DF_USER_ID='<stable OIDC sub>'
+export DF_TENANT_ID='quickstart'
+export DF_MANAGEMENT_TOKEN="$(python3 ../../scripts/mcp/onboard.py token \
+  --user "$DF_USER_ID" --tenant "$DF_TENANT_ID")"
 ```
+
+The helper signs a local management API token with a 15-minute lifetime by
+default (the maximum is 15 minutes). It emits only the token on stdout so the
+shell can capture it; it does not print or persist the token. The token has no
+admin role unless `--admin` is explicitly requested. Do not use this local
+HS256 token for remote MCP.
 
 Obtain an OIDC-signed JWT access token from your provider using its supported
 OAuth flow, then set it in this shell:
@@ -132,6 +175,20 @@ OAuth flow, then set it in this shell:
 ```bash
 export MCP_ACCESS_TOKEN='<OIDC-signed JWT access token>'
 ```
+
+Check the configured issuer and compare the provider token's unverified
+`sub`/tenant/audience/scope claims with the management principal before using
+both paths. The gateway still validates the signed token on every MCP request;
+this local claim inspection is advisory only:
+
+```bash
+python3 ../../scripts/mcp/onboard.py doctor --probe-oidc \
+  --api-user "$DF_USER_ID" --tenant "$DF_TENANT_ID"
+```
+
+`--probe-oidc` fetches the discovery document and JWKS over HTTPS and checks the issuer
+match and key-set response. Omit the flag when outbound
+identity-provider access is not allowed.
 
 Opaque access tokens and ID tokens are not accepted. The token issuer must
 match `MCP_OIDC_ISSUER`, its audience must match `MCP_OIDC_AUDIENCE`, and its
@@ -143,8 +200,20 @@ settings. The sample source is registered in tenant `quickstart`, so the
 provider token needs the configured tenant claim set to `quickstart`; alternatively,
 register it with an API identity whose subject matches the MCP token's `sub`.
 
-Mint an API token with `'roles':['admin']` only when you need the management
-API's admin-only endpoints or cross-owner visibility.
+Use the helper's `--admin` flag only for management API admin-only endpoints
+or cross-owner visibility. Re-mint the management token immediately before
+registration if its 15-minute lifetime expires.
+
+To diagnose a selected connection before saving it, give the doctor one source
+configuration rather than probing every registered source. Store the JSON in
+an owner-only file (`chmod 600 source.json`) or pipe it on stdin, then run
+`python3 ../../scripts/mcp/onboard.py doctor --source-type mysql
+--source-config source.json` with `DF_MANAGEMENT_TOKEN` set. The check posts the
+configuration only to the loopback management API, never prints source
+credentials, and returns a correlation ID for sanitized follow-up. A
+connection check is successful only when the API reports a healthy connection;
+HTTP 200 with an unhealthy connection is reported as a failure. Delete any
+temporary file when finished.
 
 ### 6. Register the sample source
 
@@ -152,7 +221,7 @@ API's admin-only endpoints or cross-owner visibility.
 SAMPLE_READER_PASSWORD=$(grep -E '^SAMPLE_READER_PASSWORD=' .env | cut -d= -f2-)
 
 curl -s http://127.0.0.1:8080/api/v1/datasources \
-  -H "Authorization: Bearer $AGENT_JWT" \
+  -H "Authorization: Bearer $DF_MANAGEMENT_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"sample-mysql\",
@@ -168,7 +237,7 @@ curl -s http://127.0.0.1:8080/api/v1/datasources \
 ```
 
 Data sources are scoped by owner, tenant, and role: whoever registers a source
-owns it, and this source is owned by `agent-1` — the same identity the MCP
+owns it, and this source is owned by `$DF_USER_ID` — the same principal the MCP
 client presents in the next step. To serve several clients, either share one
 identity, give the tokens a common `tenantId`, or register with an admin
 identity (admins read every source); a token with a different user and no
@@ -179,6 +248,7 @@ are encrypted at rest with the credential-vault key from step 1 and are never
 returned by any API or tool.
 
 ### 7. Connect a client and run the first query
+For the embedded management page's copyable MCP setup, first-query prompt, and second-application identity steps, see the [management UI guide](data-source-management-ui.md).
 
 With Claude Code (self-signed trial certificate shown; export
 `NODE_EXTRA_CA_CERTS` to the full path of `tls/tls.crt`):
@@ -196,12 +266,35 @@ Then, inside a session, ask for the round trip the deployment is built for:
 3. `describe_table` — column names, types, and nullability of `orders`.
 4. `execute_sql_query` — `SELECT customer, amount FROM orders ORDER BY amount DESC`.
 
-The query returns the seeded rows. Write statements (`INSERT`, `UPDATE`,
+The query returns the seeded rows. For continuation, ordering, and data changes between pages, see [query result semantics](query-result-semantics.md). Write statements (`INSERT`, `UPDATE`,
 `DROP`, …) are rejected twice over: by the gateway's read-only validation and
 by the read-only session opened against MySQL — the sample source's user also
 holds only `SELECT` privileges.
 
+## Run a published image without compiling source
+
+The source-build quickstart above remains useful for contributors. The release path runs both gateway processes from the same published Preview tag@sha256 image and does not build Go or install Python packages on the host. Use the reference only after the tag workflow succeeds and the matching GitHub Release records the public digest.
+
+1. Copy the `tag@sha256` image reference from the matching GitHub Release record and add it to `deploy/mcp/.env`:
+
+   ```dotenv
+   DATA_FABRIC_IMAGE=ghcr.io/rhinolink-tech/data-fabric:<tag>@sha256:<digest>
+   ```
+
+2. From `deploy/mcp/`, pull and start the release profile:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.release.yml pull
+   docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
+   ```
+
+The release overlay removes the Compose build definition and always pulls the selected image. Use only the version and digest recorded by the successful tag workflow and matching GitHub Release; the placeholder above is not a usable image reference. If that release record is not available, continue using the source-build quickstart.
+
+**Published Preview (2026-11-11):** `v2.1.0-preview.1` is available from the public GHCR package at `ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.1@sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. The matching [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) records the source revision, digest, provenance and clean-runner acceptance. Release publication and image acceptance are complete; issue #442 remains open for its remaining first-adopter evidence. The Preview scope and limitations above still apply.
+
 ## PostgreSQL sample source variant
+
+This optional source override is outside the first MySQL Preview profile. Its `postgres:18` tag is not digest-pinned; pin and revalidate it before using the override as a reproducible release profile.
 
 The quickstart seeds MySQL by default. To try the stack against PostgreSQL
 instead, apply the override file when bringing the stack up (Compose 2.24+
@@ -223,7 +316,7 @@ Register it with the PostgreSQL connection parameters — note `type` and
 
 ```bash
 curl -s http://127.0.0.1:8080/api/v1/datasources \
-  -H "Authorization: Bearer $AGENT_JWT" \
+  -H "Authorization: Bearer $DF_MANAGEMENT_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\": \"sample-postgres\",
@@ -255,19 +348,11 @@ claude mcp add --transport http data-fabric https://<host>:8443/mcp \
 With a self-signed certificate, start `claude` with
 `NODE_EXTRA_CA_CERTS=/path/to/tls.crt` so the Node runtime trusts it.
 
-### Codex
+### Codex and WorkBuddy
 
-Add the server to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.data-fabric]
-url = "https://<host>:8443/mcp"
-http_headers = { "Authorization" = "Bearer <OIDC access token>" }
-```
-
-Codex verifies TLS with the system trust store: add the certificate to it
-(`security add-trusted-cert` on macOS, `update-ca-certificates` on Debian)
-or use a real certificate.
+Use the [Data Fabric Agent Skill setup guide](agent-skill.md) to configure
+Streamable HTTP with the deployment's access token, install the same Skill
+bundle in either client, and run a bounded sample query.
 
 ### DeepSeek-backed agent host
 
@@ -332,6 +417,9 @@ nothing.
   client registration. Your identity provider issues and rotates the access
   tokens; Data Fabric validates them as a protected resource.
 
+For the optional owner-routed multi-replica topology, bounded MCP session
+routing, and private drain workflow, see [Replica routing and drain](replica-routing.md).
+
 ## Operations
 
 ```bash
@@ -340,6 +428,8 @@ docker compose logs -f data-fabric-api data-fabric-mcp
 docker compose restart data-fabric-mcp
 docker compose down                   # stop; add -v to also drop both databases
 ```
+
+For an encrypted metadata/keyring backup and a fresh-project restore, follow the [profile backup and recovery runbook](operations/mcp-profile-backup-recovery.md), also available [in Chinese](operations/mcp-profile-backup-recovery-zh.md).
 
 Secrets live only in `.env` and the containers. Rotating `JWT_SECRET`
 invalidates every token; rotating the credential-vault key means re-entering

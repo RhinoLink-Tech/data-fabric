@@ -5,10 +5,33 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/google/uuid"
 )
 
 const defaultQuerySessionTTL = 30 * time.Minute
+
+// querySessionPrincipal keeps session ownership separate from the data-source
+// grant, which may allow the same user to read across tenant claims.
+type querySessionPrincipal struct {
+	tenantID           string
+	userID             string
+	transportSessionID string
+}
+
+func querySessionPrincipalFor(caller *security.Caller) querySessionPrincipal {
+	if caller == nil {
+		return querySessionPrincipal{}
+	}
+	return querySessionPrincipal{tenantID: caller.TenantID, userID: caller.UserID}
+}
+
+func querySessionPrincipalFromContext(ctx context.Context, caller *security.Caller) querySessionPrincipal {
+	principal := querySessionPrincipalFor(caller)
+	principal.transportSessionID, _ = replicarouting.TransportSession(ctx)
+	return principal
+}
 
 // newContinuationToken creates an opaque random UUIDv4. Continuation tokens
 // are credentials: a successful fetch rotates the token, making earlier

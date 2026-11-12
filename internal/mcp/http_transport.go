@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
@@ -46,7 +47,20 @@ func (m *MCPServer) StreamableHTTPHandler(tokenValidator MCPTokenValidator) http
 	transport := server.NewStreamableHTTPServer(m.server)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, transport, m.auditRecorder))
+	mux.Handle("/metrics", m.adminMetricsHandler(tokenValidator))
 	return mux
+}
+
+func (m *MCPServer) adminMetricsHandler(tokenValidator MCPTokenValidator) http.Handler {
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := r.Context().Value(callerContextKey{}).(*security.Caller)
+		if caller == nil || !caller.IsAdmin() {
+			writeRemoteError(w, http.StatusForbidden, "forbidden", "administrator role required")
+			return
+		}
+		middleware.PrometheusHandler().ServeHTTP(w, r)
+	})
+	return authenticateMCPRequests(tokenValidator, metrics, m.auditRecorder)
 }
 
 func authenticateMCPRequests(tokenValidator MCPTokenValidator, next http.Handler, recorders ...auditlog.Recorder) http.Handler {
@@ -99,6 +113,7 @@ func recordMCPAuthFailure(recorder auditlog.Recorder, ctx context.Context, corre
 		Decision: auditlog.DecisionDeny, ReasonCode: reason, Outcome: "denied",
 		StatusCode: http.StatusUnauthorized, OccurredAt: time.Now().UTC(),
 	}); err != nil {
+		middleware.RecordAuditPersistenceFailure("mcp-http")
 		slog.ErrorContext(writeCtx, "failed to persist MCP authentication audit event", "correlation_id", correlationID, "error", err)
 	}
 }
@@ -115,6 +130,7 @@ func recordMCPAuthSuccess(recorder auditlog.Recorder, ctx context.Context, corre
 		ReasonCode: "token_validated", Outcome: "success", StatusCode: http.StatusOK,
 		OccurredAt: time.Now().UTC(),
 	}); err != nil {
+		middleware.RecordAuditPersistenceFailure("mcp-http")
 		slog.ErrorContext(writeCtx, "failed to persist MCP authentication audit event", "correlation_id", correlationID, "error", err)
 	}
 }

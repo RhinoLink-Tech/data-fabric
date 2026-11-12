@@ -41,6 +41,10 @@ From the repository root, run:
 
 The script requires Docker, Go, and OpenSSL. It pins the MySQL image by digest by default, reports the exact server version and image digest, and removes its temporary container and files on exit. To use another MySQL image, set MYSQL_IMAGE; record the new version and digest in any report of that run.
 
+## Post-M2 recovery coverage
+
+The D15 result and checksum above are the historical 2026-10-21 run. The current rehearsal script also creates a managed table-policy grant, publishes a revocation and rollback, backs up the disposable metadata database, then verifies after restore that the active revision, prior revoked version, and publisher/outcome history are intact. Run the script to produce a new candidate-specific MySQL version, image digest, and backup checksum. These additions cover the managed policy tables introduced after the historical D15 snapshot; they do not broaden the tested MySQL-version or production-data scope. See the [post-M2 candidate evidence runbook](../validation/post-m2-candidate-evidence.md) for synthetic database recovery evidence and the [current-profile operator backup and restore guide](mcp-profile-backup-recovery.md) for encrypted deployment backups. The guide is a procedure; it is not evidence that an operator rehearsal has passed.
+
 ## Operational limits
 
 This run covers MySQL 8.0.46 and small synthetic fixtures. It does not establish behavior for MariaDB, other MySQL releases, large production datasets, replicas, or network interruption during DDL. MySQL DDL may commit implicitly; do not assume schema changes roll back as one transaction. Back up and rehearse restoration before upgrading production, preserve every key needed to decrypt stored credentials, and run one application version against the metadata database at a time. Do not let old and new binaries share that database during migration.

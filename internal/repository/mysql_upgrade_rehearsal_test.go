@@ -107,7 +107,7 @@ func TestMySQLUpgradePaths(t *testing.T) {
 		const historicalDDL = `CREATE TABLE data_sources (
 			id char(36) NOT NULL,
 			name varchar(255) NOT NULL,
-			type enum('mysql','mariadb','postgresql','oracle','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_avro','s3_csv','s3_json','minio_parquet','minio_csv','oss_parquet','cos_parquet','azure_blob_parquet','hdfs_avro','hdfs_parquet','hdfs_csv','ozone_parquet','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute') NOT NULL,
+			type enum('mysql','mariadb','postgresql','oracle','iceberg','delta_lake','hudi','snowflake','databricks','redshift','bigquery','s3_parquet','s3_orc','s3_avro','s3_csv','gcs_csv','s3_json','minio_parquet','minio_csv','oss_parquet','cos_parquet','cos_iceberg','azure_blob_parquet','hdfs_avro','hdfs_parquet','hdfs_csv','ozone_parquet','clickhouse','doris','starrocks','druid','oceanbase_mysql','oceanbase_oracle','tidb','tdsql','gaussdb_mysql','gaussdb_postgres','dameng','kingbasees','gbase_8s','gbase_8t','oscar','opengauss','oss_delta','minio_iceberg','azure_delta','ozone_text','ozone_avro','azure_parquet','hdfs_text','hdfs_parquet_compressed','minio_delta','hive','sqlserver','hologres','mongodb','maxcompute','ozone_delta') NOT NULL,
 			config json NOT NULL,
 			status enum('active','inactive','error') DEFAULT 'active',
 			created_at datetime(3) DEFAULT NULL,
@@ -310,4 +310,77 @@ func TestMySQLRestoredRecentFixture(t *testing.T) {
 		t.Fatalf("restored data_sources rows = %d, want 2", count)
 	}
 	requireMySQLTenantIndex(t, db)
+}
+
+// mysqlRehearsalTablePolicy is a deterministic managed-policy history fixture
+// used to prove that published revisions and rollback evidence survive restore.
+func mysqlRehearsalTablePolicy(grant bool) security.TableAuthorizationConfig {
+	var rules []security.TableAccessRule
+	if grant {
+		rules = []security.TableAccessRule{{
+			TenantID: "tenant-a",
+			Read:     []security.TableScope{{Schema: "public", Table: "orders"}},
+		}}
+	}
+	return security.TableAuthorizationConfig{
+		Enabled: true,
+		DataSources: map[string]security.DataSourceTablePolicy{
+			"rehearsal-source": {Rules: rules},
+		},
+	}
+}
+
+func TestMySQLPolicyHistoryFixture(t *testing.T) {
+	db := mysqlRehearsalDB(t)
+	initial := mysqlRehearsalTablePolicy(true)
+	manager, err := security.NewTablePolicyManager(db, security.NewTableAuthorizer(initial), initial, "mysql-rehearsal")
+	if err != nil {
+		t.Fatalf("initialize managed table policy: %v", err)
+	}
+	revoked, err := manager.Publish(context.Background(), 1, "rehearsal-revoker", mysqlRehearsalTablePolicy(false))
+	if err != nil || revoked.Revision != "2" || !revoked.AuditRecorded {
+		t.Fatalf("publish policy revocation = %+v, %v; want audited revision 2", revoked, err)
+	}
+	rolledBack, err := manager.Publish(context.Background(), 2, "rehearsal-rollback", initial)
+	if err != nil || rolledBack.Revision != "3" || !rolledBack.AuditRecorded {
+		t.Fatalf("publish rollback = %+v, %v; want audited revision 3", rolledBack, err)
+	}
+}
+
+func TestMySQLRestoredPolicyHistory(t *testing.T) {
+	db := mysqlRehearsalDB(t)
+	empty := security.TableAuthorizationConfig{}
+	manager, err := security.NewTablePolicyManager(db, security.NewTableAuthorizer(empty), empty, "mysql-recovery-check")
+	if err != nil {
+		t.Fatalf("reopen managed table policy after restore: %v", err)
+	}
+	if status := manager.Status(); status.Revision != "3" || !status.Fresh {
+		t.Fatalf("restored managed policy status = %+v; want fresh revision 3", status)
+	}
+	revoked, err := manager.GetRevision(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("read restored revocation revision: %v", err)
+	}
+	if rules := revoked.Config.DataSources["rehearsal-source"].Rules; len(rules) != 0 {
+		t.Fatalf("restored revision 2 unexpectedly grants access: %+v", rules)
+	}
+	rolledBack, err := manager.GetRevision(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("read restored rollback revision: %v", err)
+	}
+	if rules := rolledBack.Config.DataSources["rehearsal-source"].Rules; len(rules) != 1 || rules[0].TenantID != "tenant-a" {
+		t.Fatalf("restored revision 3 did not preserve rollback grant: %+v", rules)
+	}
+	publications, err := manager.Publications(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("read restored publication history: %v", err)
+	}
+	foundRevocation, foundRollback := false, false
+	for _, publication := range publications {
+		foundRevocation = foundRevocation || (publication.Revision == 2 && publication.PublishedBy == "rehearsal-revoker" && publication.Outcome == "activated")
+		foundRollback = foundRollback || (publication.Revision == 3 && publication.PublishedBy == "rehearsal-rollback" && publication.Outcome == "activated")
+	}
+	if !foundRevocation || !foundRollback {
+		t.Fatalf("restored publication history lost revocation or rollback: %+v", publications)
+	}
 }

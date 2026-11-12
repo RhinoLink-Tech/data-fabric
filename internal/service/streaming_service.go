@@ -14,6 +14,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/sqlanalysis"
@@ -23,6 +24,8 @@ import (
 )
 
 type StreamingService interface {
+	LiveSessionCount(now time.Time) int
+	EndTransportSession(sessionID string)
 	//ExecuteQuery(ctx context.Context, req *model.QueryRequest) (*model.QueryResponse, error)
 	//ValidateQuery(ctx context.Context, req *model.QueryRequest) error
 	//GetQueryStats(ctx context.Context) (*model.QueryStats, error)
@@ -46,11 +49,10 @@ func (ss *streamingService) translateSQLIfNeeded(ctx context.Context, sql, sourc
 
 // StreamingSession represents a streaming query session for batch fetching
 type StreamingSession struct {
-	QueryID string
-	Slug    string
-	Token   string
-	// CreatorID binds a session to the identity that created it (#9).
-	CreatorID        string
+	QueryID          string
+	Slug             string
+	Token            string
+	creator          querySessionPrincipal
 	DataSourceID     string
 	SQL              string
 	Tables           []sqlanalysis.TableReference
@@ -64,6 +66,7 @@ type StreamingSession struct {
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
 	continuationLock sessionContinuationLock
+	budget           queryBudgetState
 	StreamID         string // Associated stream ID
 }
 
@@ -76,12 +79,14 @@ type StreamingSessionManager struct {
 
 // NewStreamingSessionManager creates a new streaming session manager
 func NewStreamingSessionManager() *StreamingSessionManager {
-	sm := &StreamingSessionManager{
-		sessions: make(map[string]*StreamingSession),
-		ttl:      defaultQuerySessionTTL,
-	}
+	return newStreamingSessionManager(defaultQuerySessionTTL)
+}
 
-	return sm
+func newStreamingSessionManager(ttl time.Duration) *StreamingSessionManager {
+	return &StreamingSessionManager{
+		sessions: make(map[string]*StreamingSession),
+		ttl:      ttl,
+	}
 }
 
 // Store stores a streaming session
@@ -188,8 +193,10 @@ type streamingService struct {
 	connPool                *database.ConnectionPool
 	activeStreams           map[string]*ActiveStream
 	streamsMutex            sync.RWMutex
-	maxStreams              int
+	admissionLimiter        *QueryAdmissionLimiter
+	admissionInit           sync.Once
 	streamTimeout           time.Duration
+	budgetLimits            QueryBudgetLimits
 	streamingSessionManager *StreamingSessionManager
 	sqlValidator            *security.SQLValidator
 	sqlTranslator           *sql_translator.SQLTranslationManager
@@ -199,20 +206,22 @@ type streamingService struct {
 
 // ActiveStream represents an active streaming query
 type ActiveStream struct {
-	ID             string
-	DataSourceID   string
-	DatabaseType   model.DatabaseType
-	Rows           *sql.Rows
-	querySQL       string
-	Columns        []model.ColumnInfo
-	Tables         []sqlanalysis.TableReference
-	StartedAt      time.Time
-	LastActivityAt time.Time
-	RowsSent       int64
-	BytesSent      int64
-	CancelFunc     context.CancelFunc
-	mutex          sync.Mutex
-	activityMutex  sync.Mutex
+	ID               string
+	DataSourceID     string
+	DatabaseType     model.DatabaseType
+	Rows             *sql.Rows
+	querySQL         string
+	Columns          []model.ColumnInfo
+	Tables           []sqlanalysis.TableReference
+	StartedAt        time.Time
+	Deadline         time.Time
+	LastActivityAt   time.Time
+	RowsSent         int64
+	BytesSent        int64
+	CancelFunc       context.CancelFunc
+	releaseAdmission func()
+	mutex            sync.Mutex
+	activityMutex    sync.Mutex
 }
 
 func (stream *ActiveStream) touch(at time.Time) {
@@ -278,6 +287,23 @@ func NewStreamingServiceWithTableAuthorizer(datasourceRepo repository.DataSource
 // NewStreamingServiceWithTableAuthorizerAndStats creates a streaming service
 // that contributes to the supplied gateway-wide statistics tracker.
 func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo, connPool, authorizer, stats, defaultMaxConcurrentQueriesPerTenant, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizerAndStatsAndLimits also configures the
+// maximum number of streams one validated tenant may start or keep active.
+func NewStreamingServiceWithTableAuthorizerAndStatsAndLimits(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, maxStreamsPerTenant int, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	limiter := NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, maxStreamsPerTenant)
+	return NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo, connPool, authorizer, stats, limiter, translators...)
+}
+
+// NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter builds a
+// streaming service using a shared process-level query admission limiter.
+func NewStreamingServiceWithTableAuthorizerAndStatsAndAdmissionLimiter(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, translators ...*sql_translator.SQLTranslationManager) StreamingService {
+	return newStreamingService(datasourceRepo, connPool, authorizer, stats, limiter, defaultQuerySessionTTL, DefaultQueryBudgetLimits(), translators...)
+}
+
+func newStreamingService(datasourceRepo repository.DataSourceRepository, connPool *database.ConnectionPool, authorizer *security.TableAuthorizer, stats *QueryStatsTracker, limiter *QueryAdmissionLimiter, sessionTTL time.Duration, budgets QueryBudgetLimits, translators ...*sql_translator.SQLTranslationManager) StreamingService {
 	translator := sql_translator.NewSQLTranslationManager(true)
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
@@ -289,13 +315,18 @@ func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.Da
 	if stats == nil {
 		stats = NewQueryStatsTracker()
 	}
+	if limiter == nil {
+		limiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+	}
+	budgets = budgets.normalized()
 	ss := &streamingService{
 		datasourceRepo:          datasourceRepo,
 		connPool:                connPool,
 		activeStreams:           make(map[string]*ActiveStream),
-		maxStreams:              100, // Max concurrent streams
-		streamTimeout:           5 * time.Minute,
-		streamingSessionManager: NewStreamingSessionManager(),
+		admissionLimiter:        limiter,
+		streamTimeout:           budgets.MaxDuration,
+		budgetLimits:            budgets,
+		streamingSessionManager: newStreamingSessionManager(sessionTTL),
 		sqlValidator:            validator,
 		sqlTranslator:           translator,
 		tableAuthorizer:         authorizer,
@@ -306,13 +337,12 @@ func NewStreamingServiceWithTableAuthorizerAndStats(datasourceRepo repository.Da
 
 // ExecuteStreamQuery executes a query and returns a stream ID
 func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) (string, int64, error) {
+	return ss.executeStreamQuery(ctx, caller, req, time.Time{})
+}
+
+func (ss *streamingService) executeStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest, budgetDeadline time.Time) (string, int64, error) {
 	requestCtx, requestCancel := withQueryTimeout(ctx, req.Timeout)
 	defer requestCancel()
-
-	// Check stream limit
-	if ss.getActiveStreamCount() >= ss.maxStreams {
-		return "", 0, ErrMaxConcurrentStreams
-	}
 
 	// Bind parameters are validated before any data source is touched and
 	// flow to both the stream statement and its count (#21).
@@ -359,13 +389,34 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 		}
 	}
 
+	// Reserve capacity atomically before opening a source connection. The
+	// reservation is held through query startup and transferred to ActiveStream
+	// once the result cursor is registered.
+	releaseAdmission, admitted := ss.acquireStreamAdmission(caller)
+	if !admitted {
+		return "", 0, ErrMaxConcurrentStreams
+	}
+	admissionTransferred := false
+	defer func() {
+		if !admissionTransferred {
+			releaseAdmission()
+		}
+	}()
+	if !ss.admissionLimiter.AllowQueryRequest(caller) {
+		return "", 0, ErrQueryRateLimitExceeded
+	}
+
 	streamLifetime := ss.streamTimeout
 	if streamLifetime <= 0 {
 		streamLifetime = 5 * time.Minute
 	}
 	// Keep the result cursor alive after the first response while still
 	// honoring cancellation and deadlines during query initialization.
-	streamCtx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), streamLifetime)
+	streamDeadline := time.Now().Add(streamLifetime)
+	if !budgetDeadline.IsZero() && budgetDeadline.Before(streamDeadline) {
+		streamDeadline = budgetDeadline
+	}
+	streamCtx, cancel := context.WithDeadline(context.WithoutCancel(requestCtx), streamDeadline)
 	watchStop := make(chan struct{})
 	watchDone := make(chan struct{})
 	go func() {
@@ -420,20 +471,23 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 
 	streamID := ss.generateStreamID()
 	stream := &ActiveStream{
-		ID:             streamID,
-		DataSourceID:   req.DataSourceID,
-		DatabaseType:   dataSource.Type,
-		Rows:           rows,
-		querySQL:       querySQL,
-		Columns:        columnInfo,
-		Tables:         append([]sqlanalysis.TableReference(nil), tables...),
-		StartedAt:      time.Now(),
-		LastActivityAt: time.Now(),
-		CancelFunc:     cancel,
+		ID:               streamID,
+		DataSourceID:     req.DataSourceID,
+		DatabaseType:     dataSource.Type,
+		Rows:             rows,
+		querySQL:         querySQL,
+		Columns:          columnInfo,
+		Tables:           append([]sqlanalysis.TableReference(nil), tables...),
+		StartedAt:        time.Now(),
+		Deadline:         streamDeadline,
+		LastActivityAt:   time.Now(),
+		CancelFunc:       cancel,
+		releaseAdmission: releaseAdmission,
 	}
 	ss.streamsMutex.Lock()
 	ss.activeStreams[streamID] = stream
 	ss.streamsMutex.Unlock()
+	admissionTransferred = true
 
 	totalCount, err := ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
 	if err != nil {
@@ -455,6 +509,24 @@ func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *secu
 
 	streamTransferred = true
 	return streamID, totalCount, nil
+}
+
+func (ss *streamingService) acquireStreamAdmission(caller *security.Caller) (func(), bool) {
+	ss.admissionInit.Do(func() {
+		if ss.admissionLimiter == nil {
+			ss.admissionLimiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+		}
+	})
+	return ss.admissionLimiter.Acquire(caller)
+}
+
+func (ss *streamingService) allowQueryRequest(caller *security.Caller) bool {
+	ss.admissionInit.Do(func() {
+		if ss.admissionLimiter == nil {
+			ss.admissionLimiter = NewQueryAdmissionLimiter(defaultMaxConcurrentQueries, defaultMaxConcurrentQueriesPerTenant)
+		}
+	})
+	return ss.admissionLimiter.AllowQueryRequest(caller)
 }
 
 // FetchStreamChunk fetches the next chunk of data from a stream
@@ -480,6 +552,10 @@ func (ss *streamingService) FetchStreamChunk(ctx context.Context, streamID strin
 	timeout := ss.streamTimeout
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
+	}
+	if !stream.Deadline.IsZero() && !time.Now().Before(stream.Deadline) {
+		_ = ss.closeStreamLocked(streamID, stream)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 	if time.Since(stream.lastActivity()) > timeout {
 		_ = ss.closeStreamLocked(streamID, stream)
@@ -586,6 +662,29 @@ func (ss *streamingService) CloseStream(streamID string) error {
 	return ss.closeStreamLocked(streamID, stream)
 }
 
+// CloseDataSourceStreams cancels active cursors associated with a data source.
+// Admission slots and continuation sessions are released through CloseStream.
+func (ss *streamingService) CloseDataSourceStreams(dataSourceID string) int {
+	ss.streamsMutex.RLock()
+	streamIDs := make([]string, 0)
+	for streamID, stream := range ss.activeStreams {
+		if stream.DataSourceID == dataSourceID {
+			streamIDs = append(streamIDs, streamID)
+		}
+	}
+	ss.streamsMutex.RUnlock()
+
+	closed := 0
+	for _, streamID := range streamIDs {
+		if err := ss.CloseStream(streamID); err != nil {
+			log.Printf("failed to close stream %s after data source %s invalidation: %v", streamID, dataSourceID, err)
+			continue
+		}
+		closed++
+	}
+	return closed
+}
+
 func (ss *streamingService) closeSessionStream(session *StreamingSession) error {
 	if session == nil {
 		return nil
@@ -598,6 +697,13 @@ func (ss *streamingService) closeSessionStream(session *StreamingSession) error 
 		ss.streamingSessionManager.Delete(session.QueryID)
 	}
 	return nil
+}
+
+// Invalidate the continuation even when closing its rows fails. Maintenance
+// can retry closure through activeStreams without accepting the old token.
+func (ss *streamingService) invalidateSessionStream(session *StreamingSession) {
+	ss.streamingSessionManager.deleteIfCurrent(session)
+	_ = ss.closeSessionStream(session)
 }
 
 // closeStreamLocked requires stream.mutex and keeps the session addressable
@@ -622,11 +728,19 @@ func (ss *streamingService) closeStreamLocked(streamID string, stream *ActiveStr
 		}
 	}
 
+	deleted := false
 	ss.streamsMutex.Lock()
 	if ss.activeStreams[streamID] == stream {
 		delete(ss.activeStreams, streamID)
+		deleted = true
 	}
 	ss.streamsMutex.Unlock()
+	if !deleted {
+		return nil
+	}
+	if stream.releaseAdmission != nil {
+		stream.releaseAdmission()
+	}
 
 	if ss.streamingSessionManager != nil {
 		ss.streamingSessionManager.DeleteByStreamID(streamID)
@@ -696,7 +810,7 @@ func (ss *streamingService) CleanupInactiveStreams() int {
 	cleaned := 0
 	for id, stream := range streams {
 		stream.activityMutex.Lock()
-		expired := stream.LastActivityAt.Before(cutoff)
+		expired := stream.LastActivityAt.Before(cutoff) || (!stream.Deadline.IsZero() && !time.Now().Before(stream.Deadline))
 		if expired && stream.CancelFunc != nil {
 			stream.CancelFunc()
 		}
@@ -706,7 +820,7 @@ func (ss *streamingService) CleanupInactiveStreams() int {
 		}
 
 		stream.mutex.Lock()
-		if !stream.lastActivity().Before(cutoff) {
+		if !stream.lastActivity().Before(cutoff) && (stream.Deadline.IsZero() || time.Now().Before(stream.Deadline)) {
 			stream.mutex.Unlock()
 			continue
 		}
@@ -784,6 +898,9 @@ func (ss *streamingService) StartCleanupRoutine(ctx context.Context, interval ti
 	if interval <= 0 {
 		interval = time.Minute
 	}
+	if manager := ss.streamingSessionManager; manager != nil && manager.ttl > 0 {
+		interval = min(interval, manager.ttl)
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -801,6 +918,74 @@ func (ss *streamingService) StartCleanupRoutine(ctx context.Context, interval ti
 	}
 }
 
+// LiveSessionCount counts sessions that can still serve a continuation.
+func (ss *streamingService) LiveSessionCount(now time.Time) int {
+	manager := ss.streamingSessionManager
+	manager.mutex.RLock()
+	defer manager.mutex.RUnlock()
+	count := 0
+	for _, session := range manager.sessions {
+		if now.Before(session.ExpiresAt) {
+			count++
+		}
+	}
+	return count
+}
+
+// HasLiveQuerySession reports whether this process still owns a continuation
+// session for the query. It does not expose any session identifiers externally.
+func (ss *streamingService) HasLiveQuerySession(queryID string) bool {
+	if ss.streamingSessionManager == nil {
+		return false
+	}
+	_, err := ss.streamingSessionManager.Get(queryID)
+	return err == nil
+}
+
+// QuerySessionExpiry returns the actual expiry for a live local continuation.
+func (ss *streamingService) QuerySessionExpiry(queryID string) (time.Time, bool) {
+	if ss.streamingSessionManager == nil {
+		return time.Time{}, false
+	}
+	ss.streamingSessionManager.mutex.RLock()
+	defer ss.streamingSessionManager.mutex.RUnlock()
+	session, exists := ss.streamingSessionManager.sessions[queryID]
+	if !exists {
+		return time.Time{}, false
+	}
+	return session.ExpiresAt, true
+}
+
+// EndTransportSession closes every query created by one remote MCP session.
+func (ss *streamingService) EndTransportSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	manager := ss.streamingSessionManager
+	manager.mutex.RLock()
+	streamIDs := make([]string, 0)
+	orphaned := make([]string, 0)
+	for _, session := range manager.sessions {
+		if session.creator.transportSessionID != sessionID {
+			continue
+		}
+		if session.StreamID != "" {
+			streamIDs = append(streamIDs, session.StreamID)
+		} else {
+			orphaned = append(orphaned, session.QueryID)
+		}
+	}
+	manager.mutex.RUnlock()
+	for _, streamID := range streamIDs {
+		if err := ss.CloseStream(streamID); err != nil {
+			log.Printf("MCP session stream cleanup failed: %v", err)
+		}
+	}
+	for _, queryID := range orphaned {
+		manager.Delete(queryID)
+	}
+}
+
 // Shutdown closes all active streams after maintenance has stopped.
 func (ss *streamingService) Shutdown() error {
 	ss.streamsMutex.RLock()
@@ -815,7 +1000,17 @@ func (ss *streamingService) Shutdown() error {
 		if err := ss.CloseStream(id); err != nil {
 			log.Printf("stream shutdown cleanup failed for stream %s: %v", id, err)
 			closeErrors = append(closeErrors, err)
+			// database/sql marks Rows closed even when its driver returns an
+			// error. Retire our bookkeeping and release admission on retry.
+			if retryErr := ss.CloseStream(id); retryErr != nil {
+				closeErrors = append(closeErrors, retryErr)
+			}
 		}
+	}
+	if manager := ss.streamingSessionManager; manager != nil {
+		manager.mutex.Lock()
+		clear(manager.sessions)
+		manager.mutex.Unlock()
 	}
 	return errors.Join(closeErrors...)
 }
@@ -889,19 +1084,35 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		dataSourceID = req.DataSourceID
 	}
 	var databaseType model.DatabaseType
-	if req != nil && ss.datasourceRepo != nil {
-		if dataSource, lookupErr := ss.datasourceRepo.GetByID(ctx, req.DataSourceID); lookupErr == nil {
-			databaseType = dataSource.Type
-		}
-	}
 	defer func() {
 		ss.stats.Record(dataSourceID, databaseType, err == nil, time.Since(started))
 	}()
 	if req == nil {
 		return nil, fmt.Errorf("query request is required")
 	}
+	budget := newQueryBudgetState(started, ss.budgetLimits)
+	defer func() {
+		if err != nil && budget.expired(time.Now()) && errors.Is(err, context.DeadlineExceeded) {
+			err = ErrQueryDurationLimitExceeded
+			ss.stats.RecordBudgetExceeded()
+		}
+	}()
 	ctx, cancel := withQueryTimeout(ctx, req.Timeout)
 	defer cancel()
+	ctx, budgetCancel := budget.withDeadline(ctx)
+	defer budgetCancel()
+	if ss.datasourceRepo != nil {
+		if dataSource, lookupErr := ss.datasourceRepo.GetByID(ctx, req.DataSourceID); lookupErr == nil {
+			databaseType = dataSource.Type
+		}
+	}
+	if budget.expired(time.Now()) {
+		ss.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// Bind parameters are validated up front and flow to the stream
 	// statement and its count exactly as provided (#21).
@@ -912,17 +1123,27 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 
 	// Create a new streaming session
 	createdAt := time.Now()
+	queryID := ss.generateSessionID()
+	expiresAt := replicarouting.QuerySessionExpiry(ctx, createdAt.Add(ss.streamingSessionManager.ttl))
+	if budget.deadline.Before(expiresAt) {
+		expiresAt = budget.deadline
+	}
+	slug, err := querySessionSlug(ctx, queryID, expiresAt, ss.generateSlug)
+	if err != nil {
+		return nil, err
+	}
 	session := &StreamingSession{
-		QueryID:      ss.generateSessionID(),
-		Slug:         ss.generateSlug(),
+		QueryID:      queryID,
+		Slug:         slug,
 		Token:        ss.generateToken(),
-		CreatorID:    caller.Key(),
+		creator:      querySessionPrincipalFromContext(ctx, caller),
 		DataSourceID: req.DataSourceID,
 		SQL:          req.SQL,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
 		CreatedAt:    createdAt,
-		ExpiresAt:    createdAt.Add(ss.streamingSessionManager.ttl),
+		ExpiresAt:    expiresAt,
+		budget:       budget,
 	}
 
 	// Execute streaming query to get the stream ID
@@ -935,8 +1156,12 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		Offset:        0,
 		Timeout:       req.Timeout,
 	}
-	streamID, totalCount, err := ss.ExecuteStreamQuery(ctx, caller, streamReq)
+	streamID, totalCount, err := ss.executeStreamQuery(ctx, caller, streamReq, budget.deadline)
 	if err != nil {
+		if budget.expired(time.Now()) {
+			ss.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to start streaming query: %w", err)
 	}
 	ss.streamsMutex.RLock()
@@ -951,6 +1176,10 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	if err != nil {
 		// Try to close the stream even if there was an error
 		ss.CloseStream(streamID)
+		if budget.expired(time.Now()) {
+			ss.stats.RecordBudgetExceeded()
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		return nil, fmt.Errorf("failed to fetch stream chunk: %w", err)
 	}
 
@@ -974,6 +1203,25 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		entries = append(entries, &entry)
 	}
 
+	if budget.expired(time.Now()) {
+		ss.CloseStream(streamID)
+		ss.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	if err := budget.accountPage(columns, entries); err != nil {
+		ss.CloseStream(streamID)
+		if err == ErrQueryResultLimitExceeded {
+			ss.stats.RecordBudgetExceeded()
+		}
+		return nil, err
+	}
+	if budget.expired(time.Now()) {
+		ss.CloseStream(streamID)
+		ss.stats.RecordBudgetExceeded()
+		return nil, ErrQueryDurationLimitExceeded
+	}
+	session.budget = budget
+
 	// Create a response similar to pagination service
 	response = &model.FetchQueryResponse{
 		QueryID:    session.QueryID,
@@ -985,7 +1233,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		TotalCount: int(totalCount),
 	}
 
-	if req.Type == 2 && len(entries) < int(totalCount) {
+	if len(entries) < int(totalCount) {
 		// Add NextURI if there are more results
 		response.NextURI = ss.buildNextURI(session.QueryID, session.Slug, session.Token, req.BatchSize)
 
@@ -1027,10 +1275,16 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		return nil, err
 	}
 
-	// Sessions are bound to their creator (#9). The response matches an
-	// unknown session so session existence is not disclosed.
-	if session.CreatorID != caller.Key() {
+	// Match the creator's user and tenant without exposing session existence.
+	if session.creator != querySessionPrincipalFromContext(ctx, caller) {
 		return nil, ErrQuerySessionUnavailable
+	}
+	session.budget.ensure(session.CreatedAt, ss.budgetLimits, session.FetchedRows)
+	ctx, budgetCancel := session.budget.withDeadline(ctx)
+	defer budgetCancel()
+	if session.budget.expired(time.Now()) {
+		ss.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 
 	// Re-check the data source on continuation: the source may have been
@@ -1038,19 +1292,34 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	// can no longer serve queries also invalidates its engine cursor.
 	datasource, err := ss.datasourceRepo.GetByID(ctx, session.DataSourceID)
 	if err != nil {
+		if session.budget.expired(time.Now()) {
+			ss.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
+		if errors.Is(err, repository.ErrDataSourceNotFound) {
+			ss.invalidateSessionStream(session)
+		}
 		return nil, fmt.Errorf("failed to get data source: %w", err)
 	}
 	if !caller.CanRead(datasource) {
-		_ = ss.closeSessionStream(session)
+		ss.invalidateSessionStream(session)
 		return nil, security.ErrDataSourceAccessDenied
 	}
 	if err := requireActiveDataSource(datasource); err != nil {
-		_ = ss.closeSessionStream(session)
+		ss.invalidateSessionStream(session)
 		return nil, err
 	}
 	if err := reauthorizeSavedQuery(ctx, caller, datasource, ss.tableAuthorizer, ss.sqlValidator, session.SQL, session.Tables); err != nil {
-		_ = ss.closeSessionStream(session)
+		if session.budget.expired(time.Now()) {
+			ss.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
+		ss.invalidateSessionStream(session)
 		return nil, err
+	}
+	if session.budget.expired(time.Now()) {
+		ss.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 
 	// Check if stream exists and is valid
@@ -1059,16 +1328,27 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		_ = ss.closeSessionStream(session)
 		return nil, ErrQuerySessionUnavailable
 	}
+	if !ss.allowQueryRequest(caller) {
+		return nil, ErrQueryRateLimitExceeded
+	}
 
 	// Fetch the next chunk of data. A disconnected page request cancels the
 	// engine query and releases its cursor.
 	chunk, err := ss.FetchStreamChunk(ctx, session.StreamID, batchSize)
 	if err != nil {
+		if session.budget.expired(time.Now()) {
+			ss.discardBudgetSession(session)
+			return nil, ErrQueryDurationLimitExceeded
+		}
 		_ = ss.closeSessionStream(session)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		return nil, fmt.Errorf("failed to fetch stream chunk: %w", err)
+	}
+	if session.budget.expired(time.Now()) {
+		ss.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 	if ctx.Err() != nil {
 		_ = ss.closeSessionStream(session)
@@ -1101,6 +1381,19 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		encodeFetchRow(row, columns)
 		entry := row
 		entries = append(entries, &entry)
+	}
+
+	if err := session.budget.accountPage(columns, entries); err != nil {
+		if err == ErrQueryResultLimitExceeded {
+			ss.discardBudgetSession(session)
+		} else {
+			ss.invalidateSessionStream(session)
+		}
+		return nil, err
+	}
+	if session.budget.expired(time.Now()) {
+		ss.discardBudgetSession(session)
+		return nil, ErrQueryDurationLimitExceeded
 	}
 
 	// Update session data

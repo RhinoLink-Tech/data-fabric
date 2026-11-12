@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/gin-gonic/gin"
 )
@@ -70,7 +71,8 @@ func HTTPMiddleware(recorder Recorder, maxBodyBytes int64) gin.HandlerFunc {
 		event := Event{
 			CorrelationID: correlation, ActorID: actorID, TenantID: tenantID,
 			Transport: "rest", Operation: operation, DataSourceID: datasourceID,
-			Tables: tables, QueryFingerprint: fingerprint, Decision: decision,
+			Tables: tables, QueryFingerprint: fingerprint,
+			PolicyRevision: security.PolicyRevisionFromContext(c.Request.Context()), Decision: decision,
 			ReasonCode: reason, Outcome: outcome, StatusCode: c.Writer.Status(),
 			DurationMS: time.Since(started).Milliseconds(), RowsReturned: rows,
 			OccurredAt: started.UTC(),
@@ -78,6 +80,7 @@ func HTTPMiddleware(recorder Recorder, maxBodyBytes int64) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 2*time.Second)
 		defer cancel()
 		if err := recorder.Record(ctx, event); err != nil {
+			middleware.RecordAuditPersistenceFailure("rest")
 			slog.ErrorContext(ctx, "failed to persist audit event", "correlation_id", correlation, "error", err)
 		}
 	}

@@ -155,6 +155,45 @@ func (c *COSClient) GetObject(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// GetObjectLimited reads at most maxBytes plus one sentinel byte so callers can
+// enforce memory bounds even when the object metadata advertises a smaller size.
+func (c *COSClient) GetObjectLimited(ctx context.Context, key string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, fmt.Errorf("maximum COS object size must be positive and representable")
+	}
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("COS client is not initialized")
+	}
+	if key == "" {
+		return nil, fmt.Errorf("COS object key is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Object.Get(ctx, key, nil)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read object data: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("COS object exceeds configured maximum of %d bytes", maxBytes)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // GetObjectMetadata retrieves object metadata
 func (c *COSClient) GetObjectMetadata(ctx context.Context, key string) (*COSObjectMetadata, error) {
 	if c == nil || c.client == nil {

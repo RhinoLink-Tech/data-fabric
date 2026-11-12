@@ -15,6 +15,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
+	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -48,6 +49,7 @@ type MCPServer struct {
 	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
 	server              *server.MCPServer
 	auditRecorder       auditlog.Recorder
+	tablePolicyManager  *security.TablePolicyManager
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -64,9 +66,12 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 	if len(translators) > 0 && translators[0] != nil {
 		translator = translators[0]
 	}
+	hooks := &server.Hooks{}
+	hooks.AddAfterInitialize(markOwnerInitialized)
 	s := server.NewMCPServer(
 		"Data Fabric MCP Server",
 		"1.0.0",
+		server.WithHooks(hooks),
 	)
 
 	mcpServer := &MCPServer{
@@ -93,7 +98,7 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to execute SQL queries against data sources
 	executeSQLQueryTool := mcp.NewTool("execute_sql_query",
-		mcp.WithDescription("Execute a SQL query against a specified data source"),
+		mcp.WithDescription("Execute a read-only SQL query and return its first bounded batch. Continue with fetch_next_batch using the returned queryId, slug and token whenever nextUri is present; do not treat the first batch as complete based on its length."),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to query")),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL query to execute")),
 		mcp.WithString("source_dialect", mcp.Description("Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)")),
@@ -108,11 +113,12 @@ func (m *MCPServer) registerTools() {
 				},
 			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
-		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")))
+		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")),
+		mcp.WithString("execution_mode", mcp.Description("Optional execution path: pagination re-executes bounded pages; streaming holds a source cursor. Default prefers streaming, subject to server configuration.")))
 	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
 
 	fetchNextBatchTool := mcp.NewTool("fetch_next_batch",
-		mcp.WithDescription("Fetch the next page from a previous execute_sql_query call"),
+		mcp.WithDescription("Fetch the next page from execute_sql_query. Use the newest query_id, slug and token, and continue until the response omits nextUri. Each successful batch rotates the token."),
 		mcp.WithString("query_id", mcp.Required(), mcp.Description("Query ID returned by execute_sql_query")),
 		mcp.WithString("slug", mcp.Required(), mcp.Description("Query slug returned by execute_sql_query")),
 		mcp.WithString("token", mcp.Required(), mcp.Description("Current pagination token")),
@@ -149,6 +155,15 @@ func (m *MCPServer) registerTools() {
 			mcp.WithString("table_name", mcp.Required(), mcp.Description("The name of the table to describe")),
 			mcp.WithString("schema", mcp.Description("Optional schema name when the data source contains tables with the same name in multiple schemas")))
 		m.addTool("describe_table", describeTableTool, m.handleDescribeTable)
+
+		searchSchemaTool := mcp.NewTool("search_schema",
+			mcp.WithDescription("Search permitted table, schema, column names, and visible column comments. Returns bounded stable identifiers and explicit ambiguity/truncation; use describe_table for details."),
+			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to search")),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Case-insensitive substring, 2–128 characters")),
+			mcp.WithString("schema", mcp.Description("Optional exact schema filter")),
+			mcp.WithNumber("limit", mcp.Description("Maximum matches, default 10 and maximum 20")),
+		)
+		m.addTool("search_schema", searchSchemaTool, m.handleSearchSchema)
 	}
 
 	if m.sqlTranslator != nil && m.sqlTranslator.Enabled() {
@@ -169,8 +184,19 @@ func (m *MCPServer) registerTools() {
 
 func (m *MCPServer) SetAuditRecorder(recorder auditlog.Recorder) { m.auditRecorder = recorder }
 
+func (m *MCPServer) SetTablePolicyManager(manager *security.TablePolicyManager) {
+	if m == nil || manager == nil {
+		return
+	}
+	m.tablePolicyManager = manager
+	m.registerTablePolicyTools()
+}
+
 func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandlerFunc) {
 	m.server.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if m.tableAuthorizer != nil {
+			ctx = m.tableAuthorizer.PinRequest(ctx)
+		}
 		recorder := m.auditRecorder
 		if recorder == nil {
 			return handler(ctx, request)
@@ -223,13 +249,15 @@ func (m *MCPServer) addTool(name string, tool mcp.Tool, handler server.ToolHandl
 		event := auditlog.Event{
 			CorrelationID: correlation, ActorID: caller.UserID, TenantID: caller.TenantID,
 			Transport: transport, Operation: "tools/call " + name, DataSourceID: datasourceID,
-			Tables: tables, QueryFingerprint: fingerprint, Decision: decision, ReasonCode: reason,
+			Tables: tables, QueryFingerprint: fingerprint,
+			PolicyRevision: security.PolicyRevisionFromContext(ctx), Decision: decision, ReasonCode: reason,
 			Outcome: outcome, DurationMS: time.Since(started).Milliseconds(), OccurredAt: started.UTC(),
 			RowsReturned: mcpRowsReturned(result),
 		}
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		if recordErr := recorder.Record(recordCtx, event); recordErr != nil {
+			middleware.RecordAuditPersistenceFailure(transport)
 			slog.ErrorContext(recordCtx, "failed to persist MCP audit event", "correlation_id", correlation, "tool", name, "error", recordErr)
 		}
 		return result, err
@@ -344,6 +372,17 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 	}, nil
 }
 
+func queryTypeForExecutionMode(mode string) (int, error) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "streaming":
+		return 2, nil
+	case "pagination":
+		return 1, nil
+	default:
+		return 0, errors.New("execution_mode must be pagination or streaming")
+	}
+}
+
 // handleExecuteSQLQuery handles the execute_sql_query tool call
 func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Extract parameters from the request
@@ -356,6 +395,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	}
 	batchSize := int(mcp.ParseInt(request, "batch_size", 10000))
 	timeout := int(mcp.ParseInt(request, "timeout", 60))
+	queryType, err := queryTypeForExecutionMode(mcp.ParseString(request, "execution_mode", ""))
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	if batchSize <= 0 {
 		batchSize = 10000
 	} else if batchSize > 10000 {
@@ -376,7 +419,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		DataSourceID:  datasourceID,
 		SQL:           sql,
 		SourceDialect: sourceDialect,
-		Type:          2,
+		Type:          queryType,
 		BatchSize:     batchSize,
 		Timeout:       timeout,
 		Parameters:    parameters,
@@ -542,6 +585,8 @@ func markMCPAuthorizationError(ctx context.Context, err error) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "datasource_access_denied")
 	} else if errors.Is(err, security.ErrTableAccessDenied) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "table_access_denied")
+	} else if errors.Is(err, security.ErrTablePolicyUnavailable) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionError, "table_policy_unavailable")
 	}
 }
 
@@ -564,7 +609,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("data source is not active"), nil
 	}
 	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
-	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV
+	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV || dataSource.Type == model.DatabaseTypeGCSCSV
 	if tablePolicyEnabled || csvObjectSource {
 		lister, ok := m.tableDescriber.(TableLister)
 		if !ok {
@@ -587,6 +632,10 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 			}
 			allowed, err := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, references, security.TablePermissionMetadata)
 			if err != nil {
+				markMCPAuthorizationError(ctx, err)
+				if errors.Is(err, security.ErrTablePolicyUnavailable) {
+					return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+				}
 				return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
 			}
 			allowedKeys := make(map[string]struct{}, len(allowed))
@@ -711,7 +760,14 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 	if tablePolicyEnabled {
 		reference := sqlanalysis.TableReference{Schema: requestedSchema, Table: tableName, Unqualified: requestedSchema == ""}
 		references, authErr := m.tableAuthorizer.FilterReferences(ctx, caller, dataSource, []sqlanalysis.TableReference{reference}, security.TablePermissionMetadata)
-		if authErr != nil || len(references) != 1 {
+		if authErr != nil {
+			markMCPAuthorizationError(ctx, authErr)
+			if errors.Is(authErr, security.ErrTablePolicyUnavailable) {
+				return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+			}
+			return mcp.NewToolResultError("table not found or access denied"), nil
+		}
+		if len(references) != 1 {
 			return mcp.NewToolResultError("table not found or access denied"), nil
 		}
 		authorizedTable = references[0]
@@ -749,6 +805,10 @@ func (m *MCPServer) handleDescribeTable(ctx context.Context, request mcp.CallToo
 		}
 		visibleColumns, restricted, filterErr := m.tableAuthorizer.FilterColumns(ctx, caller, dataSource, authorizedTable, columnNames, security.TablePermissionMetadata)
 		if filterErr != nil {
+			markMCPAuthorizationError(ctx, filterErr)
+			if errors.Is(filterErr, security.ErrTablePolicyUnavailable) {
+				return mcp.NewToolResultError("table policy is stale; retry after replica synchronization"), nil
+			}
 			return mcp.NewToolResultError("table not found or access denied"), nil
 		}
 		if restricted {

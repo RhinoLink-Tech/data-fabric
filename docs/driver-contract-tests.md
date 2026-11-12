@@ -2,21 +2,30 @@
 
 ## Verified baselines
 
-The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, and MinIO Parquet drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
+The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS CSV, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, MinIO Parquet, MinIO JSON, MinIO Avro, MinIO ORC, and MinIO Delta drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.
 
 | Driver | Exact server version | Pinned runtime artifact | Authentication |
 | --- | --- | --- | --- |
+| PostgreSQL | 15.19 | postgres:15.19-alpine@sha256:54e0dd8e8cddcdbb9156c2486eed5a43eccb7214d7c6828097d41ce049fb3984 | username/password |
+| PostgreSQL | 16.15 | postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab | username/password |
 | PostgreSQL | 17.11 | postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 | username/password; TLS verify-full with test CA |
+| PostgreSQL | 18.6 | postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5 | username/password |
 | openGauss | 6.0.0 (server reports openGauss 6.0.0 build aee4abd5) | enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5 | username/password; TLS verify-ca and verify-full with generated CA |
 | MySQL | 8.0.46 | mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b | username/password; TLS certificate and hostname validation with private test CA |
+| MySQL | 8.4.13 | mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7 | username/password; TLS certificate and hostname validation with private test CA |
+| MariaDB | 10.11.19 | mariadb:10.11.19@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae | username/password; TLS certificate and hostname validation with private test CA |
+| MariaDB | 11.4.13 | mariadb:11.4.13@sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620 | username/password; TLS certificate and hostname validation with private test CA |
 | MariaDB | 11.8.9 | mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68 | username/password; TLS certificate and hostname validation with private test CA |
+| MariaDB | 12.3.3 | mariadb:12.3.3@sha256:d46e102fa8b9b72bfcdeb56f9dd538742092119dc8b11f31fe662605cd234cd9 | username/password; TLS certificate and hostname validation with private test CA |
 | TiDB | 8.5.8 (server reports 8.0.11-TiDB-v8.5.8) | pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5 | username/password; TLS certificate and hostname validation with test CA |
-| ClickHouse | 26.8.20.9 | clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688 | username and password |
-| SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication |
+| ClickHouse | 26.8.20.9 | clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688 | username/password; TLS verification with private test CA |
+| SQL Server | 16.0.4305.5 | mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718 | SQL authentication; TLS certificate and hostname validation with generated CA |
 | MongoDB | 8.0.34 | mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b | database-scoped username and password |
 | Oracle | 23.26.3.0.0 | ghcr.io/gvenzl/oracle-free:23.26.3-slim@sha256:366fe85702d764d81a0272b72e94e629290c27aa72a47825fcc45701a0633dac | application schema user; SYSTEM for version probe |
 | Apache Doris | 4.1.3 | apache/doris:all-in-one-4.1.3@sha256:4d3aef8f4fe63f6e32b493b4fd7b2a682d19e2c800d1d812131e67aaba0d212a | root for fixture setup; database-scoped username and password for the driver |
 | StarRocks | 4.1.6 | starrocks/allin1-ubuntu:4.1.6@sha256:88d1192620d03cf7ae8d5ece0b02da1024372d33bc411e5a51e2d3b003c551b3 | root for fixture setup; table-scoped username and password for the driver |
+| HDFS Parquet | Apache Hadoop 3.5.0 | apache/hadoop:3.5.0@sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | HDFS simple user identity; Kerberos not covered |
+| HDFS CSV | Apache Hadoop 3.5.0 | apache/hadoop:3.5.0@sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | HDFS simple user identity; Kerberos not covered |
 | S3 CSV | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | S3 Parquet | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | S3 ORC | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
@@ -24,25 +33,31 @@ The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB
 | S3 JSON | Garage v2.4.1 | dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020 | root access key and secret key (SigV4) |
 | MinIO CSV | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
 | MinIO Parquet | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
+| MinIO JSON | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
+| MinIO Avro OCF | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
+| MinIO ORC | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
+| MinIO Delta | RELEASE.2025-04-22T22-12-26Z | [upstream source commit 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e](https://github.com/minio/minio/tree/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e), archive SHA-256 `7eb30a913fea30f18069abf194e1e78e4983b558cc526911ae1c11396a9859a5` | root access key and secret key |
 
-The main CI job publishes pass, skip, failure, and version/product-mismatch results for its six configured live database contracts in the GitHub Actions step summary. Its configured baselines must all run and pass; a missing endpoint or skipped contract cannot satisfy the CI check. Isolated SQL Server, MongoDB, Oracle, Doris, StarRocks, Garage, and MinIO jobs print verbose per-contract outcomes. Locally, an unconfigured endpoint is reported as skipped. A server outside the exact baseline fails the version assertion; other versions and compatibility modes remain unverified unless listed here.
+The main CI job publishes pass, skip, failure, and version/product-mismatch results for its six configured live database contracts in the GitHub Actions step summary. Its configured baselines must all run and pass; a missing endpoint or skipped contract cannot satisfy the CI check. A separate PostgreSQL matrix runs the same driver contract against PostgreSQL 15.19, 16.15, and 18.6; the main job covers PostgreSQL 17.11. A separate MySQL job covers 8.4.13; the main job covers MySQL 8.0.46 and MariaDB 11.8.9. A separate MariaDB driver job covers 10.11.19; the MariaDB TLS jobs cover 11.8.9 and 10.11.19. Isolated SQL Server, MongoDB, Oracle, Doris, StarRocks, Garage, and MinIO jobs print verbose per-contract outcomes. Locally, an unconfigured endpoint is reported as skipped. A server outside the exact baseline fails the version assertion; other versions and compatibility modes remain unverified unless listed here.
 
 
 The PostgreSQL TLS contract starts a pinned PostgreSQL 17.11 server with a generated CA and a certificate for `localhost`. It verifies TLS with `sslmode=verify-full`, rejects an untrusted CA and a hostname mismatch, confirms legacy `ssl: true` still encrypts without certificate verification, and confirms legacy `ssl: false` still uses a non-TLS connection. Run it locally with `bash scripts/contracts/run_postgresql_tls_contract.sh`; it creates and removes its temporary Docker image and container.
 
-The MySQL TLS contract starts the pinned MySQL 8.0.46 image with an ephemeral server certificate. It verifies the certificate and hostname with a trusted private CA, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private CA when no custom CA is configured, and confirms `ssl: false` remains plaintext. Run it locally with `bash scripts/contracts/run_mysql_tls_contract.sh`; it creates and removes its temporary Docker image and container.
+The MySQL TLS contract runs against pinned MySQL 8.0.46 and 8.4.13 images. Each contract starts its server with an ephemeral certificate, verifies the certificate and hostname with a trusted private CA, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private CA when no custom CA is configured, and confirms `ssl: false` remains plaintext. Run `bash scripts/contracts/run_mysql_tls_contract.sh` for MySQL 8.0.46; set `DATA_FABRIC_MYSQL_TLS_IMAGE` and `DATA_FABRIC_MYSQL_TLS_EXPECTED_VERSION` to select another pinned image, as the 8.4.13 CI job does.
 
 The MariaDB TLS contract starts the pinned MariaDB 11.8.9 image with an ephemeral server certificate. It exercises the shared MySQL-protocol driver, verifies a trusted private CA and hostname, rejects an untrusted CA and hostname mismatch, confirms system roots reject the test CA when no custom CA is configured, and confirms `ssl: false` remains plaintext. Run it locally with `bash scripts/contracts/run_mariadb_tls_contract.sh`; it creates and removes its temporary Docker image and container.
+
+The same TLS identity contract also runs against the pinned MariaDB 10.11.19 image in a separate CI job. To select another pinned image locally, set DATA_FABRIC_MARIADB_TLS_IMAGE and DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION before running the script.
 
 The TiDB TLS contract starts the same pinned TiDB v8.5.8 release with an ephemeral server certificate. It verifies TLS with a trusted test CA, rejects an untrusted CA and a hostname mismatch, confirms system roots reject the test CA when no custom CA is configured, and confirms ssl: false remains plaintext. Run it locally with bash scripts/contracts/run_tidb_tls_contract.sh; it creates and removes its temporary Docker image and container.
 
 The openGauss TLS contract starts the pinned 6.0.0 image with a generated server certificate. It verifies a trusted CA with verify-full and verify-ca, rejects an untrusted CA and hostname mismatch, confirms system roots reject the private CA, and checks that legacy ssl: true still requires encryption while ssl: false disables TLS. Run it with bash scripts/contracts/run_opengauss_tls_contract.sh; it creates and removes its temporary container and certificates.
 
-The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate both CSV and flat-schema Parquet unified query adapters against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
+The suites cover connection, SQL execution, value scanning, pagination, cancellation, and error handling where those operations apply. The Doris and StarRocks contracts also call the application's table metadata extractor against the live server, including column names, types, and nullability. The PostgreSQL, openGauss, MySQL, and MariaDB suites also verify database-side read-only session enforcement. The TiDB and SQL Server suites verify that database-side read-only initialization is unsupported for the tested version. The ClickHouse suite uses its native protocol; its separate TLS contract verifies trusted private-CA connections and rejects untrusted certificates and hostname mismatches. The MongoDB suite verifies the restricted SQL adapter against a real MongoDB server, including a database-scoped account, projections, filters, ordering, pagination, count, NULL values, and rejection of writes and unsupported SQL. The Oracle suite verifies the go-ora driver against Oracle AI Database 26ai Free with a dedicated application schema account; SYSTEM is used only to read the exact server version. It covers bind parameters, value scanning, DML, count, Oracle pagination, and database errors. The S3-compatible Garage contracts validate the CSV, flat-schema Parquet, flat-schema ORC, and flat-record Avro OCF and S3 JSON adapters for object, array, and JSON Lines documents, and the MinIO object-storage contracts validate CSV, flat-schema Parquet, JSON object/array/JSON Lines, flat-record Avro OCF, flat-schema ORC, and a bounded Delta snapshot adapter against the same pinned MinIO source build, including metadata and health checks, query results, pagination, counts, and write rejection. Each suite checks the exact server product and version before exercising its adapter.
 
-These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, and TiDB v8.5.8 certificate validation are covered by pinned TLS contracts; production TLS validation for the other listed baselines and other server versions remains unverified.
+These test containers use test-only accounts, databases, and ephemeral TLS keys. They contain no production credentials. PostgreSQL 15.19, 16.15, 17.11, and 18.6; MySQL 8.0.46 and 8.4.13; MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3; and HDFS CSV and Parquet on Apache Hadoop 3.5.0 are covered by driver contracts. TLS certificate validation is covered for PostgreSQL 17.11; MySQL 8.0.46 and 8.4.13; and MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3. openGauss 6.0.0, TiDB v8.5.8, and ClickHouse 26.8.20.9 certificate validation are also covered by pinned TLS contracts. TLS validation for other MariaDB versions, other listed baselines, and PostgreSQL versions remains unverified.
 
-The MinIO contracts build the pinned upstream source archive locally because the historical upstream container image is no longer published. The script verifies the archive SHA-256, checks the built binary's release identifier, then runs the CSV and Parquet fixtures against that MinIO process. The S3 CSV, Parquet, ORC, Avro OCF, and JSON contracts run against the pinned Garage v2.4.1 image.
+The MinIO contracts build the pinned upstream source archive locally because the historical upstream container image is no longer published. The script verifies the archive SHA-256, checks the built binary's release identifier, then runs the CSV, Parquet, JSON, Avro OCF, ORC, and Delta snapshot fixtures against that MinIO process. The S3 CSV, Parquet, ORC, Avro OCF, and JSON contracts run against the pinned Garage v2.4.1 image.
 
 ## Run the S3-compatible object-storage contracts locally
 
@@ -61,7 +76,7 @@ The script needs Bash, `curl`, `tar`, `sha256sum`, and the Go version declared i
 bash scripts/contracts/run_minio_object_storage_contract.sh
 ~~~~
 
-The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, PostgreSQL 17.11, openGauss 6.0.0, MySQL 8.0.46, MariaDB 11.8.9, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, and MinIO Parquet as versioned contract evidence. MongoDB and both MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
+The support catalog records Garage v2.4.1 S3 CSV, S3 Parquet, S3 ORC, S3 Avro, and S3 JSON, HDFS CSV and Parquet on Apache Hadoop 3.5.0, PostgreSQL 15.19, 16.15, 17.11, and 18.6, openGauss 6.0.0, MySQL 8.0.46 and 8.4.13, MariaDB 10.11.19, 11.4.13, 11.8.9, and 12.3.3, TiDB 8.5.8, ClickHouse 26.8.20.9, SQL Server 16.0.4305.5, MongoDB 8.0.34, Oracle AI Database 26ai Free 23.26.3.0.0, Apache Doris 4.1.3, StarRocks 4.1.6, MinIO CSV, MinIO Parquet, MinIO JSON, MinIO Avro, MinIO ORC, and MinIO Delta as versioned contract evidence. MongoDB and the MinIO adapters remain experimental because their evidence applies to restricted adapter boundaries. Other connector types and versions retain their existing catalog status until a pinned server contract is added.
 
 ## Apache Druid protocol fixture
 
@@ -92,6 +107,38 @@ This local fixture does not run against AWS S3 or an S3-compatible service and
 does not establish a live provider version contract. The adapter remains
 experimental.
 
+## S3 Delta live contract
+
+The S3 Delta contract runs against the pinned Garage v2.4.1 service used by the
+other S3-compatible contracts. It writes one Parquet data file and a version-0
+Delta transaction log under a unique bucket prefix, then verifies snapshot and
+schema discovery, health, filtered/paginated read-only SQL, counts, and write
+rejection. It removes only the two objects created by the test. Cancellation
+remains covered by the local protocol fixture. This result does not imply AWS
+S3, other S3-compatible providers, or other Garage versions are compatible.
+
+The GitHub Actions S3 contract runner executes it with:
+
+~~~~sh
+bash scripts/contracts/run_s3_csv_contract.sh
+~~~~
+
+## MinIO Delta live contract
+
+The live contract uploads a Parquet object and its version-0 Delta log through
+signed S3 requests to the pinned MinIO source build. It verifies the exact
+release and commit, snapshot discovery, schema and health checks, filtered and
+paginated read-only SQL, counts, and write rejection. Cancellation remains
+covered by the local protocol fixture because a live timing-based cancellation
+assertion would be nondeterministic. The result does not imply other MinIO
+releases, AWS S3, or broader Delta features are supported.
+
+Run all MinIO object-storage contracts with:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
+~~~~
+
 ## MinIO Delta protocol fixture
 
 The MinIO Delta fixture exercises MinIO's S3-compatible SDK against a local
@@ -104,8 +151,130 @@ also exercises pagination. Run the fixtures directly with:
 go test ./internal/database/drivers/object_storage ./internal/service -run 'MinIODelta' -count=1 -v
 ~~~~
 
-These fixtures do not run against a live MinIO deployment and do not establish a
-MinIO release contract. The adapter remains experimental.
+The local protocol fixture remains the deterministic cancellation check. The
+pinned MinIO live contract described below adds release-specific query evidence;
+the adapter remains experimental and other releases/providers are not implied.
+
+## Ozone S3 Gateway ORC protocol fixture
+
+The Ozone ORC fixture signs path-style requests through the S3 Gateway and
+checks bounded metadata and object reads, schema discovery, filtered read-only
+queries and counts, cancellation, write rejection, and configured size and row
+limits. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/file_system -run 'TestOzoneORC' -count=1 -v
+~~~~
+
+The deterministic fixture does not establish compatibility with a live Ozone
+release or its native RPC interface.
+
+## Tencent COS Avro protocol fixture
+
+The Tencent COS Avro fixture exercises the COS SDK against a local HTTP
+protocol server and a generated Avro OCF object. It covers signed SecretId and
+SecretKey requests, health checks, schema discovery, filtered read-only queries
+and counts, cancellation, write rejection, object-size and row limits, and
+malformed OCF rejection. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestCOSAvro' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Tencent COS and
+is not a live service-version contract.
+
+## Tencent COS ORC protocol fixture
+
+The Tencent COS ORC fixture exercises the COS SDK against a local HTTP
+protocol server and the shared ORC fixture. It covers signed SecretId and
+SecretKey requests, health checks, metadata discovery, filtered read-only
+queries and counts, cancellation, write rejection, object-size and row limits,
+and size-limit enforcement despite inaccurate HEAD metadata. Run it directly
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestCOSORC' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Tencent COS and
+is not a live service-version contract.
+
+## Alibaba OSS ORC protocol fixture
+
+The Alibaba OSS ORC fixture exercises the OSS SDK against a local HTTP
+protocol server and the shared ORC fixture. It covers signed access-key
+requests, STS token propagation, health checks, metadata discovery, filtered
+read-only queries and counts, write rejection, object-size and row limits, and
+size-limit enforcement despite inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestOSSORC' -count=1 -v
+~~~~
+
+This fixture uses protocol simulation; it does not run against Alibaba OSS and
+is not a live service-version contract.
+
+## Azure Blob ORC protocol fixture
+
+The Azure Blob ORC fixture uses the Azure SDK against a local HTTP server and
+the existing ORC fixture file. It covers Shared Key signing, SAS query-token
+propagation, schema discovery, filtered read-only queries and counts, write
+rejection, object-size and row limits, and size-limit enforcement despite
+inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestAzureBlobORC' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
+## Azure Blob Avro protocol fixture
+
+The Azure Blob Avro fixture uses the Azure SDK against a local HTTP server and
+a generated Avro OCF. It covers Shared Key signing, SAS query-token propagation,
+embedded-schema discovery, filtered and paginated read-only SQL, counts, write
+rejection, object-size and row limits, and size-limit enforcement despite
+inaccurate HEAD metadata. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestAzureBlobAvro' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
+## Azure Blob JSON protocol fixture
+
+The Azure Blob JSON fixture uses the Azure SDK against a local HTTP server. It
+covers Shared Key signing, SAS query-token propagation, object/array/JSON Lines
+parsing, configuration and health checks, unified schema discovery, filtered
+read-only queries, counts, pagination, write rejection, object-size limits
+despite inaccurate HEAD metadata, and the record cap. Run it directly with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'TestAzureBlobJSON' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
+
+## Azure Blob CSV protocol fixture
+
+The Azure Blob CSV fixture uses the Azure SDK against a local HTTP server. It
+covers Shared Key signing, SAS query-token propagation, configuration and
+health checks, unified schema discovery, delimited/header/null handling,
+filtered read-only queries, counts, pagination, write rejection, object-size
+limits even when HEAD metadata is inaccurate, and the row cap. Run it directly
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run 'Test(AzureBlobCSVProtocolFixture|AzureBlobCSVDriverConfigurationAndDSN|AzureBlobCSVConfigRejectsInvalidSettings)$' -count=1 -v
+~~~~
+
+This fixture does not run against Azure Storage and is not a live version
+contract.
 
 ## Azure Blob Parquet protocol fixture
 
@@ -123,58 +292,109 @@ This fixture does not run against Azure Storage and is not a live version
 contract. TLS, cloud account behavior, and SAS authorization enforcement remain
 unverified.
 
+## MinIO JSON live contract
+
+The live MinIO contract runs against the pinned MinIO source build and uploads
+JSON object, array, and JSON Lines fixtures through the signed S3 API. It checks
+the exact MinIO release and commit, bucket and object access, health and schema
+discovery, filtered read-only queries, counts, and write rejection.
+
+Run all MinIO object-storage contracts with:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
+~~~~
+
+This verifies the pinned MinIO release only; it does not establish compatibility
+with AWS S3, other S3-compatible providers, or other MinIO releases.
+
 ## MinIO JSON local S3-compatible fixture
 
-The MinIO JSON fixture serves a JSON object, a JSON array, and JSON Lines from a
-local HTTP server that checks SigV4 authorization, bucket-in-path addressing,
-object metadata requests, and full-object reads. It exercises source validation,
+The local fixture serves a JSON object, a JSON array, and JSON Lines from an HTTP
+server that checks SigV4 authorization, bucket-in-path addressing, object
+metadata requests, and full-object reads. It exercises source validation,
 health, metadata discovery, schema inference, read-only filtering, ordering,
 COUNT(*), schema-only queries, and write rejection through the configured
-database/sql adapter. It is local protocol coverage, not a live MinIO release
-contract. Run it with:
+database/sql adapter. Run it with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOJSON' -count=1 -v
 ~~~~
 
+## MinIO Avro live contract
+
+The live MinIO contract uploads a deterministic Avro OCF fixture through signed
+S3 requests and verifies the exact pinned MinIO release and commit. It checks
+health and metadata, nullable schema inference, filtered and ordered queries,
+pagination, counts, schema-only queries, and write rejection.
+
+Run all MinIO object-storage contracts with:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
+~~~~
+
+Evidence is limited to the pinned MinIO release; it does not imply compatibility
+with AWS S3, other S3-compatible providers, or other MinIO releases.
+
 ## MinIO Avro OCF local S3-compatible fixture
 
-The MinIO Avro fixture serves a deterministic OCF sample through a local HTTP
-server that checks SigV4 authorization, bucket-in-path addressing, object
-metadata requests, and full-object reads. It covers source validation, health,
-metadata discovery, filtering, ordering, pagination, COUNT(*), schema discovery,
-and write rejection through the configured database/sql adapter. It is local
-protocol coverage, not a live MinIO release contract. Run it with:
+The local Avro OCF fixture serves a deterministic sample through an HTTP server
+that checks SigV4 authorization, bucket-in-path addressing, object metadata
+requests, and full-object reads. It covers source validation, health, metadata
+discovery, filtering, ordering, pagination, COUNT(*), schema discovery, and write
+rejection through the configured database/sql adapter. Run it with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOAvro' -count=1 -v
 ~~~~
 
+## MinIO ORC live contract
+
+The live contract uploads the committed flat-schema ORC fixture through signed
+S3 requests to the pinned MinIO source build. It checks the exact release and
+source commit, health and metadata discovery, filtered and ordered queries,
+pagination, COUNT(*), LIMIT 0 schema discovery, and write rejection. This
+result applies only to MinIO RELEASE.2025-04-22T22-12-26Z; it does not establish
+compatibility with AWS S3, other providers, other MinIO releases, or additional
+ORC writers. The combined MinIO contract command above runs this check.
+
 ## MinIO ORC local S3-compatible fixture
 
-The MinIO ORC fixture serves the committed ORC sample through a local HTTP
-server that checks SigV4 authorization, bucket-in-path addressing, object
-metadata requests, and byte-range reads. It exercises source validation,
-health, metadata discovery, SQL filtering/order/count, and write rejection
-through the configured database/sql adapter. This fixture is local protocol
-coverage, not a live MinIO release contract. Run it with:
+The local fixture serves the committed ORC sample through an HTTP server that
+checks SigV4 authorization, bucket-in-path addressing, object metadata requests,
+and byte-range reads. It exercises the adapter without a live service; run it
+with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOORC' -count=1 -v
 ~~~~
 
-## MinIO Iceberg local catalog fixture
+## MinIO Iceberg contract
 
-The MinIO Iceberg fixture routes a configured source through a local Iceberg
-REST catalog and an Iceberg table stored in a temporary local warehouse. It
-covers catalog health, configured-table metadata, schema discovery, read-only
-filtering and pagination, and table-boundary enforcement. A separate config
-fixture verifies how MinIO endpoint and credentials map into S3 FileIO
-properties. These fixtures do not call a MinIO service or establish live
-MinIO/REST Catalog compatibility. Run them with:
+The local MinIO Iceberg fixture uses a temporary local warehouse and a local
+REST catalog. It covers catalog health, configured-table metadata, schema
+discovery, read-only filtering and pagination, and table-boundary enforcement.
+
+The live MinIO contract uses the pinned MinIO build above and writes an Iceberg
+table's metadata, manifests, and Parquet data files into an isolated bucket
+prefix using the production S3 FileIO. A local REST catalog fixture then serves
+the table metadata while Data Fabric reads and queries the files from MinIO.
+The test also checks path-style addressing, credentials, and write rejection.
+It removes only its generated prefix. The REST catalog is simulated, so this
+contract does not establish compatibility with an external REST catalog server.
+
+Run the local fixtures with:
 
 ~~~~sh
 go test ./internal/database/drivers/object_storage -run 'MinIOIceberg' -count=1 -v
+~~~~
+
+The GitHub Actions contract starts its own pinned MinIO service and runs the
+same live test through:
+
+~~~~sh
+bash scripts/contracts/run_minio_object_storage_contract.sh
 ~~~~
 
 ## Azure Blob Delta protocol fixture
@@ -192,6 +412,46 @@ go test ./internal/database/drivers/object_storage ./internal/service -run 'Azur
 These fixtures do not run against Azure Storage and do not establish a live
 Azure version contract. The adapter remains experimental.
 
+## Tencent COS CSV protocol fixture
+
+The COS CSV adapter uses the Tencent COS SDK against a local HTTP protocol
+fixture. The deterministic test verifies signed requests, metadata HEAD,
+bounded GET (including an object whose HEAD size is deliberately inaccurate),
+filtered and paginated read-only SQL, COUNT, write rejection, a 100,000-row
+cap, and unified table/column metadata discovery. This is protocol simulation
+only; it does not establish compatibility with a live COS service release.
+
+## Google Cloud Storage CSV protocol fixture
+
+The GCS CSV adapter uses the existing S3-compatible client against the Cloud
+Storage XML API interoperability endpoint and authenticates with HMAC access
+ID/secret credentials. Its deterministic local HTTP fixture checks Signature
+V4 request construction, metadata HEAD, bounded object reads, SQL/schema
+behavior, row limits, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestGCSCSV' -count=1 -v
+~~~~
+
+The fixture does not contact Google Cloud Storage and does not establish a live
+GCS compatibility or bucket-configuration contract.
+
+## Tencent COS JSON protocol fixture
+
+The COS JSON adapter uses the Tencent COS SDK against a local HTTP protocol
+fixture. The fixture covers signed requests, object/array/JSON Lines parsing,
+schema discovery (including optional nested-field flattening), bounded reads
+when HEAD reports an inaccurate size, the record cap, read-only SQL, COUNT,
+cancellation/error paths, write rejection, and unified table/column metadata
+discovery. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSJSONProtocolFixture$' -count=1 -v
+~~~~
+
+This is protocol simulation only and does not establish compatibility with a
+live Tencent COS service release.
+
 ## Tencent COS Parquet protocol fixture
 
 The COS Parquet adapter has deterministic protocol-fixture coverage using the
@@ -208,6 +468,40 @@ This fixture does not run against Tencent Cloud and does not establish
 compatibility with a live COS release or temporary credentials. The connector
 remains experimental pending a version-pinned live contract.
 
+## Tencent COS Delta protocol fixture
+
+The COS Delta adapter uses the Tencent COS SDK and request-signing transport
+against a local HTTP protocol fixture. The fixture covers transaction-log
+listing and replay, active Parquet reads, health and schema metadata, restricted
+read-only SQL filtering/order/pagination/count, cancellation, configured byte
+limits, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSDeltaProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture is protocol simulation only. It does not establish compatibility
+with a live Tencent COS release; the connector remains experimental pending a
+pinned live-service contract.
+
+## Tencent COS Iceberg adapter fixture
+
+The COS Iceberg fixture creates a temporary local Iceberg table and serves its
+metadata through a simulated Iceberg REST catalog. It verifies COS-specific
+configuration mapping, health, metadata discovery, the shared read-only query
+path, configured-table scope, and write rejection. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestCOSIcebergConfiguredReadPath$' -count=1 -v
+go test ./internal/database/drivers/object_storage -run '^TestCOSIcebergConfig' -count=1 -v
+~~~~
+
+The local fixture does not issue requests to Tencent COS or an external catalog.
+The MinIO contract workflow also runs the COS wrapper against its pinned
+S3-compatible MinIO service, but this does not establish compatibility with a
+live COS release or external catalog. The adapter remains experimental pending
+a version-pinned COS contract.
+
 ## Alibaba OSS Delta protocol fixture
 
 The OSS Delta fixture exercises the SDK against a local HTTP object-store
@@ -222,6 +516,48 @@ go test ./internal/database/drivers/object_storage ./internal/service -run 'OSSD
 
 These fixtures do not run against Alibaba Cloud and do not establish a live OSS
 release contract. The adapter remains experimental.
+
+## Alibaba OSS CSV protocol fixture
+
+The OSS CSV adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. The deterministic test verifies access-key signing, path-style object
+addressing, metadata HEAD, bounded GET (including an object whose HEAD size is
+deliberately inaccurate), filtered and paginated read-only SQL, COUNT, write
+rejection, a 100,000-row cap, and unified table/column metadata discovery. This
+is protocol simulation only; it does not establish compatibility with a live
+Alibaba OSS service release.
+
+## Alibaba OSS JSON protocol fixture
+
+The OSS JSON adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. It covers access-key signing, optional STS token propagation,
+object/array/JSON Lines parsing, schema discovery and nested-field flattening,
+bounded reads when HEAD reports an inaccurate size, the record cap,
+cancellation/error handling, read-only SQL, COUNT, write rejection, and unified
+table/column metadata discovery. Run it with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestOSSJSONProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture does not run against Alibaba Cloud and does not establish a live
+OSS service version contract.
+
+## Alibaba OSS Avro protocol fixture
+
+The OSS Avro adapter uses the Alibaba OSS SDK against a local HTTP protocol
+fixture. It verifies signed access-key requests, STS token propagation,
+metadata and health checks, Avro OCF schema discovery and SQL queries, bounded
+reads when HEAD reports an inaccurate size, the row cap, cancellation, malformed
+OCF errors, write rejection, and unified table/column metadata discovery. Run it
+with:
+
+~~~~sh
+go test ./internal/database/drivers/object_storage -run '^TestOSSAvroProtocolFixture$' -count=1 -v
+~~~~
+
+This fixture simulates the OSS protocol locally; it does not establish
+compatibility with a live Alibaba OSS service release.
 
 ## Alibaba OSS Parquet protocol fixture
 
@@ -364,6 +700,18 @@ Stop the test service when finished:
 docker stop data-fabric-clickhouse-contract
 ~~~~
 
+## Run the ClickHouse TLS contract locally
+
+The contract builds the same pinned ClickHouse image with a temporary CA and a
+server certificate for `127.0.0.1`, starts its secure native port, verifies a
+trusted connection, and checks that system roots, an untrusted CA, and a
+hostname mismatch are rejected. The container, image, and generated keys are
+removed when the script exits:
+
+~~~~sh
+bash scripts/contracts/run_clickhouse_tls_contract.sh
+~~~~
+
 ## Run the TiDB contract locally
 
 Start the pinned single-server test service:
@@ -433,36 +781,15 @@ bash scripts/contracts/run_opengauss_tls_contract.sh
 
 ## Run the SQL Server contract locally
 
-The image requires an x86-64 Linux host. Start the exact image used by CI on local port 1434:
+On an x86-64 Linux host with Docker, OpenSSL, and Go installed, run:
 
 ~~~~sh
-docker run --rm --detach --name data-fabric-sqlserver-contract \
-  --publish 1434:1433 \
-  --env ACCEPT_EULA=Y \
-  --env MSSQL_PID=Developer \
-  --env MSSQL_SA_PASSWORD='DataFabric_2026!' \
-  mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
+bash scripts/contracts/run_sqlserver_tls_contract.sh
 ~~~~
 
-Wait for SQL Server to accept connections, then run:
+The script builds the pinned SQL Server image with a short-lived test certificate for localhost, runs the SQL Server query contract, and checks verified TLS, untrusted-CA rejection, hostname-mismatch rejection, the explicit TrustServerCertificate compatibility path, and that ssl=false leaves query traffic unencrypted (the login packet may still use TLS). It removes the temporary container and image when the run finishes.
 
-~~~~sh
-export DATA_FABRIC_SQLSERVER_CONTRACT_HOST='127.0.0.1'
-export DATA_FABRIC_SQLSERVER_CONTRACT_PORT='1434'
-export DATA_FABRIC_SQLSERVER_CONTRACT_USERNAME='sa'
-export DATA_FABRIC_SQLSERVER_CONTRACT_PASSWORD='DataFabric_2026!'
-export DATA_FABRIC_SQLSERVER_CONTRACT_DATABASE='master'
-export DATA_FABRIC_SQLSERVER_EXPECTED_VERSION='16.0.4305.5'
-go test ./internal/database/drivers/traditional -run '^TestSQLServerDriverContract$' -count=1 -v
-~~~~
-
-Stop the test service when finished:
-
-~~~~sh
-docker stop data-fabric-sqlserver-contract
-~~~~
-
-Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test trusts the container's self-signed TLS certificate; production certificate validation and other SQL Server versions are not covered by this baseline.
+Database-side read-only session enforcement is not supported by this SQL Server adapter. Use a SQL Server account with only the privileges the gateway needs. The test-only TrustServerCertificate path deliberately bypasses certificate verification; the separate verified-TLS cases keep that option disabled. Other SQL Server versions remain outside this contract.
 
 TiDB 8.5.8 does not implement the generic session read-only statement; configure server-side permissions for read-only accounts. ClickHouse uses the native protocol and also does not use the gateway read-only session initializer.
 
@@ -598,16 +925,84 @@ docker stop data-fabric-starrocks-contract
 
 The StarRocks baseline verifies the pinned 4.1.6 image only. The password-authenticated query user receives table-scoped SELECT privileges; TLS, writes through that user, multi-node deployments, and other StarRocks releases are not covered.
 
+## HDFS CSV, Avro, and Text live cluster contracts
+
+The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
+cluster from the pinned official image, writes deterministic CSV, Avro OCF,
+and UTF-8 text fixtures to separate HDFS paths, then runs all three Data Fabric
+adapters against the HDFS RPC endpoint. It checks the exact Hadoop version,
+connection and metadata probes, CSV type inference, Avro primitive and nullable
+field decoding, text LF/CRLF parsing with blank and unterminated final lines,
+filtered and ordered queries, COUNT(*), and write rejection.
+
+Run it with:
+
+~~~~sh
+bash scripts/contracts/run_hdfs_csv_contract.sh
+~~~~
+
+The contracts cover HDFS simple-user access on one single-node cluster. The
+Avro fixture uses uncompressed OCF with flat primitive and nullable fields.
+They do not verify Kerberos, authorization policies, HA, other Hadoop releases,
+or other HDFS formats. Each adapter remains bounded to one configured file and
+its documented byte and row limits; the Avro adapter does not support nested or
+non-primitive fields.
+
+## HDFS JSON local file-client fixture
+
+The HDFS JSON adapter supports one bounded object, array of objects, or JSON
+Lines file through the shared read-only SQL service. Its deterministic fixture
+covers schema inference, flat scalar decoding, filtering, ordering, pagination,
+COUNT(*), metadata discovery, and write rejection. HDFS JSON has no live Hadoop
+release contract yet; the local fixture does not verify NameNode interoperability,
+HDFS security modes, large files, or memory use at the configured limits.
+
+## HDFS Text local file-client fixture
+
+The HDFS Text adapter exposes one configured UTF-8 .txt or .log file through the
+shared read-only query service. Its deterministic local fixture covers LF/CRLF,
+blank lines, a final line without a newline, stable line numbers, filtering,
+ordering, pagination, COUNT(*), metadata discovery, and write rejection. The
+live HDFS contract above verifies the adapter against Apache Hadoop 3.5.0 only;
+directory scans, compression, multiline parsing, other releases, and HDFS
+security modes are outside that result.
+
+## HDFS Avro local file-client fixture
+
+The HDFS Avro adapter exposes one configured Avro Object Container File through
+the shared read-only query service. Its deterministic local fixture covers
+bounded reads, primitive and nullable fields, filtering, ordering, pagination,
+COUNT(*), metadata discovery, and write rejection. The live HDFS contract above
+verifies the adapter against Apache Hadoop 3.5.0 only; it does not establish
+compatibility with other Hadoop releases, security modes, or Avro compression
+codecs.
+
 ## HDFS CSV local file-client fixture
 
 The HDFS CSV adapter exposes one configured CSV file through the shared
-read-only query service. Its deterministic local file-client fixture covers
-bounded file reads, a simple projection/filter/order/page query, COUNT(*),
-metadata discovery, and write rejection without requiring a running HDFS
-cluster. It does not certify NameNode/DataNode interoperability, HDFS release
-compatibility, authorization behavior, Kerberos, HA failover, or large-file
-performance. Keep HDFS CSV experimental until a versioned live-cluster contract
-is available.
+read-only query service. Its deterministic local fixture covers bounded file
+reads, projection/filter/order/page queries, COUNT(*), metadata discovery, and
+write rejection. A separate live contract verifies this adapter only against
+Apache Hadoop 3.5.0; other releases and HDFS formats remain unverified.
+
+## HDFS Parquet and ORC live cluster contracts
+
+The live contract starts an isolated Apache Hadoop 3.5.0 NameNode/DataNode
+cluster from the pinned official image, writes deterministic Parquet and ORC
+fixtures to HDFS, then runs both Data Fabric adapters against the HDFS RPC
+endpoint. It checks the exact Hadoop version, connection and metadata probes,
+row decoding, restricted filtered queries, COUNT(*), and write rejection.
+
+Run it with:
+
+~~~~sh
+bash scripts/contracts/run_hdfs_parquet_contract.sh
+~~~~
+
+The contract covers HDFS simple-user access on one single-node cluster. It does
+not verify Kerberos, authorization policies, HA, other Hadoop releases, or
+other HDFS formats. Each adapter remains bounded to one configured file and its
+documented byte and row limits.
 
 ## HDFS Parquet local file-client fixture
 
@@ -615,20 +1010,28 @@ The HDFS Parquet adapter reads a single configured file through the shared
 read-only SQL path and uses the existing Parquet decoder. A deterministic local
 Parquet fixture and injected file client cover projected and filtered SQL,
 ordering and pagination, COUNT(*), metadata discovery, configured file bounds,
-and write rejection. This fixture requires no HDFS service and does not certify
-NameNode/DataNode interoperability, a live HDFS release, authorization,
-Kerberos, HA behavior, or large-file performance. The connector remains
-experimental until a pinned live HDFS contract is available.
+and write rejection. The local fixture does not certify NameNode/DataNode interoperability, HDFS
+authorization, Kerberos, HA behavior, or large-file performance. A separate live
+contract now verifies the Parquet and ORC adapters only against Apache Hadoop
+3.5.0; other Hadoop releases and HDFS formats remain unverified.
+
+## HDFS ORC local file-client fixture
+
+A deterministic ORC fixture and injected HDFS file client cover primitive-field
+decoding, filtered SQL, COUNT(*), file and row bounds, cancellation and read
+errors, metadata discovery, and write rejection. The fixture uses the same ORC
+decoder as object-storage adapters; only the HDFS transport path is specific to
+this connector.
 
 ## HDFS Avro OCF local file-client fixture
 
 A deterministic Avro OCF fixture and injected local file client cover record
 decoding, nullable fields, read-only projection/filter/order/page queries,
 COUNT(*), metadata discovery, file and record limits, cancellation/error
-handling, and write rejection without requiring HDFS. The fixture does not
-certify NameNode/DataNode interoperability, a live HDFS release, authorization,
-Kerberos, HA behavior, or large-file performance. Keep the connector
-experimental until a pinned live HDFS contract is available.
+handling, and write rejection without requiring HDFS. A separate live contract
+covers the adapter against Apache Hadoop 3.5.0 using HDFS simple-user access; it
+does not establish compatibility with other Hadoop releases, authorization,
+Kerberos, HA, or large-file performance.
 
 ## HDFS plain-text local file-client fixture
 
@@ -638,8 +1041,8 @@ projection/filter/order/page queries, COUNT(*), metadata discovery, byte and
 line limits, invalid UTF-8, cancellation, I/O errors, and write rejection
 without an HDFS service. The fixture does not establish compatibility with a
 live HDFS release, authorization, Kerberos, HA behavior, or large-file
-performance. The connector remains experimental until a pinned live HDFS
-contract is available.
+performance. The live contract above verifies the text adapter against Apache
+Hadoop 3.5.0 only; other releases and security modes are not covered.
 
 ## HDFS compressed Parquet local file-client fixture
 
@@ -654,4 +1057,4 @@ remains experimental until a pinned live HDFS contract is available.
 
 ## Ozone S3 Gateway protocol fixtures
 
-The Ozone Parquet, text, and Avro adapters use the shared S3 client against local HTTP protocol fixtures. Their deterministic tests cover path-style bucket addressing, SigV4 authorization, metadata HEAD, bounded object GET, Snappy Parquet, line-oriented text, or Avro OCF read-only SQL, metadata discovery, and write rejection. This is protocol simulation only; it does not establish compatibility with a live Ozone release or gateway deployment. The connector remains experimental until a version-pinned live Ozone contract is run.
+The Ozone Parquet, text, Avro, JSON, and CSV adapters use the shared S3 client against local HTTP protocol fixtures. Their deterministic tests cover path-style bucket addressing, SigV4 authorization, metadata HEAD, bounded object GET, Snappy Parquet, line-oriented text, Avro OCF, JSON object/array/JSON Lines and CSV read-only SQL, and write rejection. The JSON and CSV adapter fixtures also exercise unified table and column metadata discovery. This is protocol simulation only; it does not establish compatibility with a live Ozone release or gateway deployment. The connector remains experimental until a version-pinned live Ozone contract is run.

@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/replicarouting"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
@@ -79,7 +81,7 @@ func TestFetchNextBatchRejectsForeignCreator(t *testing.T) {
 		wantUnavailable bool
 	}{
 		{"foreign creator", "alice", &security.Caller{UserID: "eve", TenantID: "contoso"}, true},
-		{"same user id different tenant", "alice", &security.Caller{UserID: "alice", TenantID: "contoso"}, false},
+		{"same user id different tenant", "alice", &security.Caller{UserID: "alice", TenantID: "contoso"}, true},
 		{"creator continues", "alice", &security.Caller{UserID: "alice"}, false},
 		{"legacy session with nil caller", "", nil, false},
 		{"named session with nil caller", "alice", nil, true},
@@ -89,9 +91,9 @@ func TestFetchNextBatchRejectsForeignCreator(t *testing.T) {
 			source := ownedActiveSource()
 			qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false), false, newTestSQLTranslationManager()).(*queryService)
 			qs.sessionManager.Store(&QuerySession{
-				QueryID: "q-1", Slug: "slug-1", Token: "token-1", CreatorID: tt.sessionOwner,
+				QueryID: "q-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipal{userID: tt.sessionOwner},
 				DataSourceID: "ds-1", SQL: "SELECT * FROM orders", Type: 2,
-				TotalRows: 10, FetchedRows: 0, ExpiresAt: time.Now().Add(time.Minute),
+				TotalRows: 10, FetchedRows: 10, ExpiresAt: time.Now().Add(time.Minute),
 			})
 
 			_, err := qs.FetchNextBatch(context.Background(), tt.caller, "q-1", "slug-1", "token-1", 10)
@@ -113,7 +115,7 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 	source := ownedActiveSource()
 	newSession := func() *StreamingSession {
 		return &StreamingSession{
-			QueryID: "q-1", Slug: "slug-1", Token: "token-1", CreatorID: "alice",
+			QueryID: "q-1", Slug: "slug-1", Token: "token-1", creator: querySessionPrincipal{userID: "alice"},
 			// federationSourceRepository only resolves the ID it was seeded with
 			DataSourceID: "deleted-source", SQL: "SELECT * FROM orders", Type: 2,
 			TotalRows: 10, FetchedRows: 0, ExpiresAt: time.Now().Add(time.Minute),
@@ -128,6 +130,22 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 		_, err := ss.FetchNextBatchWithStreaming(context.Background(), &security.Caller{UserID: "eve", TenantID: "contoso"}, "q-1", "slug-1", "token-1", 10)
 		if !errors.Is(err, ErrQuerySessionUnavailable) {
 			t.Fatalf("FetchNextBatchWithStreaming() error = %v, want ErrQuerySessionUnavailable", err)
+		}
+	})
+
+	t.Run("same user with another tenant cannot use a session", func(t *testing.T) {
+		ss := NewStreamingService(federationSourceRepository{source: source}, nil, newTestSQLTranslationManager()).(*streamingService)
+		session := newSession()
+		session.creator.tenantID = "acme"
+		session.DataSourceID = source.ID
+		ss.streamingSessionManager.Store(session)
+		caller := &security.Caller{UserID: "alice", TenantID: "contoso"}
+		if !caller.CanRead(source) {
+			t.Fatal("fixture should retain the data-source owner's cross-claim access")
+		}
+		_, err := ss.FetchNextBatchWithStreaming(context.Background(), caller, "q-1", "slug-1", "token-1", 10)
+		if !errors.Is(err, ErrQuerySessionUnavailable) || !ss.streamingSessionManager.isCurrent(session) {
+			t.Fatalf("foreign tenant advanced or removed the session: %v", err)
 		}
 	})
 
@@ -149,6 +167,7 @@ func TestFetchNextBatchWithStreamingRejectsForeignCreator(t *testing.T) {
 		ss := NewStreamingService(federationSourceRepository{source: tenantSource}, database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false), newTestSQLTranslationManager()).(*streamingService)
 		session := newSession()
 		session.DataSourceID = "ds-1"
+		session.creator.tenantID = "contoso"
 		ss.streamingSessionManager.Store(session)
 
 		caller := &security.Caller{UserID: "alice", TenantID: "contoso"}
@@ -169,7 +188,7 @@ func TestFetchNextBatchRechecksCurrentTenantAccess(t *testing.T) {
 	}
 	qs := NewQueryService(federationSourceRepository{source: source}, database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false), false, newTestSQLTranslationManager()).(*queryService)
 	qs.sessionManager.Store(&QuerySession{
-		QueryID: "q-tenant", Slug: "slug", Token: "token", CreatorID: "alice",
+		QueryID: "q-tenant", Slug: "slug", Token: "token", creator: querySessionPrincipal{userID: "alice", tenantID: "contoso"},
 		DataSourceID: "ds-1", SQL: "SELECT * FROM orders", Type: 2,
 		TotalRows: 10, ExpiresAt: time.Now().Add(time.Minute),
 	})
@@ -179,4 +198,69 @@ func TestFetchNextBatchRechecksCurrentTenantAccess(t *testing.T) {
 	if !errors.Is(err, security.ErrDataSourceAccessDenied) {
 		t.Fatalf("FetchNextBatch() error = %v, want ErrDataSourceAccessDenied", err)
 	}
+}
+
+func TestQuerySessionRejectsAnotherMCPTransportForTheSameCaller(t *testing.T) {
+	caller := &security.Caller{UserID: "alice", TenantID: "team-a"}
+	creatorContext := replicarouting.WithTransportSession(
+		context.Background(), "owner/session-a", time.Now().Add(time.Minute),
+	)
+	service, ok := NewQueryServiceWithTableAuthorizer(nil, nil, false, nil).(*queryService)
+	if !ok {
+		t.Fatal("unexpected query service implementation")
+	}
+	session := &QuerySession{
+		QueryID:   "query-one",
+		Slug:      "signed-query-marker",
+		Token:     "valid-current-token",
+		ExpiresAt: time.Now().Add(time.Minute),
+		creator:   querySessionPrincipalFromContext(creatorContext, caller),
+	}
+	if !service.sessionManager.Store(session) {
+		t.Fatal("failed to store test session")
+	}
+
+	otherTransport := replicarouting.WithTransportSession(
+		context.Background(), "owner/session-b", time.Now().Add(time.Minute),
+	)
+	_, err := service.FetchNextBatch(otherTransport, caller, session.QueryID, session.Slug, session.Token, 10)
+	if !errors.Is(err, ErrQuerySessionUnavailable) {
+		t.Fatalf("FetchNextBatch() error = %v, want unavailable for a different MCP session", err)
+	}
+	if got := service.LiveSessionCount(time.Now()); got != 1 {
+		t.Fatalf("session count after unauthorized fetch = %d, want 1", got)
+	}
+}
+
+func TestEndTransportSessionClosesBoundQueryCursor(t *testing.T) {
+	service, ok := NewQueryService(nil, nil, false).(*queryService)
+	if !ok {
+		t.Fatal("unexpected query service implementation")
+	}
+	var closes atomic.Int32
+	session := &QuerySession{
+		QueryID:   "query-one",
+		creator:   querySessionPrincipal{transportSessionID: "owner/session-a"},
+		Cursor:    closingQueryCursor{closes: &closes},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	if !service.sessionManager.Store(session) {
+		t.Fatal("failed to store test session")
+	}
+	service.EndTransportSession("owner/session-a")
+	if got := service.LiveSessionCount(time.Now()); got != 0 {
+		t.Fatalf("live session count = %d, want 0", got)
+	}
+	if closes.Load() != 1 {
+		t.Fatalf("cursor Close calls = %d, want 1", closes.Load())
+	}
+}
+
+type closingQueryCursor struct {
+	closes *atomic.Int32
+}
+
+func (c closingQueryCursor) Close() error {
+	c.closes.Add(1)
+	return nil
 }

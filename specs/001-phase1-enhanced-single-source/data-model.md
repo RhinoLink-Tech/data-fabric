@@ -146,6 +146,7 @@ const (
     DatabaseTypeS3Delta          DatabaseType = "s3_delta"
     DatabaseTypeS3Avro           DatabaseType = "s3_avro"
     DatabaseTypeS3CSV            DatabaseType = "s3_csv"
+    DatabaseTypeGCSCSV            DatabaseType = "gcs_csv"
     DatabaseTypeS3JSON           DatabaseType = "s3_json"
     DatabaseTypeMinIOParquet     DatabaseType = "minio_parquet"
     DatabaseTypeMinIOCSV         DatabaseType = "minio_csv"
@@ -154,15 +155,22 @@ const (
     DatabaseTypeMinIOJSON        DatabaseType = "minio_json"
     DatabaseTypeAlibabaOSSParquet DatabaseType = "oss_parquet"
     DatabaseTypeTencentCOSParquet DatabaseType = "cos_parquet"
-    DatabaseTypeAzureBlobParquet DatabaseType = "azure_parquet"
+    DatabaseTypeAzureBlobAvro DatabaseType = "azure_blob_avro"
+    DatabaseTypeAzureBlobORC DatabaseType = "azure_blob_orc"
+    DatabaseTypeAzureBlobCSV DatabaseType = "azure_blob_csv"
+    DatabaseTypeAzureBlobJSON DatabaseType = "azure_blob_json"
+    DatabaseTypeAzureBlobParquet DatabaseType = "azure_blob_parquet"
+    DatabaseTypeAzureParquet DatabaseType = "azure_parquet"
 )
 
 // Distributed File Systems
 const (
     DatabaseTypeHDFSAvro    DatabaseType = "hdfs_avro"
+    DatabaseTypeHDFSORC     DatabaseType = "hdfs_orc"
     DatabaseTypeHDFSParquet DatabaseType = "hdfs_parquet"
     DatabaseTypeHDFSCSV     DatabaseType = "hdfs_csv"
     DatabaseTypeOzoneParquet DatabaseType = "ozone_parquet"
+     DatabaseTypeOzoneORC DatabaseType = "ozone_orc"
 )
 
 // OLAP Engines
@@ -1004,8 +1012,8 @@ const (
      'mysql', 'mariadb', 'postgresql', 'oracle',
      'iceberg', 'delta_lake', 'hudi',
      'snowflake', 'databricks', 'redshift', 'bigquery',
-     's3_parquet', 'minio_parquet', 'oss_parquet', 'cos_parquet', 'azure_parquet',
-     'hdfs_avro', 'ozone_parquet',
+     's3_parquet', 'minio_parquet', 'oss_parquet', 'oss_orc', 'cos_parquet', 'cos_orc', 'cos_avro', 'cos_delta', 'cos_iceberg', 'azure_blob_avro', 'azure_blob_orc', 'azure_blob_csv', 'azure_blob_json', 'azure_blob_parquet', 'azure_parquet',
+     'hdfs_avro', 'hdfs_orc', 'ozone_parquet', 'ozone_orc',
      'clickhouse', 'doris', 'starrocks', 'druid',
      'oceanbase_mysql', 'oceanbase_oracle', 'tidb', 'tdsql',
      'gaussdb_mysql', 'gaussdb_postgres', 'dameng', 'kingbasees',

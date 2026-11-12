@@ -313,6 +313,21 @@ func TestInvalidateDataSourceClosesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestInvalidateDataSourceNotifiesActiveResourceOwnerWithoutIdlePool(t *testing.T) {
+	pool := NewConnectionPool(nil, nil, nil, false)
+	var invalidated []string
+	pool.SetDataSourceInvalidationHandler(func(dataSourceID string) {
+		invalidated = append(invalidated, dataSourceID)
+	})
+
+	if err := pool.InvalidateDataSource("source-without-idle-pool"); err != nil {
+		t.Fatalf("InvalidateDataSource failed: %v", err)
+	}
+	if len(invalidated) != 1 || invalidated[0] != "source-without-idle-pool" {
+		t.Fatalf("invalidation notifications = %v, want the source ID once", invalidated)
+	}
+}
+
 type recoveryPoolState struct {
 	failedGeneration atomic.Int32
 	openCount        atomic.Int32

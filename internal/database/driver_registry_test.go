@@ -15,6 +15,7 @@ func TestDriverRegistryGetDriverAndIsSupported(t *testing.T) {
 	}{
 		{name: "mysql", dbType: model.DatabaseTypeMySQL, supported: true},
 		{name: "postgresql", dbType: model.DatabaseTypePostgreSQL, supported: true},
+		{name: "hdfs_orc", dbType: model.DatabaseTypeHDFSORC, supported: true},
 		{name: "unknown", dbType: model.DatabaseType("unknown")},
 		{name: "empty", dbType: model.DatabaseType("")},
 	}
@@ -138,5 +139,150 @@ func TestOzoneParquetTextAndAvroUseS3GatewayAdapters(t *testing.T) {
 	avroDriver, err := registry.GetDriver(model.DatabaseTypeOzoneAvro)
 	if err != nil || avroDriver.GetCategory() != "object_storage" || !avroDriver.GetCapabilities().SupportsSQL {
 		t.Fatalf("Ozone Avro driver = %v, error = %v; want registered object-storage SQL adapter", avroDriver, err)
+	}
+	csvDriver, err := registry.GetDriver(model.DatabaseTypeOzoneCSV)
+	if err != nil || csvDriver.GetCategory() != "object_storage" || !csvDriver.GetCapabilities().SupportsSQL {
+		t.Fatalf("Ozone CSV driver = %v, error = %v; want registered object-storage SQL adapter", csvDriver, err)
+	}
+	deltaDriver, err := registry.GetDriver(model.DatabaseTypeOzoneDelta)
+	if err != nil || deltaDriver.GetCategory() != "object_storage" || !deltaDriver.GetCapabilities().SupportsSQL || !deltaDriver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Ozone Delta driver = %v, error = %v; want registered object-storage SQL adapter", deltaDriver, err)
+	}
+	ossCSVDriver, err := registry.GetDriver(model.DatabaseTypeOSSCSV)
+	if err != nil || ossCSVDriver.GetCategory() != "object_storage" || !ossCSVDriver.GetCapabilities().SupportsSQL {
+		t.Fatalf("OSS CSV driver = %v, error = %v; want registered object-storage SQL adapter", ossCSVDriver, err)
+	}
+	ossJSONDriver, err := registry.GetDriver(model.DatabaseTypeAlibabaOSSJSON)
+	if err != nil || ossJSONDriver.GetCategory() != "object_storage" || !ossJSONDriver.GetCapabilities().SupportsSQL || !ossJSONDriver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("OSS JSON driver = %v, error = %v; want registered object-storage SQL adapter", ossJSONDriver, err)
+	}
+	ossAvroDriver, err := registry.GetDriver(model.DatabaseTypeAlibabaOSSAvro)
+	if err != nil || ossAvroDriver.GetCategory() != "object_storage" || !ossAvroDriver.GetCapabilities().SupportsSQL || !ossAvroDriver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("OSS Avro driver = %v, error = %v; want registered object-storage SQL adapter", ossAvroDriver, err)
+	}
+	ossORCDriver, err := registry.GetDriver(model.DatabaseTypeAlibabaOSSORC)
+	if err != nil || ossORCDriver.GetCategory() != "object_storage" || !ossORCDriver.GetCapabilities().SupportsSQL || !ossORCDriver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("OSS ORC driver = %v, error = %v; want registered object-storage SQL adapter", ossORCDriver, err)
+	}
+}
+
+func TestAzureBlobJSONDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobJSON)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_json) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob JSON driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestAzureBlobORCDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobORC)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_orc) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestAzureBlobAvroDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobAvro)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_avro) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob Avro driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestAzureBlobCSVDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeAzureBlobCSV)
+	if err != nil {
+		t.Fatalf("GetDriver(azure_blob_csv) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Azure Blob CSV driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestCOSCSVDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSCSV)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_csv) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS CSV driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestGCSCSVDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeGCSCSV)
+	if err != nil {
+		t.Fatalf("GetDriver(gcs_csv) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("GCS CSV driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestCOSJSONDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSJSON)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_json) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS JSON driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestCOSORCDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSORC)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_orc) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestCOSAvroDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSAvro)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_avro) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS Avro driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestCOSDeltaDriverIsRegistered(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeTencentCOSDelta)
+	if err != nil {
+		t.Fatalf("GetDriver(cos_delta) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("COS Delta driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
+	}
+}
+
+func TestOzoneORCDriverUsesS3GatewayAdapter(t *testing.T) {
+	registry := NewDriverRegistry()
+	driver, err := registry.GetDriver(model.DatabaseTypeOzoneORC)
+	if err != nil {
+		t.Fatalf("GetDriver(ozone_orc) error = %v", err)
+	}
+	if driver.GetCategory() != "object_storage" || !driver.GetCapabilities().SupportsSQL || !driver.GetCapabilities().SupportsSchemaDiscovery {
+		t.Fatalf("Ozone ORC driver category/capabilities = %q/%+v", driver.GetCategory(), driver.GetCapabilities())
 	}
 }

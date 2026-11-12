@@ -21,15 +21,15 @@ type FetchQueryRequest struct {
 	SQL           string        `json:"sql" validate:"required"`
 	SourceDialect string        `json:"sourceDialect,omitempty"` // Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)
 	Parameters    []interface{} `json:"parameters,omitempty"`    // Ordered values bound by the driver, never interpolated into the SQL text (#21)
-	Type          int           `json:"type"`                    // 1-同步查询 2-流式查询
+	Type          int           `json:"type"`                    // 1 = paginated batches; 2 = prefer streaming (configuration may override)
 	BatchSize     int           `json:"batch_size,omitempty"`    // 当前批次数据的预期条数，范围：1-10000，默认10000
-	Timeout       int           `json:"timeout,omitempty"`       // 获取第一批数据的预期时间，单位：秒，范围：1-1800，流式查询生效
+	Timeout       int           `json:"timeout,omitempty"`       // 初始请求超时（秒），范围：1-1800
 }
 
 // FetchQueryResponse represents the response for a fetch query
-// When a streaming cursor is used, `NextURI` will be populated and can be
-// called to retrieve the next batch of rows. If `NextURI` is empty, the
-// result set is exhausted.
+// A non-empty `NextURI` identifies a continuation batch. Follow the newest
+// URI/token until a successful response omits it; execution mode and batch length
+// alone do not establish completion.
 type FetchQueryResponse struct {
 	QueryID       string           `json:"queryId"`
 	Slug          string           `json:"slug"`
@@ -179,13 +179,14 @@ type ForeignKeySchema struct {
 
 // QueryStats represents query execution statistics
 type QueryStats struct {
-	TotalQueries        int64            `json:"totalQueries"`
-	SuccessfulQueries   int64            `json:"successfulQueries"`
-	FailedQueries       int64            `json:"failedQueries"`
-	AvgExecutionTime    float64          `json:"avgExecutionTime"`
-	LastQueryTime       time.Time        `json:"lastQueryTime"`
-	QueriesByType       map[string]int64 `json:"queriesByType"`
-	QueriesByDataSource map[string]int64 `json:"queriesByDataSource"`
+	TotalQueries          int64            `json:"totalQueries"`
+	SuccessfulQueries     int64            `json:"successfulQueries"`
+	FailedQueries         int64            `json:"failedQueries"`
+	BudgetExceededQueries int64            `json:"budgetExceededQueries"`
+	AvgExecutionTime      float64          `json:"avgExecutionTime"`
+	LastQueryTime         time.Time        `json:"lastQueryTime"`
+	QueriesByType         map[string]int64 `json:"queriesByType"`
+	QueriesByDataSource   map[string]int64 `json:"queriesByDataSource"`
 }
 
 // IsValid checks if the QueryRequest is valid

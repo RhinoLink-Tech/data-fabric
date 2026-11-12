@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "data-fabric": {
+      "type": "streamableHttp",
+      "url": "https://data-fabric.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <OIDC_ACCESS_TOKEN>"
+      }
+    }
+  }
+}

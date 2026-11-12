@@ -36,16 +36,14 @@ func NewQueryController(unifiedQueryService unifiedservice.UnifiedQueryService) 
 
 // FetchQuery godoc
 // @Summary Execute a batch SQL query
-// @Description Executes a SQL query and returns batch data with pagination support.
-// This endpoint will attempt to open a streaming cursor on the backend when possible
-// and return the first batch of rows. If streaming is established, the response
-// includes a `nextUri` for continuing the stream via `/fetch/{query_id}/{slug}/{token}`.
+// @Description Executes SQL and returns the first bounded batch. When more rows remain, the response includes a `nextUri` for offset pagination or a streaming cursor, depending on the selected execution mode. Follow each returned URI until a successful response omits it.
 // @Tags queries
 // @Accept json
 // @Produce json
 // @Param request body model.FetchQueryRequest true "Fetch query request"
 // @Success 200 {object} response.StandardResponse{data=model.FetchQueryResponse}
 // @Failure 400 {object} response.StandardResponse
+// @Failure 413 {object} response.StandardResponse
 // @Failure 422 {object} response.StandardResponse
 // @Failure 500 {object} response.StandardResponse
 // @Router /api/v1/fetch [post]
@@ -344,6 +342,9 @@ func requestingUser(c *gin.Context) string {
 // existence cannot be probed through /fetch either.
 func (qc *QueryController) writeQueryError(c *gin.Context, caller *security.Caller, err error) {
 	slog.ErrorContext(c.Request.Context(), "query request failed", "correlation_id", qc.getCorrelationID(c), "error", err)
+	if errors.Is(err, queryservice.ErrQueryRateLimitExceeded) {
+		c.Header("Retry-After", "1")
+	}
 	if (errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied)) && caller != nil && !caller.IsAdmin() {
 		c.JSON(http.StatusForbidden, response.ErrorResponse(
 			"DATASOURCE_ACCESS_DENIED",
@@ -413,11 +414,21 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusForbidden, "DATASOURCE_ACCESS_DENIED"
 	case errors.Is(err, security.ErrTableAccessDenied):
 		return http.StatusForbidden, "TABLE_ACCESS_DENIED"
+	case errors.Is(err, security.ErrTablePolicyUnavailable):
+		return http.StatusServiceUnavailable, "TABLE_POLICY_STALE"
 	case errors.Is(err, queryservice.ErrDataSourceInactive):
 		// The source exists but its current state forbids execution (#118)
 		return http.StatusConflict, "DATASOURCE_INACTIVE"
+	case errors.Is(err, queryservice.ErrQueryOwnerDraining):
+		return http.StatusServiceUnavailable, "QUERY_OWNER_DRAINING"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
+	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
+		return http.StatusTooManyRequests, "QUERY_RATE_LIMIT_EXCEEDED"
+	case errors.Is(err, queryservice.ErrQueryResultLimitExceeded):
+		return http.StatusRequestEntityTooLarge, "QUERY_RESULT_LIMIT_EXCEEDED"
+	case errors.Is(err, queryservice.ErrQueryDurationLimitExceeded):
+		return http.StatusGatewayTimeout, "QUERY_BUDGET_TIMEOUT"
 	case errors.Is(err, queryservice.ErrExactCountUnavailable):
 		// The statement is valid but its shape cannot be counted exactly (#23)
 		return http.StatusUnprocessableEntity, "COUNT_UNSUPPORTED"

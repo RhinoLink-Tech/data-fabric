@@ -95,6 +95,21 @@ logging:
 query:
   prefer_streaming: true
   execution_mode: "auto"  # auto, streaming, pagination
+  session_ttl_seconds: 1800  # 0 uses the default (1800)
+  max_result_rows: 100000  # cumulative rows returned by one query
+  max_result_bytes: 67108864  # cumulative encoded JSON result bytes (64 MiB)
+  max_duration_seconds: 300  # upper bound; effective deadline is capped at session_ttl_seconds
+  max_concurrent_queries_per_tenant: 25
+  rate_limit_per_minute_per_tenant: 120
+  rate_limit_burst_per_tenant: 20
+
+# Enable the replica drain endpoints on a private REST listener.
+routing:
+  enabled: false
+  deployment_id: ""
+  owner_slot: ""
+  policy_revision: ""
+  drain_timeout_seconds: 120
 
 mcp:
   enabled: false
@@ -103,6 +118,8 @@ mcp:
   # Streamable-HTTP entrance budgets: in-flight request cap and request body
   # size (body falls back to server.max_request_body_bytes when unset).
   max_concurrent_requests: 64
+  routed_session_ttl_seconds: 3600
+  max_routed_sessions: 1024
   tls_cert_file: "" # configure with tls_key_file for direct HTTPS
   tls_key_file: ""
   auth_mode: "local-jwt" # local-jwt for development; oidc for protected remote MCP

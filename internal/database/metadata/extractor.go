@@ -61,15 +61,15 @@ func (e *MetadataExtractor) ExtractSchema(ctx context.Context, dataSourceID stri
 	var tables map[string]*TableSchema
 	if isCSVObjectSource(dataSource.Type) {
 		var table *TableSchema
-		table, err = extractCSVTable(ctx, db, &dataSource.Config)
+		table, err = extractCSVTable(ctx, db, &dataSource.Config, dataSource.Type)
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
 		}
-	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	} else if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isIcebergRESTSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		var table *TableSchema
 		table, err = extractObjectSQLTable(ctx, db, &dataSource.Config, dataSource.Type)
-		if err == nil && isMinIOIcebergSource(dataSource.Type) {
-			table.Schema, err = object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		if err == nil && isIcebergRESTSource(dataSource.Type) {
+			table.Schema, err = icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 		}
 		if err == nil {
 			tables = map[string]*TableSchema{table.Name: table}
@@ -106,21 +106,21 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		return nil, err
 	}
 	if isCSVObjectSource(dataSource.Type) {
-		name, err := object_storage.CSVTableName(&dataSource.Config)
+		name, err := csvTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		if requestedSchema != "" || tableName != name {
 			return nil, fmt.Errorf("%w: %q in data source %s", ErrTableNotFound, tableName, dataSourceID)
 		}
-		return extractCSVTable(ctx, db, &dataSource.Config)
+		return extractCSVTable(ctx, db, &dataSource.Config, dataSource.Type)
 	}
-	if isMinIOIcebergSource(dataSource.Type) {
+	if isIcebergRESTSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
-		namespace, err := object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		namespace, err := icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +134,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 		table.Schema = namespace
 		return table, nil
 	}
-	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
@@ -252,20 +252,20 @@ func (e *MetadataExtractor) ListTables(ctx context.Context, dataSourceID string)
 		return nil, err
 	}
 	if isCSVObjectSource(dataSource.Type) {
-		name, err := object_storage.CSVTableName(&dataSource.Config)
+		name, err := csvTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		return []TableIdentity{{Name: name, Type: "TABLE"}}, nil
 	}
-	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isS3JSONObjectSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isMinIOIcebergSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
+	if isLineTextSource(dataSource.Type) || isHDFSCSVSource(dataSource.Type) || isHDFSParquetSource(dataSource.Type) || isParquetObjectSource(dataSource.Type) || isORCObjectSource(dataSource.Type) || isAvroObjectSource(dataSource.Type) || isJSONSQLSource(dataSource.Type) || isDeltaObjectSource(dataSource.Type) || isIcebergRESTSource(dataSource.Type) || isMinIOORCSource(dataSource.Type) {
 		name, err := objectSQLTableNameForSource(dataSource.Type, &dataSource.Config)
 		if err != nil {
 			return nil, err
 		}
 		namespace := ""
-		if isMinIOIcebergSource(dataSource.Type) {
-			namespace, err = object_storage.MinIOIcebergNamespace(&dataSource.Config)
+		if isIcebergRESTSource(dataSource.Type) {
+			namespace, err = icebergRESTNamespace(dataSource.Type, &dataSource.Config)
 			if err != nil {
 				return nil, err
 			}
@@ -309,7 +309,24 @@ func isHDFSParquetSource(dbType model.DatabaseType) bool {
 }
 
 func isCSVObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV
+	return dbType == model.DatabaseTypeMinIOCSV || dbType == model.DatabaseTypeS3CSV || dbType == model.DatabaseTypeGCSCSV || dbType == model.DatabaseTypeOzoneCSV || dbType == model.DatabaseTypeOSSCSV || dbType == model.DatabaseTypeTencentCOSCSV || dbType == model.DatabaseTypeAzureBlobCSV
+}
+
+func csvTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeOzoneCSV:
+		return file_system.OzoneCSVTableName(config)
+	case model.DatabaseTypeOSSCSV:
+		return object_storage.OSSCSVTableName(config)
+	case model.DatabaseTypeTencentCOSCSV:
+		return object_storage.COSCSVTableName(config)
+	case model.DatabaseTypeAzureBlobCSV:
+		return object_storage.AzureBlobCSVTableName(config)
+	case model.DatabaseTypeGCSCSV:
+		return object_storage.GCSCSVTableName(config)
+	default:
+		return object_storage.CSVTableName(config)
+	}
 }
 
 func isParquetObjectSource(dbType model.DatabaseType) bool {
@@ -317,23 +334,41 @@ func isParquetObjectSource(dbType model.DatabaseType) bool {
 }
 
 func isORCObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3ORC
+	return dbType == model.DatabaseTypeS3ORC || dbType == model.DatabaseTypeHDFSORC || dbType == model.DatabaseTypeAzureBlobORC || dbType == model.DatabaseTypeAlibabaOSSORC || dbType == model.DatabaseTypeTencentCOSORC || dbType == model.DatabaseTypeOzoneORC
 }
 
 func isAvroObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeOzoneAvro
+	return dbType == model.DatabaseTypeS3Avro || dbType == model.DatabaseTypeMinIOAvro || dbType == model.DatabaseTypeHDFSAvro || dbType == model.DatabaseTypeOzoneAvro || dbType == model.DatabaseTypeAzureBlobAvro || dbType == model.DatabaseTypeAlibabaOSSAvro || dbType == model.DatabaseTypeTencentCOSAvro
 }
 
-func isS3JSONObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON
+func isJSONSQLSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeHDFSJSON || dbType == model.DatabaseTypeS3JSON || dbType == model.DatabaseTypeMinIOJSON || dbType == model.DatabaseTypeOzoneJSON || dbType == model.DatabaseTypeAzureBlobJSON || dbType == model.DatabaseTypeTencentCOSJSON || dbType == model.DatabaseTypeAlibabaOSSJSON
 }
 
 func isDeltaObjectSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta
+	return dbType == model.DatabaseTypeOSSDelta || dbType == model.DatabaseTypeS3Delta || dbType == model.DatabaseTypeMinIODelta || dbType == model.DatabaseTypeAzureDelta || dbType == model.DatabaseTypeOzoneDelta || dbType == model.DatabaseTypeTencentCOSDelta
 }
 
-func isMinIOIcebergSource(dbType model.DatabaseType) bool {
-	return dbType == model.DatabaseTypeMinIOIceberg
+func isIcebergRESTSource(dbType model.DatabaseType) bool {
+	return dbType == model.DatabaseTypeMinIOIceberg || dbType == model.DatabaseTypeTencentCOSIceberg
+}
+
+func icebergRESTNamespace(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeTencentCOSIceberg:
+		return object_storage.COSIcebergNamespace(config)
+	default:
+		return object_storage.MinIOIcebergNamespace(config)
+	}
+}
+
+func icebergRESTTableName(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
+	switch dbType {
+	case model.DatabaseTypeTencentCOSIceberg:
+		return object_storage.COSIcebergTableName(config)
+	default:
+		return object_storage.MinIOIcebergTableName(config)
+	}
 }
 
 func isMinIOORCSource(dbType model.DatabaseType) bool {
@@ -342,6 +377,10 @@ func isMinIOORCSource(dbType model.DatabaseType) bool {
 
 func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSourceConfig) (string, error) {
 	switch dbType {
+	case model.DatabaseTypeHDFSJSON:
+		return file_system.HDFSJSONTableName(config)
+	case model.DatabaseTypeOzoneJSON:
+		return file_system.OzoneJSONTableName(config)
 	case model.DatabaseTypeHDFSText:
 		return file_system.HDFSTextTableName(config)
 	case model.DatabaseTypeOzoneText:
@@ -352,6 +391,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return file_system.HDFSParquetTableName(config)
 	case model.DatabaseTypeHDFSAvro:
 		return file_system.HDFSAvroTableName(config)
+	case model.DatabaseTypeHDFSORC:
+		return file_system.HDFSORCTableName(config)
 	case model.DatabaseTypeMinIOParquet:
 		return object_storage.MinIOParquetTableName(config)
 	case model.DatabaseTypeS3Parquet:
@@ -360,16 +401,36 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.OSSParquetTableName(config)
 	case model.DatabaseTypeTencentCOSParquet:
 		return object_storage.COSParquetTableName(config)
+	case model.DatabaseTypeAzureBlobORC:
+		return object_storage.AzureBlobORCTableName(config)
+	case model.DatabaseTypeAzureBlobAvro:
+		return object_storage.AzureBlobAvroTableName(config)
+	case model.DatabaseTypeAzureBlobJSON:
+		return object_storage.AzureBlobJSONTableName(config)
+	case model.DatabaseTypeTencentCOSJSON:
+		return object_storage.COSJSONTableName(config)
+	case model.DatabaseTypeAlibabaOSSJSON:
+		return object_storage.OSSJSONTableName(config)
 	case model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet:
 		return object_storage.AzureBlobParquetTableName(config)
 	case model.DatabaseTypeOzoneParquet:
 		return file_system.OzoneParquetTableName(config)
+	case model.DatabaseTypeOzoneORC:
+		return file_system.OzoneORCTableName(config)
 	case model.DatabaseTypeOzoneAvro:
 		return file_system.OzoneAvroTableName(config)
 	case model.DatabaseTypeS3ORC:
 		return object_storage.S3ORCTableName(config)
+	case model.DatabaseTypeAlibabaOSSORC:
+		return object_storage.OSSORCTableName(config)
+	case model.DatabaseTypeTencentCOSORC:
+		return object_storage.COSORCTableName(config)
 	case model.DatabaseTypeS3Avro:
 		return object_storage.S3AvroTableName(config)
+	case model.DatabaseTypeAlibabaOSSAvro:
+		return object_storage.OSSAvroTableName(config)
+	case model.DatabaseTypeTencentCOSAvro:
+		return object_storage.COSAvroTableName(config)
 	case model.DatabaseTypeMinIOAvro:
 		return object_storage.MinIOAvroTableName(config)
 	case model.DatabaseTypeS3JSON:
@@ -384,8 +445,12 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 		return object_storage.MinIODeltaTableName(config)
 	case model.DatabaseTypeAzureDelta:
 		return object_storage.AzureDeltaTableName(config)
-	case model.DatabaseTypeMinIOIceberg:
-		return object_storage.MinIOIcebergTableName(config)
+	case model.DatabaseTypeOzoneDelta:
+		return object_storage.OzoneDeltaTableName(config)
+	case model.DatabaseTypeTencentCOSDelta:
+		return object_storage.COSDeltaTableName(config)
+	case model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg:
+		return icebergRESTTableName(dbType, config)
 	case model.DatabaseTypeMinIOORC:
 		return object_storage.MinIOORCTableName(config)
 	default:
@@ -396,8 +461,8 @@ func objectSQLTableNameForSource(dbType model.DatabaseType, config *model.DataSo
 // extractCSVTable asks the configured adapter for column metadata. CSV has no
 // declared schema, so the reported types are inferred from the object using
 // the same parser and rules as SELECT queries; no row values are returned.
-func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig) (*TableSchema, error) {
-	name, err := object_storage.CSVTableName(config)
+func extractCSVTable(ctx context.Context, db *sql.DB, config *model.DataSourceConfig, dbType model.DatabaseType) (*TableSchema, error) {
+	name, err := csvTableNameForSource(dbType, config)
 	if err != nil {
 		return nil, err
 	}
@@ -636,6 +701,13 @@ func postgresRegclassLiteral(schemaName, tableName string) string {
 	return "'" + escapeSQLStringLiteral(qualifiedName) + "'"
 }
 
+// mysqlIdentifier wraps a MySQL/MariaDB table name in backticks, doubling any
+// embedded backtick, so a user-supplied name cannot break out of the identifier
+// position in SHOW COLUMNS / SHOW INDEX.
+func mysqlIdentifier(value string) string {
+	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
 func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
@@ -661,35 +733,35 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
-		return fmt.Sprintf("SHOW COLUMNS FROM %s", tableName)
+		return fmt.Sprintf("SHOW COLUMNS FROM %s", mysqlIdentifier(tableName))
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", tableName, schemaName)
+		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	case model.DatabaseTypeOracle:
 		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	default:
-		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", tableName)
+		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}
 }
 
 func (e *MetadataExtractor) getIndexQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return fmt.Sprintf("SHOW INDEX FROM %s", tableName)
+		return fmt.Sprintf("SHOW INDEX FROM %s", mysqlIdentifier(tableName))
 	case model.DatabaseTypePostgreSQL:
-		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), '\"', ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", tableName, schemaName)
+		return fmt.Sprintf("SELECT i.indexname, a.attname, i.indexdef LIKE '%%UNIQUE%%' FROM pg_indexes i JOIN pg_attribute a ON a.attname = ANY(string_to_array(replace(regexp_replace(i.indexdef, '.*\\((.*)\\).*', '\\1'), '\"', ''), ', ')) WHERE i.tablename = '%s' AND i.schemaname = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	default:
-		return fmt.Sprintf("SELECT index_name, column_name, not non_unique FROM information_schema.statistics WHERE table_name = '%s'", tableName)
+		return fmt.Sprintf("SELECT index_name, column_name, not non_unique FROM information_schema.statistics WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}
 }
 
 func (e *MetadataExtractor) getPrimaryKeyQuery(dbType model.DatabaseType, tableName, schemaName string) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
-		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name = 'PRIMARY'", tableName)
+		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name = 'PRIMARY'", escapeSQLStringLiteral(tableName))
 	case model.DatabaseTypePostgreSQL:
 		return fmt.Sprintf("SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) WHERE i.indrelid = %s::regclass AND i.indisprimary", postgresRegclassLiteral(schemaName, tableName))
 	default:
-		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name LIKE '%%PRIMARY%%'", tableName)
+		return fmt.Sprintf("SELECT column_name FROM information_schema.key_column_usage WHERE table_name = '%s' AND constraint_name LIKE '%%PRIMARY%%'", escapeSQLStringLiteral(tableName))
 	}
 }
 

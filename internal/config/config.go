@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -15,10 +16,28 @@ type Config struct {
 	Security           SecurityConfig                    `mapstructure:"security"`
 	Logging            LoggingConfig                     `mapstructure:"logging"`
 	Query              QueryConfig                       `mapstructure:"query"`
+	Routing            RoutingConfig                     `mapstructure:"routing"`
 	MCP                MCPConfig                         `mapstructure:"mcp"`
 	SQLTranslation     SQLTranslationConfig              `mapstructure:"sql_translation"`
 	TableAuthorization security.TableAuthorizationConfig `mapstructure:"table_authorization"`
 	Audit              AuditConfig                       `mapstructure:"audit"`
+}
+
+type RoutingConfig struct {
+	DeploymentID        string `mapstructure:"deployment_id"`
+	OwnerSlot           string `mapstructure:"owner_slot"`
+	PolicyRevision      string `mapstructure:"policy_revision"`
+	Enabled             bool   `mapstructure:"enabled"`
+	DrainTimeoutSeconds int    `mapstructure:"drain_timeout_seconds"`
+}
+
+const defaultDrainTimeoutSeconds = 120
+
+func (c RoutingConfig) DrainTimeout() time.Duration {
+	if c.DrainTimeoutSeconds == 0 {
+		return defaultDrainTimeoutSeconds * time.Second
+	}
+	return time.Duration(c.DrainTimeoutSeconds) * time.Second
 }
 
 type AuditConfig struct {
@@ -78,6 +97,11 @@ func Load() (*Config, error) {
 	// spellings as aliases for their canonical keys.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	_ = viper.BindEnv("query.max_concurrent_queries", "QUERY_MAX_CONCURRENT_QUERIES")
+	_ = viper.BindEnv("query.max_concurrent_queries_per_tenant", "QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
+	_ = viper.BindEnv("query.max_concurrent_streams_per_tenant", "QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
+	_ = viper.BindEnv("query.rate_limit_per_minute_per_tenant", "QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT")
+	_ = viper.BindEnv("query.rate_limit_burst_per_tenant", "QUERY_RATE_LIMIT_BURST_PER_TENANT")
 	_ = viper.BindEnv("database.database", "DATABASE_DATABASE", "DATABASE_NAME")
 	_ = viper.BindEnv("database.username", "DATABASE_USERNAME")
 	_ = viper.BindEnv("database.password", "DATABASE_PASSWORD")
@@ -92,12 +116,17 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
+	legacyQueryLimitEnv, legacyQueryLimitEnvSet := os.LookupEnv("QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
+	_, canonicalQueryLimitEnvSet := os.LookupEnv("QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT")
+	if !viper.InConfig("query.max_concurrent_queries_per_tenant") && !canonicalQueryLimitEnvSet &&
+		(viper.InConfig("query.max_concurrent_streams_per_tenant") || (legacyQueryLimitEnvSet && strings.TrimSpace(legacyQueryLimitEnv) != "")) {
+		viper.Set("query.max_concurrent_queries_per_tenant", viper.GetInt("query.max_concurrent_streams_per_tenant"))
+	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
-
 	return &config, nil
 }
 
@@ -141,7 +170,21 @@ func setDefaults() {
 
 	// Query defaults
 	viper.SetDefault("query.prefer_streaming", true)
+	viper.SetDefault("query.session_ttl_seconds", maxQuerySessionTTLSeconds)
 	viper.SetDefault("query.execution_mode", "auto") // auto, streaming, pagination
+	viper.SetDefault("query.max_concurrent_queries", 4)
+	viper.SetDefault("query.max_concurrent_queries_per_tenant", 2)
+	viper.SetDefault("query.max_concurrent_streams_per_tenant", 2)
+	viper.SetDefault("query.rate_limit_per_minute_per_tenant", 120)
+	viper.SetDefault("query.rate_limit_burst_per_tenant", 20)
+	viper.SetDefault("query.max_result_rows", 100000)
+	viper.SetDefault("query.max_result_bytes", 64<<20)
+	viper.SetDefault("query.max_duration_seconds", 300)
+	viper.SetDefault("routing.enabled", false)
+	viper.SetDefault("routing.deployment_id", "")
+	viper.SetDefault("routing.owner_slot", "")
+	viper.SetDefault("routing.policy_revision", "")
+	viper.SetDefault("routing.drain_timeout_seconds", defaultDrainTimeoutSeconds)
 
 	// SQL translation runtime limits and process configuration.
 	viper.SetDefault("sql_translation.enabled", true)
@@ -166,6 +209,8 @@ func setDefaults() {
 	viper.SetDefault("mcp.transport", "stdio")
 	viper.SetDefault("mcp.address", "127.0.0.1:8081")
 	viper.SetDefault("mcp.max_concurrent_requests", 64)
+	viper.SetDefault("mcp.routed_session_ttl_seconds", defaultRoutedSessionTTLSeconds)
+	viper.SetDefault("mcp.max_routed_sessions", defaultMaxRoutedSessions)
 	viper.SetDefault("mcp.tls_cert_file", "")
 	viper.SetDefault("mcp.tls_key_file", "")
 }
@@ -182,11 +227,13 @@ type SQLTranslationConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Transport   string `mapstructure:"transport"`
-	Address     string `mapstructure:"address"`
-	TLSCertFile string `mapstructure:"tls_cert_file"`
-	TLSKeyFile  string `mapstructure:"tls_key_file"`
+	Enabled                 bool   `mapstructure:"enabled"`
+	Transport               string `mapstructure:"transport"`
+	Address                 string `mapstructure:"address"`
+	RoutedSessionTTLSeconds int    `mapstructure:"routed_session_ttl_seconds"`
+	MaxRoutedSessions       int    `mapstructure:"max_routed_sessions"`
+	TLSCertFile             string `mapstructure:"tls_cert_file"`
+	TLSKeyFile              string `mapstructure:"tls_key_file"`
 	// MaxConcurrentRequests caps in-flight requests on the remote MCP
 	// entrance; 0 falls back to the code default.
 	MaxConcurrentRequests   int           `mapstructure:"max_concurrent_requests"`
@@ -201,8 +248,19 @@ type MCPConfig struct {
 	OIDCJWKSRefreshInterval time.Duration `mapstructure:"oidc_jwks_refresh_interval"`
 }
 
+const maxQuerySessionTTLSeconds = 30 * 60
+
 // QueryConfig holds settings related to query execution
 type QueryConfig struct {
-	PreferStreaming bool   `mapstructure:"prefer_streaming"`
-	ExecutionMode   string `mapstructure:"execution_mode"`
+	SessionTTLSeconds             int    `mapstructure:"session_ttl_seconds"`
+	PreferStreaming               bool   `mapstructure:"prefer_streaming"`
+	ExecutionMode                 string `mapstructure:"execution_mode"`
+	MaxConcurrentQueries          int    `mapstructure:"max_concurrent_queries"`
+	MaxConcurrentQueriesPerTenant int    `mapstructure:"max_concurrent_queries_per_tenant"`
+	MaxConcurrentStreamsPerTenant int    `mapstructure:"max_concurrent_streams_per_tenant"` // deprecated compatibility alias
+	RateLimitPerMinutePerTenant   int    `mapstructure:"rate_limit_per_minute_per_tenant"`
+	RateLimitBurstPerTenant       int    `mapstructure:"rate_limit_burst_per_tenant"`
+	MaxResultRows                 int64  `mapstructure:"max_result_rows"`
+	MaxResultBytes                int64  `mapstructure:"max_result_bytes"`
+	MaxDurationSeconds            int    `mapstructure:"max_duration_seconds"`
 }

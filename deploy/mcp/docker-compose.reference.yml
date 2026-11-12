@@ -1,0 +1,106 @@
+# Synthetic reference profile, launched by the Go runner in reference/cmd.
+# The standard quickstart still uses docker-compose.yml on its own.
+
+# Scripted acceptance runs multiple clients from the same loopback peer.
+x-reference-request-budgets: &reference-request-budgets
+  SECURITY_RATE_LIMIT_PER_MINUTE: "600"
+  SECURITY_RATE_LIMIT_BURST: "120"
+  QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT: "600"
+  QUERY_RATE_LIMIT_BURST_PER_TENANT: "120"
+services:
+  metadata-db:
+    image: ${DF_REFERENCE_MYSQL_IMAGE:?run the reference command}
+  sample-source:
+    image: ${DF_REFERENCE_MYSQL_IMAGE:?run the reference command}
+    volumes:
+      - ./sample-source-init-reference.sql:/docker-entrypoint-initdb.d/90-reference.sql:ro
+  sample-postgres:
+    image: ${DF_REFERENCE_POSTGRES_IMAGE:?run the reference command}
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_DB: sample
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DF_REFERENCE_POSTGRES_PASSWORD:?run the reference command}
+      SAMPLE_READER_PASSWORD: ${DF_REFERENCE_POSTGRES_READER_PASSWORD:?run the reference command}
+    volumes:
+      - reference-postgres-data:/var/lib/postgresql/data
+      - ./sample-source-init-postgres.sh:/docker-entrypoint-initdb.d/10-sample.sh:ro
+      - ./sample-source-init-performance.sql:/docker-entrypoint-initdb.d/20-reference-performance.sql:ro
+      - ./sample-source-init-reference.sql:/docker-entrypoint-initdb.d/90-reference.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "sample"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  data-fabric-api:
+    image: ${DF_REFERENCE_IMAGE:?run the reference command}
+    pull_policy: never
+    environment:
+      <<: *reference-request-budgets
+      QUERY_SESSION_TTL_SECONDS: ${DF_REFERENCE_SESSION_TTL_SECONDS:-1800}
+      QUERY_MAX_CONCURRENT_QUERIES: ${DF_REFERENCE_TOTAL_CONCURRENCY:-4}
+      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-2}
+      QUERY_MAX_RESULT_BYTES: ${DF_REFERENCE_QUERY_RESULT_BYTES:-67108864}
+    depends_on:
+      sample-postgres:
+        condition: service_healthy
+    ports: !override
+      - target: 8080
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY:?run the reference command}/configs
+        target: /app/configs
+        read_only: true
+
+  data-fabric-mcp:
+    image: ${DF_REFERENCE_IMAGE:?run the reference command}
+    pull_policy: never
+    depends_on:
+      oidc-fixture:
+        condition: service_healthy
+    environment:
+      <<: *reference-request-budgets
+      SSL_CERT_DIR: /etc/ssl/certs:/etc/data-fabric/reference-ca
+      QUERY_SESSION_TTL_SECONDS: ${DF_REFERENCE_SESSION_TTL_SECONDS:-1800}
+      QUERY_MAX_CONCURRENT_QUERIES: ${DF_REFERENCE_TOTAL_CONCURRENCY:-4}
+      QUERY_MAX_CONCURRENT_QUERIES_PER_TENANT: ${DF_REFERENCE_CONCURRENT_PER_TENANT:-2}
+      QUERY_MAX_RESULT_BYTES: ${DF_REFERENCE_QUERY_RESULT_BYTES:-67108864}
+    ports: !override
+      - target: 8081
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes: !override
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY:?run the reference command}/configs
+        target: /app/configs
+        read_only: true
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY:?run the reference command}/gateway-tls
+        target: /etc/data-fabric/tls
+        read_only: true
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY:?run the reference command}/ca
+        target: /etc/data-fabric/reference-ca
+        read_only: true
+
+  oidc-fixture:
+    image: ${DF_REFERENCE_IMAGE:?run the reference command}
+    pull_policy: never
+    entrypoint: ["python3", "/reference/oidc_fixture.py"]
+    volumes:
+      - ./oidc_fixture.py:/reference/oidc_fixture.py:ro
+      - type: bind
+        source: ${DF_REFERENCE_DIRECTORY:?run the reference command}/issuer
+        target: /reference/issuer
+        read_only: true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8443"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+volumes:
+  reference-postgres-data:

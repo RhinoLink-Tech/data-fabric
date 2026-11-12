@@ -24,10 +24,21 @@ type PrometheusMetrics struct {
 	HttpRequestSize     *prometheus.HistogramVec
 	HttpResponseSize    *prometheus.HistogramVec
 
-	QueryTotal    *prometheus.CounterVec
-	QueryDuration *prometheus.HistogramVec
-	QueryRowsRead *prometheus.CounterVec
-	QueryErrors   *prometheus.CounterVec
+	QueryTotal                          *prometheus.CounterVec
+	QueryDuration                       *prometheus.HistogramVec
+	QueryRowsRead                       *prometheus.CounterVec
+	QueryErrors                         *prometheus.CounterVec
+	LogicalQueryOutcomes                *prometheus.CounterVec
+	LogicalQueryDuration                *prometheus.HistogramVec
+	LogicalQueryRowsReturned            *prometheus.CounterVec
+	LogicalQueryBatches                 *prometheus.CounterVec
+	QueryAdmissionRejections            *prometheus.CounterVec
+	QueryAdmissionActiveReservations    prometheus.Gauge
+	QueryAdmissionMaxReservations       prometheus.Gauge
+	AuditPersistenceFailures            *prometheus.CounterVec
+	ManagedTablePolicyStatus            *prometheus.GaugeVec
+	ManagedTablePolicyLastSyncTimestamp prometheus.Gauge
+	ManagedTablePolicySyncFailures      prometheus.Counter
 
 	ConnectionPoolActive *prometheus.GaugeVec
 	ConnectionPoolIdle   *prometheus.GaugeVec
@@ -45,9 +56,39 @@ type PrometheusMetrics struct {
 }
 
 var (
-	metrics     *PrometheusMetrics
-	metricsOnce sync.Once
+	metrics              *PrometheusMetrics
+	metricsOnce          sync.Once
+	policyStatusMu       sync.RWMutex
+	policyStatusProvider func() ManagedTablePolicyStatus
+
+	queryAdmissionCapacityMu       sync.RWMutex
+	queryAdmissionCapacityProvider func() (activeReservations, maxReservations int)
 )
+
+// ManagedTablePolicyStatus contains the bounded, non-sensitive policy state
+// needed to refresh scrape-time gauges.
+type ManagedTablePolicyStatus struct {
+	Configured bool
+	Fresh      bool
+	LastSync   time.Time
+}
+
+// SetManagedTablePolicyStatusProvider supplies the local policy manager state
+// used by PrometheusHandler. A nil provider means managed policy is unconfigured.
+func SetManagedTablePolicyStatusProvider(provider func() ManagedTablePolicyStatus) {
+	policyStatusMu.Lock()
+	policyStatusProvider = provider
+	policyStatusMu.Unlock()
+}
+
+// SetQueryAdmissionCapacityProvider supplies a live process-local limiter
+// snapshot used to refresh the active and configured reservation gauges at
+// scrape time. A nil provider reports zero values.
+func SetQueryAdmissionCapacityProvider(provider func() (activeReservations, maxReservations int)) {
+	queryAdmissionCapacityMu.Lock()
+	queryAdmissionCapacityProvider = provider
+	queryAdmissionCapacityMu.Unlock()
+}
 
 // InitMetrics initializes and registers Prometheus metrics once per process.
 func InitMetrics() {
@@ -112,6 +153,80 @@ func InitMetrics() {
 					Help: "Number of failed initial query executions by bounded error category",
 				},
 				[]string{"execution_mode", "error_type"},
+			),
+			LogicalQueryOutcomes: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_outcomes_total",
+					Help: "Terminal outcomes for logical queries across their initial and continuation batches",
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryDuration: promauto.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    "data_fabric_logical_query_duration_seconds",
+					Help:    "Elapsed time from initial query execution until its observed terminal outcome",
+					Buckets: prometheus.DefBuckets,
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryRowsReturned: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_rows_returned_total",
+					Help: "Rows returned before the observed logical-query outcome; values may be incomplete for tracking_overflow",
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			LogicalQueryBatches: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_logical_query_batches_total",
+					Help: "Successful batches returned across logical query lifecycles",
+				},
+				[]string{"execution_mode", "outcome"},
+			),
+			QueryAdmissionRejections: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_query_admission_rejections_total",
+					Help: "Number of query requests rejected by process-local admission limits",
+				},
+				[]string{"reason"},
+			),
+			QueryAdmissionActiveReservations: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_query_admission_active_reservations",
+					Help: "Current process-local query admission reservations, refreshed at scrape time",
+				},
+			),
+			QueryAdmissionMaxReservations: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_query_admission_max_reservations",
+					Help: "Configured process-local maximum query admission reservations",
+				},
+			),
+			AuditPersistenceFailures: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "data_fabric_audit_persist_failures_total",
+					Help: "Number of attempted audit event writes that failed",
+				},
+				[]string{"transport"},
+			),
+			ManagedTablePolicyStatus: promauto.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_managed_table_policy_status",
+					Help: "Managed table policy state; exactly one bounded state label is 1 (fresh, stale, or unconfigured)",
+				},
+				[]string{"state"},
+			),
+			ManagedTablePolicyLastSyncTimestamp: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "data_fabric_managed_table_policy_last_sync_timestamp_seconds",
+					Help: "Unix timestamp of the last successful managed table policy synchronization, or 0 when unconfigured or never synchronized",
+				},
+			),
+			ManagedTablePolicySyncFailures: promauto.NewCounter(
+				prometheus.CounterOpts{
+					Name: "data_fabric_managed_table_policy_sync_failures_total",
+					Help: "Managed table policy synchronization attempts that failed",
+				},
 			),
 			ConnectionPoolActive: promauto.NewGaugeVec(
 				prometheus.GaugeOpts{
@@ -186,6 +301,9 @@ func InitMetrics() {
 				[]string{"database_type"},
 			),
 		}
+		for _, state := range []string{"fresh", "stale", "unconfigured"} {
+			metrics.ManagedTablePolicyStatus.WithLabelValues(state).Set(0)
+		}
 	})
 }
 
@@ -196,7 +314,74 @@ func GetMetrics() *PrometheusMetrics {
 
 // PrometheusHandler returns the default Prometheus registry scrape handler.
 func PrometheusHandler() http.Handler {
-	return promhttp.Handler()
+	handler := promhttp.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		refreshManagedTablePolicyMetrics()
+		refreshQueryAdmissionCapacityMetrics()
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func refreshQueryAdmissionCapacityMetrics() {
+	if metrics == nil {
+		return
+	}
+	queryAdmissionCapacityMu.RLock()
+	provider := queryAdmissionCapacityProvider
+	queryAdmissionCapacityMu.RUnlock()
+
+	active, limit := 0, 0
+	if provider != nil {
+		active, limit = provider()
+	}
+	if active < 0 {
+		active = 0
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	metrics.QueryAdmissionActiveReservations.Set(float64(active))
+	metrics.QueryAdmissionMaxReservations.Set(float64(limit))
+}
+
+func refreshManagedTablePolicyMetrics() {
+	if metrics == nil {
+		return
+	}
+	policyStatusMu.RLock()
+	provider := policyStatusProvider
+	policyStatusMu.RUnlock()
+	status := ManagedTablePolicyStatus{}
+	if provider != nil {
+		status = provider()
+	}
+	state := "unconfigured"
+	if status.Configured {
+		state = "stale"
+		if status.Fresh {
+			state = "fresh"
+		}
+	}
+	for _, candidate := range []string{"fresh", "stale", "unconfigured"} {
+		value := 0.0
+		if candidate == state {
+			value = 1
+		}
+		metrics.ManagedTablePolicyStatus.WithLabelValues(candidate).Set(value)
+	}
+	lastSync := 0.0
+	if !status.LastSync.IsZero() {
+		lastSync = float64(status.LastSync.UnixNano()) / float64(time.Second)
+	}
+	metrics.ManagedTablePolicyLastSyncTimestamp.Set(lastSync)
+}
+
+// RecordManagedTablePolicySyncFailure records one failed refresh attempt.
+func RecordManagedTablePolicySyncFailure() {
+	if metrics == nil {
+		return
+	}
+	metrics.ManagedTablePolicySyncFailures.Inc()
 }
 
 // PrometheusMiddleware records one HTTP observation per completed request.
@@ -245,12 +430,53 @@ func RecordQueryMetrics(executionMode, status string, duration time.Duration, ro
 	}
 }
 
+// RecordLogicalQueryMetrics records a terminal observation for one query result
+// across its initial request and all successful continuation batches. The
+// outcome and execution mode are normalized to fixed label sets.
+func RecordLogicalQueryMetrics(executionMode, outcome string, duration time.Duration, rowsReturned, batches int64) {
+	if metrics == nil {
+		return
+	}
+	executionMode = normalizeExecutionMode(executionMode)
+	outcome = normalizeLogicalQueryOutcome(outcome)
+	if duration < 0 {
+		duration = 0
+	}
+	labels := []string{executionMode, outcome}
+	metrics.LogicalQueryOutcomes.WithLabelValues(labels...).Inc()
+	metrics.LogicalQueryDuration.WithLabelValues(labels...).Observe(duration.Seconds())
+	if rowsReturned > 0 {
+		metrics.LogicalQueryRowsReturned.WithLabelValues(labels...).Add(float64(rowsReturned))
+	}
+	if batches > 0 {
+		metrics.LogicalQueryBatches.WithLabelValues(labels...).Add(float64(batches))
+	}
+}
+
 // RecordQueryError records a failed query using a bounded category label.
 func RecordQueryError(executionMode, errorType string) {
 	if metrics == nil {
 		return
 	}
 	metrics.QueryErrors.WithLabelValues(normalizeExecutionMode(executionMode), normalizeQueryErrorType(errorType)).Inc()
+}
+
+// RecordQueryAdmissionRejection records a quota rejection with a bounded reason label.
+func RecordQueryAdmissionRejection(reason string) {
+	if metrics == nil {
+		return
+	}
+	metrics.QueryAdmissionRejections.WithLabelValues(normalizeQueryAdmissionReason(reason)).Inc()
+}
+
+// RecordAuditPersistenceFailure records an attempted audit write failure using
+// a bounded transport label. It does not imply that auditing was enabled for
+// requests where no recorder was configured.
+func RecordAuditPersistenceFailure(transport string) {
+	if metrics == nil {
+		return
+	}
+	metrics.AuditPersistenceFailures.WithLabelValues(normalizeAuditTransport(transport)).Inc()
 }
 
 // UpdateConnectionPoolMetrics updates aggregate connection pool gauges by driver type.
@@ -340,6 +566,17 @@ func normalizeQueryStatus(status string) string {
 	}
 }
 
+func normalizeLogicalQueryOutcome(outcome string) string {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "success", "budget_duration", "budget_result", "canceled", "timeout",
+		"session_expired", "owner_unavailable", "backend_error", "authorization_denied",
+		"admission_rejected", "request_error", "tracking_overflow":
+		return strings.ToLower(strings.TrimSpace(outcome))
+	default:
+		return "other"
+	}
+}
+
 func normalizeQueryErrorType(errorType string) string {
 	switch strings.ToLower(strings.TrimSpace(errorType)) {
 	case "execution_error":
@@ -352,6 +589,30 @@ func normalizeQueryErrorType(errorType string) string {
 		return "validation"
 	case "access_denied":
 		return "access_denied"
+	default:
+		return "other"
+	}
+}
+
+func normalizeQueryAdmissionReason(reason string) string {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "concurrency_limit":
+		return "concurrency_limit"
+	case "request_rate_limit":
+		return "request_rate_limit"
+	default:
+		return "other"
+	}
+}
+
+func normalizeAuditTransport(transport string) string {
+	switch strings.ToLower(strings.TrimSpace(transport)) {
+	case "rest":
+		return "rest"
+	case "mcp-http":
+		return "mcp-http"
+	case "mcp-stdio", "stdio":
+		return "mcp-stdio"
 	default:
 		return "other"
 	}

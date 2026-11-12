@@ -33,17 +33,18 @@ func GetDriverRegistry() *DriverRegistry {
 
 // ConnectionPool manages database connections for different data sources
 type ConnectionPool struct {
-	registry        *DriverRegistry
-	pools           map[string]*sql.DB
-	fingerprints    map[string]string // Config fingerprint per pooled connection (#117)
-	mutex           sync.RWMutex
-	health          map[string]bool
-	healthMu        sync.RWMutex
-	tokenManager    *security.TokenManager
-	tokenStartOnce  sync.Once
-	vault           *security.CredentialVault
-	driverCaps      map[string]drivers.DriverCapabilities // Cached driver capabilities
-	enforceReadOnly bool
+	registry                      *DriverRegistry
+	pools                         map[string]*sql.DB
+	fingerprints                  map[string]string // Config fingerprint per pooled connection (#117)
+	mutex                         sync.RWMutex
+	health                        map[string]bool
+	healthMu                      sync.RWMutex
+	tokenManager                  *security.TokenManager
+	tokenStartOnce                sync.Once
+	vault                         *security.CredentialVault
+	driverCaps                    map[string]drivers.DriverCapabilities // Cached driver capabilities
+	enforceReadOnly               bool
+	dataSourceInvalidationHandler func(string)
 }
 
 // NewConnectionPool creates a new ConnectionPool with an explicit driver registry.
@@ -381,6 +382,7 @@ func (cp *ConnectionPool) configureConnectionPool(db *sql.DB, config *model.Data
 func (cp *ConnectionPool) removeConnection(dataSourceID string) {
 	db, existed := cp.takeConnection(dataSourceID)
 	if existed {
+		cp.notifyDataSourceInvalidated(dataSourceID)
 		db.Close()
 	}
 }
@@ -399,6 +401,7 @@ func (cp *ConnectionPool) removeConnectionIfSame(dataSourceID string, dead *sql.
 	cp.mutex.Unlock()
 
 	if exists && current == dead {
+		cp.notifyDataSourceInvalidated(dataSourceID)
 		dead.Close()
 		cp.setHealth(dataSourceID, false)
 	}
@@ -419,8 +422,27 @@ func (cp *ConnectionPool) removeStaleConnection(dataSourceID, fingerprint string
 	cp.mutex.Unlock()
 
 	if stale {
+		cp.notifyDataSourceInvalidated(dataSourceID)
 		db.Close()
 		cp.setHealth(dataSourceID, false)
+	}
+}
+
+// SetDataSourceInvalidationHandler registers a process-local owner that can
+// release resources (such as active cursors) tied to a data source before its
+// pooled connection is closed.
+func (cp *ConnectionPool) SetDataSourceInvalidationHandler(handler func(string)) {
+	cp.mutex.Lock()
+	cp.dataSourceInvalidationHandler = handler
+	cp.mutex.Unlock()
+}
+
+func (cp *ConnectionPool) notifyDataSourceInvalidated(dataSourceID string) {
+	cp.mutex.RLock()
+	handler := cp.dataSourceInvalidationHandler
+	cp.mutex.RUnlock()
+	if handler != nil {
+		handler(dataSourceID)
 	}
 }
 
@@ -448,6 +470,7 @@ func (cp *ConnectionPool) takeConnection(dataSourceID string) (*sql.DB, bool) {
 // never handed out again.
 func (cp *ConnectionPool) InvalidateDataSource(dataSourceID string) error {
 	db, existed := cp.takeConnection(dataSourceID)
+	cp.notifyDataSourceInvalidated(dataSourceID)
 	if !existed {
 		return nil
 	}
@@ -463,6 +486,7 @@ func (cp *ConnectionPool) CloseConnection(dataSourceID string) error {
 	if !existed {
 		return fmt.Errorf("connection not found for data source: %s", dataSourceID)
 	}
+	cp.notifyDataSourceInvalidated(dataSourceID)
 	return db.Close()
 }
 

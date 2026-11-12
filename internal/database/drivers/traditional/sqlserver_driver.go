@@ -1,13 +1,19 @@
 package traditional
 
 import (
+	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/url"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/denisenkom/go-mssqldb/msdsn"
 
 	_ "github.com/denisenkom/go-mssqldb"
 )
@@ -162,29 +168,52 @@ func (sd *SQLServerDriver) Open(dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
-// ValidateDSN validates the SQL Server connection string
+// ValidateDSN validates the SQL Server connection string.
 func (sd *SQLServerDriver) ValidateDSN(dsn string) error {
-	// Parse DSN and validate its format
 	parsedURL, err := url.Parse(dsn)
 	if err != nil {
-		return fmt.Errorf("invalid DSN format: %v", err)
+		return fmt.Errorf("invalid DSN format: %w", err)
 	}
 
-	// Check if it's using sqlserver scheme
 	scheme := strings.ToLower(parsedURL.Scheme)
 	if scheme != "sqlserver" && scheme != "mssql" {
 		return fmt.Errorf("invalid scheme in DSN: %s, expected 'sqlserver' or 'mssql'", scheme)
 	}
-
 	if parsedURL.Host == "" {
 		return fmt.Errorf("missing host in DSN")
 	}
-
-	// Check for authentication parameters
-	if parsedURL.User == nil && !strings.Contains(dsn, "user id=") && !strings.Contains(dsn, "user id=") {
+	if parsedURL.User == nil && !strings.Contains(strings.ToLower(dsn), "user id=") {
 		return fmt.Errorf("missing username in DSN")
 	}
 
+	// The generated URL DSN uses go-mssqldb's certificate parameter to load
+	// a private CA. Keep the driver's TLS parser and the gateway validator in
+	// agreement so a CA can never silently turn into an unverified connection.
+	if scheme != "sqlserver" {
+		return nil
+	}
+	driverConfig, params, err := msdsn.Parse(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid SQL Server DSN: %w", err)
+	}
+	certificate := params["certificate"]
+	if certificate == "" {
+		return nil
+	}
+	if driverConfig.Encryption != msdsn.EncryptionRequired {
+		return fmt.Errorf("SQL Server certificate requires encrypt=true")
+	}
+	if driverConfig.TLSConfig == nil || driverConfig.TLSConfig.InsecureSkipVerify {
+		return fmt.Errorf("SQL Server certificate validation cannot be combined with trustservercertificate=true")
+	}
+
+	pemBytes, err := os.ReadFile(certificate)
+	if err != nil {
+		return fmt.Errorf("read SQL Server CA certificate: %w", err)
+	}
+	if !x509.NewCertPool().AppendCertsFromPEM(pemBytes) {
+		return fmt.Errorf("SQL Server CA certificate must contain a valid PEM certificate")
+	}
 	return nil
 }
 
@@ -193,42 +222,44 @@ func (sd *SQLServerDriver) GetDefaultPort() int {
 	return 1433 // Default SQL Server port
 }
 
-// BuildDSN builds a SQL Server connection string from configuration
+// BuildDSN builds a SQL Server connection string from configuration.
 func (sd *SQLServerDriver) BuildDSN(config *model.DataSourceConfig) string {
-	// Build SQL Server connection string
-	// Format: sqlserver://user:password@host:port?database=dbname
-	var dsn string
-	if config.SSL {
-		dsn = fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&encrypt=true",
-			config.Username,
-			url.QueryEscape(config.Password),
-			config.Host,
-			config.Port,
-			config.Database,
-		)
-	} else {
-		dsn = fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&encrypt=false",
-			config.Username,
-			url.QueryEscape(config.Password),
-			config.Host,
-			config.Port,
-			config.Database,
-		)
+	params := url.Values{}
+	params.Set("database", config.Database)
+	params.Set("encrypt", strconv.FormatBool(config.SSL))
+
+	additionalPropKeys := make([]string, 0, len(config.AdditionalProps))
+	for key := range config.AdditionalProps {
+		additionalPropKeys = append(additionalPropKeys, key)
+	}
+	sort.Strings(additionalPropKeys)
+	for _, key := range additionalPropKeys {
+		normalizedKey := strings.ToLower(strings.TrimSpace(key))
+		if normalizedKey == "" {
+			continue
+		}
+		params.Set(normalizedKey, fmt.Sprintf("%v", config.AdditionalProps[key]))
+	}
+	// Keep the typed configuration authoritative over arbitrary properties,
+	// so AdditionalProps cannot silently change the requested TLS mode.
+	params.Set("database", config.Database)
+	params.Set("encrypt", strconv.FormatBool(config.SSL))
+
+	if config.SSLRootCert != "" {
+		// go-mssqldb's certificate parameter replaces the platform CA roots.
+		// Force verification when a private CA is supplied, even if an
+		// AdditionalProps entry attempted to enable TrustServerCertificate.
+		params.Set("certificate", config.SSLRootCert)
+		params.Set("trustservercertificate", "false")
 	}
 
-	// Add additional properties
-	if config.AdditionalProps != nil {
-		params := url.Values{}
-		for k, v := range config.AdditionalProps {
-			params.Add(k, fmt.Sprintf("%v", v))
-		}
-		// Append additional params to the DSN
-		if params.Encode() != "" {
-			dsn += "&" + params.Encode()
-		}
+	connectionURL := url.URL{
+		Scheme:   "sqlserver",
+		Host:     net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		User:     url.UserPassword(config.Username, config.Password),
+		RawQuery: params.Encode(),
 	}
-
-	return dsn
+	return connectionURL.String()
 }
 
 // GetDatabaseTypeName returns the database type name

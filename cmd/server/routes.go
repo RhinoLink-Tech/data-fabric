@@ -1,14 +1,22 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
+	"net/http"
+
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/controller"
 	"github.com/RhinoLink-Tech/data-fabric/internal/middleware"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed ui
+var managementUIAssets embed.FS
 
 // routerDeps carries everything newRouter needs to wire the HTTP API.
 // Production wiring lives in main.go; route-level tests build it with stub
@@ -24,6 +32,9 @@ type routerDeps struct {
 	sqlTranslationController *controller.SQLTranslationController
 	auditController          *controller.AuditController
 	auditRecorder            auditlog.Recorder
+	tableAuthorizer          *security.TableAuthorizer
+	tablePolicyController    *controller.TablePolicyController
+	queryOwner               *unifiedservice.OwnerLifecycle
 }
 
 // newRouter assembles the HTTP API. Setting the gin mode is the caller's job
@@ -33,13 +44,19 @@ func newRouter(deps routerDeps) *gin.Engine {
 	router := gin.New()
 
 	// Add middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	router.Use(middleware.AccessLog(gin.DefaultWriter))
+	router.Use(middleware.Recovery(gin.DefaultErrorWriter))
 	router.Use(middleware.Cors())
 	router.Use(middleware.CorrelationID())
 	router.Use(middleware.PrometheusMiddleware())
 	if deps.cfg.Audit.Enabled && deps.auditRecorder != nil {
 		router.Use(auditlog.HTTPMiddleware(deps.auditRecorder, deps.cfg.Server.MaxRequestBodyBytes))
+	}
+	if deps.tableAuthorizer != nil {
+		router.Use(func(c *gin.Context) {
+			c.Request = c.Request.WithContext(deps.tableAuthorizer.PinRequest(c.Request.Context()))
+			c.Next()
+		})
 	}
 
 	// Authenticate optional JWTs before rate limiting so verified users share
@@ -63,6 +80,41 @@ func newRouter(deps routerDeps) *gin.Engine {
 	// API authentication switch.
 	metricsHandler := gin.WrapH(middleware.PrometheusHandler())
 	router.GET("/metrics", deps.authMiddleware.RequireAnyRole(security.AdminRole), metricsHandler)
+	if deps.tablePolicyController != nil {
+		policy := router.Group("/internal/table-policy", deps.authMiddleware.RequireAnyRole(security.AdminRole))
+		policy.GET("", deps.tablePolicyController.Get)
+		policy.GET("/publications", deps.tablePolicyController.Publications)
+		policy.GET("/versions/:revision", deps.tablePolicyController.GetRevision)
+		policy.POST("/validate", deps.tablePolicyController.Validate)
+		policy.POST("/publish", deps.tablePolicyController.Publish)
+	}
+	if deps.queryOwner != nil {
+		replica := router.Group("/internal/replica", deps.authMiddleware.RequireAnyRole(security.AdminRole))
+		replica.GET("", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			status := deps.queryOwner.Status()
+			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			if deps.tablePolicyController != nil {
+				policyStatus := deps.tablePolicyController.Status()
+				status.TablePolicyRevision = policyStatus.Revision
+				status.TablePolicyFresh = policyStatus.Fresh
+				status.TablePolicyLastSyncAt = policyStatus.LastSyncAt
+			}
+			c.JSON(http.StatusOK, status)
+		})
+		replica.POST("/drain", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			status := deps.queryOwner.Drain()
+			status.PolicyRevision = deps.cfg.Routing.PolicyRevision
+			if deps.tablePolicyController != nil {
+				policyStatus := deps.tablePolicyController.Status()
+				status.TablePolicyRevision = policyStatus.Revision
+				status.TablePolicyFresh = policyStatus.Fresh
+				status.TablePolicyLastSyncAt = policyStatus.LastSyncAt
+			}
+			c.JSON(http.StatusOK, status)
+		})
+	}
 
 	// API v1 group
 	api := router.Group("/api/v1")
@@ -150,6 +202,22 @@ func newRouter(deps routerDeps) *gin.Engine {
 			}
 		}
 	}
+
+	uiFiles, err := fs.Sub(managementUIAssets, "ui")
+	if err != nil {
+		panic(err)
+	}
+	uiFileServer := http.StripPrefix("/ui/", http.FileServer(http.FS(uiFiles)))
+	serveUI := func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("X-Content-Type-Options", "nosniff")
+		uiFileServer.ServeHTTP(c.Writer, c.Request)
+	}
+	router.GET("/ui", func(c *gin.Context) { c.Redirect(http.StatusPermanentRedirect, "/ui/") })
+	router.GET("/ui/*filepath", serveUI)
+	router.HEAD("/ui/*filepath", serveUI)
 
 	return router
 }

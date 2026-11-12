@@ -6,8 +6,11 @@ without retaining bearer tokens. Events include the verified actor and tenant
 when available, transport, operation, data-source ID, decision, reason code,
 HTTP status when applicable, duration, returned row count, timestamp, and
 correlation ID. Table names are recorded when explicit in the request or
-resolved by the table-policy analyzer. Column identifiers are not currently
-produced by that analyzer.
+resolved by the table-policy analyzer. When managed table authorization is
+active, events include the policy revision pinned to that request. Column
+identifiers are not currently produced by that analyzer. Policy publication
+outcomes are stored separately in the metadata database transaction that
+activates a revision; failure to write that record prevents activation.
 
 Query text, bind values, credentials, result rows, and model reasoning are not
 stored. SQL is represented by an HMAC-SHA-256 fingerprint derived from the
@@ -28,7 +31,15 @@ audit:
 
 The default retention is 90 days. Expired events are pruned at startup and
 daily. Release mode requires auditing to remain enabled. Audit write failures
-are reported to the service log; they do not change a completed query's result.
+are reported to the service log and counted by the bounded
+`data_fabric_audit_persist_failures_total` Prometheus metric when a recorder is
+configured; they do not change a completed query's result. See the
+[observability guide](../observability.md#audit-persistence-failures) for alert
+and recovery steps. Failed events are not automatically replayed, so an outage
+can leave a permanent audit gap even when the query itself succeeded. Public
+acceptance case A27 injects this failure only in the disposable synthetic
+reference stack, checks the bounded failure counter, restores the metadata
+database, and verifies a later correlated audit event.
 
 ## Review events
 

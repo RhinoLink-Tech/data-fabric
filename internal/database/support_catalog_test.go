@@ -86,9 +86,9 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			productRange string
 			server       []string
 		}{
-			model.DatabaseTypePostgreSQL:  {productRange: "17.11", server: []string{"17.11"}},
-			model.DatabaseTypeMySQL:       {productRange: "8.0.46", server: []string{"8.0.46"}},
-			model.DatabaseTypeMariaDB:     {productRange: "11.8.9", server: []string{"11.8.9"}},
+			model.DatabaseTypePostgreSQL:  {productRange: "15.19, 16.15, 17.11, and 18.6", server: []string{"15.19", "16.15", "17.11", "18.6"}},
+			model.DatabaseTypeMySQL:       {productRange: "8.0.46 and 8.4.13", server: []string{"8.0.46", "8.4.13"}},
+			model.DatabaseTypeMariaDB:     {productRange: "10.11.19, 11.4.13, 11.8.9, and 12.3.3", server: []string{"10.11.19", "11.4.13", "11.8.9", "12.3.3"}},
 			model.DatabaseTypeTiDB:        {productRange: "8.5.8", server: []string{"8.0.11-TiDB-v8.5.8"}},
 			model.DatabaseTypeOpenGauss:   {productRange: "6.0.0", server: []string{"openGauss 6.0.0 build aee4abd5"}},
 			model.DatabaseTypeClickHouse:  {productRange: "26.8.20.9", server: []string{"26.8.20.9"}},
@@ -96,6 +96,17 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			model.DatabaseTypeOracle:      {productRange: "23.26.3.0.0", server: []string{"23.26.3.0.0"}},
 			model.DatabaseTypeApacheDoris: {productRange: "Apache Doris 4.1.3", server: []string{"Apache Doris 4.1.3"}},
 			model.DatabaseTypeStarRocks:   {productRange: "StarRocks 4.1.6", server: []string{"4.1.6"}},
+			model.DatabaseTypeHDFSText:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSCSV:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSParquet: {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSAvro:    {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+			model.DatabaseTypeHDFSORC:     {productRange: "Apache Hadoop 3.5.0", server: []string{"3.5.0"}},
+		}
+		if dbType == model.DatabaseTypeS3Delta {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
+				t.Errorf("S3 Delta contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
 		}
 		if dbType == model.DatabaseTypeS3CSV {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
@@ -139,6 +150,36 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 			}
 			continue
 		}
+		if dbType == model.DatabaseTypeMinIOJSON {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO JSON contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
+		if dbType == model.DatabaseTypeMinIOAvro {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Avro contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
+		if dbType == model.DatabaseTypeMinIODelta {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Delta contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
+		if dbType == model.DatabaseTypeMinIOORC {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO ORC contract evidence must remain provider-specific and experimental: %+v", profile)
+			}
+			continue
+		}
+		if dbType == model.DatabaseTypeMinIOIceberg {
+			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+				t.Errorf("MinIO Iceberg must record only its pinned object-store contract evidence: %+v", profile)
+			}
+			continue
+		}
 		if dbType == model.DatabaseTypeMongoDB {
 			if !profile.EndToEndVerified || profile.Status != ConnectorStatusExperimental || profile.SupportedVersionRange != "8.0.34 only" || !reflect.DeepEqual(profile.VerifiedServerVersions, []string{"8.0.34"}) {
 				t.Errorf("MongoDB subset evidence must remain version-specific and experimental: %+v", profile)
@@ -156,6 +197,13 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		}
 	}
 
+	ozoneORC := profiles[string(model.DatabaseTypeOzoneORC)]
+	if !ozoneORC.Registered || !ozoneORC.Supported || ozoneORC.Status != ConnectorStatusExperimental || !ozoneORC.Capabilities.SupportsSQL || !ozoneORC.Capabilities.SupportsSchemaDiscovery || ozoneORC.EndToEndVerified {
+		t.Errorf("Ozone ORC must expose an experimental S3 Gateway SQL path without a live compatibility claim: %+v", ozoneORC)
+	}
+	if !containsSupportLimitation(ozoneORC.Limitations, "one configured ORC object") || !containsSupportLimitation(ozoneORC.Limitations, "100,000 rows") || !containsSupportLimitation(ozoneORC.Limitations, "Nested and repeated fields") {
+		t.Errorf("Ozone ORC catalog must disclose object, row, and schema limits: %+v", ozoneORC.Limitations)
+	}
 	ozoneParquet := profiles[string(model.DatabaseTypeOzoneParquet)]
 	if !ozoneParquet.Registered || !ozoneParquet.Supported || ozoneParquet.Status != ConnectorStatusExperimental || !ozoneParquet.Capabilities.SupportsSQL {
 		t.Errorf("Ozone Parquet must expose its experimental S3 Gateway SQL path: %+v", ozoneParquet)
@@ -170,6 +218,83 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	if !containsSupportLimitation(ozoneText.Limitations, "one configured UTF-8 text object") || !containsSupportLimitation(ozoneText.Limitations, "100,000 lines") {
 		t.Errorf("Ozone text catalog must disclose its object and line limits: %+v", ozoneText.Limitations)
 	}
+	ozoneDelta := profiles[string(model.DatabaseTypeOzoneDelta)]
+	if !ozoneDelta.Registered || !ozoneDelta.Supported || ozoneDelta.Status != ConnectorStatusExperimental || !ozoneDelta.Capabilities.SupportsSQL || !ozoneDelta.Capabilities.SupportsSchemaDiscovery || ozoneDelta.EndToEndVerified {
+		t.Errorf("Ozone Delta must expose its experimental S3 Gateway SQL path without a live compatibility claim: %+v", ozoneDelta)
+	}
+	if !containsSupportLimitation(ozoneDelta.Limitations, "one configured unpartitioned Delta table") || !containsSupportLimitation(ozoneDelta.Limitations, "256 active data files") || !containsSupportLimitation(ozoneDelta.Limitations, "Checkpoint") {
+		t.Errorf("Ozone Delta catalog must disclose snapshot, file, and protocol limits: %+v", ozoneDelta.Limitations)
+	}
+	ossCSV := profiles[string(model.DatabaseTypeOSSCSV)]
+	if !ossCSV.Registered || !ossCSV.Supported || ossCSV.Status != ConnectorStatusExperimental || !ossCSV.Capabilities.SupportsSQL {
+		t.Errorf("OSS CSV must expose its experimental read-only SQL path: %+v", ossCSV)
+	}
+	if !containsSupportLimitation(ossCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(ossCSV.Limitations, "100,000 rows") {
+		t.Errorf("OSS CSV catalog must disclose its object and row limits: %+v", ossCSV.Limitations)
+	}
+	ossJSON := profiles[string(model.DatabaseTypeAlibabaOSSJSON)]
+	if !ossJSON.Registered || !ossJSON.Supported || ossJSON.Status != ConnectorStatusExperimental || !ossJSON.Capabilities.SupportsSQL || !ossJSON.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("OSS JSON must expose its experimental read-only SQL path: %+v", ossJSON)
+	}
+	if !containsSupportLimitation(ossJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(ossJSON.Limitations, "100,000 records") || !containsSupportLimitation(ossJSON.Limitations, "flatten_nested=true") {
+		t.Errorf("OSS JSON catalog must disclose object, row, and nested-field limits: %+v", ossJSON.Limitations)
+	}
+	ossORC := profiles[string(model.DatabaseTypeAlibabaOSSORC)]
+	if !ossORC.Registered || !ossORC.Supported || ossORC.Status != ConnectorStatusExperimental || !ossORC.Capabilities.SupportsSQL || !ossORC.Capabilities.SupportsSchemaDiscovery || ossORC.EndToEndVerified {
+		t.Errorf("OSS ORC must expose an experimental read-only SQL path without claiming a live service contract: %+v", ossORC)
+	}
+	if !containsSupportLimitation(ossORC.Limitations, "one configured ORC object") || !containsSupportLimitation(ossORC.Limitations, "100,000 rows") || !containsSupportLimitation(ossORC.Limitations, "Nested and repeated ORC fields") {
+		t.Errorf("OSS ORC catalog must disclose object, row, and schema limits: %+v", ossORC.Limitations)
+	}
+	ossAvro := profiles[string(model.DatabaseTypeAlibabaOSSAvro)]
+	if !ossAvro.Registered || !ossAvro.Supported || ossAvro.Status != ConnectorStatusExperimental || !ossAvro.Capabilities.SupportsSQL || !ossAvro.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("OSS Avro must expose its experimental read-only SQL path: %+v", ossAvro)
+	}
+	if !containsSupportLimitation(ossAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(ossAvro.Limitations, "100,000 rows") || !containsSupportLimitation(ossAvro.Limitations, "nullable primitive unions") {
+		t.Errorf("OSS Avro catalog must disclose object, row, and schema limits: %+v", ossAvro.Limitations)
+	}
+	cosCSV := profiles[string(model.DatabaseTypeTencentCOSCSV)]
+	if !cosCSV.Registered || !cosCSV.Supported || cosCSV.Status != ConnectorStatusExperimental || !cosCSV.Capabilities.SupportsSQL {
+		t.Errorf("COS CSV must expose its experimental read-only SQL path: %+v", cosCSV)
+	}
+	if !containsSupportLimitation(cosCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(cosCSV.Limitations, "100,000 rows") {
+		t.Errorf("COS CSV catalog must disclose its object and row limits: %+v", cosCSV.Limitations)
+	}
+	cosORC := profiles[string(model.DatabaseTypeTencentCOSORC)]
+	if !cosORC.Registered || !cosORC.Supported || cosORC.Status != ConnectorStatusExperimental || !cosORC.Capabilities.SupportsSQL || !cosORC.Capabilities.SupportsSchemaDiscovery || cosORC.EndToEndVerified {
+		t.Errorf("COS ORC must expose an experimental read-only SQL path without claiming a live service contract: %+v", cosORC)
+	}
+	if !containsSupportLimitation(cosORC.Limitations, "one configured ORC object") || !containsSupportLimitation(cosORC.Limitations, "100,000 rows") || !containsSupportLimitation(cosORC.Limitations, "Nested and repeated ORC fields") {
+		t.Errorf("COS ORC catalog must disclose object, row, and schema limits: %+v", cosORC.Limitations)
+	}
+	cosAvro := profiles[string(model.DatabaseTypeTencentCOSAvro)]
+	if !cosAvro.Registered || !cosAvro.Supported || cosAvro.Status != ConnectorStatusExperimental || !cosAvro.Capabilities.SupportsSQL || !cosAvro.Capabilities.SupportsSchemaDiscovery || cosAvro.EndToEndVerified {
+		t.Errorf("COS Avro must expose an experimental read-only SQL path without claiming a live service contract: %+v", cosAvro)
+	}
+	if !containsSupportLimitation(cosAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(cosAvro.Limitations, "100,000 rows") || !containsSupportLimitation(cosAvro.Limitations, "nullable primitive unions") {
+		t.Errorf("COS Avro catalog must disclose object, row, and schema limits: %+v", cosAvro.Limitations)
+	}
+	cosDelta := profiles[string(model.DatabaseTypeTencentCOSDelta)]
+	if !cosDelta.Registered || !cosDelta.Supported || cosDelta.Status != ConnectorStatusExperimental || !cosDelta.Capabilities.SupportsSQL || !cosDelta.Capabilities.SupportsSchemaDiscovery || cosDelta.EndToEndVerified {
+		t.Errorf("COS Delta must expose an experimental read-only SQL path without claiming live service compatibility: %+v", cosDelta)
+	}
+	if !containsSupportLimitation(cosDelta.Limitations, "one configured unpartitioned Delta table") || !containsSupportLimitation(cosDelta.Limitations, "64 MiB of data") || !containsSupportLimitation(cosDelta.Limitations, "live Tencent COS release") {
+		t.Errorf("COS Delta catalog must disclose its table, size, and compatibility limits: %+v", cosDelta.Limitations)
+	}
+	cosJSON := profiles[string(model.DatabaseTypeTencentCOSJSON)]
+	if !cosJSON.Registered || !cosJSON.Supported || cosJSON.Status != ConnectorStatusExperimental || !cosJSON.Capabilities.SupportsSQL || !cosJSON.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("COS JSON must expose its experimental read-only SQL path: %+v", cosJSON)
+	}
+	if !containsSupportLimitation(cosJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(cosJSON.Limitations, "100,000 records") || !containsSupportLimitation(cosJSON.Limitations, "flatten_nested=true") {
+		t.Errorf("COS JSON catalog must disclose object, row, and nested-field limits: %+v", cosJSON.Limitations)
+	}
+	ozoneCSV := profiles[string(model.DatabaseTypeOzoneCSV)]
+	if !ozoneCSV.Registered || !ozoneCSV.Supported || ozoneCSV.Status != ConnectorStatusExperimental || !ozoneCSV.Capabilities.SupportsSQL {
+		t.Errorf("Ozone CSV must expose its experimental S3 Gateway SQL path: %+v", ozoneCSV)
+	}
+	if !containsSupportLimitation(ozoneCSV.Limitations, "one configured CSV object") || !containsSupportLimitation(ozoneCSV.Limitations, "100,000 rows") {
+		t.Errorf("Ozone CSV catalog must disclose its object and row limits: %+v", ozoneCSV.Limitations)
+	}
 	ozoneAvro := profiles[string(model.DatabaseTypeOzoneAvro)]
 	if !ozoneAvro.Registered || !ozoneAvro.Supported || ozoneAvro.Status != ConnectorStatusExperimental || !ozoneAvro.Capabilities.SupportsSQL {
 		t.Errorf("Ozone Avro must expose its experimental S3 Gateway SQL path: %+v", ozoneAvro)
@@ -178,19 +303,32 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("Ozone Avro catalog must disclose its object and record limits: %+v", ozoneAvro.Limitations)
 	}
 
-	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
-	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusExperimental || !hdfsText.Capabilities.SupportsSQL {
-		t.Errorf("HDFS text must expose its experimental read-only SQL path: %+v", hdfsText)
+	hdfsJSON := profiles[string(model.DatabaseTypeHDFSJSON)]
+	if !hdfsJSON.Registered || !hdfsJSON.Supported || hdfsJSON.Status != ConnectorStatusExperimental || !hdfsJSON.Capabilities.SupportsSQL || hdfsJSON.EndToEndVerified {
+		t.Errorf("HDFS JSON must expose its experimental bounded read-only SQL path without a live Hadoop claim: %+v", hdfsJSON)
 	}
-	if !containsSupportLimitation(hdfsText.Limitations, "one configured UTF-8 text file") || !containsSupportLimitation(hdfsText.Limitations, "100,000 lines") {
-		t.Errorf("HDFS text catalog must disclose its file and line boundaries: %+v", hdfsText.Limitations)
+	if !containsSupportLimitation(hdfsJSON.Limitations, "one configured JSON object, array of objects, or JSON Lines file") || !containsSupportLimitation(hdfsJSON.Limitations, "100,000 records") || !containsSupportLimitation(hdfsJSON.Limitations, "does not establish compatibility with a live HDFS release") {
+		t.Errorf("HDFS JSON catalog must disclose its input, record, and verification boundaries: %+v", hdfsJSON.Limitations)
+	}
+	hdfsText := profiles[string(model.DatabaseTypeHDFSText)]
+	if !hdfsText.Registered || !hdfsText.Supported || hdfsText.Status != ConnectorStatusEndToEndVerified || !hdfsText.EndToEndVerified || !hdfsText.Capabilities.SupportsSQL {
+		t.Errorf("HDFS text must expose its verified read-only SQL path: %+v", hdfsText)
+	}
+	if hdfsText.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsText.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS text contract must be limited to Hadoop 3.5.0: %+v", hdfsText)
+	}
+	if !containsSupportLimitation(hdfsText.Limitations, "one configured UTF-8 text file") || !containsSupportLimitation(hdfsText.Limitations, "100,000 lines") || !containsSupportLimitation(hdfsText.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS text catalog must disclose its file, line, and security boundaries: %+v", hdfsText.Limitations)
 	}
 	hdfsCSV := profiles[string(model.DatabaseTypeHDFSCSV)]
-	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusExperimental || !hdfsCSV.Capabilities.SupportsSQL {
-		t.Errorf("HDFS CSV must expose its experimental read-only SQL path: %+v", hdfsCSV)
+	if !hdfsCSV.Registered || !hdfsCSV.Supported || hdfsCSV.Status != ConnectorStatusEndToEndVerified || !hdfsCSV.EndToEndVerified || !hdfsCSV.Capabilities.SupportsSQL {
+		t.Errorf("HDFS CSV must expose only its verified read-only SQL path: %+v", hdfsCSV)
 	}
-	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") {
-		t.Errorf("HDFS CSV catalog must disclose its file and memory boundaries: %+v", hdfsCSV.Limitations)
+	if hdfsCSV.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsCSV.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS CSV contract must be limited to Hadoop 3.5.0: %+v", hdfsCSV)
+	}
+	if !containsSupportLimitation(hdfsCSV.Limitations, "one configured CSV file") || !containsSupportLimitation(hdfsCSV.Limitations, "64 MiB") || !containsSupportLimitation(hdfsCSV.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS CSV catalog must disclose its file, memory, and security boundaries: %+v", hdfsCSV.Limitations)
 	}
 	hdfsParquetCompressed := profiles[string(model.DatabaseTypeHDFSParquetCompressed)]
 	if !hdfsParquetCompressed.Registered || !hdfsParquetCompressed.Supported || hdfsParquetCompressed.Status != ConnectorStatusExperimental || !hdfsParquetCompressed.Capabilities.SupportsSQL {
@@ -200,18 +338,34 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("HDFS compressed Parquet catalog must disclose codec and file limits: %+v", hdfsParquetCompressed.Limitations)
 	}
 	hdfsParquet := profiles[string(model.DatabaseTypeHDFSParquet)]
-	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusExperimental || !hdfsParquet.Capabilities.SupportsSQL {
-		t.Errorf("HDFS Parquet must expose its experimental read-only SQL path: %+v", hdfsParquet)
+	if !hdfsParquet.Registered || !hdfsParquet.Supported || hdfsParquet.Status != ConnectorStatusEndToEndVerified || !hdfsParquet.EndToEndVerified || !hdfsParquet.Capabilities.SupportsSQL {
+		t.Errorf("HDFS Parquet must expose only its verified read-only SQL path: %+v", hdfsParquet)
 	}
-	if !containsSupportLimitation(hdfsParquet.Limitations, "one configured Parquet file") || !containsSupportLimitation(hdfsParquet.Limitations, "64 MiB") {
-		t.Errorf("HDFS Parquet catalog must disclose its file and memory boundaries: %+v", hdfsParquet.Limitations)
+	if hdfsParquet.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsParquet.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS Parquet contract must be limited to Hadoop 3.5.0: %+v", hdfsParquet)
+	}
+	if !containsSupportLimitation(hdfsParquet.Limitations, "one configured Parquet file") || !containsSupportLimitation(hdfsParquet.Limitations, "64 MiB") || !containsSupportLimitation(hdfsParquet.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS Parquet catalog must disclose its file, memory, and security boundaries: %+v", hdfsParquet.Limitations)
 	}
 	hdfsAvro := profiles[string(model.DatabaseTypeHDFSAvro)]
-	if !hdfsAvro.Registered || !hdfsAvro.Supported || hdfsAvro.Status != ConnectorStatusExperimental || !hdfsAvro.Capabilities.SupportsSQL {
-		t.Errorf("HDFS Avro must expose its experimental read-only SQL path: %+v", hdfsAvro)
+	if !hdfsAvro.Registered || !hdfsAvro.Supported || hdfsAvro.Status != ConnectorStatusEndToEndVerified || !hdfsAvro.EndToEndVerified || !hdfsAvro.Capabilities.SupportsSQL {
+		t.Errorf("HDFS Avro must expose its verified read-only SQL path: %+v", hdfsAvro)
 	}
-	if !containsSupportLimitation(hdfsAvro.Limitations, "one configured Avro OCF file") || !containsSupportLimitation(hdfsAvro.Limitations, "64 MiB") {
-		t.Errorf("HDFS Avro catalog must disclose its file and schema boundaries: %+v", hdfsAvro.Limitations)
+	if hdfsAvro.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsAvro.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS Avro contract must be limited to Hadoop 3.5.0: %+v", hdfsAvro)
+	}
+	if !containsSupportLimitation(hdfsAvro.Limitations, "one configured Avro OCF file") || !containsSupportLimitation(hdfsAvro.Limitations, "64 MiB") || !containsSupportLimitation(hdfsAvro.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS Avro catalog must disclose its file, memory, and security boundaries: %+v", hdfsAvro.Limitations)
+	}
+	hdfsORC := profiles[string(model.DatabaseTypeHDFSORC)]
+	if !hdfsORC.Registered || !hdfsORC.Supported || hdfsORC.Status != ConnectorStatusEndToEndVerified || !hdfsORC.EndToEndVerified || !hdfsORC.Capabilities.SupportsSQL {
+		t.Errorf("HDFS ORC must expose its verified read-only SQL path: %+v", hdfsORC)
+	}
+	if hdfsORC.SupportedVersionRange != "Apache Hadoop 3.5.0 only" || !reflect.DeepEqual(hdfsORC.VerifiedServerVersions, []string{"3.5.0"}) {
+		t.Errorf("HDFS ORC contract must be limited to Hadoop 3.5.0: %+v", hdfsORC)
+	}
+	if !containsSupportLimitation(hdfsORC.Limitations, "one configured ORC file") || !containsSupportLimitation(hdfsORC.Limitations, "100,000 rows") || !containsSupportLimitation(hdfsORC.Limitations, "does not cover Kerberos") {
+		t.Errorf("HDFS ORC catalog must disclose its file, row, and security boundaries: %+v", hdfsORC.Limitations)
 	}
 	mongo := profiles[string(model.DatabaseTypeMongoDB)]
 	if mongo.Status != ConnectorStatusExperimental || !mongo.Capabilities.SupportsSQL || !mongo.EndToEndVerified {
@@ -236,6 +390,10 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 	}
 
 	s3CSV := profiles[string(model.DatabaseTypeS3CSV)]
+	gcsCSV := profiles[string(model.DatabaseTypeGCSCSV)]
+	if !gcsCSV.Registered || gcsCSV.Category != "object_storage" || gcsCSV.Status != ConnectorStatusExperimental || gcsCSV.EndToEndVerified || !gcsCSV.Capabilities.SupportsSQL || !gcsCSV.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("GCS CSV support must be registered as experimental without live verification: %+v", gcsCSV)
+	}
 	if s3CSV.Status != ConnectorStatusExperimental || !s3CSV.EndToEndVerified || s3CSV.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(s3CSV.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
 		t.Errorf("S3 CSV must remain experimental while recording its pinned Garage contract: %+v", s3CSV)
 	}
@@ -288,8 +446,8 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("S3 ORC catalog must disclose its format and object boundary: %+v", s3ORC.Limitations)
 	}
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet,
-		model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
+		model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeTencentCOSDelta,
+		model.DatabaseTypeAzureBlobAvro, model.DatabaseTypeAzureBlobORC, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeAzureBlobJSON, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet,
 	} {
 		profile := profiles[string(dbType)]
 		if profile.Status != ConnectorStatusExperimental || !profile.Capabilities.SupportsSQL {
@@ -307,46 +465,67 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		t.Errorf("OSS Delta catalog must disclose its snapshot and memory boundaries: %+v", ossDelta.Limitations)
 	}
 	s3Delta := profiles[string(model.DatabaseTypeS3Delta)]
-	if s3Delta.Status != ConnectorStatusExperimental || !s3Delta.Capabilities.SupportsSQL || s3Delta.EndToEndVerified {
-		t.Errorf("S3 Delta must expose an experimental SQL adapter without claiming a live version contract: %+v", s3Delta)
+	if s3Delta.Status != ConnectorStatusExperimental || !s3Delta.Capabilities.SupportsSQL || !s3Delta.EndToEndVerified ||
+		s3Delta.SupportedVersionRange != "Garage v2.4.1 only" || !reflect.DeepEqual(s3Delta.VerifiedServerVersions, []string{"Garage v2.4.1"}) {
+		t.Errorf("S3 Delta must expose experimental SQL with its exact pinned Garage contract: %+v", s3Delta)
 	}
-	if !containsSupportLimitation(s3Delta.Limitations, "checkpoints") || !containsSupportLimitation(s3Delta.Limitations, "100,000 decoded rows") || !containsSupportLimitation(s3Delta.Limitations, "does not establish compatibility with AWS S3") {
-		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, and provider boundaries: %+v", s3Delta.Limitations)
+	if !containsSupportLimitation(s3Delta.Limitations, "checkpoints") || !containsSupportLimitation(s3Delta.Limitations, "100,000 decoded rows") ||
+		!containsSupportLimitation(s3Delta.Limitations, "AWS S3") || !containsSupportLimitation(s3Delta.Limitations, "cancellation remains covered by a local protocol fixture") {
+		t.Errorf("S3 Delta catalog must disclose its snapshot, memory, provider, and cancellation boundaries: %+v", s3Delta.Limitations)
 	}
 	minioDelta := profiles[string(model.DatabaseTypeMinIODelta)]
-	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || minioDelta.EndToEndVerified {
-		t.Errorf("MinIO Delta must expose its experimental SQL adapter without claiming a live version contract: %+v", minioDelta)
+	if minioDelta.Status != ConnectorStatusExperimental || !minioDelta.Capabilities.SupportsSQL || !minioDelta.EndToEndVerified ||
+		minioDelta.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioDelta.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Delta must expose experimental SQL with its exact pinned live contract: %+v", minioDelta)
 	}
-	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") {
-		t.Errorf("MinIO Delta catalog must disclose its snapshot and memory boundaries: %+v", minioDelta.Limitations)
+	if !containsSupportLimitation(minioDelta.Limitations, "checkpoints") || !containsSupportLimitation(minioDelta.Limitations, "100,000 decoded rows") ||
+		!containsSupportLimitation(minioDelta.Limitations, "AWS S3") || !containsSupportLimitation(minioDelta.Limitations, "cancellation remains covered by a local protocol fixture") {
+		t.Errorf("MinIO Delta catalog must disclose its contract, limits, provider boundary, and cancellation evidence: %+v", minioDelta.Limitations)
 	}
 	minioIceberg := profiles[string(model.DatabaseTypeMinIOIceberg)]
-	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || minioIceberg.EndToEndVerified {
-		t.Errorf("MinIO Iceberg must expose its experimental SQL adapter without claiming a live version contract: %+v", minioIceberg)
+	if minioIceberg.Status != ConnectorStatusExperimental || !minioIceberg.Capabilities.SupportsSQL || !minioIceberg.EndToEndVerified ||
+		minioIceberg.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioIceberg.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Iceberg must record its exact pinned MinIO object-store contract: %+v", minioIceberg)
 	}
-	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") {
-		t.Errorf("MinIO Iceberg catalog must disclose its table and read-only boundaries: %+v", minioIceberg.Limitations)
+	if !containsSupportLimitation(minioIceberg.Limitations, "one configured table") || !containsSupportLimitation(minioIceberg.Limitations, "Writes") ||
+		!containsSupportLimitation(minioIceberg.Limitations, "external REST catalog servers") {
+		t.Errorf("MinIO Iceberg catalog must disclose its table, read-only, and catalog compatibility boundaries: %+v", minioIceberg.Limitations)
+	}
+	cosIceberg := profiles[string(model.DatabaseTypeTencentCOSIceberg)]
+	if cosIceberg.Status != ConnectorStatusExperimental || cosIceberg.EndToEndVerified ||
+		!cosIceberg.Capabilities.SupportsSQL || !cosIceberg.Capabilities.SupportsSchemaDiscovery {
+		t.Errorf("COS Iceberg must be experimental with bounded SQL and metadata capabilities: %+v", cosIceberg)
+	}
+	if !containsSupportLimitation(cosIceberg.Limitations, "external Iceberg REST catalog") ||
+		!containsSupportLimitation(cosIceberg.Limitations, "virtual-hosted addressing") {
+		t.Errorf("COS Iceberg catalog must disclose its catalog and object addressing boundary: %+v", cosIceberg.Limitations)
 	}
 	minioORC := profiles[string(model.DatabaseTypeMinIOORC)]
-	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || minioORC.EndToEndVerified {
-		t.Errorf("MinIO ORC must expose its experimental SQL adapter without claiming a live version contract: %+v", minioORC)
+	if minioORC.Status != ConnectorStatusExperimental || !minioORC.Capabilities.SupportsSQL || !minioORC.EndToEndVerified ||
+		minioORC.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioORC.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO ORC must expose experimental SQL with its exact pinned live contract: %+v", minioORC)
 	}
-	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") {
-		t.Errorf("MinIO ORC catalog must disclose its object and schema boundaries: %+v", minioORC.Limitations)
+	if !containsSupportLimitation(minioORC.Limitations, "one configured ORC object") || !containsSupportLimitation(minioORC.Limitations, "nested/repeated") ||
+		!containsSupportLimitation(minioORC.Limitations, "AWS S3") || !containsSupportLimitation(minioORC.Limitations, "LIMIT 0") {
+		t.Errorf("MinIO ORC catalog must disclose its contract, provider, and schema boundaries: %+v", minioORC.Limitations)
 	}
 	minioAvro := profiles[string(model.DatabaseTypeMinIOAvro)]
-	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || minioAvro.EndToEndVerified {
-		t.Errorf("MinIO Avro must expose its experimental SQL adapter without claiming a live version contract: %+v", minioAvro)
+	if minioAvro.Status != ConnectorStatusExperimental || !minioAvro.Capabilities.SupportsSQL || !minioAvro.EndToEndVerified ||
+		minioAvro.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioAvro.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO Avro must expose experimental SQL with its exact pinned live contract: %+v", minioAvro)
 	}
-	if !containsSupportLimitation(minioAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(minioAvro.Limitations, "Nested records") {
-		t.Errorf("MinIO Avro catalog must disclose its object and schema boundaries: %+v", minioAvro.Limitations)
+	if !containsSupportLimitation(minioAvro.Limitations, "one configured Avro OCF object") || !containsSupportLimitation(minioAvro.Limitations, "Nested records") ||
+		!containsSupportLimitation(minioAvro.Limitations, "AWS S3") || !containsSupportLimitation(minioAvro.Limitations, "deflate") {
+		t.Errorf("MinIO Avro catalog must disclose its contract and format boundaries: %+v", minioAvro.Limitations)
 	}
 	minioJSON := profiles[string(model.DatabaseTypeMinIOJSON)]
-	if minioJSON.Status != ConnectorStatusExperimental || !minioJSON.Capabilities.SupportsSQL || minioJSON.EndToEndVerified {
-		t.Errorf("MinIO JSON must expose its experimental SQL adapter without claiming a live version contract: %+v", minioJSON)
+	if minioJSON.Status != ConnectorStatusExperimental || !minioJSON.Capabilities.SupportsSQL || !minioJSON.EndToEndVerified ||
+		minioJSON.SupportedVersionRange != "RELEASE.2025-04-22T22-12-26Z only" || !reflect.DeepEqual(minioJSON.VerifiedServerVersions, []string{"RELEASE.2025-04-22T22-12-26Z"}) {
+		t.Errorf("MinIO JSON must expose experimental SQL with its exact pinned live contract: %+v", minioJSON)
 	}
-	if !containsSupportLimitation(minioJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(minioJSON.Limitations, "flatten_nested=true") {
-		t.Errorf("MinIO JSON catalog must disclose its object and schema boundaries: %+v", minioJSON.Limitations)
+	if !containsSupportLimitation(minioJSON.Limitations, "one configured JSON object") || !containsSupportLimitation(minioJSON.Limitations, "flatten_nested=true") ||
+		!containsSupportLimitation(minioJSON.Limitations, "JSON Lines") || !containsSupportLimitation(minioJSON.Limitations, "AWS S3") {
+		t.Errorf("MinIO JSON catalog must disclose its contract and adapter boundaries: %+v", minioJSON.Limitations)
 	}
 	azureDelta := profiles[string(model.DatabaseTypeAzureDelta)]
 	if azureDelta.Status != ConnectorStatusExperimental || !azureDelta.Capabilities.SupportsSQL || azureDelta.EndToEndVerified {
@@ -376,15 +555,15 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if !ok || postgres.Status != ConnectorStatusEndToEndVerified {
 		t.Fatalf("type endpoint did not expose the verified PostgreSQL catalog profile: %+v", postgres)
 	}
-	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "17.11 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"17.11"}) {
+	if !postgres.EndToEndVerified || postgres.SupportedVersionRange != "15.19, 16.15, 17.11, and 18.6 only" || !reflect.DeepEqual(postgres.VerifiedServerVersions, []string{"15.19", "16.15", "17.11", "18.6"}) {
 		t.Fatalf("type endpoint has missing or overly broad PostgreSQL verification evidence: %+v", postgres)
 	}
 	mysql, ok := info[string(model.DatabaseTypeMySQL)]
-	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46"}) {
+	if !ok || mysql.Status != ConnectorStatusEndToEndVerified || !mysql.EndToEndVerified || mysql.SupportedVersionRange != "8.0.46 and 8.4.13 only" || !reflect.DeepEqual(mysql.VerifiedServerVersions, []string{"8.0.46", "8.4.13"}) {
 		t.Fatalf("type endpoint has missing or overly broad MySQL verification evidence: %+v", mysql)
 	}
 	mariaDB, ok := info[string(model.DatabaseTypeMariaDB)]
-	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "11.8.9 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"11.8.9"}) {
+	if !ok || mariaDB.Status != ConnectorStatusEndToEndVerified || !mariaDB.EndToEndVerified || mariaDB.SupportedVersionRange != "10.11.19, 11.4.13, 11.8.9, and 12.3.3 only" || !reflect.DeepEqual(mariaDB.VerifiedServerVersions, []string{"10.11.19", "11.4.13", "11.8.9", "12.3.3"}) {
 		t.Fatalf("type endpoint has missing or overly broad MariaDB verification evidence: %+v", mariaDB)
 	}
 	tiDB, ok := info[string(model.DatabaseTypeTiDB)]
@@ -406,8 +585,20 @@ func TestDriverInfoAndCompatibilityUseSupportCatalog(t *testing.T) {
 	if ozone, ok := info[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
 		t.Fatalf("type endpoint must advertise the experimental Ozone Parquet adapter: %+v", ozone)
 	}
+	if ozone, ok := info[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("type endpoint must advertise the experimental Ozone JSON adapter: %+v", ozone)
+	}
+	if ozone, ok := info[string(model.DatabaseTypeOzoneCSV)]; !ok || ozone.Status != ConnectorStatusExperimental || !ozone.Capabilities.SupportsSQL {
+		t.Fatalf("type endpoint must advertise the experimental Ozone CSV adapter: %+v", ozone)
+	}
 	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneParquet)]; !ok || ozone.Status != ConnectorStatusExperimental {
 		t.Fatalf("compatibility endpoint must report Ozone Parquet as experimental: %+v", ozone)
+	}
+	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneJSON)]; !ok || ozone.Status != ConnectorStatusExperimental {
+		t.Fatalf("compatibility endpoint must report Ozone JSON as experimental: %+v", ozone)
+	}
+	if ozone, ok := compatibility[string(model.DatabaseTypeOzoneCSV)]; !ok || ozone.Status != ConnectorStatusExperimental {
+		t.Fatalf("compatibility endpoint must report Ozone CSV as experimental: %+v", ozone)
 	}
 	if len(compatibility) != len(catalog) {
 		t.Fatalf("compatibility profiles = %d, catalog = %d", len(compatibility), len(catalog))
