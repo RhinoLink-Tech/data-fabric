@@ -126,7 +126,9 @@ jobs:
 
       - name: Build one gateway image for both acceptance runs
         run: |
-          docker build --tag data-fabric:public-acceptance --file Dockerfile .
+          docker build --tag data-fabric:public-acceptance --file Dockerfile \
+            --build-arg DATA_FABRIC_VERSION=ci \
+            --build-arg "DATA_FABRIC_SOURCE_REVISION=$GITHUB_SHA" .
           echo "acceptance_image_id=$(docker image inspect --format '{{.Id}}' data-fabric:public-acceptance)"
 
       - name: Run standalone public reference acceptance
@@ -174,6 +176,8 @@ jobs:
           python3 ../../scripts/mcp/onboard.py init
           docker compose --project-name "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up --no-build -d metadata-db sample-source data-fabric-api
           python3 - <<'PY'
+          import json
+          import os
           import time
           from urllib.request import urlopen
 
@@ -181,6 +185,10 @@ jobs:
               try:
                   with urlopen('http://127.0.0.1:8080/health', timeout=2) as response:
                       if response.status == 200:
+                          health = json.load(response)
+                          if health.get('version') != 'ci' or health.get('source_revision') != os.environ['GITHUB_SHA']:
+                              raise SystemExit('Candidate health identity does not match its build inputs')
+                          print('Candidate health identity matches image build inputs.')
                           break
               except OSError:
                   time.sleep(2)
