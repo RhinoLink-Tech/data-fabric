@@ -1160,6 +1160,48 @@ func buildCountSQLInPlace(sql string) string {
 	return "SELECT COUNT(*) " + sql[fromIndex:]
 }
 
+// canCountInPlaceExactly limits the last-resort rewrite to statement shapes
+// where removing the projection cannot change result cardinality. The derived
+// forms above remain the preferred path for every query, including DISTINCT.
+func canCountInPlaceExactly(sql string) bool {
+	if hasRowLimit(sql) || topLevelKeywordIndex(sql, "WITH") >= 0 {
+		return false
+	}
+	selectIndex := topLevelKeywordIndex(sql, "SELECT")
+	fromIndex := topLevelKeywordIndex(sql, "FROM")
+	if selectIndex < 0 || fromIndex <= selectIndex {
+		return false
+	}
+	projection := sql[selectIndex+len("SELECT") : fromIndex]
+	for _, keyword := range []string{"DISTINCT", "DISTINCTROW", "TOP", "INTO"} {
+		if topLevelKeywordIndex(projection, keyword) >= 0 {
+			return false
+		}
+	}
+	// Parentheses in a projection may denote aggregate or set-returning
+	// functions. Decline the fallback unless cardinality can be established.
+	for i := 0; i < len(projection); {
+		switch {
+		case projection[i] == '\'' || projection[i] == '"' || projection[i] == '`':
+			i = skipQuoted(projection, i)
+		case projection[i] == '-' && i+1 < len(projection) && projection[i+1] == '-':
+			i = skipLineComment(projection, i)
+		case projection[i] == '/' && i+1 < len(projection) && projection[i+1] == '*':
+			i = skipBlockComment(projection, i)
+		case projection[i] == '(':
+			return false
+		default:
+			i++
+		}
+	}
+	for _, keyword := range []string{"GROUP", "HAVING", "UNION", "INTERSECT", "EXCEPT", "QUALIFY"} {
+		if topLevelKeywordIndex(sql, keyword) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // countRowsInQuery counts the rows the query returns, binding the caller's
 // parameters to every attempt so query and count see identical inputs (#21).
 //
@@ -1170,12 +1212,10 @@ func buildCountSQLInPlace(sql string) string {
 // Counting the FROM clause directly works for those, so it is the last resort.
 // The middle attempt drops the derived-table alias, which Oracle rejects.
 //
-// The in-place form is refused outright for statements that limit their own
-// rows: its count would describe a different result set than the query, which
-// is a silent wrong answer, not a counting failure. When no form can count
-// the statement exactly, ErrExactCountUnavailable wraps the first error — the
-// one taken against the query as the caller wrote it — instead of inventing
-// a count (#23).
+// The in-place form is refused for limits, DISTINCT, grouping, set operations,
+// and projections whose functions may change row cardinality. When no form
+// can count the statement exactly, ErrExactCountUnavailable wraps the first
+// error rather than inventing a count (#23, #492).
 func countRowsInQuery(ctx context.Context, db *sql.DB, sql string, args ...interface{}) (int64, error) {
 	var count int64
 	firstErr := db.QueryRowContext(ctx, buildCountSQL(sql), args...).Scan(&count)
@@ -1187,7 +1227,7 @@ func countRowsInQuery(ctx context.Context, db *sql.DB, sql string, args ...inter
 		return count, nil
 	}
 
-	if !hasRowLimit(countSubquery(sql)) {
+	if canCountInPlaceExactly(countSubquery(sql)) {
 		if inPlace := buildCountSQLInPlace(sql); inPlace != "" {
 			if err := db.QueryRowContext(ctx, inPlace, args...).Scan(&count); err == nil {
 				return count, nil
