@@ -19,7 +19,7 @@ Data Fabric gives AI applications a lightweight, self-hosted data-access layer f
 
 ## AI Application Scenarios
 
-- **AI agents:** Optional MCP tools support local stdio and authenticated Streamable HTTP clients to discover sources, validate read-only SQL, execute queries, and fetch result batches. See the [MCP guide](MCP_SERVER.md).
+- **AI agents:** Optional MCP tools support local stdio and authenticated Streamable HTTP clients to discover sources, validate read-only SQL, execute queries, and fetch result batches. Release-mode remote MCP requires OIDC. See the [MCP guide](MCP_SERVER.md).
 - **RAG retrieval:** Retrieve structured and semi-structured records from databases, warehouses, object storage, and supported file sources. The RAG application remains responsible for chunking, embeddings, vector storage, and ranking.
 - **Text-to-SQL:** Route model-generated read-only queries through a common API and translate supported SQL syntax for the selected source.
 - **AI analytics:** Give assistants a unified way to access registered sources; connect a federation engine when a use case needs cross-source SQL.
@@ -85,11 +85,11 @@ The standard server build compiles the registered driver implementations and the
 
 ## Quick Start
 
-The recommended clean install and first authorized task is the [self-hosted remote MCP quickstart](docs/mcp-deployment.md). It builds from source and walks through persistent secrets, readiness checks, the loopback-only REST management API, TLS-protected remote MCP, a read-only MySQL 8.4.13 sample source, OIDC access, and a complete query. Both MySQL services are pinned in Compose; the Data Fabric image is built from the checkout because a published container image is not available yet.
+The recommended clean install and first authorized task is the [published-image path in the self-hosted remote MCP deployment guide](docs/mcp-deployment.md#run-a-published-image-without-compiling-source). The published [v2.1.0-preview.1 release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) includes a public, digest-pinned `linux/amd64` image. The source-build path remains available for contributors.
 
 The sample profile uses MySQL metadata and separate REST and MCP processes. Its seeded data is synthetic. It demonstrates the documented path; it does not establish external adoption, production capacity, or an SLA. See the [first-adopter profile](docs/product/first-adopter-profile.md), [connector support catalog](docs/data-source-support.md), and [current operating limits](docs/roadmap.md#current-operating-limits) for the scope and open evidence.
 
-Prerequisites for this Compose path are Docker Engine 24 or later, Docker Compose 2.24 or later, OpenSSL, Python 3 with its standard library, and an OIDC provider that can issue an access token for the configured audience and query scope. The container build includes the SQLGlot parser; no Go or Python package installation is needed on the host.
+The Preview profile is a single-host deployment, not an HA, SLA, or production-readiness claim. Its Compose prerequisites are Docker Engine 24 or later, Docker Compose 2.24 or later, OpenSSL, Python 3 with its standard library, and an OIDC provider that can issue an access token for the configured audience and query scope. The published-image path does not require Go, source compilation, or host Python package installation.
 
 ### Run the gateway from source for development
 

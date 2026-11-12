@@ -9,7 +9,7 @@ This protocol supports issue #446. It compares the documented first-use path for
 Begin only when:
 
 - Baseline and candidate tags, source SHAs, image digests, platforms, and matching documentation are fixed. Use published artifacts, not a local build or source checkout.
-- Both artifacts and required supporting images can be retrieved anonymously. As of 2026-11-10, the v2.1.0-preview.1 GHCR package is private, so its candidate run is blocked.
+- Both artifacts and required supporting images must be retrievable anonymously. The v2.1.0-preview.1 candidate is now public at digest `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf` ([release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)); anonymous retrieval and clean-runner acceptance passed. Confirm the baseline artifact and supporting images meet this gate before scheduling operators.
 - Two operators who did not implement the guided path and are unfamiliar with repository internals are available. They receive the published instructions and same task brief, without a maintainer walkthrough.
 - The isolated environment uses synthetic data or data explicitly approved for this rehearsal.
 
@@ -78,4 +78,4 @@ Copy one record for each operator and artifact. Use aliases such as A and B. Do 
 
 Close #446 only after both independent operators complete baseline and candidate runs, allowed and denied outcomes match expectations, the second application uses its own identity, and failures and interventions are recorded. Fix or file repeated blockers before claiming the guided path is complete.
 
-If an artifact is not publicly available, leave the run blocked. This protocol and synthetic rehearsal remain separate from real-team adoption, model quality, sustained use, and commercial evidence.
+The Preview candidate is public, but publication and clean-runner acceptance do not complete #446. The independent rehearsal remains pending until two operators complete the protocol. Keep this synthetic rehearsal separate from real-team adoption, model quality, sustained use, and commercial evidence.

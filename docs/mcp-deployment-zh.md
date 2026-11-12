@@ -4,6 +4,10 @@
 
 这是当前的合成数据首次使用 profile，画像与边界见[首个采用者说明](product/first-adopter-profile.md)。该画像仍是假设；尚无外部团队评估或生产结论。
 
+## 当前已发布的 Preview
+
+`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的安装方式见下方“使用发布镜像”步骤；请从[对应 GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)复制完整 tag 与 digest。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
+
 ## 当前部署拓扑
 
 Compose 会启动四个服务：MySQL 元数据库、只读示例 MySQL、HTTP 管理 API、启用 OIDC 的远程 MCP。管理 API 仅绑定本机回环地址；MCP 通过 TLS 暴露。服务使用非 root 用户。当前 profile 是单机部署，不提供 HA/自动故障切换，也不会代替你运行 OIDC 身份提供方。
@@ -36,9 +40,9 @@ Data Fabric API 容器加入现有网络。API 默认只绑定本机 loopback �
 使用 DataSemanticHub 中已有的 schema 和数据。
 
 此本地 profile 覆盖 release 镜像的 REST 与 MySQL 运行链路，但不覆盖
-OIDC/MCP、双副本、GHCR 匿名拉取，也不能替代
+OIDC/MCP、双副本或独立操作者演练，也不能替代
 [#446 的独立操作者演练](https://github.com/RhinoLink-Tech/data-fabric/issues/446)。
-公开发布前仍须分别通过 published-image workflow 和独立操作者验收。
+发布镜像工作流、GHCR 匿名拉取和精确 digest 的 clean-runner 验收已通过；这些结果仍不能替代 #446 的两名独立操作者演练。
 
 ## 前提
 
@@ -79,7 +83,7 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml pull
 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 ```
 
-该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**当前 v2.1.0-preview.1 候选镜像已发布到 GHCR，digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`，但包仍为 private，GitHub Release 仍是 draft。**在包公开并完成该精确 digest 的匿名验收前，请继续使用上面的源码构建 quickstart，不要按公开镜像安装路径操作。
+该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**已发布 Preview：** `v2.1.0-preview.1` 的公开镜像 digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`。对应的 [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)记录了精确镜像引用和验收结果；公开发布及匿名 clean-runner 镜像验收已完成。issue #442 仍开放跟踪剩余首次采用者证据。
 
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 

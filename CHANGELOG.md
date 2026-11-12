@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [v2.1.0-preview.1] - 2026-11-09
+## [v2.1.0-preview.1] - 2026-11-11
 
 ### Added
 - Add configurable, bounded process-wide query and active-stream capacity with defaults aligned to the measured four-way, two-tenant profile (#451).

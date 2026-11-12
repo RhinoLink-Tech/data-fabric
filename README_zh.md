@@ -19,7 +19,7 @@ Data Fabric 为 AI 应用提供轻量、自托管的异构数据访问层。团�
 
 ## AI 应用场景
 
-- **AI Agent：** 可选的 MCP 工具支持本地 stdio 客户端，以及使用 Bearer JWT 认证的远程 Streamable HTTP 客户端发现数据源、校验只读 SQL、执行查询并分批获取结果，详见 [MCP 使用指南](MCP_DOCUMENTATION.md)。
+- **AI Agent：** 可选 MCP 工具支持本地 stdio 和远程 Streamable HTTP，帮助发现数据源、校验只读 SQL、执行查询并分批取数。release 模式的远程 MCP 使用 OIDC access token；本地 JWT 模式仅用于开发。详见 [MCP 使用说明](MCP_DOCUMENTATION.md)和[自托管部署指南](docs/mcp-deployment-zh.md)。
 - **RAG 检索：** 从数据库、数仓、对象存储及已支持的文件源获取结构化或半结构化记录；切分、Embedding、向量存储和排序仍由 RAG 应用负责。
 - **Text-to-SQL：** 模型生成的只读查询可以经统一 API 提交，并在兼容范围内转换为目标数据源方言。
 - **AI 智能分析：** 让助手通过统一入口访问已登记的数据源；需要跨源 SQL 时再连接联邦查询引擎。
@@ -85,11 +85,11 @@ Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持
 
 ## 快速开始
 
-建议从[自托管远程 MCP 完整快速上手](docs/mcp-deployment-zh.md)开始。该路径从源码构建，带你完成持久密钥初始化、健康诊断、仅监听本机的 REST 管理 API、TLS 保护的远程 MCP、只读 MySQL 8.4.13 示例数据源、OIDC 访问和一次完整查询。Compose 中的两个 MySQL 镜像均固定到 digest；当前还没有发布 Data Fabric 容器镜像，因此网关镜像从当前 checkout 构建。
+当前公开预览版为 [v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)，提供 digest 固定的 `linux/amd64` 镜像。建议按[自托管远程 MCP 部署指南](docs/mcp-deployment-zh.md)中的发布镜像路径安装；完整 digest 和验收范围见 Release。源码构建仍适用于开发和本地修改。
 
 示例配置使用 MySQL 元数据数据库，并由 REST 与 MCP 两个独立进程共享；预置数据为合成数据。它演示已记录的路径，不证明外部团队采用、生产容量或 SLA。请同时查看[首个采用者画像](docs/product/first-adopter-profile.md)（当前仍是待验证假设）、[数据源支持目录](docs/data-source-support.md)和[当前运行边界](docs/roadmap.md#current-operating-limits)。
 
-该 Compose 路径要求 Docker Engine 24 或更高版本、Docker Compose 2.24 或更高版本、OpenSSL、带标准库的 Python 3，以及能够为已配置的受众和查询 scope 签发 access token 的 OIDC 身份提供方。容器构建已包含 SQLGlot parser；宿主机不需要安装 Go 或 Python 三方包。
+该 Preview profile 面向单机部署，不承诺 HA、SLA 或生产就绪。发布镜像路径要求 Docker Engine 24 或更高版本、Docker Compose 2.24 或更高版本、OpenSSL、带标准库的 Python 3，以及能够为已配置受众和查询 scope 签发 access token 的 OIDC 身份提供方；无需在宿主机安装 Go 或 Python 第三方包。
 
 ### 从源码运行网关用于开发
 

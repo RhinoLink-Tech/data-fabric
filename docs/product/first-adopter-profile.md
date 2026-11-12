@@ -1,6 +1,6 @@
 # First Adopter and Supported Profile
 
-**Status:** decision draft, reviewed 2026-11-08. The adopter, workflow, value and commercial path below are hypotheses. No external team has validated them. Accountable repository maintainer: [@LuckyCaptain-go](https://github.com/LuckyCaptain-go). Maintainer approval of this specific profile and approval to contact participants are still pending.
+**Status:** decision draft, reviewed 2026-11-12. The adopter, workflow, value and commercial path below remain hypotheses; no external team has validated them. The profile definition in [#454](https://github.com/RhinoLink-Tech/data-fabric/issues/454) is complete. Accountable repository maintainer: [@LuckyCaptain-go](https://github.com/LuckyCaptain-go). Approval to contact participants and external evaluation are still pending.
 
 ## Product statement
 
@@ -34,7 +34,7 @@ The first product profile deliberately excludes cross-source joins, write access
 
 | Dimension | Proposed first profile | Current evidence and limitation |
 | --- | --- | --- |
-| Gateway release | Use a recorded main SHA for reference work. Label the first packaged artifact **Preview** after the current-profile #440/#441/#445/#451 engineering gates and the exact-SHA #442 publish/clean-host checks pass. The #451 admission and resource-return evidence is now recorded, but it does not establish a universal memory envelope or production-capacity guarantee. Preview makes no external-fit or SLA claim. Promote to **Stable** only after candidate-matched recovery/support/upgrade gates and the #454 external-fit rule (at least two of three qualified team evaluations meet the continue criteria) pass. | The latest published GitHub Release remains source v2.0.0. The v2.1.0-preview.1 tag and linux/amd64 GHCR image are staged at source SHA `570c2975fedbc886a37003a8b64b68caa699678c` and digest `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`, but the package remains private and its Release is a draft. Anonymous install and independent first-use evidence remain pending. The default MySQL metadata and sample-source images are pinned to MySQL 8.4.13 digests in the Compose profile. |
+| Gateway release | The **v2.1.0-preview.1** profile is published for one `linux/amd64` host. Preview makes no external-fit, HA, SLA or production-capacity claim. Promote to **Stable** only after the documented support/upgrade gates and the external-fit rule (at least two of three qualified team evaluations meet the continue criteria) pass. | The latest stable release is source v2.0.0; v2.1.0-preview.1 was published on 2026-11-11. Its public GHCR image is pinned to source SHA `570c2975fedbc886a37003a8b64b68caa699678c` and digest `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. Published-image provenance and clean-runner acceptance passed. #442 remains open for remaining first-adopter evidence; independent external use is not yet established. The default MySQL metadata and sample-source images are pinned to MySQL 8.4.13 digests in the Compose profile. |
 | Metadata | MySQL 8.4.13; the default Compose profile pins the metadata and sample-source images by digest. | The configured immutable reference is mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7. Recheck the exact platform manifest at publication. The optional PostgreSQL profile is separate and is not part of this Preview. |
 | First query source | MySQL 8.4.13, one source, one read-only database user with only the required `SELECT` privilege. | The support catalog records a live contract for MySQL 8.4.13. It also records MySQL 8.0.46; no other MySQL version is implied. |
 | Optional second source profile | PostgreSQL 17.11 or 18.6, one source at a time, with a read-only role. | Both exact versions appear in the source support catalog. The current PostgreSQL Compose override uses the moving `postgres:18` tag and must be pinned before a release promise. |
@@ -45,7 +45,7 @@ The first product profile deliberately excludes cross-source joins, write access
 | Operations and support | Follow the versioned installation, upgrade, key backup and recovery procedure. Use GitHub Discussions for usage questions, issue forms for reproducible bugs, and private vulnerability reporting for security issues. | The project is community-maintained and publishes no response-time SLA. Current support and security policy do not promise older-release support. |
 | SQL and source limits | Read-only operations in the listed connector contract; expect a documented SQL compatibility subset. | A registered connector is not a verified version. See [source support](../data-source-support.md), [read-only behavior](../readonly-access.md), [deployment guide](../mcp-deployment.md) and [known runtime limits](../roadmap.md#current-operating-limits). |
 
-The package and image pin are implemented. #442 still requires a public digest/provenance check, a clean-host install from that digest, and first-adopter evidence before closure. Keep the support catalog as the authority for exact connector evidence.
+The Preview package, public image, provenance and exact-digest clean-runner acceptance are complete. #442 remains open for first-adopter evidence; #446 tracks the separate two-operator first-use rehearsal. Keep the support catalog as the authority for exact connector evidence.
 
 ## Alternatives on the same task
 
@@ -93,7 +93,7 @@ The first goal is repeatable open-source adoption: clear supported scope, a pinn
 | First adopter | Platform/data team operating multiple internal applications over a governed relational source (hypothesis) | Maintainer approval, then external research through #454 |
 | First task | One read-only order-status query reused across REST and MCP | Synthetic fixture documented in `docs/mcp-deployment.md`; replace only with an approved pilot task |
 | Primary source | MySQL 8.4.13 | Exact driver contract in [source support](../data-source-support.md); pin metadata and source image digests in #442 |
-| Product status | Next installable profile should be Preview, without a hard memory or production-capacity claim | #440 docs, #441 baseline, #442 artifact, #445 first-use diagnostics, #446 second-app reuse, #451 admission/resource evidence, #452 recovery |
+| Product status | v2.1.0-preview.1 is the published installable Preview; no hard memory or production-capacity claim | #440 docs, #441 baseline, #445 diagnostics, #451 admission/resource evidence and #452 recovery are complete; #442 remains open for first-adopter evidence and #446 for independent operator rehearsal |
 | Architecture changes | No new storage backend or combined REST/MCP process yet | Consider #443/#444 only if measured onboarding, resource or operations evidence calls for it |
 | Model/connector expansion | No model ranking or broad connector promise | #456 model evaluation and additional source versions require a defined task and owner evidence |
 | External adoption | Not started; no participant evidence | Proposed recruitment action: maintainer to invite three qualified platform/data teams to a short task-baseline rehearsal after approving this profile. Accountable: @LuckyCaptain-go. Status: pending approval; no outreach has been made. |
@@ -103,7 +103,7 @@ The first goal is repeatable open-source adoption: clear supported scope, a pinn
 
 - #441's local REST/MCP timing and synthetic acceptance are engineering reference evidence, not customer value, model quality, production capacity or adoption.
 - The current source catalog marks exact end-to-end contracts; do not turn implementation-present or experimental entries into product promises.
-- The published v2.0.0 release is a source release. A published, digest-pinned container/binary is not documented today.
+- v2.0.0 remains the latest stable source release. The v2.1.0-preview.1 pre-release has a public, digest-pinned container image; it is not a stable or production-readiness claim.
 - No external participant, customer outcome, support cost, budget commitment or sale is recorded in this document.
 
 ## Related work
