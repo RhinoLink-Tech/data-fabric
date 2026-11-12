@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const pageSize = 20;
-  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null };
+  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null, portManuallyEdited: false };
   const $ = (id) => document.getElementById(id);
   const tokenInput = $("bearerToken");
   const rows = $("sourceRows");
@@ -164,7 +164,7 @@
   function setFormError(message) { const box = $("formError"); box.textContent = message; box.hidden = !message; }
   function setTestResult(message, kind = "") { const box = $("testResult"); box.textContent = message; box.className = "test-result" + (kind ? " " + kind : ""); box.hidden = !message; }
   function resetEditor() {
-    form.reset(); state.editingID = ""; state.currentConfig = null; populateTypes();
+    form.reset(); state.editingID = ""; state.currentConfig = null; state.portManuallyEdited = false; populateTypes();
     $("editorTitle").textContent = "添加数据源"; $("saveButton").textContent = "保存数据源";
     $("passwordHint").textContent = "新建时只在保存请求中提交；不会写入浏览器存储。"; $("sourceAdditionalProps").value = "{}";
     setFormError(""); setTestResult("");
@@ -223,14 +223,24 @@
       const type = $("sourceType").value; if (!type) throw new Error("请先选择连接器类型。");
       $("testButton").disabled = true; $("testButton").textContent = "正在测试…";
       const result = await api("/api/v1/database/test-connection?type=" + encodeURIComponent(type), { method: "POST", body: config, sanitizeWith: config });
-      setTestResult("连接测试成功" + (result && result.status ? "（" + String(result.status) + "）" : "") + "。", "success");
+      const status = result && typeof result.status === "string" ? result.status.trim().toLowerCase() : "";
+      if (status === "healthy") {
+        setTestResult("连接测试成功。", "success");
+      } else {
+        const detail = result && typeof result.message === "string" ? redact(result.message, config) : "";
+        setTestResult(detail ? "连接测试失败：" + detail : "连接测试失败，请检查主机、端口、TLS 和凭据。", "error");
+      }
     } catch (error) { setTestResult(redact(errorText(error), state.currentConfig), "error"); }
     finally { $("testButton").disabled = false; $("testButton").textContent = "测试连接"; }
   }
   async function saveSource(event) {
-    event.preventDefault(); setFormError(""); if (!form.reportValidity()) return;
+    event.preventDefault(); setFormError("");
+    const type = $("sourceType").value;
+    if (!type) { setFormError("请先选择连接器类型。"); return; }
+    if (!form.reportValidity()) return;
     let config; try { config = readConfig(); } catch (error) { setFormError(error.message); return; }
     state.currentConfig = config; const body = { name: $("sourceName").value.trim(), config };
+    if (!state.editingID) body.type = type;
     $("saveButton").disabled = true; $("saveButton").textContent = "正在保存…";
     try {
       if (state.editingID) await api("/api/v1/datasources/" + encodeURIComponent(state.editingID), { method: "PUT", body, sanitizeWith: config });
@@ -277,10 +287,11 @@
   $("clearToken").addEventListener("click", () => { tokenInput.value = ""; showNotice("当前页面中的访问令牌已清除。"); loadSources(); });
   $("closeDialog").addEventListener("click", () => dialog.close()); $("cancelButton").addEventListener("click", () => dialog.close());
   $("testButton").addEventListener("click", testConnection); form.addEventListener("submit", saveSource);
+  $("sourcePort").addEventListener("input", () => { if (!state.editingID) state.portManuallyEdited = true; });
   $("sourceType").addEventListener("change", () => {
-    if (!state.editingID && !$("sourcePort").value) {
+    if (!state.editingID && !state.portManuallyEdited) {
       const item = state.catalog.find((entry) => entry.type === $("sourceType").value);
-      if (item && item.defaultPort) $("sourcePort").value = item.defaultPort;
+      $("sourcePort").value = item && item.defaultPort ? item.defaultPort : "";
     }
   });
   $("previousPage").addEventListener("click", () => { state.offset = Math.max(0, state.offset - pageSize); loadSources(); });
