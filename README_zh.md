@@ -17,6 +17,12 @@
 
 Data Fabric 为 AI 应用提供轻量、自托管的异构数据访问层。团队在一个入口集中管理连接，应用则通过统一 API 和 SQL 接口查询已登记的数据源。它连接 AI 工作负载与现有数据系统，不接管模型推理和 AI 流程编排。
 
+## 产品能力讲解视频
+
+[![观看 Data Fabric 产品能力讲解视频：中文配音](assets/data-fabric-overview.svg)](https://scrimba.com/explain/guide0ui5us658?fullscreen=1)
+
+通过中文配音与架构图解，了解部署、数据源管理、统一查询、访问策略、可观测性，以及 Codex、WorkBuddy 的 MCP 与 Skill 接入。具体配置步骤见[部署指南](docs/mcp-deployment-zh.md)和[客户端接入指南](docs/agent-skill-zh.md)。
+
 ## AI 应用场景
 
 - **AI Agent：** 可选 MCP 工具支持本地 stdio 和远程 Streamable HTTP，帮助发现数据源、校验只读 SQL、执行查询并分批取数。release 模式的远程 MCP 使用 OIDC access token；本地 JWT 模式仅用于开发。详见 [MCP 使用说明](MCP_DOCUMENTATION.md)和[自托管部署指南](docs/mcp-deployment-zh.md)。
