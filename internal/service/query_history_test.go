@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"testing"
 )
 
@@ -89,5 +90,38 @@ func TestQueryHistoryPaginationAndFiltering(t *testing.T) {
 	}
 	if page := history.List(QueryHistoryFilter{User: "alice", Limit: -5}); page.Limit != 100 {
 		t.Errorf("limit = %d, want default 100", page.Limit)
+	}
+}
+
+// An offset at or near the platform maximum must yield an empty page, not an
+// overflowing offset+limit and a slice panic (#523).
+func TestQueryHistoryExtremeOffsetReturnsEmptyPage(t *testing.T) {
+	history := NewQueryHistory(100)
+
+	empty := history.List(QueryHistoryFilter{User: "alice", Limit: 100, Offset: math.MaxInt})
+	if empty.Total != 0 || len(empty.Records) != 0 || empty.Offset != 0 {
+		t.Fatalf("empty history at MaxInt offset = total %d, len %d, offset %d; want 0, 0, 0",
+			empty.Total, len(empty.Records), empty.Offset)
+	}
+
+	for i := 0; i < 3; i++ {
+		history.Add(QueryRecord{User: "alice", DataSourceID: "ds-1"})
+	}
+
+	for _, offset := range []int{0, 2, 3, 4, math.MaxInt - 1, math.MaxInt} {
+		page := history.List(QueryHistoryFilter{User: "alice", Limit: 100, Offset: offset})
+		if page.Total != 3 {
+			t.Errorf("offset %d: total = %d, want 3", offset, page.Total)
+		}
+		wantLen := 0
+		if offset < 3 {
+			wantLen = 3 - offset
+		}
+		if len(page.Records) != wantLen {
+			t.Errorf("offset %d: got %d records, want %d", offset, len(page.Records), wantLen)
+		}
+		if page.Offset != min(offset, 3) {
+			t.Errorf("offset %d: returned offset %d, want %d", offset, page.Offset, min(offset, 3))
+		}
 	}
 }
