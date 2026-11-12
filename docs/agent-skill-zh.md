@@ -37,6 +37,10 @@
 
 [WorkBuddy 技能上传](https://intl.cloud.tencent.com/zh/document/product/1316/84503) · [WorkBuddy 自定义连接器](https://intl.cloud.tencent.com/zh/document/product/1316/84494) · [MCP 配置格式](https://open.workbuddy.cn/docs/connector)
 
+## WorkBuddy 市场发布材料
+
+项目提供了 [WorkBuddy 连接器和独立 Skill 的候选发布包生成方法](../integrations/workbuddy/README.md)以及[中文快速上手指南](../integrations/workbuddy/QUICKSTART-zh.md)。包使用用户自填的 MCP 地址和访问令牌；发布前仍需完成平台审核及 WorkBuddy 客户端端到端验收。
+
 ## 用合成订单验收
 
 按 [MCP 部署指南](mcp-deployment.md#quickstart) 启动独立的 MySQL 示例并注册 `sample-mysql`。给测试身份授权读取 `sample.orders`。在每个客户端中运行同一个任务。
