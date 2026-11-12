@@ -109,9 +109,9 @@ cp configs/config.yaml.example configs/config.yaml
 在 configs/config.yaml 中设置元数据数据库字段。通过环境变量或密钥管理器注入稳定的 JWT 密钥和凭证密钥环；服务重启时必须继续使用相同密钥环，才能解密已保存的数据源凭证。
 
 ```bash
-export SECURITY_JWT_SECRET="$(openssl rand -hex 32)"
+export SECURITY_JWT_SECRET="<稳定且至少 32 字节的密钥>"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
-export DATA_FABRIC_CREDENTIAL_KEYS="{\"dev-v1\":\"$(openssl rand -base64 32)\"}"
+export DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64 编码的 32 字节密钥>"}'
 go run ./cmd/server
 ```
 

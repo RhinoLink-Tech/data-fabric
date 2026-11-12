@@ -109,9 +109,9 @@ cp configs/config.yaml.example configs/config.yaml
 Set the metadata database fields in configs/config.yaml. Supply a stable JWT secret and credential keyring through a secret manager or environment variables; preserve the same keyring across restarts so saved source credentials remain decryptable.
 
 ```bash
-export SECURITY_JWT_SECRET="$(openssl rand -hex 32)"
+export SECURITY_JWT_SECRET="<stable secret with at least 32 bytes>"
 export DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID=dev-v1
-export DATA_FABRIC_CREDENTIAL_KEYS="{\"dev-v1\":\"$(openssl rand -base64 32)\"}"
+export DATA_FABRIC_CREDENTIAL_KEYS='{"dev-v1":"<base64-encoded 32-byte key>"}'
 go run ./cmd/server
 ```
 
