@@ -39,7 +39,7 @@
 
 ## WorkBuddy 市场发布材料
 
-项目提供了 [WorkBuddy 连接器和独立 Skill 的候选发布包生成方法](../integrations/workbuddy/README.md)。包使用用户自填的 MCP 地址和访问令牌；发布前仍需完成平台审核及 WorkBuddy 客户端端到端验收。
+项目提供了 [WorkBuddy 连接器和独立 Skill 的候选发布包生成方法](../integrations/workbuddy/README.md)以及[中文快速上手指南](../integrations/workbuddy/QUICKSTART-zh.md)。包使用用户自填的 MCP 地址和访问令牌；发布前仍需完成平台审核及 WorkBuddy 客户端端到端验收。
 
 ## 用合成订单验收
 

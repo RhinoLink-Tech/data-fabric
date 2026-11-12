@@ -13,6 +13,8 @@ python3 -m unittest discover -s integrations/workbuddy -p 'test_*.py'
 
 The output directory contains `data-fabric-workbuddy-connector.zip` (configuration, icon and Skill) and `data-fabric-workbuddy-skill.zip` (a standalone Skill). The generator copies the shared `skills/data-fabric-query` and adds the WorkBuddy marketplace metadata only to the packaged copy. It includes the references and license; it does not package real credentials.
 
+For a Chinese first-use walkthrough, see [Quick Start](QUICKSTART-zh.md).
+
 ## Connection and authentication
 
 The connector uses Streamable HTTP and the WorkBuddy user-supplied credential form. Each user provides the full HTTPS `/mcp` URL of their own deployment and an identity-provider-issued MCP access token. Use a certificate the client trusts, and ensure the client can reach the server. The token must satisfy the gateway's configured issuer, audience and scope; replace it in the connector when expired. The management REST API JWT is a different credential. See [MCP deployment](../../docs/mcp-deployment.md) and [client setup](../../docs/agent-skill-zh.md).
