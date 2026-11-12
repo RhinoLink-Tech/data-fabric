@@ -803,7 +803,9 @@ func (e *MetadataExtractor) scanColumnRow(rows *sql.Rows, dbType model.DatabaseT
 		if err := rows.Scan(colName, colType, &nullable, colDefault, colComment); err != nil {
 			return err
 		}
-		*isNullable = strings.EqualFold(nullable, "YES")
+		// Oracle's ALL_TAB_COLUMNS reports Y/N while information_schema uses
+		// YES/NO; accept both (#529).
+		*isNullable = strings.EqualFold(nullable, "YES") || strings.EqualFold(nullable, "Y")
 	}
 	return nil
 }
