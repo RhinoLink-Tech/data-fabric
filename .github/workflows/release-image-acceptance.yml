@@ -64,6 +64,18 @@ jobs:
           ref: ${{ needs.validate_image.outputs.release_tag }}
           fetch-depth: 1
 
+      - name: Check out the acceptance tooling revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .release-acceptance-tools
+          fetch-depth: 1
+
+      - name: Set up Node.js for browser acceptance
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: Initialize and start the documented digest-pinned profile
         working-directory: deploy/mcp
         shell: bash
@@ -141,6 +153,26 @@ jobs:
             exit 1
           fi
           echo "Started documented profile from $actual_image with no Go toolchain."
+
+      - name: Exercise the embedded first-use UI
+        working-directory: deploy/mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DF_UI_BROWSER="$(command -v google-chrome || command -v chromium)"
+          export DF_UI_BEARER_TOKEN="$(python3 ../../scripts/mcp/onboard.py token --user ui-release-acceptance --tenant quickstart)"
+          export DF_UI_SAMPLE_PASSWORD="$(python3 -c 'import sys; sys.path.insert(0, "../../scripts/mcp"); import onboard; print(onboard.parse_env(__import__("pathlib").Path(".env"))["SAMPLE_READER_PASSWORD"])')"
+          printf 'Image: %s\n' "$IMAGE_REF" > "$RUNNER_TEMP/published-image-ui-acceptance.log"
+          node "$GITHUB_WORKSPACE/.release-acceptance-tools/scripts/mcp/ui-release-acceptance.mjs" 2>&1 | tee -a "$RUNNER_TEMP/published-image-ui-acceptance.log"
+
+      - name: Upload UI acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-image-ui-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/published-image-ui-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Remove the isolated smoke stack
         if: always()

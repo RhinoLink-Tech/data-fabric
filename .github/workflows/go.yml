@@ -154,6 +154,44 @@ jobs:
           echo "acceptance_path=two-replica"
           go run ./deploy/mcp/reference/cmd/acceptance -image data-fabric:public-acceptance "${acceptance_args[@]}" | tee -a "$RUNNER_TEMP/public-reference.log"
 
+      - name: Set up Node.js for browser acceptance
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Exercise the candidate image's embedded UI
+        working-directory: deploy/mcp
+        shell: bash
+        env:
+          COMPOSE_PROJECT_NAME: df-ui-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          DATA_FABRIC_IMAGE: data-fabric:public-acceptance
+          MCP_OIDC_ISSUER: https://issuer.example.invalid
+          MCP_OIDC_AUDIENCE: ui-acceptance
+        run: |
+          set -euo pipefail
+          cleanup() { docker compose --project-name "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --volumes --remove-orphans >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python3 ../../scripts/mcp/onboard.py init
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up --no-build -d metadata-db sample-source data-fabric-api
+          python3 - <<'PY'
+          import time
+          from urllib.request import urlopen
+
+          for _ in range(120):
+              try:
+                  with urlopen('http://127.0.0.1:8080/health', timeout=2) as response:
+                      if response.status == 200:
+                          break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit('Candidate API did not become healthy')
+          PY
+          export DF_UI_BROWSER="$(command -v google-chrome || command -v chromium)"
+          export DF_UI_BEARER_TOKEN="$(python3 ../../scripts/mcp/onboard.py token --user ui-release-acceptance --tenant quickstart)"
+          export DF_UI_SAMPLE_PASSWORD="$(python3 -c 'import sys; sys.path.insert(0, "../../scripts/mcp"); import onboard; print(onboard.parse_env(__import__("pathlib").Path(".env"))["SAMPLE_READER_PASSWORD"])')"
+          node ../../scripts/mcp/ui-release-acceptance.mjs 2>&1 | tee -a "$RUNNER_TEMP/public-reference.log"
+
       - name: Upload public acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
