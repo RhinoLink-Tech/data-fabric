@@ -264,3 +264,62 @@ func TestCountRowsInQueryRefusesLimitedQueriesItCannotWrap(t *testing.T) {
 		}
 	}
 }
+
+// When derived-table counts fail, rewriting only the SELECT list is safe
+// only if that list and the top-level clauses preserve source row cardinality.
+func TestCountRowsRefusesCardinalityChangingFallback(t *testing.T) {
+	tests := []struct{ name, query string }{
+		{"distinct duplicate aliases", "SELECT DISTINCT status AS label, status AS label FROM review_orders"},
+		{"mysql distinctrow", "SELECT DISTINCTROW status AS label, status AS label FROM review_orders"},
+		{"aggregate", "SELECT COUNT(*) AS label, COUNT(*) AS label FROM review_orders"},
+		{"grouped", "SELECT status AS label, status AS label FROM review_orders GROUP BY status"},
+		{"having", "SELECT status AS label, status AS label FROM review_orders HAVING status = 'A'"},
+		{"union", "SELECT status FROM review_orders UNION SELECT status FROM other_orders"},
+		{"cte", "WITH recent AS (SELECT status FROM review_orders) SELECT status AS label, status AS label FROM recent"},
+		{"top", "SELECT TOP 2 status AS label, status AS label FROM review_orders"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &countingDB{count: 3, rejectDerivedTable: true}
+			db := sql.OpenDB(fake.connector())
+			defer db.Close()
+			got, err := countRowsInQuery(context.Background(), db, tt.query)
+			if !errors.Is(err, ErrExactCountUnavailable) {
+				t.Fatalf("got count %d, error %v; want exact-count unavailable", got, err)
+			}
+			if message := SafeQueryErrorMessage(err); !strings.Contains(message, "unique names") {
+				t.Fatalf("error guidance = %q, want a retry using unique output names", message)
+			}
+			if len(fake.queries) != 2 {
+				t.Fatalf("issued %d queries; want only the two derived-table attempts: %q", len(fake.queries), fake.queries)
+			}
+		})
+	}
+}
+
+func TestCountRowsStillUsesExactDerivedCountForDistinct(t *testing.T) {
+	fake := &countingDB{count: 2}
+	db := sql.OpenDB(fake.connector())
+	defer db.Close()
+	count, err := countRowsInQuery(context.Background(), db, "SELECT DISTINCT status FROM review_orders")
+	if err != nil || count != 2 || len(fake.queries) != 1 {
+		t.Fatalf("count=%d, err=%v, queries=%q", count, err, fake.queries)
+	}
+}
+
+func TestCountRowsFallbackIgnoresQuotedAndCommentedKeywords(t *testing.T) {
+	tests := []string{
+		"SELECT 'DISTINCT (GROUP)' AS label, o.id FROM users u JOIN orders o ON u.id = o.user_id",
+		"SELECT u.id /* DISTINCT ( GROUP */ AS label, o.id FROM users u JOIN orders o ON u.id = o.user_id",
+		"SELECT u.id AS label, o.id FROM users u JOIN orders o ON u.id = o.user_id WHERE EXISTS (SELECT DISTINCT status FROM review_orders)",
+	}
+	for _, query := range tests {
+		fake := &countingDB{count: 7, rejectDerivedTable: true}
+		db := sql.OpenDB(fake.connector())
+		count, err := countRowsInQuery(context.Background(), db, query)
+		db.Close()
+		if err != nil || count != 7 || len(fake.queries) != 3 {
+			t.Fatalf("safe query %q: count=%d, err=%v, queries=%q", query, count, err, fake.queries)
+		}
+	}
+}

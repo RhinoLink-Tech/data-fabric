@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Include the selected connector type when creating a source from the management UI and report unsuccessful connection probes as failures (#484, #485).
 - Update automatically filled ports when switching connectors while preserving operator-entered values (#501).
 - Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
+- Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
 
 ## [v2.1.0-preview.1] - 2026-11-11
 
