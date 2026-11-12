@@ -21,7 +21,7 @@ This is the current synthetic first-use profile linked from the [first-adopter b
 
 ## What gets deployed
 
-When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are marked unknown and cannot produce a verified candidate backup. The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
+When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are initially marked unknown; supported release archives can be verified with the updated [backup and recovery helper](operations/mcp-profile-backup-recovery.md#alternative-the-published-v210-preview1-source-archive). The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
 image from the repository `Dockerfile`; the release overlay pulls an immutable
 image digest. Both profiles run four services on a private network. The
 gateway runs either the HTTP API or MCP in a given process — never both — so

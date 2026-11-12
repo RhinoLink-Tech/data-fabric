@@ -6,7 +6,7 @@
 
 ## 前提与密钥保管
 
-- Python 3.10+、Docker Engine、Docker Compose 2.24+、`age`，以及与候选源码 SHA 完全一致的干净 Git 仓库检出（源码压缩包不包含可验证的提交身份）。
+- Python 3.10+、Docker Engine、Docker Compose 2.24+、`age`；使用与候选源码 SHA 一致的干净 Git 检出，或下文明确支持并验证的发布压缩包。
 - 为备份准备 `age` 公钥 recipient。私钥 identity 应保存在独立恢复设备或密钥管理器中，不要与备份放在应用主机上。
 - 提供仅当前用户可读写的暂存目录（`0700`），并放在加密磁盘或内存文件系统上。工具会在其中临时写入明文 SQL 和 `.env`，结束后清理；SSD 和写时复制文件系统不保证安全擦除。
 - 加密备份保存到 `deploy/mcp/` 之外。复制到异机后，通过另一渠道保留校验和。
@@ -34,6 +34,25 @@ python3 scripts/mcp/recovery.py backup \
   --staging-dir /mnt/encrypted-staging/data-fabric \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
 ```
+
+### 另一种方式：已发布的 v2.1.0-preview.1 源码压缩包
+
+原 Preview 压缩包中的恢复工具是旧版。压缩包安装请使用[本文档对应 revision 的新版 recovery.py](../../scripts/mcp/recovery.py)（打开链接后保存 Raw 文件），并放在**解压目录之外**。同时保留原始下载压缩包和解压后的文件。工具目前按精确 SHA-256 识别公开的 `v2.1.0-preview.1` 压缩包，并在停止服务或导出数据之前核对所有归档项目文件及其可执行位、发布镜像引用和镜像 revision。文件被修改、缺失、指向符号链接，或压缩包、镜像不匹配时会停止；不要修改解压的发布文件。
+
+```bash
+export DF_RECOVERY_HELPER=/path/outside/the/extracted/tree/recovery.py
+export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.1-source.tar.gz
+export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.1
+python3 "$DF_RECOVERY_HELPER" backup \
+  --directory "$DF_SOURCE_ROOT/deploy/mcp" \
+  --release-source-archive "$DF_RELEASE_ARCHIVE" \
+  --project-name data-fabric-preview1 \
+  --recipient "$(cat /secure/recovery/data-fabric.recipients)" \
+  --staging-dir /mnt/encrypted-staging/data-fabric \
+  --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
+```
+
+项目名替换成安装时实际使用的 Compose 项目名。若压缩包初始化时记录了 `unknown`，工具只在**加密备份副本**中写入已验证的 release revision，不修改运行中的 `.env`。后续 `verify` 也使用同一个新版工具，并沿用下一节参数。已发布镜像本身不变。
 
 工具只会停止所选 Compose 项目中正在运行的 API 和 MCP 服务；完成元数据快照后会重启此前运行的服务。数据库保持在线，使用单事务 dump。快照期间不要轮换密钥、迁移 schema，也不要让第二个应用实例写入元数据库。若主机意外断电或被强制终止，需手动检查并启动这两个服务。
 
@@ -68,6 +87,21 @@ python3 scripts/mcp/recovery.py restore \
   --project-name data-fabric-restore-20261108 \
   --api-port 18080 --mcp-port 18443
 ```
+
+如果从压缩包恢复，先将同一已验证源码压缩包解压到**全新的空目录**，再用新版工具替代上面的 Git 检出命令：
+
+```bash
+python3 "$DF_RECOVERY_HELPER" restore \
+  --archive /mnt/encrypted-backups/data-fabric/profile-20261108T000000Z.age \
+  --identity-file /secure/recovery/data-fabric.agekey \
+  --staging-dir /mnt/encrypted-staging/data-fabric \
+  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.1/deploy/mcp \
+  --release-source-archive "$DF_RELEASE_ARCHIVE" \
+  --project-name data-fabric-restore-20261108 \
+  --api-port 18080 --mcp-port 18443
+```
+
+只有目标文件、备份 revision 和精确镜像全部匹配后才会写入恢复载荷。接下来从新目标的 `deploy/mcp/` 目录执行下方 TLS 初始化、导入、启动和验收步骤。
 
 归档不保存 TLS 证书/私钥。运行 `onboard.py init` 会为隔离实例生成新的本地 TLS pair。若要使用正式域名，需安装对应证书并调整 TLS group。原 profile 和卷保持不变。运行恢复准备命令前，目标主机必须已有清单中精确的 app image ID：registry 候选先按清单中的 tag@sha256 拉取；本地候选需在同 SHA checkout 构建或从备份主机安全导入该镜像，并确认 ID 匹配。该备份不包含镜像层。
 

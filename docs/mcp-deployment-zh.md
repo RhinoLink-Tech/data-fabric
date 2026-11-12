@@ -57,7 +57,7 @@ OIDC/MCP、双副本或独立操作者演练，也不能替代
 python3 scripts/mcp/onboard.py init
 ```
 
-命令会创建 `deploy/mcp/.env`，若从 Git 检出运行，则记录当前源码 SHA；源码压缩包会标记为 `unknown`，不能用于可验证的候选备份。命令还会生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。本地 Compose 构建会把该 revision 写入镜像 OCI label，供恢复清单绑定源码和镜像身份。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
+命令会创建 `deploy/mcp/.env`，若从 Git 检出运行，则记录当前源码 SHA；源码压缩包初始标记为 `unknown`；受支持的发布压缩包可使用[新版备份恢复工具](operations/mcp-profile-backup-recovery-zh.md)核验。命令还会生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。本地 Compose 构建会把该 revision 写入镜像 OCI label，供恢复清单绑定源码和镜像身份。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
 
 在 `deploy/mcp/.env` 设置：
 
