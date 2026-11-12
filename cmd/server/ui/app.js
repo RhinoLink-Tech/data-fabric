@@ -140,8 +140,14 @@
   async function loadSources() {
     try {
       const result = await api("/api/v1/datasources?limit=" + pageSize + "&offset=" + state.offset);
+      const total = Number(result && result.total);
+      if (state.offset > 0 && Number.isFinite(total) && state.offset >= total) {
+        // The list shrank past the current page (e.g. another operator removed sources): load the last valid page.
+        state.offset = total > 0 ? Math.floor((total - 1) / pageSize) * pageSize : 0;
+        return loadSources();
+      }
       state.sources = Array.isArray(result && result.dataSources) ? result.dataSources : [];
-      state.total = Number(result && result.total) || state.sources.length; renderSources();
+      state.total = total || state.sources.length; renderSources();
     } catch (error) { renderLoadError(error); }
   }
   function addTypeOption(select, item, suffix = "") {

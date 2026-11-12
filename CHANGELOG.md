@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
+
 ## [v2.1.0-preview.1] - 2026-11-11
 
 ### Added
