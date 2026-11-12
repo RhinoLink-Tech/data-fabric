@@ -17,6 +17,12 @@ Are you building an AI agent, RAG workflow, or AI analytics feature that needs c
 
 Data Fabric gives AI applications a lightweight, self-hosted data-access layer for heterogeneous sources. Teams manage connections in one place, while applications query registered sources through a shared API and SQL interface. It connects AI workloads to existing data systems without taking over model inference or AI orchestration.
 
+## Product overview video
+
+[![Watch the Data Fabric product overview — Chinese narration](assets/data-fabric-overview.svg)](https://scrimba.com/explain/guide0ui5us658?fullscreen=1)
+
+Explore deployment, data-source management, unified queries, access policies, observability, and MCP/Skill integration with Codex and WorkBuddy. This illustrated product overview has Chinese narration; follow the [deployment guide](docs/mcp-deployment.md) and [client setup guide](docs/agent-skill.md) for configuration steps.
+
 ## AI Application Scenarios
 
 - **AI agents:** Optional MCP tools support local stdio and authenticated Streamable HTTP clients to discover sources, validate read-only SQL, execute queries, and fetch result batches. Release-mode remote MCP requires OIDC. See the [MCP guide](MCP_SERVER.md).
