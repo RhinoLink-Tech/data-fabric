@@ -567,6 +567,9 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Test source archive checksum portability
+        run: python -m unittest discover -s scripts/release -p "test_*.py"
+
       - name: Run self-hosted onboarding regression tests
         run: python -m unittest discover -s scripts/mcp -p "test_*.py"
 
@@ -766,6 +769,9 @@ jobs:
 
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
+
+      - name: Test source archive checksum portability
+        run: python -m unittest discover -s scripts/release -p "test_*.py"
 
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
