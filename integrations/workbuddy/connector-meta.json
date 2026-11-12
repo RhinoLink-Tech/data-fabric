@@ -1,0 +1,23 @@
+{
+  "name": "Data Fabric",
+  "source": "data-fabric",
+  "type": "mcp",
+  "auth_mode": "token",
+  "version": "1.0.0",
+  "minWorkbuddyVersion": "4.24.0",
+  "name_zh": "Data Fabric 数据查询",
+  "name_en": "Data Fabric Query",
+  "description_zh": "连接自部署的 Data Fabric，发现已授权数据源、检查表结构并执行只读查询。",
+  "description_en": "Connect your Data Fabric deployment to discover authorized sources, inspect schemas, and run read-only queries.",
+  "examples_zh": [
+    "列出我有权限访问的数据源。",
+    "查看订单表的字段，并统计本月订单数量。",
+    "查询最近的订单并按需获取后续结果。"
+  ],
+  "examples_en": [
+    "List the data sources I can access.",
+    "Inspect the orders table and count this month’s orders.",
+    "Find recent orders and retrieve additional result pages as needed."
+  ],
+  "description": "Connect your Data Fabric deployment to discover authorized sources, inspect schemas, and run read-only queries."
+}

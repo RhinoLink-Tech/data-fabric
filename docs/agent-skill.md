@@ -74,6 +74,10 @@ For applications calling the DeepSeek API directly, the
 [DeepSeek function-calling example](../examples/deepseek-agent/README.md)
 maps model function calls to the same authenticated MCP tools.
 
+## WorkBuddy marketplace submission candidates
+
+See the [WorkBuddy connector and standalone Skill package builder](../integrations/workbuddy/README.md). These packages use a user-supplied MCP endpoint and access token. Platform review and an end-to-end WorkBuddy client run are still required before publication.
+
 ## Bundle contents and limits
 
 - `SKILL.md` contains the shared workflow and standard `name`/`description`
