@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "data-fabric": {
+      "type": "streamableHttp",
+      "url": "${DATA_FABRIC_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${DATA_FABRIC_ACCESS_TOKEN}"
+      },
+      "timeout": 30000
+    }
+  }
+}

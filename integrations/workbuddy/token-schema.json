@@ -1,0 +1,29 @@
+{
+  "title": "连接 Data Fabric",
+  "title_en": "Connect Data Fabric",
+  "description": "输入自己的 Data Fabric MCP 地址和身份提供方签发的访问令牌。令牌保存在本机；过期后请重新获取并更新。",
+  "description_en": "Enter your Data Fabric MCP URL and identity-provider access token. Credentials are stored locally; replace an expired token.",
+  "docUrl": "https://github.com/RhinoLink-Tech/data-fabric/blob/master/docs/agent-skill-zh.md",
+  "docLabel": "查看部署和令牌说明",
+  "fields": [
+    {
+      "key": "DATA_FABRIC_MCP_URL",
+      "label": "MCP 地址",
+      "label_en": "MCP URL",
+      "type": "text",
+      "required": true,
+      "placeholder": "https://data-fabric.example.com/mcp",
+      "description": "输入完整 HTTPS MCP 地址，客户端需能访问并信任服务证书。",
+      "description_en": "Enter the full HTTPS MCP URL; the client must be able to reach and trust the service."
+    },
+    {
+      "key": "DATA_FABRIC_ACCESS_TOKEN",
+      "label": "访问令牌",
+      "label_en": "Access token",
+      "type": "password",
+      "required": true,
+      "description": "填写身份提供方签发的 MCP 访问令牌；不要使用管理 API 的 JWT。",
+      "description_en": "Use an identity-provider MCP access token, not the management API JWT."
+    }
+  ]
+}
