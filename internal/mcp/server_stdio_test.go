@@ -154,12 +154,19 @@ func TestStdioHandshakeToolsAndQueryRoundTrip(t *testing.T) {
 			"arguments": map[string]any{
 				"datasource_id": "ds-1",
 				"sql":           "SELECT customer, amount FROM orders",
+				"parameters":    []any{json.Number("9007199254740993")},
 			},
 		},
 	})
 	call := waitForResponse(3)
 	if call["error"] != nil {
 		t.Fatalf("tools/call failed: %v", call["error"])
+	}
+	if query.captured == nil || len(query.captured.Parameters) != 1 {
+		t.Fatal("stdio query did not pass its parameter")
+	}
+	if number, ok := query.captured.Parameters[0].(json.Number); !ok || number.String() != "9007199254740993" {
+		t.Fatalf("stdio lost integer precision: %#v", query.captured.Parameters[0])
 	}
 	callResult, _ := call["result"].(map[string]any)
 	if isError, _ := callResult["isError"].(bool); isError {

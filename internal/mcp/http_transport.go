@@ -44,7 +44,7 @@ type MCPTokenValidator interface {
 // StreamableHTTPHandler exposes MCP over Streamable HTTP and propagates the
 // validated bearer-token identity to tool handlers.
 func (m *MCPServer) StreamableHTTPHandler(tokenValidator MCPTokenValidator) http.Handler {
-	transport := server.NewStreamableHTTPServer(m.server)
+	transport := server.NewStreamableHTTPServer(m.server, server.WithStreamableHTTPLogger(safeMCPTransportLogger()))
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, transport, m.auditRecorder))
 	mux.Handle("/metrics", m.adminMetricsHandler(tokenValidator))
