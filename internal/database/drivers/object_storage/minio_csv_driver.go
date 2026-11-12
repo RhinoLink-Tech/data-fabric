@@ -147,7 +147,7 @@ func (d *MinIOCSVDriver) Query(ctx context.Context, query *MinIOCSVQuery) (*MinI
 		return nil, fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(strings.NewReader(string(stripUTF8BOM(data))))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
@@ -406,7 +406,7 @@ func (d *MinIOCSVDriver) StreamQuery(ctx context.Context, key string, callback f
 		return fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(strings.NewReader(string(stripUTF8BOM(data))))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true

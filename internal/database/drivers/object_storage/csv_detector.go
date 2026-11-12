@@ -68,9 +68,15 @@ type DetectedColumn struct {
 	Confidence    float64
 }
 
+// stripUTF8BOM removes a leading UTF-8 byte order mark so it does not
+// become part of the first header field.
+func stripUTF8BOM(data []byte) []byte {
+	return bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
+}
+
 // DetectSchema detects schema from CSV data
 func (d *CSVSchemadDetector) DetectSchema(data []byte) (*DetectedSchema, error) {
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
