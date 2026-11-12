@@ -85,6 +85,8 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 
 该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**已发布 Preview：** `v2.1.0-preview.1` 的公开镜像 digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`。对应的 [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)记录了精确镜像引用和验收结果；公开发布及匿名 clean-runner 镜像验收已完成。issue #442 仍开放跟踪剩余首次采用者证据。
 
+`/health` 的 `version` 和 `source_revision` 表示正在运行的应用构建版本和源码 revision。发布镜像中它们应与镜像的 `org.opencontainers.image.version`、`org.opencontainers.image.revision` 标签及发布记录一致。本地源码构建的版本为 `development`；构建时未提供 revision 则显示 `unknown`。这些字段不表示 `/api/v1` 的 API 版本。已发布的 `v2.1.0-preview.1` 镜像早于此改动，仍显示旧的固定版本号。
+
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 
 下面的可选命令会向 OIDC discovery URL 和 JWKS endpoint 分别发送 HTTPS GET；受限网络环境下不要添加 `--probe-oidc`。执行前先设置身份与租户变量：

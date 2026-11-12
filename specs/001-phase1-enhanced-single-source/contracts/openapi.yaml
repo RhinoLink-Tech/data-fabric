@@ -46,6 +46,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Gateway metadata database is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
 
   /datasources:
     get:
@@ -1405,40 +1411,37 @@ components:
 
     HealthResponse:
       type: object
-      required:
-        - success
-        - data
+      required: [status, timestamp, service, version, source_revision, database, connections]
       properties:
-        success:
-          type: boolean
-          example: true
-        data:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+          example: data-fabric
+        version:
+          type: string
+          description: Running application build version; development for a local build.
+          example: v2.1.0-preview.2
+        source_revision:
+          type: string
+          description: Source revision embedded at build time; unknown if not supplied.
+        database:
           type: object
-          required:
-            - status
-            - version
-            - timestamp
+          required: [status]
           properties:
             status:
               type: string
-              enum: [healthy, degraded, unhealthy]
-              description: Gateway health status
-            version:
+              enum: [connected, disconnected]
+            message:
               type: string
-              description: Gateway version
-              example: 1.1.0
-            timestamp:
-              type: string
-              format: date-time
-              description: Health check timestamp
-            activeDataSources:
-              type: integer
-              description: Number of active data sources
-              example: 12
-            totalDataSources:
-              type: integer
-              description: Total number of configured data sources
-              example: 15
+        connections:
+          type: object
+          additionalProperties:
+            type: string
 
     ErrorResponse:
       type: object

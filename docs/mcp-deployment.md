@@ -132,6 +132,8 @@ curl -s http://127.0.0.1:8080/health && echo
 curl -sk https://localhost:8443/mcp -o /dev/null -w '%{http_code}\n'   # 401
 ```
 
+`/health` reports the application build as `version` and `source_revision`. For a published image these match its `org.opencontainers.image.version` and `org.opencontainers.image.revision` labels and the release record. A local source build reports `development`; its revision is `unknown` unless a revision was supplied at build time. These fields describe the running build, not the `/api/v1` API version. The published `v2.1.0-preview.1` image predates these fields and still reports the old fixed version.
+
 Run the local profile doctor after the services start:
 
 ```bash
