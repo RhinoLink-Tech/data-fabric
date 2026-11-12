@@ -73,6 +73,13 @@ func TestDataSourceErrorStatusMapping(t *testing.T) {
 			wantStatus: http.StatusConflict,
 		},
 		{
+			name:       "duplicate name on update is a 409",
+			err:        fmt.Errorf("failed to update data source: %w", repository.ErrDataSourceExists),
+			body:       `{"name":"existing-orders","config":{"host":"db.example.test","port":5432,"database":"analytics","username":"gateway"}}`,
+			handler:    func(dc *DataSourceController, c *gin.Context) { dc.UpdateDataSource(c) },
+			wantStatus: http.StatusConflict,
+		},
+		{
 			name:       "unsupported data-source type is a 400",
 			err:        service.ErrUnsupportedDataSourceType,
 			body:       createBody,
