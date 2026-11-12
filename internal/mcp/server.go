@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -452,13 +453,37 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 // normalizes and validates them, so composite or invalid elements fail there
 // with messages that never echo the values themselves (#21).
 func parseExecuteParameters(request mcp.CallToolRequest) ([]interface{}, error) {
+	const invalid = "parameters must be an array of null, boolean, number, or string values"
+	// The SDK preserves the original argument bytes for requests received over
+	// either transport. Decode only the bind parameters with UseNumber: the
+	// generic SDK argument map has already rounded integers larger than 2^53.
+	if raw, ok := request.GetRawArguments().(json.RawMessage); ok {
+		var arguments struct {
+			Parameters json.RawMessage `json:"parameters"`
+		}
+		if err := json.Unmarshal(raw, &arguments); err != nil {
+			return nil, errors.New(invalid)
+		}
+		if len(arguments.Parameters) == 0 {
+			return nil, nil
+		}
+		decoder := json.NewDecoder(bytes.NewReader(arguments.Parameters))
+		decoder.UseNumber()
+		var parameters []interface{}
+		if err := decoder.Decode(&parameters); err != nil {
+			return nil, errors.New(invalid)
+		}
+		return parameters, nil
+	}
+
+	// Direct in-process callers can supply an already-decoded argument map.
 	raw, ok := request.GetArguments()["parameters"]
 	if !ok || raw == nil {
 		return nil, nil
 	}
 	parameters, ok := raw.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("parameters must be an array of null, boolean, number, or string values")
+		return nil, errors.New(invalid)
 	}
 	return parameters, nil
 }
