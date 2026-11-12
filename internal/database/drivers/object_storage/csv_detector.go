@@ -384,7 +384,7 @@ func (d *CSVSchemadDetector) DetectDelimiter(data []byte) rune {
 	delimiterCounts := make(map[rune]int)
 
 	// Count delimiter occurrences in first few lines
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	linesRead := 0
 
 	for linesRead < 10 {
@@ -423,7 +423,7 @@ func (d *CSVSchemadDetector) DetectDelimiter(data []byte) rune {
 
 // DetectHasHeader tries to detect if CSV has a header row
 func (d *CSVSchemadDetector) DetectHasHeader(data []byte) bool {
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
@@ -533,7 +533,7 @@ func (d *CSVSchemadDetector) looksLikeColumnName(value string) bool {
 
 // AnalyzeStatistics analyzes column statistics
 func (d *CSVSchemadDetector) AnalyzeStatistics(data []byte, colIdx int) (*ColumnStatistics, error) {
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 
 	stats := &ColumnStatistics{
