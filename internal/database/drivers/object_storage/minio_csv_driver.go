@@ -1,6 +1,7 @@
 package object_storage
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/csv"
@@ -147,11 +148,10 @@ func (d *MinIOCSVDriver) Query(ctx context.Context, query *MinIOCSVQuery) (*MinI
 		return nil, fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
-	reader.ReuseRecord = true
 
 	// Skip header rows
 	for i := 0; i < d.config.SkipHeaderRows; i++ {
@@ -171,6 +171,9 @@ func (d *MinIOCSVDriver) Query(ctx context.Context, query *MinIOCSVQuery) (*MinI
 			return nil, fmt.Errorf("failed to read header row: %w", err2)
 		}
 	}
+
+	// Reuse data records after reading the header into its own slice.
+	reader.ReuseRecord = true
 
 	// Read all rows
 	var rows []map[string]interface{}
@@ -406,11 +409,10 @@ func (d *MinIOCSVDriver) StreamQuery(ctx context.Context, key string, callback f
 		return fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
-	reader.ReuseRecord = true
 
 	// Skip header rows
 	for i := 0; i < d.config.SkipHeaderRows; i++ {
@@ -428,6 +430,8 @@ func (d *MinIOCSVDriver) StreamQuery(ctx context.Context, key string, callback f
 			return fmt.Errorf("failed to read header row: %w", err)
 		}
 	}
+
+	reader.ReuseRecord = true
 
 	// Stream rows
 	for {

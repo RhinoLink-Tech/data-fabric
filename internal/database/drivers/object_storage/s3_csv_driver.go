@@ -237,7 +237,7 @@ func (d *S3CSVDriver) queryWithReader(ctx context.Context, query *S3CSVQuery) (*
 		return nil, fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
@@ -584,11 +584,10 @@ func (d *S3CSVDriver) StreamQuery(ctx context.Context, key string, callback func
 		return fmt.Errorf("failed to get CSV file: %w", err)
 	}
 
-	reader := csv.NewReader(bytes.NewReader(data))
+	reader := csv.NewReader(bytes.NewReader(stripUTF8BOM(data)))
 	reader.Comma = d.config.Delimiter
 	reader.FieldsPerRecord = -1
 	reader.LazyQuotes = true
-	reader.ReuseRecord = true
 
 	// Skip header rows
 	for i := 0; i < d.config.SkipHeaderRows; i++ {
@@ -606,6 +605,8 @@ func (d *S3CSVDriver) StreamQuery(ctx context.Context, key string, callback func
 			return fmt.Errorf("failed to read header row: %w", err)
 		}
 	}
+
+	reader.ReuseRecord = true
 
 	// Stream rows
 	for {
