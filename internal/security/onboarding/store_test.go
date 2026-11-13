@@ -2,6 +2,8 @@ package onboarding
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -87,7 +89,7 @@ func TestRollbackKeepsFlowAndRevertsMutation(t *testing.T) {
 	}
 }
 func TestConcurrentConsumeAndExpiry(t *testing.T) {
-	a, b, _ := setup(t)
+	a, b, db := setup(t)
 	ctx := context.Background()
 	p := Principal{"iss", "user", "tenant"}
 	id, _ := a.Begin(ctx, p)
@@ -117,7 +119,14 @@ func TestConcurrentConsumeAndExpiry(t *testing.T) {
 		t.Fatalf("callbacks=%d", won.Load())
 	}
 	expired, _ := a.Begin(ctx, p)
-	b.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	now, err := dbMillis(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte(expired))
+	if err := db.Model(&record{}).Where("id_hash = ?", hex.EncodeToString(hash[:])).Update("expires_at", now-1).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := b.ConsumeAndApply(ctx, expired, p, func(*gorm.DB) error { return nil }); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("expired: %v", err)
 	}

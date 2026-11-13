@@ -51,16 +51,37 @@ func (record) TableName() string { return "df_onboarding_flows" }
 type Store struct {
 	db  *gorm.DB
 	ttl time.Duration
-	now func() time.Time
 }
 
 // New does not migrate schemas or expose the store. The application must
 // provision the new table on every deployment before enabling any flow.
 func New(db *gorm.DB, ttl time.Duration) (*Store, error) {
-	if db == nil || ttl <= 0 || ttl > 10*time.Minute {
+	if db == nil || db.Dialector == nil || ttl < time.Millisecond || ttl > 10*time.Minute {
 		return nil, ErrInvalid
 	}
-	return &Store{db: db, ttl: ttl, now: time.Now}, nil
+	if db.Dialector.Name() != "mysql" && db.Dialector.Name() != "sqlite" {
+		return nil, ErrInvalid
+	}
+	return &Store{db: db, ttl: ttl}, nil
+}
+
+// dbMillis uses the database server's clock. MySQL replicas must share the
+// same writable primary; SQLite derives time from the host and is single-host only.
+func dbMillis(db *gorm.DB) (int64, error) {
+	var expression string
+	switch db.Dialector.Name() {
+	case "mysql":
+		expression = "CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS SIGNED)"
+	case "sqlite":
+		expression = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
+	default:
+		return 0, ErrInvalid
+	}
+	var ms int64
+	if err := db.Raw("SELECT " + expression).Scan(&ms).Error; err != nil {
+		return 0, err
+	}
+	return ms, nil
 }
 
 // Migrate creates an additive table. Deploy it ahead of enabling the feature.
@@ -84,7 +105,11 @@ func (s *Store) Begin(ctx context.Context, actor Principal) (string, error) {
 	}
 	id := base64.RawURLEncoding.EncodeToString(b[:])
 	hash := sha256.Sum256([]byte(id))
-	row := record{IDHash: hex.EncodeToString(hash[:]), PrincipalHash: principal, ExpiresAt: s.now().Add(s.ttl).UnixMilli()}
+	now, err := dbMillis(s.db.WithContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	row := record{IDHash: hex.EncodeToString(hash[:]), PrincipalHash: principal, ExpiresAt: now + s.ttl.Milliseconds()}
 	if err = s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return "", fmt.Errorf("store onboarding flow: %w", err)
 	}
@@ -95,6 +120,9 @@ func (s *Store) Begin(ctx context.Context, actor Principal) (string, error) {
 // in one transaction. A callback error rolls back both operations. The callback
 // MUST use tx, must not call external services, and must never return secrets.
 // Database uniqueness/idempotency must also be enforced by the callback.
+// Existing DataSourceService.CreateDataSource does not accept tx and cannot be
+// used here. A transaction-aware creation path is required before integration.
+// This primitive does not implement outcome recovery, quotas or bounded cleanup.
 func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal, apply func(*gorm.DB) error) error {
 	principal, err := actor.digest()
 	if err != nil || apply == nil {
@@ -116,11 +144,24 @@ func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal,
 		return lookup.Error
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hex.EncodeToString(hash[:]), principal, s.now().UnixMilli()).Delete(&record{})
+		now, err := dbMillis(tx)
+		if err != nil {
+			return err
+		}
+		result := tx.Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hex.EncodeToString(hash[:]), principal, now).Delete(&record{})
 		if result.Error != nil {
 			return result.Error
 		}
-		if result.RowsAffected != 1 || s.now().UnixMilli() >= row.ExpiresAt {
+		if result.RowsAffected != 1 {
+			return ErrUnavailable
+		}
+		// Re-read server time after acquiring the delete lock; a request may
+		// have waited past expiry while another transaction held the row.
+		now, err = dbMillis(tx)
+		if err != nil {
+			return err
+		}
+		if now >= row.ExpiresAt {
 			return ErrUnavailable
 		}
 		return apply(tx)
@@ -129,6 +170,10 @@ func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal,
 
 // PurgeExpired removes only expired correlations, never live flows.
 func (s *Store) PurgeExpired(ctx context.Context) (int64, error) {
-	result := s.db.WithContext(ctx).Where("expires_at <= ?", s.now().UnixMilli()).Delete(&record{})
+	now, err := dbMillis(s.db.WithContext(ctx))
+	if err != nil {
+		return 0, err
+	}
+	result := s.db.WithContext(ctx).Where("expires_at <= ?", now).Delete(&record{})
 	return result.RowsAffected, result.Error
 }

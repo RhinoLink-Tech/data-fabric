@@ -84,12 +84,8 @@ func TestMySQLExpiryWhileWaitingForLock(t *testing.T) {
 	if err = Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	store, _ := New(db, time.Minute)
+	store, _ := New(db, 200*time.Millisecond)
 	p := Principal{"issuer", "user", "tenant"}
-	start := time.Now()
-	var now atomic.Int64
-	now.Store(start.UnixMilli())
-	store.now = func() time.Time { return time.UnixMilli(now.Load()) }
 	id, err := store.Begin(context.Background(), p)
 	if err != nil {
 		t.Fatal(err)
@@ -105,12 +101,14 @@ func TestMySQLExpiryWhileWaitingForLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ready := make(chan struct{}, 1)
-	store.now = func() time.Time {
+	if err = db.Callback().Delete().Before("gorm:delete").Register("onboarding_test_ready", func(*gorm.DB) {
 		select {
 		case ready <- struct{}{}:
 		default:
 		}
-		return time.UnixMilli(now.Load())
+	}); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
 	}
 	finished := make(chan error, 1)
 	var called atomic.Bool
@@ -123,7 +121,7 @@ func TestMySQLExpiryWhileWaitingForLock(t *testing.T) {
 		tx.Rollback()
 		t.Fatal("consumer did not start")
 	}
-	now.Store(start.Add(2 * time.Minute).UnixMilli())
+	time.Sleep(350 * time.Millisecond)
 	if err = tx.Commit().Error; err != nil {
 		t.Fatal(err)
 	}
@@ -137,5 +135,40 @@ func TestMySQLExpiryWhileWaitingForLock(t *testing.T) {
 	}
 	if called.Load() {
 		t.Fatal("expired callback ran")
+	}
+}
+
+func TestMySQLClockIndependentOfSessionTimeZone(t *testing.T) {
+	dsn := os.Getenv("DF_ONBOARDING_TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("isolated MySQL DSN not set")
+	}
+	open := func(zone string) *gorm.DB {
+		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		if err != nil {
+			t.Fatal("open disposable MySQL database")
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sqlDB.SetMaxOpenConns(1)
+		t.Cleanup(func() { _ = sqlDB.Close() })
+		if err = db.Exec("SET time_zone = ?", zone).Error; err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+	utc, east := open("+00:00"), open("+08:00")
+	first, err := dbMillis(utc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := dbMillis(east)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta := second - first; delta < -1000 || delta > 1000 {
+		t.Fatalf("database clock differs across session time zones by %dms", delta)
 	}
 }
