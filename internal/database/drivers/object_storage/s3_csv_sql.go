@@ -719,34 +719,56 @@ func applyCSVConditions(ctx context.Context, rows []map[string]interface{}, cond
 	}
 	return filtered, nil
 }
+
+// csvTruth is the SQL three-valued logic outcome of evaluating a predicate
+// against one row: true, false, or unknown (NULL).
+type csvTruth uint8
+
+const (
+	csvFalse csvTruth = iota
+	csvTrue
+	csvUnknown
+)
+
+// csvInTruth evaluates `actual IN (values)` under SQL three-valued logic.
+// A NULL source value is UNKNOWN; an equality match against a non-NULL list
+// element is TRUE even when the list also contains NULL; a non-match against
+// a list containing NULL is UNKNOWN rather than FALSE.
+func csvInTruth(actual interface{}, values []interface{}) csvTruth {
+	if actual == nil {
+		return csvUnknown
+	}
+	listHasNull := false
+	for _, expected := range values {
+		if expected == nil {
+			listHasNull = true
+			continue
+		}
+		if compareCSVValues(actual, expected) == 0 {
+			return csvTrue
+		}
+	}
+	if listHasNull {
+		return csvUnknown
+	}
+	return csvFalse
+}
+
 func matchesCSVCondition(actual interface{}, condition s3CSVCondition) bool {
 	if condition.isNull != 0 {
 		return (actual == nil) == (condition.isNull > 0)
 	}
 	if condition.op == sqlparser.InOp || condition.op == sqlparser.NotInOp {
-		found, hasNull := false, false
-		for _, expected := range condition.values {
-			if expected == nil {
-				hasNull = true
-				continue
-			}
-			if actual != nil && compareCSVValues(actual, expected) == 0 {
-				found = true
-				break
-			}
-		}
-		if actual == nil {
-			return false
-		}
+		// SQL three-valued logic for IN/NOT IN: a NULL source value, or a
+		// NULL list element without an equality match, makes the comparison
+		// UNKNOWN. WHERE keeps only TRUE rows, so UNKNOWN must not pass —
+		// `id NOT IN (1, NULL)` excludes non-matching ids instead of
+		// returning them. A NULL source value never satisfies either form.
+		truth := csvInTruth(actual, condition.values)
 		if condition.op == sqlparser.NotInOp {
-			if found {
-				return false
-			}
-			// `x NOT IN (..., NULL)` is UNKNOWN when no element equals x, so the
-			// row must not be returned (#527).
-			return !hasNull
+			return truth == csvFalse
 		}
-		return found
+		return truth == csvTrue
 	}
 	if condition.op == sqlparser.LikeOp || condition.op == sqlparser.NotLikeOp {
 		if actual == nil || condition.value == nil {
