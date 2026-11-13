@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Register the local acceptance runner's synthetic source with the selected `--db-host` instead of the literal `mariadb` (#532).
 - Apply SQL three-valued logic to object-storage IN/NOT IN filters, so a NULL in the list excludes unmatched rows (#527).
 - Cancel the periodic token refresh with the manager's own context so shutdown cannot wait on a blocked provider call (#517).
 - Return HTTP 503 `QUERY_OVERLOADED` when the gateway's query concurrency limit rejects a request, instead of reporting a source-engine failure (#524).
