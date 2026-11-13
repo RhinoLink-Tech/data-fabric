@@ -1,0 +1,7 @@
+# Keep the MCP origin private when a tunnel connector runs on this host.
+# Compose 2.24+ is required for !override. API remains bound to loopback in
+# the base profile. See docs/operations/mcp-local-tunnel.md.
+services:
+  data-fabric-mcp:
+    ports: !override
+      - "127.0.0.1:${MCP_HTTPS_PORT:-8443}:8081"

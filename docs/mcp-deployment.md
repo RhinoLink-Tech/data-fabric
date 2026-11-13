@@ -360,6 +360,10 @@ Use the [Data Fabric Agent Skill setup guide](agent-skill.md) to configure
 Streamable HTTP with the deployment's access token, install the same Skill
 bundle in either client, and run a bounded sample query.
 
+For a single-machine PostgreSQL demonstration behind a tunnel, see the
+[local tunnel deployment guide](operations/mcp-local-tunnel.md). It keeps the
+gateway on loopback and requires a separately managed OIDC provider.
+
 ### DeepSeek-backed agent host
 
 A direct DeepSeek API integration needs a local agent client to translate
