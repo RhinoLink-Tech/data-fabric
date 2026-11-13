@@ -196,6 +196,9 @@
       setFormError(""); setTestResult(""); dialog.showModal(); $("sourceName").focus();
     } catch (error) { showNotice("无法打开数据源：" + errorText(error), "error"); }
   }
+  function hasRedactedHost(host) {
+    return Boolean(host && (host.includes("[redacted]") || /(?:^|\/\/)redacted@|[?#]redacted(?:[&#]|$)/i.test(host)));
+  }
   function readConfig() {
     let additionalProps;
     try { additionalProps = JSON.parse($("sourceAdditionalProps").value || "{}"); }
@@ -214,12 +217,18 @@
     const password = $("sourcePassword").value; if (password) config.password = password;
     const existingHost = state.currentConfig && state.currentConfig.host;
     if (existingHost && config.host === displayHost(existingHost)) config.host = existingHost;
+    else if (hasRedactedHost(existingHost)) {
+      throw new Error("当前地址包含隐藏的凭据或参数，不能在此直接修改主机；请使用完整的新连接配置创建数据源。");
+    }
     return config;
   }
   async function testConnection() {
     setFormError(""); setTestResult("");
     try {
       const config = readConfig(); state.currentConfig = config;
+      if (state.editingID && hasRedactedHost(config.host)) {
+        throw new Error("该连接包含未回显的凭据或参数，页面无法直接测试；请使用支持该类型的已配置数据源连接测试工具。");
+      }
       const type = $("sourceType").value; if (!type) throw new Error("请先选择连接器类型。");
       $("testButton").disabled = true; $("testButton").textContent = "正在测试…";
       const result = await api("/api/v1/database/test-connection?type=" + encodeURIComponent(type), { method: "POST", body: config, sanitizeWith: config });

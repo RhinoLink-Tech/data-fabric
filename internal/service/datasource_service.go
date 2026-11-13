@@ -203,6 +203,11 @@ func (s *dataSourceService) ListDataSources(ctx context.Context, caller *securit
 }
 
 func preserveDataSourceSecrets(existing, incoming model.DataSourceConfig) model.DataSourceConfig {
+	// A redacted response can be submitted unchanged by a browser editor.
+	// Keep the stored value rather than replacing secrets with the marker.
+	if existing.Host != incoming.Host && incoming.Host == model.PublicDataSourceHost(existing.Host) {
+		incoming.Host = existing.Host
+	}
 	if incoming.Password == "" {
 		incoming.Password = existing.Password
 	}
@@ -278,6 +283,11 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *securi
 			dataSource.Name = *req.Name
 		}
 		if req.Config != nil {
+			currentHost := dataSource.Config.Host
+			proposedHost := req.Config.Host
+			if currentHost != proposedHost && proposedHost != model.PublicDataSourceHost(currentHost) && model.ContainsRedactedHostMarker(proposedHost) {
+				return fmt.Errorf("%w: replace the complete host instead of editing a redacted placeholder", ErrInvalidDataSourceConfig)
+			}
 			dataSource.Config = preserveDataSourceSecrets(dataSource.Config, *req.Config)
 		}
 		if req.Status != nil {
