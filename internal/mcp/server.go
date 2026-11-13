@@ -352,7 +352,7 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 			"name":       ds.Name,
 			"type":       ds.Type,
 			"status":     ds.Status, // Use Status instead of Description/Enabled
-			"host":       ds.Config.Host,
+			"host":       model.PublicDataSourceHost(ds.Config.Host),
 			"port":       ds.Config.Port,
 			"database":   ds.Config.Database,
 			"created_at": ds.CreatedAt,
@@ -538,7 +538,7 @@ func (m *MCPServer) handleGetDataSourceInfo(ctx context.Context, request mcp.Cal
 		"name":       dataSource.Name,
 		"type":       dataSource.Type,
 		"status":     dataSource.Status, // Use Status instead of Description/Enabled
-		"host":       dataSource.Config.Host,
+		"host":       model.PublicDataSourceHost(dataSource.Config.Host),
 		"port":       dataSource.Config.Port,
 		"database":   dataSource.Config.Database,
 		"created_at": dataSource.CreatedAt,

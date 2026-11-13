@@ -118,7 +118,7 @@ func (dc *DatabaseController) TestDataSourceConnection(c *gin.Context) {
 	if err := dc.healthChecker.ValidateDataSourceConfiguration(&config, dbType); err != nil {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
 			"INVALID_CONFIG",
-			"Invalid configuration: "+err.Error(),
+			"Invalid configuration: "+database.SafeConnectionError(err, &config),
 			"",
 			correlationID,
 		))
@@ -130,7 +130,7 @@ func (dc *DatabaseController) TestDataSourceConnection(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"CONNECTION_TEST_FAILED",
-			"Failed to test connection: "+err.Error(),
+			"Failed to test connection: "+database.SafeConnectionError(err, &config),
 			"",
 			correlationID,
 		))
@@ -181,7 +181,7 @@ func (dc *DatabaseController) ValidateDataSourceConfig(c *gin.Context) {
 	if err := dc.healthChecker.ValidateDataSourceConfiguration(&req.Config, dbType); err != nil {
 		c.JSON(http.StatusOK, response.SuccessResponse(map[string]interface{}{
 			"valid":  false,
-			"errors": []string{err.Error()},
+			"errors": []string{database.SafeConnectionError(err, &req.Config)},
 		}, correlationID))
 		return
 	}

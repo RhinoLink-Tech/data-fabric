@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -19,11 +20,17 @@ import (
 )
 
 var (
-	sensitiveConnectionParameter = regexp.MustCompile(`(?i)((?:password|passwd|token|secret|credential|access[_-]?key|api[_-]?key)=)[^&\s,;]+`)
+	sensitiveConnectionParameter = regexp.MustCompile(`(?i)((?:password|passwd|token|secret|credential|access[_-]?key|api[_-]?key|sig|signature)=)[^&\s,;]+`)
 	connectionURLPassword        = regexp.MustCompile(`(?i)(https?://[^/\s@]+:)[^@/\s]*@`)
 	connectionAuthorization      = regexp.MustCompile(`(?i)(authorization:\s*(?:basic|bearer)\s+)[A-Za-z0-9._~+/-]+=*`)
 	sensitiveConnectionKey       = regexp.MustCompile(`(?i)(password|passwd|token|secret|credential|access[_-]?key|api[_-]?key|authorization)`)
 )
+
+// SafeConnectionError returns diagnostics with configured connection secrets
+// removed. Callers must pass the same config used for the operation.
+func SafeConnectionError(err error, config *model.DataSourceConfig) string {
+	return redactConnectionError(err, config)
+}
 
 // redactConnectionError preserves useful connection context while removing configured secrets.
 func redactConnectionError(err error, config *model.DataSourceConfig) string {
@@ -34,6 +41,12 @@ func redactConnectionError(err error, config *model.DataSourceConfig) string {
 	message := err.Error()
 	secrets := make([]string, 0)
 	if config != nil {
+		// A driver may echo only a transformed substring of a URL. No
+		// finite set of escape spellings reliably identifies every secret.
+		// Fail closed whenever this Host can contain URI credentials.
+		if strings.ContainsAny(config.Host, "@?#") {
+			return "connection failed; check the connection configuration"
+		}
 		if config.Password != "" {
 			secrets = append(secrets, config.Password)
 			if config.Username != "" {
@@ -352,7 +365,9 @@ func (hc *HealthChecker) verifyReadOnlySession(ctx context.Context, result *Heal
 		return
 	}
 	enforced, warnings, err := readonly.VerifySession(ctx, dbType, opener.Open, dsn)
-	result.Warnings = append(result.Warnings, warnings...)
+	for _, warning := range warnings {
+		result.Warnings = append(result.Warnings, redactReadOnlyWarning(warning, config))
+	}
 	if err != nil {
 		result.ReadOnlyEnforced = new(bool)
 		result.Warnings = append(result.Warnings, "read-only session verification failed (queries stay blocked by SQL validation): "+redactConnectionError(err, config))
@@ -362,6 +377,15 @@ func (hc *HealthChecker) verifyReadOnlySession(ctx context.Context, result *Heal
 	if !enforced {
 		result.Warnings = append(result.Warnings, "session read-only flag was not set after enforcement; treat this data source as not read-only")
 	}
+}
+
+// A warning can contain a driver error; do not leak encoded URI fragments.
+// Keep the fact that account privileges need review even when details are hidden.
+func redactReadOnlyWarning(warning string, config *model.DataSourceConfig) string {
+	if config != nil && strings.ContainsAny(config.Host, "@?#") {
+		return "read-only account privilege inspection produced a warning; review account permissions"
+	}
+	return redactConnectionError(errors.New(warning), config)
 }
 
 // PeriodicHealthCheck performs periodic health checks
