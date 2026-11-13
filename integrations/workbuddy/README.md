@@ -21,7 +21,26 @@ The connector uses Streamable HTTP and the WorkBuddy user-supplied credential fo
 
 The package uses `auth_mode: token`; this is a manually supplied OIDC access token, not an automated OAuth flow or a long-lived Data Fabric API key. WorkBuddy documents local storage for this mode. A tenant's own policies govern where its service and identity provider run. Never include tokens, keys, or production data in a package or screenshot.
 
-The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. `source: data-fabric` must be checked for global availability on the platform. Change the source and matching MCP server key if the platform rejects it. The skill's version and connector version are currently 1.0.0; update both intentionally for new marketplace submissions.
+The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. `source: data-fabric` must be checked for global availability on the platform. Change the source and matching MCP server key if the platform rejects it. The skill's version and connector version are currently 1.1.0; update both intentionally for new marketplace submissions.
+
+## Capabilities and deployment version
+
+The connector and Skill use a Data Fabric service supplied by each user or
+organization; installing them does not deploy the server or connect a database.
+The published v2.1.0-preview.1 image offers source discovery and read-only
+queries. Source-type discovery and existing-source management were merged later
+and require a server build that advertises those tools; do not assume that the
+published preview image contains them.
+
+When supported and authorized, users can discover registered source types,
+rename and enable or disable existing sources, test existing non-TLS MySQL or
+PostgreSQL connections, and delete a source after explicit confirmation.
+PostgreSQL connection tests also depend on server platform prerequisites.
+Management requires a separate scope and ownership or administrator access;
+deletion additionally requires tenant and exact-ownership checks. Creating
+sources and editing connection details or credentials are not provided by
+these MCP tools. Use the management UI or an administrator for secure setup.
+See [Quick Start](QUICKSTART-zh.md) for a user-facing walkthrough.
 
 ## Before submitting
 

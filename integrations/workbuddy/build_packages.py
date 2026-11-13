@@ -7,19 +7,19 @@ from zipfile import ZIP_DEFLATED, ZipFile
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 SKILL = ROOT / "skills" / "data-fabric-query"
-MARKET_FIELDS = """display_name: Data Fabric 数据查询
-display_name_en: Data Fabric Query
-description_zh: 通过已连接的 Data Fabric 发现授权数据源、检查表结构并执行只读查询。
-description_en: Discover authorized Data Fabric sources, inspect schemas, and run read-only queries.
+MARKET_FIELDS = """display_name: Data Fabric 数据连接与查询
+display_name_en: Data Fabric Data Access
+description_zh: 通过已连接的 Data Fabric 发现数据源类型、查询授权数据，并在服务支持时管理已有数据源。
+description_en: Discover source types, query authorized data, and manage existing sources when supported by your connected Data Fabric service.
 examples_zh:
-  - 列出我有权限访问的数据源。
-  - 查看订单表的字段，并统计本月订单数量。
-  - 查询最近的订单并按需获取后续结果。
+  - 当前服务支持哪些数据库和文件格式？
+  - 查看订单表字段并统计订单数量。
+  - 测试已配置的 PostgreSQL 数据源连接。
 examples_en:
-  - List the data sources I can access.
-  - Inspect the orders table and count this month's orders.
-  - Find recent orders and retrieve additional result pages as needed.
-version: 1.0.0
+  - Which databases and file formats does this service support?
+  - Inspect the orders table and count orders.
+  - Test the connection to an existing PostgreSQL source.
+version: 1.1.0
 author: RhinoLink Tech
 """
 
