@@ -1,8 +1,8 @@
 {
   "title": "连接 Data Fabric",
   "title_en": "Connect Data Fabric",
-  "description": "输入自己的 Data Fabric MCP 地址和身份提供方签发的访问令牌。令牌保存在本机；过期后请重新获取并更新。",
-  "description_en": "Enter your Data Fabric MCP URL and identity-provider access token. Credentials are stored locally; replace an expired token.",
+  "description": "输入自己的 Data Fabric MCP 地址和身份提供方签发的访问令牌。令牌按 WorkBuddy 的凭证管理方式保存；过期后请重新获取并更新。",
+  "description_en": "Enter your Data Fabric MCP URL and identity-provider access token. Credentials are handled according to WorkBuddy credential management; replace an expired token.",
   "docUrl": "https://github.com/RhinoLink-Tech/data-fabric/blob/master/docs/agent-skill-zh.md",
   "docLabel": "查看部署和令牌说明",
   "fields": [
