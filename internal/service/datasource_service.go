@@ -299,68 +299,37 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *securi
 	return dataSource, nil
 }
 
-// authorizeWrite resolves the record and enforces the #9 write gate shared by
-// delete/activate/deactivate. Legacy rows are accessible only to administrators.
-func (s *dataSourceService) authorizeWrite(ctx context.Context, caller *security.Caller, id string) error {
+// mutateOwnedSource checks authorization while holding the row lock through
+// the write. The same gate is used for delete and status operations.
+func (s *dataSourceService) mutateOwnedSource(ctx context.Context, caller *security.Caller, id string, status *model.DataSourceStatus) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return repository.ErrInvalidUUID
 	}
-	dataSource, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to get data source: %w", err)
+	mutator, ok := s.repo.(repository.LockedSourceMutator)
+	if !ok {
+		return fmt.Errorf("source mutation requires transactional repository")
 	}
-	if !caller.CanWrite(dataSource) {
-		return security.ErrDataSourceAccessDenied
+	if err := mutator.MutateSourceLocked(ctx, id, status, func(ds *model.DataSource) error {
+		if !caller.CanWrite(ds) {
+			return security.ErrDataSourceAccessDenied
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
+	s.invalidatePool(id)
 	return nil
 }
-
 func (s *dataSourceService) DeleteDataSource(ctx context.Context, caller *security.Caller, id string) error {
-	if err := s.authorizeWrite(ctx, caller, id); err != nil {
-		return err
-	}
-
-	if err := s.repo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete data source: %w", err)
-	}
-
-	// A deleted source's connections must be closed, not just unreachable
-	// through the registry (#117).
-	s.invalidatePool(id)
-
-	return nil
+	return s.mutateOwnedSource(ctx, caller, id, nil)
 }
-
 func (s *dataSourceService) ActivateDataSource(ctx context.Context, caller *security.Caller, id string) error {
-	if err := s.authorizeWrite(ctx, caller, id); err != nil {
-		return err
-	}
-
-	if err := s.repo.Activate(ctx, id); err != nil {
-		return fmt.Errorf("failed to activate data source: %w", err)
-	}
-
-	// Connections pooled before deactivation may predate configuration fixes
-	// made while the source was down; start clean (#117).
-	s.invalidatePool(id)
-
-	return nil
+	status := model.DataSourceStatusActive
+	return s.mutateOwnedSource(ctx, caller, id, &status)
 }
-
 func (s *dataSourceService) DeactivateDataSource(ctx context.Context, caller *security.Caller, id string) error {
-	if err := s.authorizeWrite(ctx, caller, id); err != nil {
-		return err
-	}
-
-	if err := s.repo.Deactivate(ctx, id); err != nil {
-		return fmt.Errorf("failed to deactivate data source: %w", err)
-	}
-
-	// Deactivation means the source must stop consuming database connections
-	// immediately, not just reject new queries (#117).
-	s.invalidatePool(id)
-
-	return nil
+	status := model.DataSourceStatusInactive
+	return s.mutateOwnedSource(ctx, caller, id, &status)
 }
 
 func (s *dataSourceService) GetDataSourceStats(ctx context.Context, caller *security.Caller) (*DataSourceStatsResponse, error) {

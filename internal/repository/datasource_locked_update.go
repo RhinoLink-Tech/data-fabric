@@ -61,3 +61,32 @@ func (r *dataSourceRepository) UpdateSourceLocked(ctx context.Context, id string
 	}
 	return &ds, nil
 }
+
+// LockedSourceMutator applies authorization to the same row locked for the
+// status change or deletion, avoiding a check-then-write race.
+type LockedSourceMutator interface {
+	MutateSourceLocked(context.Context, string, *model.DataSourceStatus, func(*model.DataSource) error) error
+}
+
+func (r *dataSourceRepository) MutateSourceLocked(ctx context.Context, id string, status *model.DataSourceStatus, authorize func(*model.DataSource) error) error {
+	if authorize == nil {
+		return errors.New("source authorization callback is required")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var ds model.DataSource
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "owner_id", "tenant_id").Where("id = ?", id).First(&ds).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrDataSourceNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if err = authorize(&ds); err != nil {
+			return err
+		}
+		if status == nil {
+			return tx.Where("id = ?", id).Delete(&model.DataSource{}).Error
+		}
+		return tx.Model(&model.DataSource{}).Where("id = ?", id).Update("status", *status).Error
+	})
+}
