@@ -724,15 +724,27 @@ func matchesCSVCondition(actual interface{}, condition s3CSVCondition) bool {
 		return (actual == nil) == (condition.isNull > 0)
 	}
 	if condition.op == sqlparser.InOp || condition.op == sqlparser.NotInOp {
-		found := false
+		found, hasNull := false, false
 		for _, expected := range condition.values {
-			if actual != nil && expected != nil && compareCSVValues(actual, expected) == 0 {
+			if expected == nil {
+				hasNull = true
+				continue
+			}
+			if actual != nil && compareCSVValues(actual, expected) == 0 {
 				found = true
 				break
 			}
 		}
+		if actual == nil {
+			return false
+		}
 		if condition.op == sqlparser.NotInOp {
-			return actual != nil && !found
+			if found {
+				return false
+			}
+			// `x NOT IN (..., NULL)` is UNKNOWN when no element equals x, so the
+			// row must not be returned (#527).
+			return !hasNull
 		}
 		return found
 	}
