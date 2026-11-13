@@ -85,7 +85,7 @@ func toDataSourceResponse(dataSource *model.DataSource) *DataSourceResponse {
 		CreatedAt: dataSource.CreatedAt,
 		UpdatedAt: dataSource.UpdatedAt,
 		Config: DataSourceConfigResponse{
-			Host:            config.Host,
+			Host:            model.PublicDataSourceHost(config.Host),
 			Port:            config.Port,
 			Database:        config.Database,
 			Schema:          config.Schema,
