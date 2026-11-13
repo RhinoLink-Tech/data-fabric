@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Report a data-source rename that collides with an existing tenant name as HTTP 409 instead of an update failure (#516).
 - Return an empty query-history page when the requested offset is at the platform maximum, instead of panicking on an overflowing offset+limit (#523).
 - Mount the PostgreSQL 18 sample source volume at `/var/lib/postgresql` so the optional PostgreSQL quickstart overlay initializes instead of exiting on the old data path (#520).
 - Report Oracle columns marked nullable by the catalog as nullable in table descriptions (#529).
