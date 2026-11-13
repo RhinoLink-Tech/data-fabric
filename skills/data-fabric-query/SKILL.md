@@ -1,6 +1,6 @@
 ---
 name: data-fabric-query
-description: Discover configured Data Fabric sources and answer data questions with schema-aware, read-only SQL and bounded result batches. Use for finding tables, inspecting columns, validating queries, and retrieving results through a connected Data Fabric MCP server or equivalent tool adapter.
+description: Discover and manage configured Data Fabric sources and answer data questions with schema-aware, read-only SQL. Use for finding sources and tables, changing supported source settings, validating queries, and retrieving bounded results through a connected Data Fabric MCP server or equivalent tool adapter.
 license: Apache-2.0
 ---
 
@@ -23,6 +23,22 @@ request or existing context; when several sources plausibly match, ask the
 user to choose using their returned names and IDs. An empty list means no
 source is visible to this connection, not that the deployment has no data.
 Do not query an inactive source or try to bypass access restrictions.
+
+## Manage an existing source when requested
+
+For a source-management request, discover the advertised tools first. When
+`rename_data_source` or `set_data_source_status` is available, identify the
+source from `list_data_sources`, confirm the intended change with the user,
+then invoke the tool with its exact source ID and requested name or status.
+A source-management scope and ownership or administrator access are required;
+query permission alone is insufficient. Report the tool result and refresh
+the source listing. Do not claim a change succeeded on an error.
+
+Do not ask for database passwords, tokens or secret connection properties in
+chat or tool arguments. Creating a source or changing its credentials requires
+an independently supported secure credential-entry workflow; if the connected
+server does not offer one, direct the user to their Data Fabric administrator
+or management UI rather than inventing an MCP operation.
 
 ## Inspect metadata and prepare read-only SQL
 

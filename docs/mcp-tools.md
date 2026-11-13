@@ -15,6 +15,8 @@ client-visible contract change — update this page in the same PR.
 | `execute_sql_query` | `datasource_id`, `sql` | `source_dialect`, `parameters` (≤ 64 items; each `null`/boolean/number/string), `batch_size` (default 10000, clamped to 1–10000), `timeout` (seconds; default 60, clamped to 1–1800), `execution_mode` (`pagination` or `streaming`) | Execute a read-only query. `pagination` re-executes bounded LIMIT/OFFSET pages and releases the source connection between batches; `streaming` holds a source cursor and source resources until completion. The default prefers streaming, but server configuration can override the requested path; inspect `executionMode` in the result. `parameters` are bound by the driver to `?` (MySQL) or `$1..$N` (PostgreSQL) placeholders — never interpolated into the SQL text. |
 | `fetch_next_batch` | `query_id`, `slug`, `token` | `batch_size` (default 10000) | Fetch the next page from a previous `execute_sql_query` result. Tokens are in-memory; they do not survive a gateway restart. |
 | `get_data_source_info` | `datasource_id` | — | One data source's non-secret connection details. |
+| `rename_data_source` | `datasource_id`, `name` | — | Rename an owned source; requires authenticated `data-fabric.sources.manage` scope. Remote HTTP only. |
+| `set_data_source_status` | `datasource_id`, `status` | — | Activate or deactivate an owned source; status is `active` or `inactive`. Requires authenticated `data-fabric.sources.manage` scope. Remote HTTP only. |
 | `validate_sql_query` | `datasource_id`, `sql` | `source_dialect` | Validate a query (read-only rules, dialect) without executing it. |
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
@@ -27,6 +29,8 @@ client-visible contract change — update this page in the same PR.
 | `list_table_policy_publications` | — | `limit` (1–100; default 50) | List publisher, revision and outcome history. Administrator role required. |
 
 ## Conditional registration
+
+- Source lifecycle tools are registered for remote HTTP with the data-source service configured. They require the `data-fabric.sources.manage` scope and the existing owner/admin write check; query scope alone cannot change sources. These tools never accept connection settings or secrets.
 
 - `translate_sql` and `list_supported_dialects` are registered only when
   `sql_translation.enabled` is true (`sql_translation.*` settings).

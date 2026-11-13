@@ -51,6 +51,7 @@ type MCPServer struct {
 	server              *server.MCPServer
 	auditRecorder       auditlog.Recorder
 	tablePolicyManager  *security.TablePolicyManager
+	datasourceService   queryservice.DataSourceService
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
