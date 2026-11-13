@@ -251,6 +251,14 @@ func (v *OIDCTokenValidator) refreshKeys(ctx context.Context) error {
 }
 
 func (v *OIDCTokenValidator) ValidateMCPToken(ctx context.Context, rawToken string) (*Claims, error) {
+	payload, err := v.verifySignedOIDCToken(ctx, rawToken)
+	if err != nil {
+		return nil, err
+	}
+	return v.claimsFromVerifiedPayload(payload)
+}
+
+func (v *OIDCTokenValidator) verifySignedOIDCToken(ctx context.Context, rawToken string) ([]byte, error) {
 	if len(rawToken) == 0 || len(rawToken) > maxOIDCAccessTokenLen {
 		return nil, errors.New("invalid bearer token")
 	}
@@ -290,7 +298,7 @@ func (v *OIDCTokenValidator) ValidateMCPToken(ctx context.Context, rawToken stri
 	if !verified {
 		return nil, errors.New("invalid bearer token")
 	}
-	return v.claimsFromVerifiedPayload(payload)
+	return payload, nil
 }
 
 func (v *OIDCTokenValidator) findKeys(kid string, algorithm jose.SignatureAlgorithm) []jose.JSONWebKey {
