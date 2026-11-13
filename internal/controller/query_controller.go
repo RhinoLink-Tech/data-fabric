@@ -423,6 +423,10 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusServiceUnavailable, "QUERY_OWNER_DRAINING"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
+	case errors.Is(err, queryservice.ErrQueryAdmissionLimit), errors.Is(err, queryservice.ErrMaxConcurrentStreams):
+		// The gateway is applying its own concurrency limit, not reporting a
+		// source failure (#524).
+		return http.StatusServiceUnavailable, "QUERY_OVERLOADED"
 	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
 		return http.StatusTooManyRequests, "QUERY_RATE_LIMIT_EXCEEDED"
 	case errors.Is(err, queryservice.ErrQueryResultLimitExceeded):

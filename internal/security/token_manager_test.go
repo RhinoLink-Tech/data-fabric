@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -219,5 +220,48 @@ func TestTokenManagerStopCancelsInFlightProvider(t *testing.T) {
 	case <-canceled:
 	default:
 		t.Fatal("Stop() returned before canceling the in-flight provider")
+	}
+}
+
+// The ticker path must use the manager's own cancellable context: a provider
+// blocked on the parent context used to keep Stop waiting (#517).
+func TestTokenManagerStopCancelsTickerProvider(t *testing.T) {
+	manager := NewTokenManager(nil)
+	manager.rotationCheck = 10 * time.Millisecond
+
+	var calls atomic.Int32
+	blocked := make(chan struct{})
+	if err := manager.RegisterToken("source-1", func(ctx context.Context) (string, time.Time, error) {
+		if calls.Add(1) == 1 {
+			// Inside the rotation buffer, so the next tick rotates again.
+			return "token-1", time.Now().Add(time.Minute), nil
+		}
+		select {
+		case <-blocked:
+		default:
+			close(blocked)
+		}
+		<-ctx.Done()
+		return "", time.Time{}, ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	manager.Start(context.Background())
+	select {
+	case <-blocked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("ticker check did not reach the blocking provider")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		manager.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop blocked on a ticker provider that never saw cancellation")
 	}
 }

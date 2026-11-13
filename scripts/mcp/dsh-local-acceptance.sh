@@ -196,7 +196,7 @@ if [[ "$ready" != 1 ]]; then
 fi
 
 export DSH_ACCEPTANCE_FILE="$TMP/acceptance.json"
-python3 - "$TMP/token" "$TMP/acceptance.json" "$SOURCE_DB" "$SOURCE_USER" "$SOURCE_PASSWORD" "$API_PORT" <<'PYSTATE'
+python3 - "$TMP/token" "$TMP/acceptance.json" "$SOURCE_DB" "$SOURCE_USER" "$SOURCE_PASSWORD" "$API_PORT" "$DB_HOST" <<'PYSTATE'
 import json, sys
 from pathlib import Path
 Path(sys.argv[2]).write_text(json.dumps({
@@ -205,6 +205,7 @@ Path(sys.argv[2]).write_text(json.dumps({
     "source_user": sys.argv[4],
     "source_password": sys.argv[5],
     "api_port": int(sys.argv[6]),
+    "source_host": sys.argv[7],
 }), encoding="utf-8")
 Path(sys.argv[2]).chmod(0o600)
 PYSTATE
@@ -234,7 +235,7 @@ source = {
     "name":"dsh-synthetic-acceptance",
     "type":"mysql",
     "config":{
-        "host":"mariadb","port":3306,
+        "host":state["source_host"],"port":3306,
         "database":state["source_database"],
         "schema":state["source_database"],
         "username":state["source_user"],

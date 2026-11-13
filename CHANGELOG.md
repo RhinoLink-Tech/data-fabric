@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Register the local acceptance runner's synthetic source with the selected `--db-host` instead of the literal `mariadb` (#532).
+- Apply SQL three-valued logic to object-storage IN/NOT IN filters, so a NULL in the list excludes unmatched rows (#527).
+- Cancel the periodic token refresh with the manager's own context so shutdown cannot wait on a blocked provider call (#517).
+- Return HTTP 503 `QUERY_OVERLOADED` when the gateway's query concurrency limit rejects a request, instead of reporting a source-engine failure (#524).
+- Report a data-source rename that collides with an existing tenant name as HTTP 409 instead of an update failure (#516).
+- Return an empty query-history page when the requested offset is at the platform maximum, instead of panicking on an overflowing offset+limit (#523).
+- Mount the PostgreSQL 18 sample source volume at `/var/lib/postgresql` so the optional PostgreSQL quickstart overlay initializes instead of exiting on the old data path (#520).
+- Report Oracle columns marked nullable by the catalog as nullable in table descriptions (#529).
 - Honor the configured PostgreSQL schema in MCP table discovery when table authorization is disabled (#493).
 - Preserve exact signed 64-bit integer bind parameters received by MCP over HTTP and stdio (#486).
 - Include the selected connector type when creating a source from the management UI and report unsuccessful connection probes as failures (#484, #485).

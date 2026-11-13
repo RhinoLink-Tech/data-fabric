@@ -315,7 +315,7 @@ func openAtCapacity(ctx context.Context, w wire, source reference.Source) ([]bat
 	if err != nil {
 		return nil, err
 	}
-	if err := excess.expectError(w.kind, http.StatusBadGateway, "QUERY_ENGINE_ERROR", capacityError); err != nil {
+	if err := excess.expectError(w.kind, http.StatusServiceUnavailable, "QUERY_OVERLOADED", capacityError); err != nil {
 		return nil, err
 	}
 	return streams, nil

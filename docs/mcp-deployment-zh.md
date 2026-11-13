@@ -87,6 +87,8 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 
 `/health` 的 `version` 和 `source_revision` 表示正在运行的应用构建版本和源码 revision。发布镜像中它们应与镜像的 `org.opencontainers.image.version`、`org.opencontainers.image.revision` 标签及发布记录一致。本地源码构建的版本为 `development`；构建时未提供 revision 则显示 `unknown`。这些字段不表示 `/api/v1` 的 API 版本。已发布的 `v2.1.0-preview.1` 镜像早于此改动，仍显示旧的固定版本号。
 
+如需 PostgreSQL 示例，可在基础 Compose 文件上叠加 `docker-compose.postgres.yml`；该变体使用 PostgreSQL 18 和独立的示例数据卷，默认 MySQL 示例不变。新版挂载路径不是已有数据库的原地迁移；若旧示例卷含有需要保留的数据，请先备份并规划 PostgreSQL 迁移，新试用应使用全新的隔离示例卷。
+
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 
 下面的可选命令会向 OIDC discovery URL 和 JWKS endpoint 分别发送 HTTPS GET；受限网络环境下不要添加 `--probe-oidc`。执行前先设置身份与租户变量：

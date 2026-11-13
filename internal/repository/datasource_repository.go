@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -178,10 +180,26 @@ func (r *dataSourceRepository) Update(ctx context.Context, ds *model.DataSource)
 		Select("name", "type", "config", "status", "owner_id", "tenant_id").
 		Updates(stored)
 	if err := r.checkMutationResult(ctx, stored.ID, result); err != nil {
+		// The tenant/name constraint is the race-safe authority for uniqueness;
+		// translate its violation so a rename collision is an actionable conflict
+		// rather than a server failure (#516).
+		if isDuplicateEntry(err) {
+			return ErrDataSourceExists
+		}
 		return err
 	}
 	ds.UpdatedAt = stored.UpdatedAt
 	return nil
+}
+
+// isDuplicateEntry reports whether err is the metadata database's unique-name
+// violation (MySQL 1062, or SQLite's UNIQUE constraint failure).
+func isDuplicateEntry(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed")
 }
 
 func (r *dataSourceRepository) Delete(ctx context.Context, id string) error {
