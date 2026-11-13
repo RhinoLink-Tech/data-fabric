@@ -45,7 +45,12 @@ func flowHash(id string) (string, error) {
 // external side effects or return credentials. Retries with the same verified
 // principal recover the original source ID without repeating the callback.
 // Recovery expires after the store's TTL; callers must not infer failure from
-// an expired recovery record. This primitive has no quotas or rate limits.
+// an expired recovery record. A recovered ID does not grant access: callers
+// must reauthenticate, verify issuer and tenant, recheck current management
+// scope, source permission and existence before returning it. Reuse of a flow
+// ID always returns its first result, even if retry inputs differ; an integrating
+// API must define and enforce its request-reuse policy. This primitive has no
+// quotas, rate limits, scheduled cleanup, OIDC, CSRF protection or audit.
 func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, apply func(*gorm.DB) (string, error)) (string, error) {
 	principal, err := actor.digest()
 	if err != nil || apply == nil {
