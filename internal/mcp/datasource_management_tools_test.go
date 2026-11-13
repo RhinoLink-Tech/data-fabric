@@ -8,6 +8,7 @@ import (
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 )
@@ -26,20 +27,28 @@ func (s *managementStub) GetDataSource(_ context.Context, _ *security.Caller, id
 	}
 	return &model.DataSource{ID: id, OwnerID: "alice"}, nil
 }
-func (s *managementStub) UpdateDataSource(_ context.Context, c *security.Caller, id string, req *service.UpdateDataSourceRequest) (*model.DataSource, error) {
+func (s *managementStub) authorized(c *security.Caller) bool {
+	source := s.source
+	if source == nil {
+		source = &model.DataSource{OwnerID: "alice"}
+	}
+	return c.IsAdmin() || (c.UserID == source.OwnerID && c.TenantID == source.TenantID)
+}
+func (s *managementStub) RenameSourceScoped(_ context.Context, c *security.Caller, id, name string) (*repository.SourceMutationResult, error) {
+	if !s.authorized(c) {
+		return nil, repository.ErrDataSourceNotFound
+	}
 	s.calls++
 	s.gotCaller = c
 	if s.err != nil {
 		return nil, s.err
 	}
-	return &model.DataSource{ID: id, Name: *req.Name, Status: model.DataSourceStatusActive, Config: model.DataSourceConfig{Password: "secret-marker"}}, nil
+	return &repository.SourceMutationResult{ID: id, Name: name, Status: model.DataSourceStatusActive}, nil
 }
-func (s *managementStub) ActivateDataSource(_ context.Context, c *security.Caller, _ string) error {
-	s.calls++
-	s.gotCaller = c
-	return s.err
-}
-func (s *managementStub) DeactivateDataSource(_ context.Context, c *security.Caller, _ string) error {
+func (s *managementStub) SetSourceStatusScoped(_ context.Context, c *security.Caller, id string, status model.DataSourceStatus) error {
+	if !s.authorized(c) {
+		return repository.ErrDataSourceNotFound
+	}
 	s.calls++
 	s.gotCaller = c
 	return s.err
