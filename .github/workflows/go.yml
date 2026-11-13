@@ -200,6 +200,12 @@ jobs:
           export DF_UI_SAMPLE_PASSWORD="$(python3 -c 'import sys; sys.path.insert(0, "../../scripts/mcp"); import onboard; print(onboard.parse_env(__import__("pathlib").Path(".env"))["SAMPLE_READER_PASSWORD"])')"
           node ../../scripts/mcp/ui-release-acceptance.mjs 2>&1 | tee -a "$RUNNER_TEMP/public-reference.log"
 
+      - name: Exercise the PostgreSQL 18 sample overlay
+        env:
+          COMPOSE_PROJECT_NAME: df-pg18-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          DATA_FABRIC_IMAGE: data-fabric:public-acceptance
+        run: bash scripts/mcp/pg18-sample-acceptance.sh
+
       - name: Upload public acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7

@@ -311,7 +311,11 @@ The variant reuses the same `.env` secrets and keeps its data in a separate
 named volume, so switching back to the MySQL variant later preserves both
 data sets. The container's `postgres` superuser initializes the database;
 `sample-source-init-postgres.sh` creates the same read-only `sample_reader`
-account and `orders` rows.
+account and `orders` rows. The PostgreSQL 18 mount path changed; this is not an
+in-place migration of an existing database. If a prior sample volume contains
+data you need, back it up and plan its PostgreSQL migration before changing the
+mount. Use a fresh isolated sample volume for a new evaluation; do not silently
+delete an existing volume.
 
 Register it with the PostgreSQL connection parameters — note `type` and
 `port` differ from step 6:
