@@ -2,10 +2,13 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -55,16 +58,6 @@ func managementArgs(args map[string]any, second string) (string, string, bool) {
 	return id, value, true
 }
 
-// A subject may be reused across tenants: require an exact tenant match for
-// non-admin owners before delegating the mutation to the existing service.
-func (m *MCPServer) canManageSource(ctx context.Context, caller *security.Caller, id string) bool {
-	source, err := m.datasourceService.GetDataSource(ctx, caller, id)
-	if err != nil || source == nil {
-		return false
-	}
-	return caller.IsAdmin() || (source.OwnerID == caller.UserID && source.TenantID == caller.TenantID)
-}
-
 func (m *MCPServer) handleRenameDataSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	caller := m.managementCaller(ctx)
 	if caller == nil {
@@ -75,11 +68,15 @@ func (m *MCPServer) handleRenameDataSource(ctx context.Context, req mcp.CallTool
 	if !ok || name != strings.TrimSpace(name) || utf8.RuneCountInString(name) > 255 {
 		return mcp.NewToolResultError("provide datasource_id and a name of 1 to 255 characters without surrounding whitespace"), nil
 	}
-	if !m.canManageSource(ctx, caller, id) {
+	mutator, ok := m.datasourceService.(service.ScopedSourceManagement)
+	if !ok {
+		return mcp.NewToolResultError("source management unavailable"), nil
+	}
+	source, err := mutator.RenameSourceScoped(ctx, caller, id, name)
+	if errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_access_denied")
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
 	}
-	source, err := m.datasourceService.UpdateDataSource(ctx, caller, id, &service.UpdateDataSourceRequest{Name: &name})
 	if err != nil || source == nil {
 		return mcp.NewToolResultError("source could not be renamed; check access, identifier and name availability"), nil
 	}
@@ -95,15 +92,14 @@ func (m *MCPServer) handleSetDataSourceStatus(ctx context.Context, req mcp.CallT
 	if !ok || (status != "active" && status != "inactive") {
 		return mcp.NewToolResultError("provide datasource_id and status active or inactive"), nil
 	}
-	if !m.canManageSource(ctx, caller, id) {
+	mutator, ok := m.datasourceService.(service.ScopedSourceManagement)
+	if !ok {
+		return mcp.NewToolResultError("source management unavailable"), nil
+	}
+	err := mutator.SetSourceStatusScoped(ctx, caller, id, model.DataSourceStatus(status))
+	if errors.Is(err, repository.ErrDataSourceNotFound) || errors.Is(err, security.ErrDataSourceAccessDenied) {
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_access_denied")
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
-	}
-	var err error
-	if status == "active" {
-		err = m.datasourceService.ActivateDataSource(ctx, caller, id)
-	} else {
-		err = m.datasourceService.DeactivateDataSource(ctx, caller, id)
 	}
 	if err != nil {
 		return mcp.NewToolResultError("source status could not be changed; check access and identifier"), nil
