@@ -93,6 +93,12 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 
 // registerTools registers all available tools with the MCP server
 func (m *MCPServer) registerTools() {
+	m.addTool("list_source_types", mcp.NewTool("list_source_types",
+		mcp.WithDescription("List registered connector types and formats in this server build. These are supported types, not configured data sources; verification depends on version and scenario."),
+		mcp.WithString("type", mcp.Description("Optional exact connector type filter")),
+		mcp.WithString("category", mcp.Description("Optional exact category filter")),
+		mcp.WithString("format", mcp.Description("Optional exact file format filter, such as csv or parquet"))), m.handleListSourceTypes)
+
 	// Tool to list available data sources
 	listDataSourcesTool := mcp.NewTool("list_data_sources",
 		mcp.WithDescription("List all configured data sources in Data Fabric"))

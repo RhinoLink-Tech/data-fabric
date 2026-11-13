@@ -9,6 +9,7 @@ assume that installing this skill connects a server.
 
 | Capability / tool | Arguments | Successful payload |
 | --- | --- | --- |
+| `list_source_types` | Optional exact `type`, `category` and `format` | Registered types, per-type verification, operations and limitations; not configured sources. |
 | `list_data_sources` | None | `{"data_sources":[{"id":"…","name":"…","type":"…","status":"active"}],"count":1}` |
 | `get_data_source_info` | `datasource_id` | One source object, including `id`, `name`, `type`, `status`, and non-secret connection metadata. |
 | `list_tables` | `datasource_id` | A batch response: table names are values in `entries`, aligned with `columns`. |

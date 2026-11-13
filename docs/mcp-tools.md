@@ -11,6 +11,7 @@ client-visible contract change — update this page in the same PR.
 
 | Tool | Required | Optional | Purpose |
 | --- | --- | --- | --- |
+| `list_source_types` | — | `type`, `category`, `format` | Discover registered connector types, categories, formats version-specific verification status, operations, authentication disclosure and limitations in this server build. These are types, not configured data sources. |
 | `list_data_sources` | — | — | List the caller's data sources (own, tenant-shared, or everything for the local stdio identity). |
 | `execute_sql_query` | `datasource_id`, `sql` | `source_dialect`, `parameters` (≤ 64 items; each `null`/boolean/number/string), `batch_size` (default 10000, clamped to 1–10000), `timeout` (seconds; default 60, clamped to 1–1800), `execution_mode` (`pagination` or `streaming`) | Execute a read-only query. `pagination` re-executes bounded LIMIT/OFFSET pages and releases the source connection between batches; `streaming` holds a source cursor and source resources until completion. The default prefers streaming, but server configuration can override the requested path; inspect `executionMode` in the result. `parameters` are bound by the driver to `?` (MySQL) or `$1..$N` (PostgreSQL) placeholders — never interpolated into the SQL text. |
 | `fetch_next_batch` | `query_id`, `slug`, `token` | `batch_size` (default 10000) | Fetch the next page from a previous `execute_sql_query` result. Tokens are in-memory; they do not survive a gateway restart. |

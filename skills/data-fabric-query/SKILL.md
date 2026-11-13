@@ -1,6 +1,6 @@
 ---
 name: data-fabric-query
-description: Discover and manage configured Data Fabric sources and answer data questions with schema-aware, read-only SQL. Use for finding sources and tables, changing supported source settings, validating queries, and retrieving bounded results through a connected Data Fabric MCP server or equivalent tool adapter.
+description: Discover supported connector types and formats, manage configured Data Fabric sources and answer data questions with schema-aware, read-only SQL. Use for finding sources and tables, changing supported source settings, validating queries, and retrieving bounded results through a connected Data Fabric MCP server or equivalent tool adapter.
 license: Apache-2.0
 ---
 
@@ -9,6 +9,17 @@ license: Apache-2.0
 Use the user's connected Data Fabric tools to query configured sources. This
 skill supplies a workflow, not a connection: it contains no source credentials
 and requires a Data Fabric MCP server or an equivalent tool adapter.
+
+## Discover supported connector types and formats
+
+When asked which databases, storage systems or file formats the connected
+server supports, use `list_source_types` if advertised. Report its categories,
+formats and version-specific verification status, operations, authentication
+disclosures and limitations; registered types are not
+configured data sources. An empty filter result only means no matching type is
+registered in this server build. For older servers without the tool, explain
+that capability discovery is unavailable; do not infer it from configured
+sources. More details and limitations are in the server support catalog.
 
 ## Check the connection and select a source
 
