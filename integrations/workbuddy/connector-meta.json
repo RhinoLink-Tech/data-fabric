@@ -3,21 +3,21 @@
   "source": "data-fabric",
   "type": "mcp",
   "auth_mode": "token",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minWorkbuddyVersion": "4.24.0",
-  "name_zh": "Data Fabric 数据连接与查询",
-  "name_en": "Data Fabric Data Access",
-  "description_zh": "连接自己的 Data Fabric 服务，查看授权数据源和表结构并执行只读查询；较新服务可支持类型发现和已有数据源管理。",
-  "description_en": "Connect your Data Fabric service to inspect authorized sources and schemas and run read-only queries. Newer servers can offer source-type discovery and existing-source management.",
+  "name_zh": "Data Fabric 数据源管理与查询",
+  "name_en": "Data Fabric Source Management and Query",
+  "description_zh": "连接较新版本 Data Fabric，查询和管理数据源；服务启用安全向导时可引导新增。",
+  "description_en": "Connect a recent Data Fabric server to query and manage sources; guide creation when secure onboarding is enabled.",
   "examples_zh": [
-    "列出我有权限访问的数据源。",
-    "查看订单表字段，统计本月订单数量。",
-    "如果当前服务支持类型发现，列出支持的数据库和文件格式。"
+    "当前服务支持哪些数据库和文件格式？",
+    "服务启用安全向导时，帮我添加 PostgreSQL 数据源。",
+    "查看订单表结构并统计本月订单数量。"
   ],
   "examples_en": [
-    "List the data sources I can access.",
-    "Inspect the orders table and count this month’s orders.",
-    "If this server supports type discovery, list its databases and file formats."
+    "Which databases and file formats does this server support?",
+    "Guide me to add PostgreSQL when secure onboarding is enabled.",
+    "Inspect the orders table and count orders this month."
   ],
-  "description": "Connect your Data Fabric service to inspect authorized sources and schemas and run read-only queries. Newer servers can offer source-type discovery and existing-source management."
+  "description": "Connect a recent Data Fabric server to query and manage sources; guide creation when secure onboarding is enabled."
 }

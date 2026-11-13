@@ -58,6 +58,9 @@ var probeHostname = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // It builds driver configuration from a fixed allowlist, never from untrusted
 // URL/DSN fragments, and never downgrades a source configured for TLS.
 func (hc *HealthChecker) CheckStoredSourceConnectivity(ctx context.Context, source *model.DataSource) error {
+	if hc.connPool != nil && hc.connPool.egress != nil {
+		return hc.connPool.egress.CheckRestrictedSourceConnectivity(ctx, source)
+	}
 	if source == nil || (source.Type != model.DatabaseTypePostgreSQL && source.Type != model.DatabaseTypeMySQL) {
 		return fmt.Errorf("unsupported source type")
 	}

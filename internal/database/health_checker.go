@@ -264,6 +264,14 @@ func healthSummaryStatus(total, healthy, unhealthy int) string {
 
 // CheckDataSourceConnectivity tests connectivity to a data source without using pool
 func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config *model.DataSourceConfig, dbType model.DatabaseType) (*HealthCheckResult, error) {
+	if hc.connPool != nil && hc.connPool.egress != nil {
+		if config == nil {
+			return nil, ErrEgressDenied
+		}
+		if err := hc.connPool.egress.Check(&model.DataSource{Type: dbType, Config: *config}); err != nil {
+			return nil, err
+		}
+	}
 	startTime := time.Now()
 
 	result := &HealthCheckResult{

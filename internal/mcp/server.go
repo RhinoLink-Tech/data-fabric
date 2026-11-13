@@ -54,6 +54,11 @@ type MCPServer struct {
 	datasourceService        queryservice.DataSourceService
 	sourceConnectivityTester SourceConnectivityTester
 	sourceConnectivitySlots  chan struct{}
+	managementGrant          SourceManagementGrant
+	onboardingCoordinator    OnboardingCoordinator
+	onboardingBaseURL        string
+	sourceTypePolicy         sourceTypePolicy
+	sourceOnboardingType     func(model.DatabaseType) bool
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -96,7 +101,7 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 // registerTools registers all available tools with the MCP server
 func (m *MCPServer) registerTools() {
 	m.addTool("list_source_types", mcp.NewTool("list_source_types",
-		mcp.WithDescription("List registered connector types and formats in this server build. These are supported types, not configured data sources; verification depends on version and scenario. Use include_details for connector limitations, operations and authentication."),
+		mcp.WithDescription("List registered connector types and formats in this server build, not configured data sources. Verification depends on version and scenario. When present, allowed_by_instance_type_policy indicates only whether this instance policy permits the type; allowed_by_onboarding_type_policy indicates the browser wizard type gate. Credentials, network, authorization and actual functionality still require verification. Use include_details for connector limitations and operations."),
 		mcp.WithString("type", mcp.Description("Optional exact connector type filter")),
 		mcp.WithString("category", mcp.Description("Optional exact category filter")),
 		mcp.WithString("format", mcp.Description("Optional exact file format filter, such as csv or parquet")),

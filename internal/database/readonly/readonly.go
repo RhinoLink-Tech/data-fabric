@@ -180,3 +180,8 @@ func (c initConnector) Connect(ctx context.Context) (driver.Conn, error) {
 func (c initConnector) Driver() driver.Driver {
 	return c.base.Driver()
 }
+
+// WrapMySQLConnector enforces the session mode on each physical connection.
+func WrapMySQLConnector(base driver.Connector) driver.Connector {
+	return initConnector{base: base, initSQL: MySQLInitSQL}
+}

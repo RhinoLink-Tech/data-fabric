@@ -5,9 +5,11 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"net/url"
+	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -104,37 +106,27 @@ func (d *MySQLDriver) GetDefaultPort() int {
 }
 
 func (d *MySQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
-		config.Username,
-		config.Password,
-		config.Host,
-		config.Port,
-		config.Database,
-	)
-
-	// Add parameters
-	params := []string{}
+	if config == nil || !safeDSNHost(config.Host) || config.Port < 1 || config.Port > 65535 || strings.Contains(config.Username, ":") || (config.Username == "" && config.Password != "") {
+		return ""
+	}
+	c := mysql.NewConfig()
+	c.User, c.Passwd = config.Username, config.Password
+	c.Net, c.Addr = "tcp", net.JoinHostPort(strings.Trim(config.Host, "[]"), strconv.Itoa(config.Port))
+	c.DBName = config.Database
 	if config.SSL {
-		params = append(params, "tls=true")
+		c.TLSConfig = "true"
 	}
 	if config.SSLRootCert != "" {
-		params = append(params, mysqlTLSRootCertParam+"="+url.QueryEscape(config.SSLRootCert))
+		c.Params = map[string]string{mysqlTLSRootCertParam: config.SSLRootCert}
 	}
 	if config.Timezone != "" {
-		params = append(params, "loc="+config.Timezone)
-	}
-
-	if len(params) > 0 {
-		dsn += "?"
-		for i, param := range params {
-			if i > 0 {
-				dsn += "&"
-			}
-			dsn += param
+		loc, err := time.LoadLocation(config.Timezone)
+		if err != nil {
+			return ""
 		}
+		c.Loc = loc
 	}
-
-	return dsn
+	return c.FormatDSN()
 }
 
 func (d *MySQLDriver) GetDatabaseTypeName() string {

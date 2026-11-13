@@ -39,6 +39,14 @@ func NewOIDCIDTokenVerifier(ctx context.Context, issuer, clientID string, client
 	return &OIDCIDTokenVerifier{keys: keys, clientID: clientID}, nil
 }
 
+// Issuer returns the verifier fixed trusted issuer.
+func (v *OIDCIDTokenVerifier) Issuer() string {
+	if v == nil || v.keys == nil {
+		return ""
+	}
+	return v.keys.issuer
+}
+
 // Verify validates an ID token from a code exchange against the nonce bound to
 // that one-time login request. Callers must separately enforce single-use
 // state, browser binding, tenant mapping and management authorization.

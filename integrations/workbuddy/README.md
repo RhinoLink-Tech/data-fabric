@@ -21,7 +21,7 @@ The connector uses Streamable HTTP and the WorkBuddy user-supplied credential fo
 
 The package uses `auth_mode: token`; this is a manually supplied OIDC access token, not an automated OAuth flow or a long-lived Data Fabric API key. WorkBuddy handles the credential according to its credential management behavior. A tenant's own policies govern where its service and identity provider run. Never include tokens, keys, or production data in a package or screenshot.
 
-The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. `source: data-fabric` must be checked for global availability on the platform. Change the source and matching MCP server key if the platform rejects it. The skill's version and connector version are currently 1.1.0; update both intentionally for new marketplace submissions.
+The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. `source: data-fabric` must be checked for global availability on the platform. Change the source and matching MCP server key if the platform rejects it. The skill's version and connector version are currently 1.2.0; update both intentionally for new marketplace submissions.
 
 ## Capabilities and deployment version
 
@@ -33,20 +33,29 @@ and require a server build that advertises those tools; do not assume that the
 published preview image contains them.
 
 When supported and authorized, users can discover registered source types,
-rename and enable or disable existing sources, test existing non-TLS MySQL or
+rename and enable or disable existing sources, test existing MySQL or
 PostgreSQL connections, and delete a source after explicit confirmation.
 PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;
-deletion additionally requires tenant and exact-ownership checks. Creating
-sources and editing connection details or credentials are not provided by
-these MCP tools. Use the management UI or an administrator for secure setup.
-See [Quick Start](QUICKSTART-zh.md) for a user-facing walkthrough.
+deletion additionally requires tenant and exact-ownership checks.
+
+The separate browser onboarding tools in this source candidate are opt-in,
+not included in the published preview image, and have not yet passed an actual
+WorkBuddy end-to-end acceptance. When deployed and advertised, they start a
+separately authenticated browser flow and report its status; credentials are
+entered only in the browser, not in chat or MCP tool arguments. The current
+candidate supports MySQL/PostgreSQL with verified TLS or plaintext on explicitly allowed IPv4 network
+targets and ports, with a matching OIDC identity and server-side management
+grant. It does not support credential rotation or editing existing connections.
+For an unavailable or unsupported workflow use an administrator or supported
+management UI. See [Quick Start](QUICKSTART-zh.md).
 
 ## Before submitting
 
 1. On the WorkBuddy open platform, verify account eligibility, identifier availability, required metadata, and the current import/upload format. Follow [connector](https://open.workbuddy.cn/docs/connector) and [skill](https://open.workbuddy.cn/docs/skill) documentation; the platform is the authority for acceptance. The ZIP is a candidate, not evidence of approval.
 2. In WorkBuddy, install the candidate with a reachable **isolated synthetic** Data Fabric profile and a dedicated authorized identity. Complete connection and trust setup without bypassing certificate checks. Verify the connector shows the expected tools, then inspect the sample schema, validate and run a read-only query and fetch its continuation. The reference scenario and expected IDs are in the [client guide](../../docs/agent-skill-zh.md#用合成订单验收).
 3. Check invalid/expired token, denied source/table, inaccessible server, and untrusted certificate behavior; never disclose tokens in results. Record WorkBuddy version, gateway version, scenario and observed results. A standalone skill install does not configure a connection.
-4. Submit the connector for platform review; publish only after approval. Submit the standalone Skill separately if a separate Skill-market listing is desired. Review platform presentation and dependencies before release.
+4. With the candidate service and a separately authenticated, management-authorized identity, verify the tools are advertised in the actual WorkBuddy client. Begin onboarding, authenticate as the same issuer/subject/tenant, test and create an isolated synthetic PostgreSQL or MySQL source through the browser, check completion from the client, then discover and query it. Also test denied grants, expired flows, unreachable targets and untrusted certificates and disallowed endpoints without leaking secrets. Record versions and results. If any required flow fails, do not submit this candidate as complete.
+5. Only after those checks pass, submit the connector and standalone Skill separately for platform review; publish only after approval. Review platform presentation and dependencies before release.
 
 Existing WorkBuddy native connector and query validation is tracked in [#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504); this packaging does not close that issue.

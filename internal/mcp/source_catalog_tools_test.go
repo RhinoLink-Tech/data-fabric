@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"testing"
 )
 
@@ -167,4 +168,41 @@ func TestCatalogCompactByDefaultAndExplicitDetails(t *testing.T) {
 		t.Fatal("string include_details accepted")
 	}
 	t.Logf("catalog sizes: compact=%d detailed=%d bytes", len(compact), len(detailed))
+}
+
+func TestCatalogDistinguishesInstanceAndWizardTypePolicy(t *testing.T) {
+	srv := NewMCPServer(nil, nil, nil)
+	get := func(source string) map[string]any {
+		t.Helper()
+		r, err := srv.handleListSourceTypes(context.Background(), callToolRequest("list_source_types", map[string]any{"type": source}))
+		if err != nil || r.IsError {
+			t.Fatalf("catalog failed: %v", err)
+		}
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(resultText(t, r)), &payload); err != nil {
+			t.Fatal(err)
+		}
+		var types []map[string]any
+		if err := json.Unmarshal(payload["source_types"], &types); err != nil || len(types) != 1 {
+			t.Fatalf("catalog entry: %+v %v", types, err)
+		}
+		return types[0]
+	}
+	if _, ok := get("postgresql")["allowed_by_instance_type_policy"]; ok {
+		t.Fatal("unrestricted instance claimed a type policy")
+	}
+	policy, err := database.NewFixedIPEgressPolicy([]string{"127.0.0.0/8"}, []int{5432})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetSourceTypePolicy(policy, func(t model.DatabaseType) bool { return t == model.DatabaseTypePostgreSQL })
+	for _, tc := range []struct {
+		typ             string
+		allowed, wizard bool
+	}{{"postgresql", true, true}, {"mysql", true, false}, {"s3_csv", false, false}} {
+		got := get(tc.typ)
+		if got["allowed_by_instance_type_policy"] != tc.allowed || got["allowed_by_onboarding_type_policy"] != tc.wizard {
+			t.Fatalf("%s: %+v", tc.typ, got)
+		}
+	}
 }

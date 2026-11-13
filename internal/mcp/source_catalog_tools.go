@@ -5,8 +5,19 @@ import (
 	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// sourceTypePolicy is configured once at startup by a restricted deployment.
+// It only describes the type gate, not connectivity, authorization or validation.
+type sourceTypePolicy interface{ AllowsSourceType(model.DatabaseType) bool }
+
+// SetSourceTypePolicy must be called before serving requests.
+func (m *MCPServer) SetSourceTypePolicy(p sourceTypePolicy, onboarding func(model.DatabaseType) bool) {
+	m.sourceTypePolicy = p
+	m.sourceOnboardingType = onboarding
+}
 
 // sourceTypeFormat describes format-bearing connector IDs only. The empty
 // string means that this connector is not a single named file format.
@@ -63,6 +74,12 @@ func (m *MCPServer) handleListSourceTypes(_ context.Context, req mcp.CallToolReq
 			continue
 		}
 		item := map[string]any{"type": entry.Type, "category": entry.Category, "status": entry.Status, "end_to_end_verified": entry.EndToEndVerified}
+		if m.sourceTypePolicy != nil {
+			item["allowed_by_instance_type_policy"] = m.sourceTypePolicy.AllowsSourceType(model.DatabaseType(entry.Type))
+			if m.sourceOnboardingType != nil {
+				item["allowed_by_onboarding_type_policy"] = m.sourceOnboardingType(model.DatabaseType(entry.Type))
+			}
+		}
 		if details {
 			item["version_policy"] = entry.VersionPolicy
 			item["limitations"] = entry.Limitations
@@ -82,5 +99,9 @@ func (m *MCPServer) handleListSourceTypes(_ context.Context, req mcp.CallToolReq
 		}
 		types = append(types, item)
 	}
-	return mcpTablePolicyJSON(map[string]any{"source_types": types, "count": len(types), "meaning": "Registered connector types in this server build; these are not configured data sources. Verification is version- and scenario-specific; set include_details to true for operations, limitations and authentication details."})
+	payload := map[string]any{"source_types": types, "count": len(types), "meaning": "Registered connector types in this server build; these are not configured data sources. Verification is version- and scenario-specific; set include_details to true for operations, limitations and authentication details."}
+	if m.sourceTypePolicy != nil {
+		payload["instance_type_policy_meaning"] = "allowed_by_instance_type_policy reflects only this instance type restriction; allowed_by_onboarding_type_policy reflects the browser wizard type gate. Neither guarantees availability. Configuration, network policy, authentication, authorization and actual connector capabilities must still be verified."
+	}
+	return mcpTablePolicyJSON(payload)
 }

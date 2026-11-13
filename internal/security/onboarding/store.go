@@ -40,9 +40,14 @@ func (p Principal) digest() (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+func (p Principal) tenantDigest() (string, error) {
+	return (Principal{Issuer: p.Issuer, Subject: "tenant-quota-v1", Tenant: p.Tenant}).digest()
+}
+
 type record struct {
 	IDHash        string `gorm:"primaryKey;size:64"`
 	PrincipalHash string `gorm:"size:64;not null"`
+	TenantHash    string `gorm:"size:64;index"`
 	ExpiresAt     int64  `gorm:"not null;index"`
 }
 
@@ -94,6 +99,8 @@ func Migrate(db *gorm.DB) error {
 
 // Begin returns a random correlation ID, not a credential. It never grants
 // access; all reads and mutations additionally require the verified principal.
+// Deprecated: this legacy helper is unbounded and MUST NOT be used by a public
+// endpoint. Production onboarding MUST use BeginBounded and provision quotas.
 func (s *Store) Begin(ctx context.Context, actor Principal) (string, error) {
 	principal, err := actor.digest()
 	if err != nil {
@@ -109,7 +116,11 @@ func (s *Store) Begin(ctx context.Context, actor Principal) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	row := record{IDHash: hex.EncodeToString(hash[:]), PrincipalHash: principal, ExpiresAt: now + s.ttl.Milliseconds()}
+	tenantHash, err := actor.tenantDigest()
+	if err != nil {
+		return "", err
+	}
+	row := record{IDHash: hex.EncodeToString(hash[:]), PrincipalHash: principal, TenantHash: tenantHash, ExpiresAt: now + s.ttl.Milliseconds()}
 	if err = s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return "", fmt.Errorf("store onboarding flow: %w", err)
 	}

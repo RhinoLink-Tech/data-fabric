@@ -158,11 +158,13 @@ type DataSourceConfig struct {
 	SSL             bool                   `json:"ssl"`
 	SSLMode         string                 `json:"sslMode,omitempty"`
 	SSLRootCert     string                 `json:"sslRootCert,omitempty"`
-	Timeout         int                    `json:"timeout"`     // Connection timeout in seconds, default 30
-	MaxPoolSize     int                    `json:"maxPoolSize"` // Maximum pool size, default 10
-	IdleTimeout     int                    `json:"idleTimeout"` // Idle timeout in seconds, default 600
-	MaxLifetime     int                    `json:"maxLifetime"` // Max connection lifetime in seconds, default 1800
-	Timezone        string                 `json:"timezone"`    // Database timezone
+	TLSServerName   string                 `json:"tlsServerName,omitempty"` // Original verified hostname for pinned WorkBuddy sources
+	TLSCA           string                 `json:"tlsCA,omitempty"`         // Operator-provisioned trust anchor alias
+	Timeout         int                    `json:"timeout"`                 // Connection timeout in seconds, default 30
+	MaxPoolSize     int                    `json:"maxPoolSize"`             // Maximum pool size, default 10
+	IdleTimeout     int                    `json:"idleTimeout"`             // Idle timeout in seconds, default 600
+	MaxLifetime     int                    `json:"maxLifetime"`             // Max connection lifetime in seconds, default 1800
+	Timezone        string                 `json:"timezone"`                // Database timezone
 	AdditionalProps map[string]interface{} `json:"additionalProps,omitempty"`
 }
 

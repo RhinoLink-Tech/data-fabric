@@ -15,7 +15,18 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
 
+type strictTenantContextKey struct{}
+
+// StrictTenantHTTPHandler enables tenant isolation for all requests in an
+// explicitly configured deployment. It must wrap the authenticated MCP handler.
+func StrictTenantHTTPHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), strictTenantContextKey{}, true)))
+	})
+}
+
 type callerContextKey struct{}
+type verifiedIdentityContextKey struct{}
 type auditCorrelationIDKey struct{}
 type auditTransportKey struct{}
 
@@ -96,8 +107,10 @@ func authenticateMCPRequests(tokenValidator MCPTokenValidator, next http.Handler
 		}
 
 		caller := security.CallerFromClaims(claims)
+		caller.StrictTenantIsolation, _ = r.Context().Value(strictTenantContextKey{}).(bool)
 		recordMCPAuthSuccess(recorder, r.Context(), correlationID, caller)
 		ctx = context.WithValue(r.Context(), callerContextKey{}, caller)
+		ctx = context.WithValue(ctx, verifiedIdentityContextKey{}, verifiedOnboardingIdentity{Issuer: claims.Issuer, Subject: claims.Subject, Tenant: claims.TenantID})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

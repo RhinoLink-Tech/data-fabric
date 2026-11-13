@@ -30,7 +30,7 @@ func (r *dataSourceRepository) mutateSourceScoped(ctx context.Context, scope Sou
 		return nil, ErrDataSourceNotFound
 	}
 	var output SourceMutationResult
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := SourceManagementDB(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		scoped := func(q *gorm.DB) *gorm.DB { return scopedSource(q, scope, id) }
 
 		// The database acquires the row lock for the conditional update and keeps
@@ -94,7 +94,7 @@ func (r *dataSourceRepository) DeleteSourceScoped(ctx context.Context, scope Sou
 	if scope.OwnerID == "" || expectedName == "" {
 		return ErrDataSourceNotFound
 	}
-	q := scopedSource(r.db.WithContext(ctx), scope, id)
+	q := scopedSource(SourceManagementDB(ctx, r.db), scope, id)
 	result := byteEqual(q, "name", expectedName).Delete(&model.DataSource{})
 	if result.Error != nil {
 		return result.Error

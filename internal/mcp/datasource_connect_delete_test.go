@@ -129,7 +129,27 @@ func TestConnectionProbeSuccessAndRejectsCustomCA(t *testing.T) {
 	}
 	stub.source.Config.SSLRootCert = "/tmp/example-ca"
 	result, err = srv.handleTestDataSourceConnection(ctx, req)
-	if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "TLS sources") {
+	if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "certificate paths") {
 		t.Fatal("custom CA file should be rejected before probing")
+	}
+}
+
+func TestConnectionProbeDelegatesTLS(t *testing.T) {
+	source := &model.DataSource{ID: "id", OwnerID: "alice", TenantID: "a", Type: model.DatabaseTypePostgreSQL, Config: model.DataSourceConfig{SSL: true, TLSServerName: "db.example.test", TLSCA: "custom"}}
+	srv := NewMCPServer(nil, nil, nil)
+	srv.SetDataSourceManagementService(&managementStub{source: source})
+	caller := &security.Caller{UserID: "alice", TenantID: "a", Scopes: []string{sourceManagementScope}}
+	ctx := context.WithValue(context.Background(), callerContextKey{}, caller)
+	req := callToolRequest("test_data_source_connection", map[string]any{"datasource_id": "id"})
+	tester := &probeStub{}
+	srv.SetSourceConnectivityTester(tester)
+	result, err := srv.handleTestDataSourceConnection(ctx, req)
+	if err != nil || result.IsError {
+		t.Fatal("TLS probe was not delegated")
+	}
+	tester.err = errors.New("certificate rejected")
+	result, err = srv.handleTestDataSourceConnection(ctx, req)
+	if err != nil || !result.IsError {
+		t.Fatal("TLS verifier failure was not propagated")
 	}
 }
