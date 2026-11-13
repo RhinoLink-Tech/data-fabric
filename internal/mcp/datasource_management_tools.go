@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -67,6 +68,7 @@ func (m *MCPServer) canManageSource(ctx context.Context, caller *security.Caller
 func (m *MCPServer) handleRenameDataSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	caller := m.managementCaller(ctx)
 	if caller == nil {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_scope_required")
 		return mcp.NewToolResultError("source management permission required"), nil
 	}
 	id, name, ok := managementArgs(req.GetArguments(), "name")
@@ -74,6 +76,7 @@ func (m *MCPServer) handleRenameDataSource(ctx context.Context, req mcp.CallTool
 		return mcp.NewToolResultError("provide datasource_id and a name of 1 to 255 characters without surrounding whitespace"), nil
 	}
 	if !m.canManageSource(ctx, caller, id) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_access_denied")
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
 	}
 	source, err := m.datasourceService.UpdateDataSource(ctx, caller, id, &service.UpdateDataSourceRequest{Name: &name})
@@ -85,6 +88,7 @@ func (m *MCPServer) handleRenameDataSource(ctx context.Context, req mcp.CallTool
 func (m *MCPServer) handleSetDataSourceStatus(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	caller := m.managementCaller(ctx)
 	if caller == nil {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_scope_required")
 		return mcp.NewToolResultError("source management permission required"), nil
 	}
 	id, status, ok := managementArgs(req.GetArguments(), "status")
@@ -92,6 +96,7 @@ func (m *MCPServer) handleSetDataSourceStatus(ctx context.Context, req mcp.CallT
 		return mcp.NewToolResultError("provide datasource_id and status active or inactive"), nil
 	}
 	if !m.canManageSource(ctx, caller, id) {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_access_denied")
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
 	}
 	var err error

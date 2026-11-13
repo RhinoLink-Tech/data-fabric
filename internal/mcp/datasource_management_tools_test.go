@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -113,5 +114,24 @@ func TestManagementRequiresMatchingOwnerAndTenant(t *testing.T) {
 	result, err := srv.handleSetDataSourceStatus(ctx, callToolRequest("set_data_source_status", map[string]any{"datasource_id": "id", "status": "inactive"}))
 	if err != nil || result.IsError || stub.calls != 1 {
 		t.Fatalf("owner mutation failed: %+v, %v", result, err)
+	}
+}
+
+func TestManagementAuthorizationDenialsAreAudited(t *testing.T) {
+	srv := NewMCPServer(nil, nil, nil)
+	srv.SetDataSourceManagementService(&managementStub{source: &model.DataSource{ID: "id", OwnerID: "alice", TenantID: "a"}})
+	for _, test := range []struct {
+		caller *security.Caller
+		reason string
+	}{
+		{&security.Caller{UserID: "alice"}, "source_management_scope_required"},
+		{&security.Caller{UserID: "alice", TenantID: "b", Scopes: []string{sourceManagementScope}}, "source_management_access_denied"},
+	} {
+		ctx := auditlog.WithCapture(context.WithValue(context.Background(), callerContextKey{}, test.caller))
+		result, err := srv.handleRenameDataSource(ctx, callToolRequest("rename_data_source", map[string]any{"datasource_id": "id", "name": "new"}))
+		decision, reason := auditlog.CapturedDecision(ctx)
+		if err != nil || !result.IsError || decision != auditlog.DecisionDeny || reason != test.reason {
+			t.Fatalf("audit: result=%+v error=%v decision=%s reason=%s", result, err, decision, reason)
+		}
 	}
 }
