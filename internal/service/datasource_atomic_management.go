@@ -50,3 +50,20 @@ func (s *dataSourceService) SetSourceStatusScoped(ctx context.Context, caller *s
 	s.invalidatePool(id)
 	return nil
 }
+
+// ScopedSourceDeletion deletes only the named source and invalidates its pool.
+type ScopedSourceDeletion interface {
+	DeleteSourceScoped(context.Context, *security.Caller, string, string) error
+}
+
+func (s *dataSourceService) DeleteSourceScoped(ctx context.Context, caller *security.Caller, id, expectedName string) error {
+	repo, scope, err := s.atomicManagement(caller, id)
+	if err != nil {
+		return err
+	}
+	if err = repo.DeleteSourceScoped(ctx, scope, id, expectedName); err != nil {
+		return err
+	}
+	s.invalidatePool(id)
+	return nil
+}

@@ -131,6 +131,25 @@ func TestScopedManagementMySQLConcurrentContract(t *testing.T) {
 	if _, err = mutator.RenameSourceScoped(ctx, scope, source.ID, "collision"); !errors.Is(err, ErrDataSourceExists) {
 		t.Fatalf("unique collision: %v", err)
 	}
+	for _, tc := range []struct {
+		who  SourceWriteScope
+		name string
+	}{
+		{SourceWriteScope{OwnerID: "ALICE", TenantID: "a"}, "renamed"},
+		{SourceWriteScope{OwnerID: "alice", TenantID: "A"}, "renamed"},
+		{scope, "RENAMED"}, {scope, "renamed "},
+		{scope, "orders"},
+	} {
+		if err = mutator.DeleteSourceScoped(ctx, tc.who, source.ID, tc.name); !errors.Is(err, ErrDataSourceNotFound) {
+			t.Fatalf("nonexact delete accepted: %v", err)
+		}
+	}
+	if err = mutator.DeleteSourceScoped(ctx, scope, source.ID, "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.GetByID(ctx, source.ID); !errors.Is(err, ErrDataSourceNotFound) {
+		t.Fatal("deleted source remained")
+	}
 }
 
 type errTokenNotUpdated struct{}

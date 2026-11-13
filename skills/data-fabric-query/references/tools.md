@@ -33,15 +33,18 @@ Table discovery itself can be batched: check its
 
 These tools are conditional: discover them on the connected remote server and
 check its advertised schema. They require the `data-fabric.sources.manage`
-scope and source ownership or administrator permission. Confirm the intended
+scope and source ownership or administrator permission. Deletion additionally
+requires exact ownership and tenant match even for administrators. Confirm the intended
 source and operation with the user before making changes.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
 | `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
 | `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
+| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL without TLS only; TLS connections are never downgraded. PostgreSQL probing requires Linux with readable /proc/self/environ and is disabled when protocol debugging is enabled. |
+| `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
 
-These tools do not create, test, delete, or change connection settings. Never
+These tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed. Never
 ask for database credentials in chat or pass them as tool arguments. When a
 secure source onboarding method is unavailable, direct the user to their
 Data Fabric administrator instead of claiming the operation completed.

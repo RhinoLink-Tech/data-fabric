@@ -46,6 +46,19 @@ A source-management scope and ownership or administrator access are required;
 query permission alone is insufficient. Report the tool result and refresh
 the source listing. Do not claim a change succeeded on an error.
 
+When asked to test an existing MySQL or PostgreSQL source, use
+`test_data_source_connection` if advertised. Report its success or failure;
+do not infer that a failure reveals the password or source configuration.
+
+For deletion, obtain an explicit confirmation from the user after presenting
+the source name and ID and explaining that removal is permanent. Only after
+confirmation, call `delete_data_source` with that ID and the exact confirmed
+name. The name check does not itself prove human confirmation; rely on the
+client's independent confirmation and permission controls. If the name changes
+or the tool rejects the operation, stop and ask the
+user to review the source again. Do not treat a general request to manage
+sources as confirmation to delete a specific source.
+
 Do not ask for database passwords, tokens or secret connection properties in
 chat or tool arguments. Creating a source or changing its credentials requires
 an independently supported secure credential-entry workflow; if the connected

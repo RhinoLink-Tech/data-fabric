@@ -43,15 +43,17 @@ type SchemaQualifiedTableDescriber interface {
 
 // MCPServer represents the MCP server that exposes Data Fabric functionality
 type MCPServer struct {
-	unifiedQueryService unifiedservice.UnifiedQueryService
-	datasourceRepo      repository.DataSourceRepository
-	tableDescriber      TableDescriber
-	tableAuthorizer     *security.TableAuthorizer
-	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
-	server              *server.MCPServer
-	auditRecorder       auditlog.Recorder
-	tablePolicyManager  *security.TablePolicyManager
-	datasourceService   queryservice.DataSourceService
+	unifiedQueryService      unifiedservice.UnifiedQueryService
+	datasourceRepo           repository.DataSourceRepository
+	tableDescriber           TableDescriber
+	tableAuthorizer          *security.TableAuthorizer
+	sqlTranslator            *sql_translator.SQLTranslationManager // Added SQL translator
+	server                   *server.MCPServer
+	auditRecorder            auditlog.Recorder
+	tablePolicyManager       *security.TablePolicyManager
+	datasourceService        queryservice.DataSourceService
+	sourceConnectivityTester SourceConnectivityTester
+	sourceConnectivitySlots  chan struct{}
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves

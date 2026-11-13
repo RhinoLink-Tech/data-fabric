@@ -22,6 +22,7 @@ type SourceMutationResult struct {
 type AtomicSourceManagement interface {
 	RenameSourceScoped(context.Context, SourceWriteScope, string, string) (*SourceMutationResult, error)
 	SetSourceStatusScoped(context.Context, SourceWriteScope, string, model.DataSourceStatus) error
+	DeleteSourceScoped(context.Context, SourceWriteScope, string, string) error
 }
 
 func (r *dataSourceRepository) mutateSourceScoped(ctx context.Context, scope SourceWriteScope, id string, values map[string]any) (*SourceMutationResult, error) {
@@ -30,22 +31,8 @@ func (r *dataSourceRepository) mutateSourceScoped(ctx context.Context, scope Sou
 	}
 	var output SourceMutationResult
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		scoped := func(q *gorm.DB) *gorm.DB {
-			q = q.Model(&model.DataSource{}).Where("id = ?", id)
-			if !scope.Admin {
-				// Identity and tenant claims are opaque bytes: MySQL's default
-				// collations can ignore case, accents, or trailing spaces.
-				switch tx.Dialector.Name() {
-				case "mysql":
-					q = q.Where("CAST(owner_id AS BINARY) = CAST(? AS BINARY) AND CAST(tenant_id AS BINARY) = CAST(? AS BINARY)", scope.OwnerID, scope.TenantID)
-				case "sqlite":
-					q = q.Where("CAST(owner_id AS BLOB) = CAST(? AS BLOB) AND CAST(tenant_id AS BLOB) = CAST(? AS BLOB)", scope.OwnerID, scope.TenantID)
-				default:
-					q = q.Where("1 = 0")
-				}
-			}
-			return q
-		}
+		scoped := func(q *gorm.DB) *gorm.DB { return scopedSource(q, scope, id) }
+
 		// The database acquires the row lock for the conditional update and keeps
 		// it until the subsequent read, including when the requested value matches.
 		result := scoped(tx).Updates(values)
@@ -76,4 +63,44 @@ func (r *dataSourceRepository) RenameSourceScoped(ctx context.Context, scope Sou
 func (r *dataSourceRepository) SetSourceStatusScoped(ctx context.Context, scope SourceWriteScope, id string, status model.DataSourceStatus) error {
 	_, err := r.mutateSourceScoped(ctx, scope, id, map[string]any{"status": status})
 	return err
+}
+
+// byteEqual uses binary comparison because the configured MySQL collation may
+// ignore case, accents, or trailing spaces; fail closed for other dialects.
+func byteEqual(q *gorm.DB, column, value string) *gorm.DB {
+	switch q.Dialector.Name() {
+	case "mysql":
+		return q.Where("CAST("+column+" AS BINARY) = CAST(? AS BINARY)", value)
+	case "sqlite":
+		return q.Where("CAST("+column+" AS BLOB) = CAST(? AS BLOB)", value)
+	default:
+		return q.Where("1 = 0")
+	}
+}
+func scopedSource(q *gorm.DB, scope SourceWriteScope, id string) *gorm.DB {
+	q = q.Model(&model.DataSource{}).Where("id = ?", id)
+	if !scope.Admin {
+		q = byteEqual(q, "owner_id", scope.OwnerID)
+		q = byteEqual(q, "tenant_id", scope.TenantID)
+	}
+	return q
+}
+
+// DeleteSourceScoped compares the displayed source name in the DELETE itself,
+// so a rename or ownership change cannot redirect a confirmed deletion.
+func (r *dataSourceRepository) DeleteSourceScoped(ctx context.Context, scope SourceWriteScope, id, expectedName string) error {
+	// Deletion requires ownership in the exact tenant even for an admin.
+	scope.Admin = false
+	if scope.OwnerID == "" || expectedName == "" {
+		return ErrDataSourceNotFound
+	}
+	q := scopedSource(r.db.WithContext(ctx), scope, id)
+	result := byteEqual(q, "name", expectedName).Delete(&model.DataSource{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrDataSourceNotFound
+	}
+	return nil
 }
