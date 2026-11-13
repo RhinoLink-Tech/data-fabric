@@ -9,6 +9,8 @@ license: Apache-2.0
 Use the user's connected Data Fabric tools to query configured sources. This
 skill supplies a workflow, not a connection: it contains no source credentials
 and requires a Data Fabric MCP server or an equivalent tool adapter.
+For WorkBuddy installation, service requirements, and examples, see
+[WorkBuddy setup](references/workbuddy-setup-zh.md).
 
 ## Discover supported connector types and formats
 

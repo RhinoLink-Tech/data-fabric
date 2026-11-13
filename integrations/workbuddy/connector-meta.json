@@ -7,17 +7,17 @@
   "minWorkbuddyVersion": "4.24.0",
   "name_zh": "Data Fabric 数据连接与查询",
   "name_en": "Data Fabric Data Access",
-  "description_zh": "连接自己的 Data Fabric 服务，发现支持的数据源类型、查询授权数据，并在服务支持时管理已有数据源。",
-  "description_en": "Connect your Data Fabric service to discover supported source types, query authorized data, and manage existing sources when available.",
+  "description_zh": "连接自己的 Data Fabric 服务，查看授权数据源和表结构并执行只读查询；较新服务可支持类型发现和已有数据源管理。",
+  "description_en": "Connect your Data Fabric service to inspect authorized sources and schemas and run read-only queries. Newer servers can offer source-type discovery and existing-source management.",
   "examples_zh": [
-    "当前服务支持哪些数据库和文件格式？",
-    "列出我有权限访问的数据源，查看订单表并统计订单数量。",
-    "测试已配置的 PostgreSQL 数据源连接。"
+    "列出我有权限访问的数据源。",
+    "查看订单表字段，统计本月订单数量。",
+    "如果当前服务支持类型发现，列出支持的数据库和文件格式。"
   ],
   "examples_en": [
-    "Which databases and file formats does this service support?",
-    "List my accessible sources, inspect the orders table, and count orders.",
-    "Test the connection to an existing PostgreSQL source."
+    "List the data sources I can access.",
+    "Inspect the orders table and count this month’s orders.",
+    "If this server supports type discovery, list its databases and file formats."
   ],
-  "description": "Connect your Data Fabric service to discover supported source types, query authorized data, and manage existing sources when available."
+  "description": "Connect your Data Fabric service to inspect authorized sources and schemas and run read-only queries. Newer servers can offer source-type discovery and existing-source management."
 }

@@ -52,6 +52,13 @@ class PackageTest(unittest.TestCase):
                         for key in ("display_name:", "display_name_en:", "description_zh:",
                                     "description_en:", "version:", "author:"):
                             self.assertIn(key, a.decode().split("\n---\n", 1)[0])
+                guide_path = "references/workbuddy-setup-zh.md"
+                entry = standalone.read("data-fabric-query/SKILL.md").decode()
+                self.assertIn(guide_path, entry)
+                guide = standalone.read("data-fabric-query/" + guide_path).decode()
+                self.assertIn("v2.1.0-preview.1", guide)
+                self.assertIn("不提供新建数据源", guide)
+                self.assertIn("较新服务", meta["description_zh"])
                 self.assertTrue(connector.read("icon.png").startswith(b"\x89PNG\r\n\x1a\n"))
 
 
