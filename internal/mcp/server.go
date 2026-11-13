@@ -116,12 +116,7 @@ func (m *MCPServer) registerTools() {
 		mcp.WithArray("parameters", mcp.Description("Ordered values bound by the driver to ? (MySQL) or $1..$N (PostgreSQL) placeholders; never interpolated into the SQL text"),
 			mcp.MaxItems(64),
 			mcp.Items(map[string]interface{}{
-				"oneOf": []interface{}{
-					map[string]interface{}{"type": "null"},
-					map[string]interface{}{"type": "boolean"},
-					map[string]interface{}{"type": "number"},
-					map[string]interface{}{"type": "string"},
-				},
+				"type": []string{"null", "boolean", "number", "string"},
 			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
 		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")),
