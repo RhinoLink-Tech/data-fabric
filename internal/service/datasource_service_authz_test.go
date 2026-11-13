@@ -36,6 +36,23 @@ func authzFixture() *model.DataSource {
 	}
 }
 
+func (r *authzRepositoryStub) MutateSourceLocked(ctx context.Context, id string, status *model.DataSourceStatus, authorize func(*model.DataSource) error) error {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err = authorize(ds); err != nil {
+		return err
+	}
+	if status == nil {
+		return r.Delete(ctx, id)
+	}
+	if *status == model.DataSourceStatusActive {
+		return r.Activate(ctx, id)
+	}
+	return r.Deactivate(ctx, id)
+}
+
 func (r *authzRepositoryStub) GetByID(context.Context, string) (*model.DataSource, error) {
 	if r.existing == nil {
 		return nil, repository.ErrDataSourceNotFound
