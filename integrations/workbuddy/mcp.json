@@ -2,7 +2,7 @@
   "mcpServers": {
     "data-fabric": {
       "type": "streamableHttp",
-      "url": "${DATA_FABRIC_MCP_URL}",
+      "url": "https://${DATA_FABRIC_MCP_ENDPOINT}",
       "headers": {
         "Authorization": "Bearer ${DATA_FABRIC_ACCESS_TOKEN}"
       },

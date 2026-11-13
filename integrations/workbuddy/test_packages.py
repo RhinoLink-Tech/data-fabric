@@ -29,6 +29,9 @@ class PackageTest(unittest.TestCase):
                 self.assertEqual(len(config["mcpServers"]), 1)
                 server = config["mcpServers"][meta["source"]]
                 self.assertEqual(server["type"], "streamableHttp")
+                # WorkBuddy rejects URL templates without an explicit protocol.
+                self.assertEqual(server["url"], "https://${DATA_FABRIC_MCP_ENDPOINT}")
+                self.assertEqual(server["url"].replace("${DATA_FABRIC_MCP_ENDPOINT}", "example.test:8443/mcp"), "https://example.test:8443/mcp")
                 refs = set(re.findall(r"\$\{([A-Z_]+)\}", json.dumps(server)))
                 fields = {field["key"]: field for field in form["fields"]}
                 self.assertEqual(refs, set(fields))
