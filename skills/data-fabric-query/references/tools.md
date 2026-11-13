@@ -28,6 +28,23 @@ report the metadata limitation rather than assuming it was resolved.
 Table discovery itself can be batched: check its
 `nextUri` before claiming the list is complete.
 
+## Manage an existing source
+
+These tools are conditional: discover them on the connected remote server and
+check its advertised schema. They require the `data-fabric.sources.manage`
+scope and source ownership or administrator permission. Confirm the intended
+source and operation with the user before making changes.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
+| `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
+
+These tools do not create, test, delete, or change connection settings. Never
+ask for database credentials in chat or pass them as tool arguments. When a
+secure source onboarding method is unavailable, direct the user to their
+Data Fabric administrator instead of claiming the operation completed.
+
 ## Validate and execute
 
 | Tool | Required arguments | Optional arguments |

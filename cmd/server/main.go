@@ -538,6 +538,9 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	mcpServer := mcp.NewMCPServerWithTableAuthorizer(queryService, datasourceRepo, metadataExtractor, tableAuthorizer, translationManager)
 	mcpServer.SetAuditRecorder(auditStore)
 	mcpServer.SetTablePolicyManager(tablePolicyManager)
+	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
+		mcpServer.SetDataSourceManagementService(service.NewDataSourceService(datasourceRepo, connPool, database.NewHealthChecker(connPool)))
+	}
 
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
