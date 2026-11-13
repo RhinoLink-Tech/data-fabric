@@ -17,7 +17,7 @@ For a Chinese first-use walkthrough, see [Quick Start](QUICKSTART-zh.md).
 
 ## Connection and authentication
 
-The connector uses Streamable HTTP and the WorkBuddy user-supplied credential form. Each user provides the full HTTPS `/mcp` URL of their own deployment and an identity-provider-issued MCP access token. Use a certificate the client trusts, and ensure the client can reach the server. The token must satisfy the gateway's configured issuer, audience and scope; replace it in the connector when expired. The management REST API JWT is a different credential. See [MCP deployment](../../docs/mcp-deployment.md) and [client setup](../../docs/agent-skill-zh.md).
+The connector uses Streamable HTTP and the WorkBuddy user-supplied credential form. Each user provides their deployment host, optional port and MCP path without the `https://` prefix (for example, `data-fabric.example.com/mcp`) and an identity-provider-issued MCP access token. The connector adds the HTTPS scheme. Use a certificate the client trusts, and ensure the client can reach the server. The token must satisfy the gateway's configured issuer, audience and scope; replace it in the connector when expired. The management REST API JWT is a different credential. See [MCP deployment](../../docs/mcp-deployment.md) and [client setup](../../docs/agent-skill-zh.md).
 
 The package uses `auth_mode: token`; this is a manually supplied OIDC access token, not an automated OAuth flow or a long-lived Data Fabric API key. WorkBuddy documents local storage for this mode. A tenant's own policies govern where its service and identity provider run. Never include tokens, keys, or production data in a package or screenshot.
 

@@ -7,14 +7,14 @@
   "docLabel": "查看部署和令牌说明",
   "fields": [
     {
-      "key": "DATA_FABRIC_MCP_URL",
-      "label": "MCP 地址",
-      "label_en": "MCP URL",
+      "key": "DATA_FABRIC_MCP_ENDPOINT",
+      "label": "MCP 域名、端口和路径",
+      "label_en": "MCP host, port and path",
       "type": "text",
       "required": true,
-      "placeholder": "https://data-fabric.example.com/mcp",
-      "description": "输入完整 HTTPS MCP 地址，客户端需能访问并信任服务证书。",
-      "description_en": "Enter the full HTTPS MCP URL; the client must be able to reach and trust the service."
+      "placeholder": "data-fabric.example.com/mcp",
+      "description": "填写域名、端口（如有）及 /mcp 路径，不含 https://；客户端需要能访问服务并信任证书。",
+      "description_en": "Enter the host, optional port, and /mcp path without https://. The client must reach and trust the service."
     },
     {
       "key": "DATA_FABRIC_ACCESS_TOKEN",
