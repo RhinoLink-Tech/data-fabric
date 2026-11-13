@@ -540,6 +540,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	mcpServer.SetTablePolicyManager(tablePolicyManager)
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		mcpServer.SetDataSourceManagementService(service.NewDataSourceService(datasourceRepo, connPool, database.NewHealthChecker(connPool)))
+		mcpServer.SetSourceConnectivityTester(database.NewHealthChecker(connPool))
 	}
 
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {

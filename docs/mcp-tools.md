@@ -18,6 +18,8 @@ client-visible contract change — update this page in the same PR.
 | `get_data_source_info` | `datasource_id` | — | One data source's non-secret connection details. |
 | `rename_data_source` | `datasource_id`, `name` | — | Rename an owned source; requires authenticated `data-fabric.sources.manage` scope. Remote HTTP only. |
 | `set_data_source_status` | `datasource_id`, `status` | — | Activate or deactivate an owned source; status is `active` or `inactive`. Requires authenticated `data-fabric.sources.manage` scope. Remote HTTP only. |
+| `test_data_source_connection` | `datasource_id` | — | Test an existing MySQL or PostgreSQL source with stored credentials; requires management scope and ownership. TLS sources are not supported by this probe; it never downgrades TLS. PostgreSQL probing requires Linux with readable /proc/self/environ and is disabled when PQGO_DEBUG was enabled at startup or is currently enabled. |
+| `delete_data_source` | `datasource_id`, `confirmation_name` | — | Permanently delete a source. Clients must obtain explicit human confirmation separately; the server checks the exact name, management scope, and exact owner/tenant match (including for administrators), but cannot verify that a human confirmed. |
 | `validate_sql_query` | `datasource_id`, `sql` | `source_dialect` | Validate a query (read-only rules, dialect) without executing it. |
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
