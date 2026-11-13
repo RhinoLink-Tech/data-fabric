@@ -263,6 +263,43 @@ func TestExtractTableSchemaScansMySQLInformationSchema(t *testing.T) {
 	}
 }
 
+func TestExtractTableSchemaScansOracleNullability(t *testing.T) {
+	extractor := newLookupExtractor(t, model.DatabaseTypeOracle, func(query string) driver.Rows {
+		switch {
+		case strings.Contains(query, "FROM all_tables"):
+			return &cannedRows{
+				columns: []string{"TABLE_NAME", "TYPE", "OWNER"},
+				values:  [][]driver.Value{{"ORDERS", "TABLE", "APP"}},
+			}
+		case strings.Contains(query, "FROM all_tab_columns"):
+			return &cannedRows{
+				columns: []string{"COLUMN_NAME", "DATA_TYPE", "NULLABLE", "DATA_DEFAULT", "COMMENT"},
+				values: [][]driver.Value{
+					{"ID", "NUMBER", "N", nil, ""},
+					{"NOTE", "VARCHAR2", "Y", nil, ""},
+				},
+			}
+		default:
+			return &cannedRows{}
+		}
+	})
+	defer extractor.connPool.(*cannedConnectionProvider).db.Close()
+
+	table, err := extractor.ExtractTableSchemaInSchema(context.Background(), "source-under-test", "APP", "ORDERS")
+	if err != nil {
+		t.Fatalf("ExtractTableSchemaInSchema() error = %v", err)
+	}
+	if len(table.Columns) != 2 {
+		t.Fatalf("columns = %+v, want 2", table.Columns)
+	}
+	if col := table.Columns[0]; col.Name != "ID" || col.Nullable {
+		t.Errorf("first column = %+v, want ID/not nullable", col)
+	}
+	if col := table.Columns[1]; col.Name != "NOTE" || !col.Nullable || col.Default != "" {
+		t.Errorf("second column = %+v, want NOTE/nullable/no default", col)
+	}
+}
+
 // Row-scan failures surface as errors instead of being swallowed into a
 // not-found verdict (#201 review: findTable must not hide real tables).
 func TestExtractTableSchemaPropagatesScanErrors(t *testing.T) {
