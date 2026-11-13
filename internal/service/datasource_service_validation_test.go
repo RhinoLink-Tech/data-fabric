@@ -44,6 +44,22 @@ func (r *validatingDataSourceRepositoryStub) Create(_ context.Context, dataSourc
 func (r *validatingDataSourceRepositoryStub) GetByID(context.Context, string) (*model.DataSource, error) {
 	return r.existing, nil
 }
+func (r *validatingDataSourceRepositoryStub) UpdateSourceLocked(ctx context.Context, id string, fields []string, mutate func(*model.DataSource) error) (*model.DataSource, error) {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = mutate(ds); err != nil {
+		return nil, err
+	}
+	if len(fields) > 0 {
+		if err = r.Update(ctx, ds); err != nil {
+			return nil, err
+		}
+	}
+	return ds, nil
+}
+
 func (r *validatingDataSourceRepositoryStub) Update(_ context.Context, dataSource *model.DataSource) error {
 	r.updated = dataSource
 	return nil

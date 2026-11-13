@@ -255,34 +255,37 @@ func (s *dataSourceService) UpdateDataSource(ctx context.Context, caller *securi
 		return nil, repository.ErrInvalidUUID
 	}
 
-	// Get existing data source
-	dataSource, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get data source: %w", err)
+	updater, ok := s.repo.(repository.LockedSourceUpdater)
+	if !ok {
+		return nil, fmt.Errorf("source update requires transactional repository")
 	}
-
-	// Only the owner or an administrator may change a stored data source.
-	// Legacy rows are admin-only because their original owner is unknown.
-	if !caller.CanWrite(dataSource) {
-		return nil, security.ErrDataSourceAccessDenied
-	}
-
-	// Update fields if provided
+	fields := make([]string, 0, 3)
 	if req.Name != nil {
-		dataSource.Name = *req.Name
+		fields = append(fields, "name")
 	}
 	if req.Config != nil {
-		dataSource.Config = preserveDataSourceSecrets(dataSource.Config, *req.Config)
+		fields = append(fields, "config")
 	}
 	if req.Status != nil {
-		dataSource.Status = *req.Status
+		fields = append(fields, "status")
 	}
-
-	if err := s.validateDataSourceConfig(&dataSource.Config, dataSource.Type); err != nil {
-		return nil, err
-	}
-
-	if err := s.repo.Update(ctx, dataSource); err != nil {
+	dataSource, err := updater.UpdateSourceLocked(ctx, id, fields, func(dataSource *model.DataSource) error {
+		// Authorization and secret merging use the same locked snapshot that is written.
+		if !caller.CanWrite(dataSource) {
+			return security.ErrDataSourceAccessDenied
+		}
+		if req.Name != nil {
+			dataSource.Name = *req.Name
+		}
+		if req.Config != nil {
+			dataSource.Config = preserveDataSourceSecrets(dataSource.Config, *req.Config)
+		}
+		if req.Status != nil {
+			dataSource.Status = *req.Status
+		}
+		return s.validateDataSourceConfig(&dataSource.Config, dataSource.Type)
+	})
+	if err != nil {
 		return nil, fmt.Errorf("failed to update data source: %w", err)
 	}
 
