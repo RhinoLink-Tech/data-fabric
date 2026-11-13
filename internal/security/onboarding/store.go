@@ -71,7 +71,7 @@ func dbMillis(db *gorm.DB) (int64, error) {
 	var expression string
 	switch db.Dialector.Name() {
 	case "mysql":
-		expression = "CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS SIGNED)"
+		expression = "(UNIX_TIMESTAMP() * 1000 + MICROSECOND(CURRENT_TIMESTAMP(3)) DIV 1000)"
 	case "sqlite":
 		expression = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 	default:
