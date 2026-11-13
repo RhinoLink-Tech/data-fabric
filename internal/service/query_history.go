@@ -109,10 +109,12 @@ func (h *QueryHistory) List(filter QueryHistoryFilter) *QueryHistoryPage {
 	}
 
 	total := len(visible)
-	end := offset + limit
+	// Bound the offset before adding the limit: offset + limit can overflow
+	// for a caller-supplied offset near MaxInt (#523).
 	if offset > total {
 		offset = total
 	}
+	end := offset + limit
 	if end > total {
 		end = total
 	}
