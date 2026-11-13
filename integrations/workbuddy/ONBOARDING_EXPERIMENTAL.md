@@ -90,3 +90,15 @@ streamable and owner-routed transports, independent review, and independent revi
 Compose 2.24+ supports the `!override` tags. The overlay disables the legacy API by profile and removes it from MCP dependencies; do not start that API or any unrestricted instance against this metadata database. Set the variables in the overlay, use a trusted identity provider, provision and audit grants, and configure explicit source networks and ports. This bridge does not provide TLS itself: the host tunnel must terminate HTTPS. `DATA_FABRIC_WORKBUDDY_ORIGIN` must be the exact external HTTPS origin.
 
 This overlay only addresses the container-to-host networking issue. It does not establish production readiness, certify continuous availability, configure an identity provider, or validate every connector. The initial onboarding egress mode has additional restrictions above. Recreating a sample database container may change its IP; source addresses and explicit network policy must remain consistent.
+
+## Onboarding request budget
+
+All onboarding HTTP routes share one MySQL-backed fixed-window budget across
+replicas: 300 requests per minute, including static assets and invalid paths.
+It does not use forwarded headers or persist flow IDs. Over-budget requests
+receive HTTP 429; metadata database failures and backwards clock movement
+fail closed with HTTP 503. Requests for unrelated MCP routes are unchanged.
+A fixed window may admit bursts across its boundary. Because the host tunnel
+does not provide a trusted per-user address, all clients share this quota; a
+noisy client can temporarily affect others. Use a separately configured edge
+rate limit for additional network protection and capacity planning.

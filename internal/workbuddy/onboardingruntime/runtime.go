@@ -252,13 +252,17 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 			return nil, errors.New("onboarding schema unavailable")
 		}
 	}
+	rateLimit, e := newSharedRateLimiter(o.DB, 300, 60)
+	if e != nil {
+		return nil, errors.New("onboarding rate limiter unavailable")
+	}
 	if !o.DB.Migrator().HasTable(&auditlog.Event{}) {
 		return nil, errors.New("audit schema unavailable")
 	}
 	// SQLite remains available only to isolated tests; real deployments in
 	// cmd/server use MySQL and must verify InnoDB before exposing routes.
 	if o.DB.Dialector.Name() == "mysql" {
-		if e = onboarding.RequireInnoDB(o.DB, onboarding.RequiredTables); e != nil {
+		if e = onboarding.RequireInnoDB(o.DB, append(append([]string(nil), onboarding.RequiredTables...), "df_onboarding_rate_limit")); e != nil {
 			return nil, e
 		}
 	} else if o.DB.Dialector.Name() != "sqlite" {
@@ -322,7 +326,7 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 			}
 		}
 	}()
-	runtime.Handler = route(o.Fallback, login, manager, u.Host)
+	runtime.Handler = rateLimit.wrap(route(o.Fallback, login, manager, u.Host))
 	return runtime, nil
 }
 func route(fallback http.Handler, login *browserauth.Handler, manager *web.Handler, originHost string) http.Handler {
