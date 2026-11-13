@@ -22,6 +22,22 @@ func (r *poolInvalidationRepository) GetByID(_ context.Context, _ string) (*mode
 	return r.source, nil
 }
 
+func (r *poolInvalidationRepository) UpdateSourceLocked(ctx context.Context, id string, fields []string, mutate func(*model.DataSource) error) (*model.DataSource, error) {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = mutate(ds); err != nil {
+		return nil, err
+	}
+	if len(fields) > 0 {
+		if err = r.Update(ctx, ds); err != nil {
+			return nil, err
+		}
+	}
+	return ds, nil
+}
+
 func (r *poolInvalidationRepository) Update(_ context.Context, ds *model.DataSource) error {
 	r.source = ds
 	return nil
