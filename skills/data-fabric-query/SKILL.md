@@ -13,9 +13,10 @@ and requires a Data Fabric MCP server or an equivalent tool adapter.
 ## Discover supported connector types and formats
 
 When asked which databases, storage systems or file formats the connected
-server supports, use `list_source_types` if advertised. Report its categories,
-formats and version-specific verification status, operations, authentication
-disclosures and limitations; registered types are not
+server supports, use `list_source_types` if advertised for a compact overview.
+For a specific connector or before making compatibility claims, call it again
+with its exact type and include_details=true; report the version policy,
+operations, authentication disclosure and limitations. Registered types are not
 configured data sources. An empty filter result only means no matching type is
 registered in this server build. For older servers without the tool, explain
 that capability discovery is unavailable; do not infer it from configured

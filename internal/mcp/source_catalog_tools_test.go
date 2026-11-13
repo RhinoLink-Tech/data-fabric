@@ -105,7 +105,7 @@ func TestCatalogDetailsAndDeltaFormat(t *testing.T) {
 			t.Fatalf("missing %s in delta results", name)
 		}
 	}
-	got := invoke(map[string]any{"type": "s3_csv"})
+	got := invoke(map[string]any{"type": "s3_csv", "include_details": true})
 	if len(got) != 1 {
 		t.Fatalf("type filter produced %d entries", len(got))
 	}
@@ -127,4 +127,44 @@ func TestCatalogDetailsAndDeltaFormat(t *testing.T) {
 			t.Errorf("%s did not preserve catalog value: got %s, want %s", key, a, b)
 		}
 	}
+}
+func TestCatalogCompactByDefaultAndExplicitDetails(t *testing.T) {
+	srv := NewMCPServer(nil, nil, nil)
+	response := func(args map[string]any) string {
+		t.Helper()
+		res, err := srv.handleListSourceTypes(context.Background(), callToolRequest("list_source_types", args))
+		if err != nil || res.IsError {
+			t.Fatalf("catalog error: %v", err)
+		}
+		return resultText(t, res)
+	}
+	compact := response(nil)
+	detailed := response(map[string]any{"include_details": true})
+	if len(compact)*2 >= len(detailed) {
+		t.Fatalf("compact response %d bytes is not less than half of detailed %d bytes", len(compact), len(detailed))
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(compact), &obj); err != nil {
+		t.Fatal(err)
+	}
+	var items []map[string]any
+	if err := json.Unmarshal(obj["source_types"], &items); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		for _, key := range []string{"limitations", "operations", "authentication_disclosure", "version_policy"} {
+			if _, found := item[key]; found {
+				t.Fatalf("compact entry includes %s", key)
+			}
+		}
+	}
+	// The flag is optional and false must match omission exactly.
+	if response(map[string]any{"include_details": false}) != compact {
+		t.Fatal("explicit false differs from default")
+	}
+	bad, err := srv.handleListSourceTypes(context.Background(), callToolRequest("list_source_types", map[string]any{"include_details": "true"}))
+	if err != nil || !bad.IsError {
+		t.Fatal("string include_details accepted")
+	}
+	t.Logf("catalog sizes: compact=%d detailed=%d bytes", len(compact), len(detailed))
 }
