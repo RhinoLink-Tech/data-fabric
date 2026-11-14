@@ -16,8 +16,8 @@ func TestWorkBuddyIdentityProxyContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(template)
-	if strings.Contains(text, "mcp.rhinolink.top") {
-		t.Fatal("deployment template must not contain the live hostname")
+	if !strings.Contains(text, "server_name ${DF_PUBLIC_HOST};") {
+		t.Fatal("deployment template must use the configured public hostname")
 	}
 	shared := []string{
 		"location = /identity/realms/data-fabric/protocol/openid-connect/logout/logout-confirm",
