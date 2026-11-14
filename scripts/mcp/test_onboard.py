@@ -1,6 +1,13 @@
 """Regression tests for the self-hosted onboarding helpers."""
 import base64
 import json
+import contextlib
+import io
+import os
+import shutil
+import stat
+import subprocess
+from unittest import mock
 import tempfile
 import unittest
 from pathlib import Path
@@ -66,6 +73,102 @@ class CredentialKeyringTests(unittest.TestCase):
 
             self.assertEqual(env.read_text(encoding="utf-8"), original)
             self.assertFalse((deploy / "tls").exists())
+
+
+@unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
+class TLSPairTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.deploy = self.directory / "deploy"
+        self.deploy.mkdir()
+        onboard.init_tls(self.deploy, os.getgid())
+        self.cert = self.deploy / "tls" / "tls.crt"
+        self.key = self.deploy / "tls" / "tls.key"
+
+    def snapshot(self):
+        return [(path.read_bytes(), stat.S_IMODE(path.stat().st_mode)) for path in (self.cert, self.key)]
+
+    def mismatch(self):
+        other = self.directory / "other"
+        other.mkdir()
+        onboard.init_tls(other, os.getgid())
+        self.key.write_bytes((other / "tls" / "tls.key").read_bytes())
+
+    def doctor_output(self):
+        output = io.StringIO()
+        args = SimpleNamespace(directory=self.deploy, probe_oidc=False)
+        with contextlib.redirect_stdout(output), mock.patch.object(onboard, "check_identity"):
+            onboard.command_doctor(args)
+        return output.getvalue()
+
+    def test_matching_pair_is_preserved_and_passes_doctor(self):
+        before = self.snapshot()
+        self.assertEqual(onboard.init_tls(self.deploy, os.getgid()), "kept existing TLS certificate and key")
+        self.assertIn("TLS certificate and private key are present, parseable and match", self.doctor_output())
+        self.assertEqual(self.snapshot(), before)
+
+    def test_mismatched_pair_is_rejected_without_modifying_files(self):
+        self.mismatch()
+        before = self.snapshot()
+        with self.assertRaisesRegex(onboard.OnboardingError, "do not match") as error:
+            onboard.init_tls(self.deploy, os.getgid())
+        output = self.doctor_output()
+        self.assertIn("TLS certificate and private key do not match", output)
+        self.assertNotIn("present, parseable and match", output)
+        self.assertNotIn("BEGIN PRIVATE KEY", str(error.exception) + output)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_doctor_reports_valid_key_permissions_when_pair_mismatches(self):
+        self.mismatch()
+        env = self.deploy / ".env"
+        env.write_text(f"DATA_FABRIC_TLS_GID={os.getgid()}\n", encoding="utf-8")
+        env.chmod(0o600)
+        with mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)):
+            output = self.doctor_output()
+        self.assertIn("TLS certificate and private key do not match", output)
+        self.assertIn("OK  TLS key group/mode allow gateway read access without world access", output)
+        self.assertNotIn("TLS key must be group-readable", output)
+
+    def test_invalid_key_is_rejected_without_exposing_contents(self):
+        self.key.write_text("invalid-private-key-material")
+        with self.assertRaises(onboard.OnboardingError) as error:
+            onboard.init_tls(self.deploy, os.getgid())
+        self.assertNotIn("invalid-private-key-material", str(error.exception))
+        self.assertIn("TLS files are missing or invalid", self.doctor_output())
+
+    def test_matching_ec_pair_is_accepted(self):
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "ec",
+                        "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", "1",
+                        "-keyout", str(self.key), "-out", str(self.cert),
+                        "-subj", "/CN=localhost"], check=True, capture_output=True, timeout=10)
+        before = self.snapshot()
+        onboard.init_tls(self.deploy, os.getgid())
+        self.assertIn("present, parseable and match", self.doctor_output())
+        self.assertEqual(self.snapshot(), before)
+
+    def test_encrypted_key_fails_without_prompting(self):
+        encrypted = self.directory / "encrypted.key"
+        subprocess.run(["openssl", "pkey", "-in", str(self.key), "-aes-256-cbc",
+                        "-passout", "pass:synthetic-test-password", "-out", str(encrypted)],
+                       check=True, capture_output=True, timeout=10)
+        self.key.write_bytes(encrypted.read_bytes())
+        before = self.snapshot()
+        with self.assertRaises(onboard.OnboardingError):
+            onboard.init_tls(self.deploy, os.getgid())
+        self.assertEqual(self.snapshot(), before)
+
+    def test_doctor_preserves_certificate_expiry_check(self):
+        original_run = subprocess.run
+        def expired_certificate(command, **kwargs):
+            if "-checkend" in command:
+                return subprocess.CompletedProcess(command, 1)
+            return original_run(command, **kwargs)
+        with mock.patch.object(onboard.subprocess, "run", side_effect=expired_certificate):
+            output = self.doctor_output()
+        self.assertIn("TLS files are missing or invalid", output)
+        self.assertNotIn("present, parseable and match", output)
 
 
 class SelectedSourceResultTests(unittest.TestCase):
