@@ -17,6 +17,9 @@ import (
 type OIDCBrowserIdentity struct {
 	Issuer, Subject string
 	ExpiresAt       time.Time
+	// EmailVerified is true only when the signed ID token explicitly asserts it.
+	// This claim does not grant a tenant or source-management permission.
+	EmailVerified bool
 }
 
 type OIDCIDTokenVerifier struct {
@@ -123,5 +126,11 @@ func (v *OIDCIDTokenVerifier) Verify(ctx context.Context, rawToken, expectedNonc
 	if err != nil || nbf > now {
 		return nil, errors.New("invalid ID token")
 	}
-	return &OIDCBrowserIdentity{Issuer: issuer, Subject: subject, ExpiresAt: time.Unix(int64(exp), 0)}, nil
+	verifiedEmail := false
+	if raw, present := c["email_verified"]; present {
+		if json.Unmarshal(raw, &verifiedEmail) != nil || string(raw) == "null" {
+			return nil, errors.New("invalid ID token")
+		}
+	}
+	return &OIDCBrowserIdentity{Issuer: issuer, Subject: subject, ExpiresAt: time.Unix(int64(exp), 0), EmailVerified: verifiedEmail}, nil
 }
