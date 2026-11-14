@@ -83,6 +83,18 @@ class OIDCIssuerDoctorTests(unittest.TestCase):
             ("fragment", "https://id.example.test/issuer#fragment", False),
             ("userinfo", "https://user:synthetic-secret@id.example.test/issuer", False),
             ("bad_ipv6", "https://[invalid", False),
+            ("bad_port", "https://id.example.test:invalid/issuer", False),
+            ("bad_ipv6_port", "https://[::1]:oops/issuer", False),
+            ("space_in_host", "https://id example.test/issuer", False),
+            ("encoded_slash_in_host", "https://id%2Fexample.test/issuer", False),
+            ("bad_path_escape", "https://id.example.test/%ZZ", False),
+            ("ipvfuture", "https://[v1.a]/issuer", False),
+            ("valid_ipv6_port", "https://[::1]:443/issuer", True),
+            ("valid_ipv6_zone", "https://[fe80::1%25eth0]/issuer", True),
+            ("valid_escaped_ipv6_zone", "https://[fe80::1%25eth%2Dtest]/issuer", True),
+            ("valid_space_in_ipv6_zone", "https://[fe80::1%25eth%20test]/issuer", True),
+            ("invalid_ipv6_zone_escape", "https://[fe80::1%25eth%2Ftest]/issuer", False),
+            ("valid_escaped_path", "https://id.example.test/issuer%20name", True),
             ("http", "http://id.example.test/issuer", False),
         ]
 
@@ -129,6 +141,28 @@ class OIDCIssuerDoctorTests(unittest.TestCase):
                     self.assertIn("Doctor completed:", result)
                     self.assertIn("MCP OIDC audience is configured", result)
                     self.assertNotIn("synthetic-secret", result)
+
+
+    def test_invalid_issuer_skips_oidc_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deploy = Path(directory)
+            (deploy / ".env").write_text(
+                "MCP_OIDC_ISSUER=https://id.example.test:invalid/issuer\n"
+                "MCP_OIDC_AUDIENCE=test-audience\n", encoding="utf-8"
+            )
+            output = io.StringIO()
+            args = SimpleNamespace(directory=deploy, probe_oidc=True)
+            with (
+                contextlib.redirect_stdout(output),
+                mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                mock.patch.object(onboard, "check_identity"),
+                mock.patch.object(onboard, "source_connection_check"),
+                mock.patch.object(onboard, "probe_oidc") as probe,
+            ):
+                onboard.command_doctor(args)
+            probe.assert_not_called()
+            self.assertIn("OIDC discovery was not probed because the issuer URL is invalid", output.getvalue())
+            self.assertIn("Doctor completed:", output.getvalue())
 
 
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
