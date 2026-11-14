@@ -143,7 +143,7 @@ Request fields:
 | `parameters` | array | No | Ordered bind values (null, boolean, number, string), at most 64; bound to `?`/`$N` placeholders, never interpolated into the SQL text |
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
 | `type` | integer | No | `1` selects paginated batches; `2` prefers streaming. Explicit `query.execution_mode` configuration can override the hint; if omitted, auto policy decides |
-| `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 |
+| `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 when omitted. An explicit value that is not an integer in this range returns HTTP 400 `INVALID_PARAMETERS` |
 | `timeout` | integer | No | Seconds allowed for the initial request; default 60, maximum 1,800 |
 
 A successful response has this shape:
