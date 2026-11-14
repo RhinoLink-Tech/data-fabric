@@ -120,6 +120,17 @@ class TLSPairTests(unittest.TestCase):
         self.assertNotIn("BEGIN PRIVATE KEY", str(error.exception) + output)
         self.assertEqual(self.snapshot(), before)
 
+    def test_doctor_reports_valid_key_permissions_when_pair_mismatches(self):
+        self.mismatch()
+        env = self.deploy / ".env"
+        env.write_text(f"DATA_FABRIC_TLS_GID={os.getgid()}\n", encoding="utf-8")
+        env.chmod(0o600)
+        with mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)):
+            output = self.doctor_output()
+        self.assertIn("TLS certificate and private key do not match", output)
+        self.assertIn("OK  TLS key group/mode allow gateway read access without world access", output)
+        self.assertNotIn("TLS key must be group-readable", output)
+
     def test_invalid_key_is_rejected_without_exposing_contents(self):
         self.key.write_text("invalid-private-key-material")
         with self.assertRaises(onboard.OnboardingError) as error:

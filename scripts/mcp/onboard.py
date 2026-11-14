@@ -590,7 +590,7 @@ def command_doctor(args):
                 tls_files = False
                 tls_error = str(exc)
     add_result(results, tls_files, "TLS certificate and private key are present, parseable and match" if tls_files else tls_error)
-    add_result(results, tls_files and key_access, "TLS key group/mode allow gateway read access without world access" if tls_files and key_access else "TLS key must be group-readable by DATA_FABRIC_TLS_GID and not world-readable; use a restricted group and chmod 640")
+    add_result(results, key_access, "TLS key group/mode allow gateway read access without world access" if key_access else "TLS key must be group-readable by DATA_FABRIC_TLS_GID and not world-readable; use a restricted group and chmod 640")
     if args.probe_oidc:
         if not issuer_ok:
             add_result(results, False, "OIDC discovery was not probed because the issuer URL is invalid")
