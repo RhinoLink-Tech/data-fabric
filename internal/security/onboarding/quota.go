@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"github.com/google/uuid"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -34,6 +35,18 @@ func MigrateQuota(db *gorm.DB) error {
 // The shared row is locked before counting and inserting. Expired records are
 // removed in bounded batches. A separate scheduled cleanup is still required.
 func (s *Store) BeginBounded(ctx context.Context, actor Principal, perPrincipal, perTenant, global int) (string, error) {
+	return s.beginBoundedIntent(ctx, actor, "", "", perPrincipal, perTenant, global)
+}
+
+// BeginBoundedUpdate binds a flow to an exact canonical source ID; the caller must separately authorize it.
+func (s *Store) BeginBoundedUpdate(ctx context.Context, actor Principal, target string, perPrincipal, perTenant, global int) (string, error) {
+	parsed, e := uuid.Parse(target)
+	if e != nil || parsed.String() != target {
+		return "", ErrInvalid
+	}
+	return s.beginBoundedIntent(ctx, actor, "update", target, perPrincipal, perTenant, global)
+}
+func (s *Store) beginBoundedIntent(ctx context.Context, actor Principal, operation, target string, perPrincipal, perTenant, global int) (string, error) {
 	if perPrincipal < 1 || perTenant < perPrincipal || global < perTenant || global > 1000000 {
 		return "", ErrInvalid
 	}
@@ -106,7 +119,7 @@ func (s *Store) BeginBounded(ctx context.Context, actor Principal, perPrincipal,
 		if own >= int64(perPrincipal) || tenantCount >= int64(perTenant) || all >= int64(global) {
 			return ErrUnavailable
 		}
-		return tx.Create(&record{IDHash: hex.EncodeToString(h[:]), PrincipalHash: principal, TenantHash: tenantHash, ExpiresAt: now + s.ttl.Milliseconds()}).Error
+		return tx.Create(&record{IDHash: hex.EncodeToString(h[:]), PrincipalHash: principal, TenantHash: tenantHash, Operation: operation, TargetID: target, ExpiresAt: now + s.ttl.Milliseconds()}).Error
 	})
 	if e != nil {
 		return "", e
@@ -145,6 +158,18 @@ func (s *Store) Inspect(ctx context.Context, id string, actor Principal) (state,
 // InspectTx permits authorization and source existence to be checked under a
 // single caller-owned transaction. The transaction must use the same database.
 func (s *Store) InspectTx(ctx context.Context, tx *gorm.DB, id string, actor Principal) (state, source string, err error) {
+	return s.inspectIntentTx(ctx, tx, id, actor, "", "")
+}
+
+// InspectUpdateTx is an intent check, not authorization to update the source.
+func (s *Store) InspectUpdateTx(ctx context.Context, tx *gorm.DB, id string, actor Principal, target string) (string, string, error) {
+	parsed, e := uuid.Parse(target)
+	if e != nil || parsed.String() != target {
+		return "", "", ErrInvalid
+	}
+	return s.inspectIntentTx(ctx, tx, id, actor, "update", target)
+}
+func (s *Store) inspectIntentTx(ctx context.Context, tx *gorm.DB, id string, actor Principal, operation, target string) (state, source string, err error) {
 	if tx == nil {
 		return "", "", ErrUnavailable
 	}
@@ -162,7 +187,7 @@ func (s *Store) InspectTx(ctx context.Context, tx *gorm.DB, id string, actor Pri
 		return "", "", e
 	}
 	var row record
-	e = db.Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hash, principal, now).First(&row).Error
+	e = db.Where("id_hash = ? AND principal_hash = ? AND operation = ? AND target_id = ? AND expires_at > ?", hash, principal, operation, target, now).First(&row).Error
 	if e == nil {
 		return "pending", "", nil
 	}
@@ -170,7 +195,7 @@ func (s *Store) InspectTx(ctx context.Context, tx *gorm.DB, id string, actor Pri
 		return "", "", e
 	}
 	var done completion
-	e = db.Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hash, principal, now).First(&done).Error
+	e = db.Where("id_hash = ? AND principal_hash = ? AND operation = ? AND target_id = ? AND expires_at > ?", hash, principal, operation, target, now).First(&done).Error
 	if errors.Is(e, gorm.ErrRecordNotFound) {
 		return "", "", ErrUnavailable
 	}

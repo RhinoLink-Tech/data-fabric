@@ -44,8 +44,9 @@ Do not query an inactive source or try to bypass access restrictions.
 
 For a source-management request, discover the advertised tools first. When
 `rename_data_source` or `set_data_source_status` is available, identify the
-source from `list_data_sources`, confirm the intended change with the user,
-then invoke the tool with its exact source ID and requested name or status.
+source from `list_data_sources` and invoke the tool with its exact source ID
+and requested name or status. Ask the user only if the target or intended
+change is ambiguous.
 A source-management scope and ownership or administrator access are required;
 query permission alone is insufficient. Report the tool result and refresh
 the source listing. Do not claim a change succeeded on an error.

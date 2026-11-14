@@ -102,3 +102,61 @@ A fixed window may admit bursts across its boundary. Because the host tunnel
 does not provide a trusted per-user address, all clients share this quota; a
 noisy client can temporarily affect others. Use a separately configured edge
 rate limit for additional network protection and capacity planning.
+
+
+## Source connection updates (explicit experiment)
+
+The main server leaves browser-assisted connection updates disabled by default.
+For an isolated test deployment only, set
+`DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES=true` together with
+`DATA_FABRIC_WORKBUDDY_ONBOARDING=true`. The flag accepts only `true`,
+`false`, or an empty value; malformed values and enabling updates without
+onboarding prevent startup. OIDC, audit, the authenticated browser session,
+source-management grant, network policy, shared request limits and trusted
+HTTPS origin remain mandatory. Terminate HTTPS at the configured trusted
+reverse proxy, and restrict the bridge and container network to trusted peers.
+The external proxy must apply its own rate limits.
+
+Enabling this experiment acquires a server-wide MySQL advisory lock and enables
+a primary metadata check on source checkout. A second experimental update
+instance on the same MySQL server fails startup. The singleton holds one
+metadata connection for its lifetime, so a finite metadata connection pool
+must allow at least two connections; a limit of one fails startup. Lock checks
+have a single non-queued slot. A concurrent request may receive HTTP 429 while
+a check is in progress; contention does not itself invalidate the lock. Actual
+lock-check failure still stops the guarded service. Do not run unrestricted REST
+or any other writer against this dedicated metadata database. Only the
+restricted MySQL/PostgreSQL source types are supported. Existing TLS source
+settings are preserved unless explicitly changed; this flow refuses a change
+from TLS to plaintext. Trust roots remain operator-controlled. Connections
+without TLS are only appropriate when the operator's isolated network policy
+explicitly permits them.
+
+Each cached SQL pool has an absolute 30-second lifetime; expiration closes that
+pool handle. This is bounded convergence rather than distributed fencing or a
+hard real-time security guarantee. A scheduler pause, partition or operation
+already in progress can extend the effective interval. Previously borrowed
+connections, active queries and open results may finish; database-side
+credential revocation is required for a hard cutoff. These semantics also
+apply after an update or authority change.
+
+If the lock session is lost, the service rejects new guarded requests and
+stops its pools when it detects the loss; it does not automatically reacquire
+the lock. Investigate the metadata database and network, then restart the
+isolated service after resolving the cause. A new process acquires its own lock
+and fresh pools. Advisory locks are not distributed fencing, so do not use
+this mode to promise instantaneous revocation or transparent multi-replica
+failover. See [bounded SQL pool retention](../../docs/workbuddy-bounded-pool-experiment.md)
+for the detailed limitations and tests. This is not yet a marketplace or
+production-readiness claim.
+
+
+For isolated verification, run `scripts/test-workbuddy-optin.sh` (it creates
+and removes its own MySQL and PostgreSQL containers), followed by
+`scripts/test-workbuddy-tls.sh` and
+`scripts/test-workbuddy-bounded-pool.sh`. The opt-in script covers config
+defaults, lock loss, an actual server-listener/bridge test helper, and signed
+OIDC/MCP/browser update against disposable databases. The server-listener test
+helper may skip if local port 8082 is occupied; a skipped test is not evidence.
+These scripts do not exercise the WorkBuddy desktop, a production identity
+provider or a real public tunnel. They need Docker and locally available images.

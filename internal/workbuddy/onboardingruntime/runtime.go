@@ -31,6 +31,7 @@ var assets embed.FS
 
 type Options struct {
 	Enabled                     bool
+	EnableUpdates               bool // Explicit opt-in for the isolated, bounded-convergence experiment.
 	Origin, MCPIssuer, AuditKey string
 	CIDRs                       []string
 	Ports                       []int
@@ -50,16 +51,28 @@ type serviceValidator interface {
 	ValidateDataSourceConfiguration(*model.DataSourceConfig, model.DatabaseType) error
 }
 type Runtime struct {
-	Handler http.Handler
-	Grants  *onboarding.GrantStore
-	stop    context.CancelFunc
-	wg      sync.WaitGroup
+	Handler     http.Handler
+	Grants      *onboarding.GrantStore
+	stop        context.CancelFunc
+	updateGuard *updateGuard
+	wg          sync.WaitGroup
+}
+
+// Guard wraps the entire listener, including MCP and bridge traffic.
+func (r *Runtime) Guard(next http.Handler) http.Handler {
+	if r != nil && r.updateGuard != nil {
+		return r.updateGuard.Wrap(next)
+	}
+	return next
 }
 
 func (r *Runtime) Close() {
 	if r != nil && r.stop != nil {
 		r.stop()
 		r.wg.Wait()
+		if r.updateGuard != nil {
+			r.updateGuard.Close()
+		}
 	}
 }
 
@@ -308,8 +321,19 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 		return nil, e
 	}
 	o.MCP.SetSourceTypePolicy(o.Policy, manager.AllowsSourceType)
+	var guard *updateGuard
+	if o.EnableUpdates {
+		guard, e = startUpdateGuard(ctx, o.DB, o.Vault, o.Pool)
+		if e != nil {
+			return nil, errors.New("source updates unavailable")
+		}
+		if e = o.MCP.SetSourceUpdateCoordinator(auditedUpdate{delegate: &updateCoordinator{g: gs, flow: flow}, store: audit}); e != nil {
+			guard.Close()
+			return nil, e
+		}
+	}
 	runCtx, stop := context.WithCancel(ctx)
-	runtime := &Runtime{Grants: grantStore, stop: stop}
+	runtime := &Runtime{Grants: grantStore, stop: stop, updateGuard: guard}
 	runtime.wg.Add(1)
 	go func() {
 		defer runtime.wg.Done()
@@ -326,7 +350,14 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 			}
 		}
 	}()
-	runtime.Handler = rateLimit.wrap(route(o.Fallback, login, manager, u.Host))
+	runtime.Handler = route(o.Fallback, login, manager, u.Host)
+	if guard != nil {
+		runtime.Handler = routeUpdate(runtime.Handler, manager, flow, web.TransactionalAudit{FingerprintKey: o.AuditKey}, o.Pool, u.Host)
+	}
+	runtime.Handler = rateLimit.wrap(runtime.Handler)
+	if guard != nil {
+		runtime.Handler = guard.Wrap(runtime.Handler)
+	}
 	return runtime, nil
 }
 func route(fallback http.Handler, login *browserauth.Handler, manager *web.Handler, originHost string) http.Handler {

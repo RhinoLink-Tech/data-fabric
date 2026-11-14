@@ -6,6 +6,7 @@ import (
 )
 
 func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_ONBOARDING", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_BRIDGE", "true")
 	if _, err := readWorkbuddyConfig(nil); err == nil {
@@ -20,6 +21,15 @@ func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
 	if err != nil || c != nil {
 		t.Fatal("default must stay disabled")
 	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "true")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("source updates without onboarding accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "invalid")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("invalid source updates accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_ONBOARDING", "true")
 	cfg := &config.Config{}
 	if _, err := readWorkbuddyConfig(cfg); err == nil {
@@ -44,6 +54,19 @@ func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
 	c, err = readWorkbuddyConfig(cfg)
 	if err != nil || c == nil || c.policy == nil || !c.bridge {
 		t.Fatal("valid config rejected", err)
+	}
+	if c.sourceUpdates {
+		t.Fatal("source updates should be off by default")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "true")
+	c, err = readWorkbuddyConfig(cfg)
+	if err != nil || !c.sourceUpdates {
+		t.Fatal("explicit source updates rejected", err)
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "false")
+	c, err = readWorkbuddyConfig(cfg)
+	if err != nil || c.sourceUpdates {
+		t.Fatal("source updates not disabled", err)
 	}
 	t.Setenv("DATA_FABRIC_WORKBUDDY_ALLOWED_PORTS", "5432,garbage")
 	if _, err = readWorkbuddyConfig(cfg); err == nil {

@@ -17,6 +17,8 @@ type completion struct {
 	IDHash        string `gorm:"primaryKey;size:64"`
 	PrincipalHash string `gorm:"size:64;not null"`
 	TenantHash    string `gorm:"size:64;index"`
+	Operation     string `gorm:"size:16;not null;default:''"`
+	TargetID      string `gorm:"size:36;not null;default:''"`
 	SourceID      string `gorm:"type:char(36);not null"`
 	ExpiresAt     int64  `gorm:"not null;index"`
 }
@@ -53,6 +55,18 @@ func flowHash(id string) (string, error) {
 // API must define and enforce its request-reuse policy. This primitive has no
 // quotas, rate limits, scheduled cleanup, OIDC, CSRF protection or audit.
 func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, apply func(*gorm.DB) (string, error)) (string, error) {
+	return s.applyIntentResult(ctx, id, actor, "", "", apply)
+}
+
+// ApplyUpdateResult requires transactional grant and ownership checks inside apply. Invalidate pools after successful commit.
+func (s *Store) ApplyUpdateResult(ctx context.Context, id string, actor Principal, target string, apply func(*gorm.DB) (string, error)) (string, error) {
+	parsed, e := uuid.Parse(target)
+	if e != nil || parsed.String() != target {
+		return "", ErrInvalid
+	}
+	return s.applyIntentResult(ctx, id, actor, "update", target, apply)
+}
+func (s *Store) applyIntentResult(ctx context.Context, id string, actor Principal, operation, target string, apply func(*gorm.DB) (string, error)) (string, error) {
 	principal, err := actor.digest()
 	if err != nil || apply == nil {
 		return "", ErrInvalid
@@ -66,20 +80,20 @@ func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, app
 		return "", err
 	}
 	var created string
-	err = s.ConsumeAndApply(ctx, id, actor, func(tx *gorm.DB) error {
+	err = s.consumeIntent(ctx, id, actor, operation, target, func(tx *gorm.DB) error {
 		source, e := apply(tx)
 		if e != nil {
 			return e
 		}
 		parsed, e := uuid.Parse(source)
-		if e != nil || parsed.String() != source {
+		if e != nil || parsed.String() != source || (operation == "update" && source != target) {
 			return ErrInvalid
 		}
 		now, e := dbMillis(tx)
 		if e != nil {
 			return e
 		}
-		if e = tx.Create(&completion{IDHash: hash, PrincipalHash: principal, TenantHash: tenantHash, SourceID: source, ExpiresAt: now + s.ttl.Milliseconds()}).Error; e != nil {
+		if e = tx.Create(&completion{IDHash: hash, PrincipalHash: principal, TenantHash: tenantHash, Operation: operation, TargetID: target, SourceID: source, ExpiresAt: now + s.ttl.Milliseconds()}).Error; e != nil {
 			return e
 		}
 		created = source
@@ -96,7 +110,7 @@ func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, app
 		return "", e
 	}
 	var done completion
-	e = s.db.WithContext(ctx).Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hash, principal, now).First(&done).Error
+	e = s.db.WithContext(ctx).Where("id_hash = ? AND principal_hash = ? AND operation = ? AND target_id = ? AND expires_at > ?", hash, principal, operation, target, now).First(&done).Error
 	if errors.Is(e, gorm.ErrRecordNotFound) {
 		return "", ErrUnavailable
 	}

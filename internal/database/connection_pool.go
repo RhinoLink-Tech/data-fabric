@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,6 +18,10 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 )
+
+// ErrSourceCheckBusy means the guard made no freshness decision; callers
+// should retry. It does not authorize use of the source or invalidate a pool.
+var ErrSourceCheckBusy = errors.New("source freshness check busy")
 
 var (
 	globalDriverRegistry *DriverRegistry
@@ -37,6 +42,10 @@ type ConnectionPool struct {
 	registry                      *DriverRegistry
 	pools                         map[string]*sql.DB
 	fingerprints                  map[string]string // Config fingerprint per pooled connection (#117)
+	generation                    map[string]uint64 // fenced across in-flight connection builds
+	freshnessCheck                func(context.Context, *model.DataSource) error
+	boundedPoolTTL                time.Duration // immutable after startup; zero disables bounded mode
+	permanentlyStopped            bool
 	mutex                         sync.RWMutex
 	health                        map[string]bool
 	healthMu                      sync.RWMutex
@@ -59,6 +68,7 @@ func NewConnectionPool(registry *DriverRegistry, tokenManager *security.TokenMan
 		registry:        registry,
 		pools:           make(map[string]*sql.DB),
 		fingerprints:    make(map[string]string),
+		generation:      make(map[string]uint64),
 		health:          make(map[string]bool),
 		tokenManager:    tokenManager,
 		vault:           vault,
@@ -67,10 +77,84 @@ func NewConnectionPool(registry *DriverRegistry, tokenManager *security.TokenMan
 	}
 }
 
+// SetSourceFreshnessCheck installs a fail-closed source snapshot check.
+// Configure before serving requests; the check must use a current metadata
+// primary and run on every replica. It does not cancel already-started work.
+func (cp *ConnectionPool) SetSourceFreshnessCheck(check func(context.Context, *model.DataSource) error) error {
+	if check == nil {
+		return fmt.Errorf("source freshness check required")
+	}
+	cp.mutex.Lock()
+	defer cp.mutex.Unlock()
+	if cp.freshnessCheck != nil {
+		return fmt.Errorf("source freshness check already configured")
+	}
+	cp.freshnessCheck = check
+	return nil
+}
+
+// SetBoundedSourceFreshness opts an isolated restricted pool into bounded
+// retention of SQL handles. Every GetConnection checks the metadata primary.
+// Old handles are closed after ttl even if a caller still holds *sql.DB.
+// This is bounded convergence, not distributed fencing; callers already using
+// *sql.Conn and operations already started can continue. Do not expose native
+// executors or use an unrestricted writer against the same metadata store.
+// Configure once before requests. A missing/unreachable primary must fail check.
+func (cp *ConnectionPool) SetBoundedSourceFreshness(ttl time.Duration, check func(context.Context, *model.DataSource) error) error {
+	if cp.egress == nil || check == nil || ttl <= 0 || ttl > time.Minute {
+		return fmt.Errorf("bounded source freshness requires restricted pool, checker and ttl at most one minute")
+	}
+	cp.mutex.Lock()
+	defer cp.mutex.Unlock()
+	if cp.freshnessCheck != nil || len(cp.pools) != 0 || cp.permanentlyStopped {
+		return fmt.Errorf("bounded source freshness must be set before serving")
+	}
+	cp.freshnessCheck = check
+	cp.boundedPoolTTL = ttl
+	return nil
+}
+
+func (cp *ConnectionPool) checkFreshness(ctx context.Context, ds *model.DataSource) error {
+	cp.mutex.RLock()
+	check := cp.freshnessCheck
+	stopped := cp.permanentlyStopped
+	cp.mutex.RUnlock()
+	if stopped {
+		return fmt.Errorf("connection pool stopped")
+	}
+	if check == nil {
+		return nil
+	}
+	if e := check(ctx, ds); e != nil {
+		if errors.Is(e, ErrSourceCheckBusy) {
+			return fmt.Errorf("source freshness check busy: %w", ErrSourceCheckBusy)
+		}
+		// Cancellation is specific to this request and cannot establish that the
+		// saved source or a shared pool is stale.
+		if errors.Is(e, context.Canceled) || errors.Is(e, context.DeadlineExceeded) {
+			return e
+		}
+		_ = cp.InvalidateDataSource(ds.ID)
+		return fmt.Errorf("data source configuration unavailable or changed; retry")
+	}
+	return nil
+}
+
 // GetConnection gets or creates a database connection for the specified data source
 func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.DataSource) (*sql.DB, error) {
 	if dataSource == nil {
 		return nil, fmt.Errorf("data source is required")
+	}
+	cp.mutex.RLock()
+	generation := cp.generation[dataSource.ID]
+	ttl := cp.boundedPoolTTL
+	cp.mutex.RUnlock()
+	var deadline time.Time
+	if ttl > 0 {
+		deadline = time.Now().Add(ttl)
+	}
+	if err := cp.checkFreshness(ctx, dataSource); err != nil {
+		return nil, err
 	}
 	if cp.egress != nil {
 		if err := cp.egress.Check(dataSource); err != nil {
@@ -82,8 +166,13 @@ func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.D
 
 	if db := cp.pooledConnectionIfCurrent(dataSource.ID, fingerprint); db != nil {
 		// Check if connection is still alive
-		if err := db.PingContext(ctx); err == nil {
+		err := db.PingContext(ctx)
+		if err == nil {
 			return db, nil
+		}
+		// Do not evict a healthy shared pool because this caller stopped waiting.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		// Connection is dead. Evict exactly the instance that failed the
@@ -99,7 +188,7 @@ func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.D
 	}
 
 	// Create new connection
-	return cp.createConnection(ctx, dataSource, fingerprint)
+	return cp.createConnection(ctx, dataSource, fingerprint, generation, deadline)
 }
 
 // GetNativeSQLAPIExecutor opens the native protocol path for a source that
@@ -123,6 +212,18 @@ func (cp *ConnectionPool) GetNativeSQLAPIExecutor(ctx context.Context, dataSourc
 func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *model.DataSource) (execution.NativeAPIExecutor, bool, error) {
 	if dataSource == nil {
 		return nil, false, fmt.Errorf("data source is required")
+	}
+	if err := cp.checkFreshness(ctx, dataSource); err != nil {
+		return nil, false, err
+	}
+	cp.mutex.RLock()
+	bounded := cp.boundedPoolTTL > 0
+	cp.mutex.RUnlock()
+	if bounded {
+		if dataSource.Type != model.DatabaseTypeMySQL && dataSource.Type != model.DatabaseTypePostgreSQL {
+			return nil, false, fmt.Errorf("native executor is unavailable in bounded mode")
+		}
+		return nil, false, nil
 	}
 	if cp.egress != nil {
 		if err := cp.egress.Check(dataSource); err != nil {
@@ -200,7 +301,12 @@ func dataSourceFingerprint(dataSource *model.DataSource) string {
 // for unrelated data sources (#119). Concurrent creators for the same source
 // are reconciled at install time: the first pool wins, later duplicates are
 // closed so nothing leaks.
-func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *model.DataSource, fingerprint string) (*sql.DB, error) {
+func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *model.DataSource, fingerprint string, generation uint64, deadline time.Time) (*sql.DB, error) {
+	if !deadline.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
 	if err := cp.SetupTokenRotation(ctx, dataSource); err != nil {
 		return nil, fmt.Errorf("setup token rotation: %w", err)
 	}
@@ -233,6 +339,15 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
+	// A timer is tied to this exact db, even if it loses an installation race
+	// or is removed from the map. Close prevents stale references opening more
+	// physical connections. In-use sql.Conn/rows retain their normal lifetime.
+	if !deadline.IsZero() {
+		time.AfterFunc(time.Until(deadline), func() {
+			cp.expireBoundedPool(dataSource.ID, db)
+		})
+	}
+
 	// Configure connection pool
 	if err := cp.configureConnectionPool(db, &dataSource.Config); err != nil {
 		db.Close()
@@ -249,6 +364,11 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 	// installed the same source first; the winner is kept and the duplicate
 	// closed (#119).
 	cp.mutex.Lock()
+	if cp.permanentlyStopped || cp.generation[dataSource.ID] != generation || (!deadline.IsZero() && !time.Now().Before(deadline)) {
+		cp.mutex.Unlock()
+		db.Close()
+		return nil, fmt.Errorf("data source changed during connection setup; retry")
+	}
 	if existing, exists := cp.pools[dataSource.ID]; exists {
 		if cp.fingerprints[dataSource.ID] == fingerprint {
 			cp.mutex.Unlock()
@@ -267,6 +387,20 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 	cp.setHealth(dataSource.ID, true)
 
 	return db, nil
+}
+
+// expireBoundedPool closes the exact timed handle, even if it was removed
+// from the map. Expiry alone is not a configuration invalidation: do not
+// cancel existing cursor sessions merely because their pool rotated.
+func (cp *ConnectionPool) expireBoundedPool(id string, db *sql.DB) {
+	cp.mutex.Lock()
+	current, exists := cp.pools[id]
+	if exists && current == db {
+		delete(cp.pools, id)
+		delete(cp.fingerprints, id)
+	}
+	cp.mutex.Unlock()
+	_ = db.Close()
 }
 
 func (cp *ConnectionPool) openConfiguredDatabase(ctx context.Context, dbType model.DatabaseType, dsn string, config *model.DataSourceConfig, enforceReadOnly bool) (*sql.DB, error) {
@@ -471,6 +605,7 @@ func (cp *ConnectionPool) takeConnection(dataSourceID string) (*sql.DB, bool) {
 	cp.mutex.Lock()
 	defer cp.mutex.Unlock()
 
+	cp.generation[dataSourceID]++
 	db, exists := cp.pools[dataSourceID]
 	if exists {
 		delete(cp.pools, dataSourceID)
@@ -506,6 +641,15 @@ func (cp *ConnectionPool) CloseConnection(dataSourceID string) error {
 	}
 	cp.notifyDataSourceInvalidated(dataSourceID)
 	return db.Close()
+}
+
+// Stop permanently denies new leases and closes all known pools. In-flight
+// connection setup is fenced at installation. Borrowed queries may finish.
+func (cp *ConnectionPool) Stop() error {
+	cp.mutex.Lock()
+	cp.permanentlyStopped = true
+	cp.mutex.Unlock()
+	return cp.CloseAll()
 }
 
 // CloseAll closes all connections in the pool

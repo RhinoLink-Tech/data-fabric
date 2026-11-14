@@ -48,6 +48,8 @@ type record struct {
 	IDHash        string `gorm:"primaryKey;size:64"`
 	PrincipalHash string `gorm:"size:64;not null"`
 	TenantHash    string `gorm:"size:64;index"`
+	Operation     string `gorm:"size:16;not null;default:''"`
+	TargetID      string `gorm:"size:36;not null;default:''"`
 	ExpiresAt     int64  `gorm:"not null;index"`
 }
 
@@ -135,6 +137,9 @@ func (s *Store) Begin(ctx context.Context, actor Principal) (string, error) {
 // used here. A transaction-aware creation path is required before integration.
 // This primitive does not implement outcome recovery, quotas or bounded cleanup.
 func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal, apply func(*gorm.DB) error) error {
+	return s.consumeIntent(ctx, id, actor, "", "", apply)
+}
+func (s *Store) consumeIntent(ctx context.Context, id string, actor Principal, operation, target string, apply func(*gorm.DB) error) error {
 	principal, err := actor.digest()
 	if err != nil || apply == nil {
 		return ErrInvalid
@@ -147,7 +152,7 @@ func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal,
 	// Read expiry before starting the write transaction. Records are immutable;
 	// a subsequent conditional delete verifies the same identity and expiry.
 	var row record
-	lookup := s.db.WithContext(ctx).Where("id_hash = ? AND principal_hash = ?", hex.EncodeToString(hash[:]), principal).First(&row)
+	lookup := s.db.WithContext(ctx).Where("id_hash = ? AND principal_hash = ? AND operation = ? AND target_id = ?", hex.EncodeToString(hash[:]), principal, operation, target).First(&row)
 	if errors.Is(lookup.Error, gorm.ErrRecordNotFound) {
 		return ErrUnavailable
 	}
@@ -159,7 +164,7 @@ func (s *Store) ConsumeAndApply(ctx context.Context, id string, actor Principal,
 		if err != nil {
 			return err
 		}
-		result := tx.Where("id_hash = ? AND principal_hash = ? AND expires_at > ?", hex.EncodeToString(hash[:]), principal, now).Delete(&record{})
+		result := tx.Where("id_hash = ? AND principal_hash = ? AND operation = ? AND target_id = ? AND expires_at > ?", hex.EncodeToString(hash[:]), principal, operation, target, now).Delete(&record{})
 		if result.Error != nil {
 			return result.Error
 		}
