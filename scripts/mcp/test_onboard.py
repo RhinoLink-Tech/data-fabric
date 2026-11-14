@@ -204,6 +204,20 @@ class SelectedSourceResultTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("no healthy result", message)
 
+    def test_non_utf8_source_config_is_reported_without_exposing_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            source.write_bytes(b'\xff{"password":"synthetic-secret"}')
+            source.chmod(0o600)
+            results = []
+            output = io.StringIO()
+            args = SimpleNamespace(source_config=str(source), source_type="mysql",
+                                   management_token_env="DATA_FABRIC_TEST_TOKEN_UNSET")
+            with contextlib.redirect_stdout(output):
+                onboard.source_connection_check(args, Path(directory), Path(directory) / ".env", {}, results)
+        self.assertEqual(results, [(False, "source configuration could not be read safely; protect it with chmod 600 and verify its JSON")])
+        self.assertNotIn("synthetic-secret", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
