@@ -41,14 +41,14 @@ source and operation with the user before making changes.
 | --- | --- | --- |
 | `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
 | `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
-| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL only. Ordinary deployments reject TLS probes; the restricted onboarding candidate supports verified TLS. PostgreSQL probing is disabled when protocol debugging is enabled. |
+| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL only. Ordinary deployments reject TLS connection tests; a service with the restricted onboarding policy supports verified TLS. PostgreSQL connection testing is disabled when protocol debugging is enabled. |
 | `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
 
 These existing-source tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed.
 
 ## Add a source through the separately authenticated browser
 
-The following are opt-in candidate tools, absent from published v2.1.0-preview.1.
+These tools must be enabled and advertised by the connected service.
 Discover both and their advertised schemas before use. Their presence alone is
 not proof that the WorkBuddy client, deployment and identity are configured.
 
@@ -66,11 +66,22 @@ reports completion, not by repeated polling. Pending means creation is not
 complete. On expiration start a fresh flow if requested; on unavailable or
 permission errors ask the administrator to check configuration and grants.
 
-The candidate supports MySQL/PostgreSQL, verified TLS, and server-approved IPv4
-network destinations and ports. Other source types and editing or rotating
-existing connection credentials are not supported by this browser workflow.
+The secure setup workflow supports MySQL/PostgreSQL, verified TLS, and server-approved IPv4
+network destinations and ports. Other source types are not supported by this creation workflow.
 If either tool is unavailable, direct the user to an administrator or supported
 management UI; do not invent an operation or claim completion.
+
+## Update source connection settings when enabled
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `begin_data_source_update` | `datasource_id` | `flow_id`, `url`, and source ID; browser login and current management authorization remain required. |
+| `get_data_source_update_status` | `flow_id`, `datasource_id` | `pending` or `completed`; do not infer success from an error. |
+
+Only use if both tools are advertised. Credentials are entered in the
+separately authenticated browser, never chat. Respect the server's permitted
+source types and network policy. In-flight queries can continue and connection
+changes are not a claim of immediate cross-instance revocation.
 
 ## Validate and execute
 

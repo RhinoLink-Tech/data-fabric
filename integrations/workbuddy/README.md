@@ -11,6 +11,8 @@ python3 integrations/workbuddy/build_packages.py /tmp/data-fabric-workbuddy
 python3 -m unittest discover -s integrations/workbuddy -p 'test_*.py'
 ```
 
+The default package keeps the HTTPS-prefixed host/path template that previously passed WorkBuddy package parsing. To prepare an alternative matching the current official variable-plus-path example, run `python3 integrations/workbuddy/build_packages.py /tmp/data-fabric-workbuddy-base --url-mode base-url`. Its form accepts an HTTPS service root with an optional port, without `/mcp` or a trailing slash. This alternative has not been parsed or accepted by the WorkBuddy platform; test it there before selecting it for release. The form does not itself enforce those formatting requirements.
+
 The output directory contains `data-fabric-workbuddy-connector.zip` (configuration, icon and Skill) and `data-fabric-workbuddy-skill.zip` (a standalone Skill). The generator copies the shared `skills/data-fabric-query` and adds the WorkBuddy marketplace metadata only to the packaged copy. It includes the references and license; it does not package real credentials.
 
 For a Chinese first-use walkthrough, see [Quick Start](QUICKSTART-zh.md).
@@ -21,7 +23,7 @@ The connector uses Streamable HTTP and the WorkBuddy user-supplied credential fo
 
 The package uses `auth_mode: token`; this is a manually supplied OIDC access token, not an automated OAuth flow or a long-lived Data Fabric API key. WorkBuddy handles the credential according to its credential management behavior. A tenant's own policies govern where its service and identity provider run. Never include tokens, keys, or production data in a package or screenshot.
 
-The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. `source: data-fabric` must be checked for global availability on the platform. Change the source and matching MCP server key if the platform rejects it. The skill's version and connector version are currently 1.2.0; update both intentionally for new marketplace submissions.
+The connector uses bilingual name and examples, so `minWorkbuddyVersion` is 4.24.0. The self-hosted connector uses `source: data-fabric-selfhost`, separate from the hosted OAuth connector. Verify source availability on the platform. The matching MCP server key is generated together with the source. The skill's version and connector version are currently 1.2.0; update both intentionally for new marketplace submissions.
 
 ## Capabilities and deployment version
 
@@ -46,7 +48,7 @@ separately authenticated browser flow and report its status; credentials are
 entered only in the browser, not in chat or MCP tool arguments. The current
 candidate supports MySQL/PostgreSQL with verified TLS or plaintext on explicitly allowed IPv4 network
 targets and ports, with a matching OIDC identity and server-side management
-grant. It does not support credential rotation or editing existing connections.
+grant. When explicitly enabled, the source-update browser tools support authorized updates of permitted existing MySQL/PostgreSQL connections, including credentials. Their availability depends on the deployed server; discover the update tools before offering this flow.
 For an unavailable or unsupported workflow use an administrator or supported
 management UI. See [Quick Start](QUICKSTART-zh.md).
 

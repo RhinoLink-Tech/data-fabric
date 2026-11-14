@@ -1,14 +1,14 @@
 {
-  "name": "Data Fabric",
-  "source": "data-fabric",
+  "name": "Data Fabric Self-hosted",
+  "source": "data-fabric-selfhost",
   "type": "mcp",
   "auth_mode": "token",
   "version": "1.2.0",
   "minWorkbuddyVersion": "4.24.0",
-  "name_zh": "Data Fabric 数据源管理与查询",
-  "name_en": "Data Fabric Source Management and Query",
-  "description_zh": "连接较新版本 Data Fabric，查询和管理数据源；服务启用安全向导时可引导新增。",
-  "description_en": "Connect a recent Data Fabric server to query and manage sources; guide creation when secure onboarding is enabled.",
+  "name_zh": "Data Fabric 自部署连接",
+  "name_en": "Data Fabric Self-hosted",
+  "description_zh": "连接自己部署的 Data Fabric，发现、查询和管理已授权的数据源。",
+  "description_en": "Connect to your own Data Fabric service to discover, query, and manage authorized sources.",
   "examples_zh": [
     "当前服务支持哪些数据库和文件格式？",
     "服务启用安全向导时，帮我添加 PostgreSQL 数据源。",
@@ -19,5 +19,5 @@
     "Guide me to add PostgreSQL when secure onboarding is enabled.",
     "Inspect the orders table and count orders this month."
   ],
-  "description": "Connect a recent Data Fabric server to query and manage sources; guide creation when secure onboarding is enabled."
+  "description": "Connect to your own Data Fabric service to discover, query, and manage authorized sources."
 }
