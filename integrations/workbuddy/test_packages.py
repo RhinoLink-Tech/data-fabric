@@ -10,9 +10,19 @@ from zipfile import ZipFile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+PLACEHOLDER_LABELS = re.compile("\\b(?:candidate|demo|probe)\\b")
 
 
 class PackageTest(unittest.TestCase):
+    def assert_no_placeholder_labels(self, text):
+        self.assertNotRegex(text.lower(), PLACEHOLDER_LABELS)
+
+    def test_placeholder_guard_rejects_each_label(self):
+        for label in ("candidate", "demo", "probe"):
+            with self.subTest(label=label), self.assertRaises(AssertionError):
+                self.assert_no_placeholder_labels("Example " + label.upper() + " text")
+        self.assert_no_placeholder_labels("probing and demonstration are ordinary words")
+
     def test_build_is_reproducible(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             for target in (one, two):
@@ -81,7 +91,7 @@ class PackageTest(unittest.TestCase):
                     b = standalone.read("data-fabric-access/" + rel)
                     self.assertEqual(a, b)
                     if rel.endswith(".md"):
-                        self.assertNotRegex(a.decode().lower(), r"(candidate|demo|probe)")
+                        self.assert_no_placeholder_labels(a.decode())
                     if rel != "SKILL.md":
                         self.assertEqual(a, path.read_bytes())
                     else:
@@ -100,7 +110,7 @@ class PackageTest(unittest.TestCase):
                 self.assertIn("get_data_source_onboarding_status", entry)
                 self.assertIn("begin_data_source_update", entry)
                 self.assertIn("get_data_source_update_status", entry)
-                self.assertNotRegex(entry.lower(), r"(candidate|demo|probe)")
+                self.assert_no_placeholder_labels(entry)
                 self.assertIn("allowed_by_instance_type_policy", entry)
                 self.assertIn("allowed_by_onboarding_type_policy", entry)
                 self.assertIn("TLS with verified server identity", entry)
