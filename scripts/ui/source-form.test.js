@@ -46,6 +46,7 @@ async function loadApp(existing = []) {
   const calls = [];
   const sources = existing.map((source) => structuredClone(source));
   let connectionResult = { status: "healthy", message: "Connection successful" };
+  let testGate = null;
   const jsonResponse = (body, status = 200) => ({
     ok: status >= 200 && status < 300,
     status,
@@ -61,7 +62,10 @@ async function loadApp(existing = []) {
       { type: "postgresql", driverName: "PostgreSQL", registered: true, supported: true, defaultPort: 5432 },
       { type: "file", driverName: "File", registered: true, supported: true },
     ] });
-    if (route.pathname === "/api/v1/database/test-connection") return jsonResponse({ data: connectionResult });
+    if (route.pathname === "/api/v1/database/test-connection") {
+      if (testGate) await testGate;
+      return jsonResponse({ data: connectionResult });
+    }
     if (route.pathname === "/api/v1/datasources" && request.method === "POST") {
       if (!request.body.type) return jsonResponse({ success: false, error: { code: "VALIDATION_ERROR", message: "type is required" } }, 422);
       const source = { id: "new-source", status: "active", ...request.body };
@@ -89,13 +93,15 @@ async function loadApp(existing = []) {
   vm.createContext(context);
   vm.runInContext(appSource, context);
   const flush = async () => { for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve)); };
-  const emitElement = async (el, type) => {
-    for (const handler of el.listeners[type] || []) await handler({ type, preventDefault() {} });
+  const emitElement = async (el, type, target = el) => {
+    for (const handler of el.listeners[type] || []) await handler({ type, target, preventDefault() {} });
     await flush();
   };
   await flush();
   return { $, calls, emit: (id, type) => emitElement($(id), type), emitElement,
-    setResult: (result) => { connectionResult = result; } };
+    setResult: (result) => { connectionResult = result; },
+    // Holds the next test-connection response until the returned function is called.
+    holdTestResponse: () => { let release; testGate = new Promise((resolve) => { release = resolve; }); return () => { testGate = null; release(); }; } };
 }
 
 test("creating a source sends its selected type and refreshes the list", async () => {
@@ -163,6 +169,33 @@ test("only healthy connection results are successful, and details are redacted",
   await app.emit("testButton", "click");
   assert.match(app.$("testResult").className, /success/);
   assert.match(app.$("testResult").textContent, /连接测试成功/);
+});
+
+test("editing the form clears a shown result and ignores a response for the old values", async () => {
+  const app = await loadApp();
+  await app.emit("addButton", "click");
+  app.$("sourceHost").value = "db-a";
+  await app.emit("testButton", "click");
+  assert.match(app.$("testResult").className, /success/);
+  app.$("sourceHost").value = "db-b";
+  await app.emitElement(app.$("sourceForm"), "input");
+  assert.equal(app.$("testResult").hidden, true, "stale connection result stayed visible after a host edit");
+
+  const release = app.holdTestResponse();
+  app.setResult({ status: "healthy", message: "Connection successful" });
+  const pending = app.emit("testButton", "click");
+  await app.emitElement(app.$("sourceForm"), "input");
+  assert.equal(app.$("testButton").disabled, false, "test button stayed disabled after an edit while testing");
+  release();
+  await pending;
+  assert.equal(app.$("testResult").hidden, true, "late response for the old host was displayed");
+
+  app.setResult({ status: "healthy", message: "Connection successful" });
+  await app.emit("testButton", "click");
+  assert.match(app.$("testResult").className, /success/);
+  app.$("sourceName").value = "renamed";
+  await app.emitElement(app.$("sourceForm"), "input", app.$("sourceName"));
+  assert.match(app.$("testResult").className, /success/, "renaming the source should not clear a connection result");
 });
 
 test("switching connectors updates automatic ports but preserves deliberate edits", async () => {
