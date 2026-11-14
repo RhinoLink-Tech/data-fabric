@@ -20,6 +20,7 @@ func TestHandlerRestrictsPathsAndPreservesAuthorization(t *testing.T) {
 		status int
 	}{
 		{"/mcp", 204}, {"/onboarding/auth/callback?code=secret&state=secret", 204},
+		{"/.well-known/oauth-protected-resource", 204}, {"/.well-known/oauth-protected-resource/mcp", 204}, {"/.well-known/oauth-protected-resource/other", 404},
 		{"/metrics", 404}, {"/internal/replica", 404}, {"/mcp/extra", 404}, {"/onboarding", 404},
 	} {
 		r := httptest.NewRequest("GET", tc.path, nil)
@@ -33,7 +34,7 @@ func TestHandlerRestrictsPathsAndPreservesAuthorization(t *testing.T) {
 			t.Errorf("%s: got %d, want %d", tc.path, w.Code, tc.status)
 		}
 	}
-	if called != 2 {
-		t.Errorf("forwarded %d requests, want 2", called)
+	if called != 4 {
+		t.Errorf("forwarded %d requests, want 4", called)
 	}
 }

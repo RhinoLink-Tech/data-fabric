@@ -10,7 +10,7 @@ import (
 // request, so authorization headers and OAuth query parameters remain private.
 func Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/mcp" && !strings.HasPrefix(r.URL.Path, "/onboarding/") {
+		if r.URL.Path != "/mcp" && r.URL.Path != "/.well-known/oauth-protected-resource/mcp" && r.URL.Path != "/.well-known/oauth-protected-resource" && !strings.HasPrefix(r.URL.Path, "/onboarding/") {
 			http.NotFound(w, r)
 			return
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,19 +91,19 @@ func authenticateMCPRequests(tokenValidator MCPTokenValidator, next http.Handler
 		}
 		if tokenValidator == nil {
 			recordMCPAuthFailure(recorder, r.Context(), correlationID, "token_validator_unavailable")
-			writeMCPUnauthorized(w)
+			writeMCPUnauthorized(w, r)
 			return
 		}
 		token, err := security.ExtractBearerToken(r.Header.Get("Authorization"))
 		if err != nil {
 			recordMCPAuthFailure(recorder, r.Context(), correlationID, "missing_or_invalid_bearer_token")
-			writeMCPUnauthorized(w)
+			writeMCPUnauthorized(w, r)
 			return
 		}
 		claims, err := tokenValidator.ValidateMCPToken(r.Context(), token)
 		if err != nil || claims == nil || claims.UserID == "" {
 			recordMCPAuthFailure(recorder, r.Context(), correlationID, "token_validation_failed")
-			writeMCPUnauthorized(w)
+			writeMCPUnauthorized(w, r)
 			return
 		}
 
@@ -148,8 +149,12 @@ func recordMCPAuthSuccess(recorder auditlog.Recorder, ctx context.Context, corre
 	}
 }
 
-func writeMCPUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", "Bearer")
+func writeMCPUnauthorized(w http.ResponseWriter, r *http.Request) {
+	challenge := "Bearer"
+	if metadata, ok := r.Context().Value(oauthMetadataContextKey{}).(string); ok && metadata != "" {
+		challenge += " resource_metadata=" + strconv.Quote(metadata)
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)

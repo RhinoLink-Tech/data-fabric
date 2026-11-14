@@ -228,7 +228,7 @@ func (t *OwnerTransport) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		caller, _ := r.Context().Value(callerContextKey{}).(*security.Caller)
 		if caller == nil || caller.UserID == "" {
-			writeMCPUnauthorized(w)
+			writeMCPUnauthorized(w, r)
 			return
 		}
 		principal := transportPrincipal{tenantID: caller.TenantID, userID: caller.UserID}

@@ -619,9 +619,20 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		if workbuddy != nil {
 			handler = mcp.StrictTenantHTTPHandler(handler)
 		}
+		var discovery func(http.Handler) http.Handler
+		if resource := os.Getenv("DATA_FABRIC_MCP_OAUTH_RESOURCE"); resource != "" {
+			if !strings.EqualFold(cfg.MCP.AuthMode, config.MCPAuthModeOIDC) {
+				return errors.New("OAuth discovery requires OIDC authentication")
+			}
+			metadata, e := mcp.NewProtectedResourceMetadata(resource, cfg.MCP.OIDCIssuer, cfg.MCP.OIDCAudience)
+			if e != nil {
+				return e
+			}
+			discovery = metadata.Wrap
+		}
 		return serveMCPHTTP(cfg, handler, streamingService, auditStore, queryOwner, func(stop func()) {
 			stopStreaming = stop
-		}, workbuddy != nil && workbuddy.bridge, onboardingOverlay)
+		}, workbuddy != nil && workbuddy.bridge, onboardingOverlay, discovery)
 	}
 
 	stopStreaming = startStreamingMaintenance(context.Background(), streamingService)
