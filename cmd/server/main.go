@@ -32,6 +32,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -43,6 +44,13 @@ func main() {
 	}
 	if err := cfg.ValidateStartup(); err != nil {
 		log.Fatal("Invalid startup configuration: ", err)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "workbuddy-seed-synthetic" {
+		if err := runWorkbuddySeed(cfg, os.Args[2:]); err != nil {
+			log.Fatal("WorkBuddy synthetic source: ", err)
+		}
+		fmt.Println("Synthetic source ready")
+		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "workbuddy-grant" {
 		if err := runWorkbuddyGrant(cfg, os.Args[2:]); err != nil {
@@ -573,6 +581,27 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		onboardingOverlay = func(next http.Handler) http.Handler {
 			return workbuddyHTTPOverlay(next, rt.Handler, rt.Guard)
 		}
+	}
+	selfServiceMode := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SELF_SERVICE"))
+	if selfServiceMode != "" && selfServiceMode != "false" && selfServiceMode != "true" {
+		return errors.New("invalid WorkBuddy self-service toggle")
+	}
+	if selfServiceMode == "true" {
+		trusted, ok := tokenValidator.(*security.OIDCTokenValidator)
+		if workbuddy == nil || !ok || trusted == nil || !strings.EqualFold(cfg.MCP.AuthMode, config.MCPAuthModeOIDC) {
+			return errors.New("self-service requires isolated WorkBuddy OIDC onboarding")
+		}
+		issuer, auditKey := cfg.MCP.OIDCIssuer, cfg.Security.JWTSecret
+		templateID := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SELF_SERVICE_TEMPLATE_ID"))
+		if _, err := uuid.Parse(templateID); err != nil {
+			return errors.New("self-service requires an approved synthetic source template")
+		}
+		tokenValidator = &selfServiceValidator{next: trusted, issuer: issuer, provision: func(ctx context.Context, subject, tenant string) error {
+			return provisionSelfServiceGrant(ctx, db, issuer, subject, tenant, auditKey, func(ctx context.Context, tx *gorm.DB) error {
+				_, err := seedSyntheticForSubject(ctx, tx, vault, workbuddy.policy, issuer, subject, tenant, templateID, "self-service", auditKey)
+				return err
+			})
+		}}
 	}
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
