@@ -40,7 +40,12 @@ func (m *ProtectedResourceMetadata) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/mcp" {
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), oauthMetadataContextKey{}, m.metadata)))
+			r = r.Clone(context.WithValue(r.Context(), oauthMetadataContextKey{}, m.metadata))
+			// Public Host has already been checked against the fixed resource.
+			// The SDK enforces loopback Host for loopback listeners; normalize
+			// only after that check, never from forwarded headers.
+			r.Host = "localhost"
+			next.ServeHTTP(w, r)
 			return
 		}
 		if r.Method != http.MethodGet {

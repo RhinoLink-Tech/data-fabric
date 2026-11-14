@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -61,5 +62,39 @@ func TestProtectedResourceMetadataRejectsMisconfiguration(t *testing.T) {
 		if _, err := NewProtectedResourceMetadata(x.resource, x.issuer, x.audience); err == nil {
 			t.Fatalf("accepted unsafe config %+v", x)
 		}
+	}
+}
+
+func TestOAuthDiscoveryValidatesHostBeforeLoopbackNormalization(t *testing.T) {
+	m, err := NewProtectedResourceMetadata("https://fabric.example/mcp", "https://issuer.example", "https://fabric.example/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMCPServer(nil, nil, nil).StreamableHTTPHandler(staticMCPTokenValidator{claims: &security.Claims{UserID: "synthetic"}})
+	server := httptest.NewServer(m.Wrap(handler))
+	defer server.Close()
+	body := "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}}"
+	call := func(host string) int {
+		req, e := http.NewRequest("POST", server.URL+"/mcp", strings.NewReader(body))
+		if e != nil {
+			t.Fatal(e)
+		}
+		req.Host = host
+		req.Header.Set("Authorization", "Bearer trusted-access-token")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("X-Forwarded-Host", "fabric.example")
+		res, e := server.Client().Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
+	}
+	if got := call("fabric.example"); got != 200 {
+		t.Fatalf("valid Host through real loopback listener returned %d", got)
+	}
+	if got := call("attacker.example"); got != 400 {
+		t.Fatalf("rebind Host returned %d", got)
 	}
 }
