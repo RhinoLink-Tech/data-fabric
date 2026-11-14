@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Mount the PostgreSQL 18 sample source volume at `/var/lib/postgresql` so the optional PostgreSQL quickstart overlay initializes instead of exiting on the old data path (#520).
 - Report Oracle columns marked nullable by the catalog as nullable in table descriptions (#529).
 - Honor the configured PostgreSQL schema in MCP table discovery when table authorization is disabled (#493).
+- Preserve binary and float column types across object SQL derived queries and paginated result encoding (#528).
 - Preserve exact signed 64-bit integer bind parameters received by MCP over HTTP and stdio (#486).
 - Include the selected connector type when creating a source from the management UI and report unsuccessful connection probes as failures (#484, #485).
 - Update automatically filled ports when switching connectors while preserving operator-entered values (#501).
