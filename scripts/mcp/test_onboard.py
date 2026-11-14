@@ -75,6 +75,96 @@ class CredentialKeyringTests(unittest.TestCase):
             self.assertFalse((deploy / "tls").exists())
 
 
+class OIDCIssuerDoctorTests(unittest.TestCase):
+    def test_doctor_validates_oidc_issuer(self):
+        cases = [
+            ("valid_path", "https://id.example.test/issuer", True),
+            ("query", "https://id.example.test/issuer?wrong=1", False),
+            ("fragment", "https://id.example.test/issuer#fragment", False),
+            ("userinfo", "https://user:synthetic-secret@id.example.test/issuer", False),
+            ("bad_ipv6", "https://[invalid", False),
+            ("bad_port", "https://id.example.test:invalid/issuer", False),
+            ("bad_ipv6_port", "https://[::1]:oops/issuer", False),
+            ("space_in_host", "https://id example.test/issuer", False),
+            ("encoded_slash_in_host", "https://id%2Fexample.test/issuer", False),
+            ("bad_path_escape", "https://id.example.test/%ZZ", False),
+            ("ipvfuture", "https://[v1.a]/issuer", False),
+            ("valid_ipv6_port", "https://[::1]:443/issuer", True),
+            ("valid_ipv6_zone", "https://[fe80::1%25eth0]/issuer", True),
+            ("valid_escaped_ipv6_zone", "https://[fe80::1%25eth%2Dtest]/issuer", True),
+            ("valid_space_in_ipv6_zone", "https://[fe80::1%25eth%20test]/issuer", True),
+            ("invalid_ipv6_zone_escape", "https://[fe80::1%25eth%2Ftest]/issuer", False),
+            ("valid_escaped_path", "https://id.example.test/issuer%20name", True),
+            ("http", "http://id.example.test/issuer", False),
+        ]
+
+        for name, issuer, expected_ok in cases:
+            with self.subTest(case=name):
+                with tempfile.TemporaryDirectory() as directory:
+                    deploy = Path(directory)
+                    env = deploy / ".env"
+                    env.write_text(
+                        f"MCP_OIDC_ISSUER={issuer}\n"
+                        "MCP_OIDC_AUDIENCE=test-audience\n",
+                        encoding="utf-8",
+                    )
+
+                    output = io.StringIO()
+                    args = SimpleNamespace(
+                        directory=deploy,
+                        probe_oidc=False,
+                    )
+
+                    with (
+                        contextlib.redirect_stdout(output),
+                        mock.patch.object(
+                            onboard, "compose_command",
+                            return_value=SimpleNamespace(returncode=1),
+                        ),
+                        mock.patch.object(onboard, "check_identity"),
+                        mock.patch.object(onboard, "source_connection_check"),
+                    ):
+                        onboard.command_doctor(args)
+
+                    result = output.getvalue()
+
+                    if expected_ok:
+                        self.assertIn(
+                            "OK  MCP OIDC issuer uses HTTPS", result
+                        )
+                    else:
+                        self.assertIn(
+                            "ERR MCP_OIDC_ISSUER must be a valid HTTPS issuer URL",
+                            result,
+                        )
+
+                    self.assertIn("Doctor completed:", result)
+                    self.assertIn("MCP OIDC audience is configured", result)
+                    self.assertNotIn("synthetic-secret", result)
+
+
+    def test_invalid_issuer_skips_oidc_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deploy = Path(directory)
+            (deploy / ".env").write_text(
+                "MCP_OIDC_ISSUER=https://id.example.test:invalid/issuer\n"
+                "MCP_OIDC_AUDIENCE=test-audience\n", encoding="utf-8"
+            )
+            output = io.StringIO()
+            args = SimpleNamespace(directory=deploy, probe_oidc=True)
+            with (
+                contextlib.redirect_stdout(output),
+                mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                mock.patch.object(onboard, "check_identity"),
+                mock.patch.object(onboard, "source_connection_check"),
+                mock.patch.object(onboard, "probe_oidc") as probe,
+            ):
+                onboard.command_doctor(args)
+            probe.assert_not_called()
+            self.assertIn("OIDC discovery was not probed because the issuer URL is invalid", output.getvalue())
+            self.assertIn("Doctor completed:", output.getvalue())
+
+
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
 class TLSPairTests(unittest.TestCase):
     def setUp(self):

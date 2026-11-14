@@ -5,6 +5,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -555,6 +556,53 @@ def source_connection_check(args, directory, env_path, values, results):
     add_result(results, ok, f"{result}; correlation ID {request_id}")
 
 
+def parse_oidc_issuer_url(issuer):
+    try:
+        return urllib.parse.urlparse(issuer)
+    except ValueError:
+        # Python rejects some escaped IPv6 zone characters that Go accepts.
+        match = re.match(r"^(https://)(\[([^\]]+?)%25([^\]]+)\])([^/?#]*)", issuer, re.IGNORECASE)
+        if not match:
+            raise
+        ipaddress.IPv6Address(match.group(3))
+        safe_host = f"[{match.group(3)}%25zone]"
+        parsed = urllib.parse.urlparse(match.group(1) + safe_host + match.group(5) + issuer[match.end():])
+        return parsed._replace(netloc=match.group(2) + match.group(5))
+
+
+def issuer_url_has_valid_syntax(issuer, parsed):
+    """Reject URL syntax accepted by urllib.parse but rejected by the server's Go parser."""
+    authority = parsed.netloc
+    if any(ord(char) < 32 or ord(char) == 127 for char in issuer):
+        return False
+    if re.search(r"%(?![0-9a-fA-F]{2})", issuer):
+        return False
+    host_chars = "!$&'()*+,;=:[]<>\"-._~%"
+    if any(ord(char) < 128 and not (char.isalnum() or char in host_chars) for char in authority):
+        return False
+    # Go permits escaped non-ASCII bytes and %25 in a host. A scoped IPv6
+    # zone may also escape host-valid ASCII characters and spaces.
+    zone_start = authority.find("%25") if authority.startswith("[") else -1
+    zone_end = authority.find("]", zone_start) if zone_start >= 0 else -1
+    for match in re.finditer(r"%([0-9a-fA-F]{2})", authority):
+        value = int(match.group(1), 16)
+        if value < 128 and value != 0x25:
+            in_zone = zone_start >= 0 and zone_start < match.start() < zone_end
+            char = chr(value)
+            if not in_zone or not (char == " " or char.isalnum() or char in host_chars):
+                return False
+    if authority.startswith("["):
+        try:
+            ipaddress.IPv6Address(parsed.hostname.split("%", 1)[0])
+        except ValueError:
+            return False
+        suffix = authority.rsplit("]", 1)[-1]
+        return not suffix or re.fullmatch(r":[0-9]*", suffix) is not None
+    if authority.count(":") > 1:
+        return False
+    return ":" not in authority or re.fullmatch(r"[0-9]*", authority.rsplit(":", 1)[-1]) is not None
+
+
 def command_doctor(args):
     directory, env_path, _ = env_paths(args.directory)
     results, values = [], {}
@@ -582,10 +630,33 @@ def command_doctor(args):
         add_result(results, True, "credential keyring is valid and its active AES-256 key is present")
     except (json.JSONDecodeError, ValueError, binascii.Error, TypeError):
         add_result(results, False, "credential keyring is invalid or lacks its active 32-byte key; do not replace an existing key without a verified backup")
+
+    # Reject malformed issuer URLs and disallow embedded credentials, queries, and fragments.
     issuer = values.get("MCP_OIDC_ISSUER", "").strip()
-    parsed_issuer = urllib.parse.urlparse(issuer)
-    issuer_ok = parsed_issuer.scheme == "https" and bool(parsed_issuer.hostname)
-    add_result(results, issuer_ok, "MCP OIDC issuer uses HTTPS" if issuer_ok else "MCP_OIDC_ISSUER must be the HTTPS issuer URL from your identity provider")
+    try:
+        parsed_issuer = parse_oidc_issuer_url(issuer)
+        issuer_ok = (
+            parsed_issuer.scheme == "https"
+            and bool(parsed_issuer.hostname)
+            and parsed_issuer.username is None
+            and parsed_issuer.password is None
+            and not parsed_issuer.query
+            and not parsed_issuer.fragment
+            and issuer_url_has_valid_syntax(issuer, parsed_issuer)
+        )
+    except ValueError:
+        issuer_ok = False
+
+    add_result(
+        results,
+        issuer_ok,
+        "MCP OIDC issuer uses HTTPS"
+        if issuer_ok
+        else (
+            "MCP_OIDC_ISSUER must be a valid HTTPS issuer URL "
+            "without credentials, query parameters, or fragments"
+        ),
+    )
     audience = values.get("MCP_OIDC_AUDIENCE", "").strip()
     add_result(results, bool(audience), "MCP OIDC audience is configured" if audience else "set MCP_OIDC_AUDIENCE to the resource audience registered with your identity provider")
     scopes = (values.get("MCP_OIDC_REQUIRED_SCOPES", "data-fabric.query").strip() or "data-fabric.query").split()
