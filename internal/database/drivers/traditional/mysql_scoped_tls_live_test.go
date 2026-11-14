@@ -27,32 +27,34 @@ func TestScopedMySQLTLSRealDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			d := &MySQLDriver{}
-			dsn := d.BuildDSN(&model.DataSourceConfig{Host: "::1%lo", Port: port, Database: "synthetic", Username: "root", Password: "synthetic-pass", SSL: true, SSLRootCert: ca})
-			for _, ro := range []bool{false, true} {
-				var err error
-				db, e := d.Open(dsn)
-				if ro {
-					if db != nil {
-						db.Close()
+			for _, root := range []string{ca, ""} {
+				dsn := d.BuildDSN(&model.DataSourceConfig{Host: "::1%lo", Port: port, Database: "synthetic", Username: "root", Password: "synthetic-pass", SSL: true, SSLRootCert: root})
+				for _, ro := range []bool{false, true} {
+					var err error
+					db, e := d.Open(dsn)
+					if ro {
+						if db != nil {
+							db.Close()
+						}
+						db, _, e = readonly.OpenDB(model.DatabaseTypeMySQL, dsn)
 					}
-					db, _, e = readonly.OpenDB(model.DatabaseTypeMySQL, dsn)
-				}
-				if e != nil {
-					t.Fatal("connector construction failed", e)
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				err = db.PingContext(ctx)
-				cancel()
-				if (err == nil) != tc.expect {
-					t.Fatalf("readonly=%v unexpected verified TLS outcome: %v", ro, err)
-				}
-				if err == nil && ro {
-					var value int
-					if err = db.QueryRow("SELECT 1").Scan(&value); err != nil || value != 1 {
-						t.Fatal("read-only query failed")
+					if e != nil {
+						t.Fatal("connector construction failed", e)
 					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					err = db.PingContext(ctx)
+					cancel()
+					if (err == nil) != tc.expect {
+						t.Fatalf("readonly=%v unexpected verified TLS outcome: %v", ro, err)
+					}
+					if err == nil && ro {
+						var value int
+						if err = db.QueryRow("SELECT 1").Scan(&value); err != nil || value != 1 {
+							t.Fatal("read-only query failed")
+						}
+					}
+					db.Close()
 				}
-				db.Close()
 			}
 		})
 	}
