@@ -8,3 +8,6 @@ configs/config.yaml
 bin/
 __pycache__/
 *.py[cod]
+
+# Source illustrations for the hosted product videos are not runtime assets
+docs/media/product-overview/images/

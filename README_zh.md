@@ -32,9 +32,11 @@
 
 ## 产品能力讲解视频
 
-[![观看 Data Fabric 产品能力讲解视频：中文配音](assets/data-fabric-overview.svg)](https://scrimba.com/explain/guide0ui5us658?fullscreen=1)
+[![观看 Data Fabric 产品能力讲解视频：中文配音](assets/data-fabric-overview-zh.svg)](https://scrimba.com/explain/guide078dm0nba?fullscreen=1)
 
-通过中文配音与架构图解，了解部署、数据源管理、统一查询、访问策略、可观测性，以及 Codex、WorkBuddy 的 MCP 与 Skill 接入。具体配置步骤见[部署指南](docs/mcp-deployment-zh.md)和[客户端接入指南](docs/agent-skill-zh.md)。
+[中文视频](https://scrimba.com/explain/guide078dm0nba?fullscreen=1) · [English video](https://scrimba.com/explain/guide0f5v746fn?fullscreen=1) · [中文讲解稿](docs/media/product-overview/narration.zh.txt)
+
+通过配音与架构图解，了解部署、数据源管理、统一查询、访问策略、可观测性，以及 Codex、WorkBuddy 的 MCP 与 Skill 接入。中英文版本使用同一套场景，分别提供对应语言的配音和字幕。具体配置步骤见[部署指南](docs/mcp-deployment-zh.md)和[客户端接入指南](docs/agent-skill-zh.md)。
 
 ## AI 应用场景
 
