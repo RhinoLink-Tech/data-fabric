@@ -109,6 +109,19 @@ func (s *Store) beginBoundedIntent(ctx context.Context, actor Principal, operati
 			return err
 		}
 		own = flowCount + doneCount
+		// Bound unfinished operations separately from completion receipts. A
+		// receipt preserves safe retry, but should not consume one of the four
+		// in-progress slots for its entire lifetime.
+		activePrincipal := flowCount
+		principalStorageLimit := int64(perPrincipal) * 4
+		maxPerPrincipal := int64(perTenant)
+		if perTenant > perPrincipal {
+			// Preserve at least one tenant slot for another principal.
+			maxPerPrincipal--
+		}
+		if principalStorageLimit > maxPerPrincipal {
+			principalStorageLimit = maxPerPrincipal
+		}
 		if err = tx.Model(&record{}).Where("tenant_hash = ?", tenantHash).Count(&flowCount).Error; err != nil {
 			return err
 		}
@@ -116,7 +129,7 @@ func (s *Store) beginBoundedIntent(ctx context.Context, actor Principal, operati
 			return err
 		}
 		tenantCount = flowCount + doneCount
-		if own >= int64(perPrincipal) || tenantCount >= int64(perTenant) || all >= int64(global) {
+		if activePrincipal >= int64(perPrincipal) || own >= principalStorageLimit || tenantCount >= int64(perTenant) || all >= int64(global) {
 			return ErrUnavailable
 		}
 		return tx.Create(&record{IDHash: hex.EncodeToString(h[:]), PrincipalHash: principal, TenantHash: tenantHash, Operation: operation, TargetID: target, ExpiresAt: now + s.ttl.Milliseconds()}).Error

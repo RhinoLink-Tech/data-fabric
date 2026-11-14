@@ -18,6 +18,7 @@ pgport="$(docker port "$pg" 5432/tcp)"; pgport="${pgport##*:}"
 myport="$(docker port "$my" 3306/tcp)"; myport="${myport##*:}"
 dsn="root:synthetic-test-only@tcp(127.0.0.1:$myport)/isolated_test?parseTime=true"
 cd "$(dirname "$0")/.."
+DF_ONBOARDING_TEST_MYSQL_DSN="$dsn" go test -race -count=1 ./internal/security/onboarding -run '^TestMySQLCompletedSetupsAllowUpdate$'
 go test -race -count=1 ./cmd/server -run '^TestWorkbuddyRequiresIsolatedRestrictedConfiguration$'
 DF_SINGLETON_TEST_MYSQL_DSN="$dsn" go test -race -count=1 ./internal/workbuddy/singleton ./internal/workbuddy/onboardingruntime -run 'TestMySQLExclusionAndLostSession|TestMySQLUpdateGuardLossStopsRequestsAndPools'
 DF_GUARD_TEST_MYSQL_DSN="$dsn" go test -race -count=1 ./cmd/server -run '^TestWorkBuddyMainMuxGuardProcessLoss$'
