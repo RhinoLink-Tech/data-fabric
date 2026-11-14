@@ -28,6 +28,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
+	"github.com/RhinoLink-Tech/data-fabric/internal/workbuddy/tunnelbridge"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -42,6 +43,13 @@ func main() {
 	}
 	if err := cfg.ValidateStartup(); err != nil {
 		log.Fatal("Invalid startup configuration: ", err)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "workbuddy-grant" {
+		if err := runWorkbuddyGrant(cfg, os.Args[2:]); err != nil {
+			log.Fatal("WorkBuddy grant: ", err)
+		}
+		printWorkbuddyGrantResult()
+		return
 	}
 
 	vault, err := security.LoadCredentialVaultFromEnv()
@@ -420,6 +428,10 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	if err := cfg.ValidateStartup(); err != nil {
 		return fmt.Errorf("invalid startup configuration: %w", err)
 	}
+	workbuddy, err := readWorkbuddyConfig(cfg)
+	if err != nil {
+		return err
+	}
 	routing, err := newRouteOwner(cfg.Routing, replicarouting.MCP)
 	if err != nil {
 		return err
@@ -463,7 +475,15 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	}
 
 	tokenManager := security.NewTokenManager(vault)
-	connPool := database.NewConnectionPool(database.GetDriverRegistry(), tokenManager, vault, cfg.Security.EnforceReadOnly)
+	var connPool *database.ConnectionPool
+	if workbuddy == nil {
+		connPool = database.NewConnectionPool(database.GetDriverRegistry(), tokenManager, vault, cfg.Security.EnforceReadOnly)
+	} else {
+		connPool, err = database.NewRestrictedConnectionPool(database.GetDriverRegistry(), tokenManager, vault, cfg.Security.EnforceReadOnly, workbuddy.policy)
+		if err != nil {
+			return fmt.Errorf("failed to initialize WorkBuddy restricted pool: %w", err)
+		}
+	}
 	tokenStore, ok := datasourceRepo.(security.TokenStore)
 	if !ok {
 		return fmt.Errorf("data-source repository does not support encrypted access-token storage")
@@ -543,6 +563,23 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		mcpServer.SetSourceConnectivityTester(database.NewHealthChecker(connPool))
 	}
 
+	var onboardingOverlay func(http.Handler) http.Handler
+	if workbuddy != nil {
+		rt, e := workbuddy.start(context.Background(), cfg, db, vault, connPool, mcpServer)
+		if e != nil {
+			return e
+		}
+		defer rt.Close()
+		onboardingOverlay = func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/onboarding/") {
+					rt.Handler.ServeHTTP(w, r)
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
 		// The remote entrance gets the same security budgets as the HTTP API:
 		// per-client rate limiting from the shared config, plus body and
@@ -579,9 +616,23 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 				tokenValidator, rateLimiter, limits, routedTransport, queryOwner, cfg.Routing.PolicyRevision, tablePolicyManager,
 			)
 		}
+		if workbuddy != nil {
+			handler = mcp.StrictTenantHTTPHandler(handler)
+		}
+		var discovery func(http.Handler) http.Handler
+		if resource := os.Getenv("DATA_FABRIC_MCP_OAUTH_RESOURCE"); resource != "" {
+			if !strings.EqualFold(cfg.MCP.AuthMode, config.MCPAuthModeOIDC) {
+				return errors.New("OAuth discovery requires OIDC authentication")
+			}
+			metadata, e := mcp.NewProtectedResourceMetadata(resource, cfg.MCP.OIDCIssuer, cfg.MCP.OIDCAudience)
+			if e != nil {
+				return e
+			}
+			discovery = metadata.Wrap
+		}
 		return serveMCPHTTP(cfg, handler, streamingService, auditStore, queryOwner, func(stop func()) {
 			stopStreaming = stop
-		})
+		}, workbuddy != nil && workbuddy.bridge, onboardingOverlay, discovery)
 	}
 
 	stopStreaming = startStreamingMaintenance(context.Background(), streamingService)
@@ -621,9 +672,14 @@ func observeMCPHTTP(handler http.Handler) http.Handler {
 	return router
 }
 
-func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, auditStore *auditlog.Store, queryOwner *unifiedservice.OwnerLifecycle, setMaintenanceStop func(func())) error {
+func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService service.StreamingService, auditStore *auditlog.Store, queryOwner *unifiedservice.OwnerLifecycle, setMaintenanceStop func(func()), enableBridge bool, outer ...func(http.Handler) http.Handler) error {
 	middleware.InitMetrics()
 	handler = observeMCPHTTP(handler)
+	for _, wrap := range outer {
+		if wrap != nil {
+			handler = wrap(handler)
+		}
+	}
 	server := &http.Server{
 		Addr:              cfg.MCP.Address,
 		Handler:           handler,
@@ -632,6 +688,24 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 		IdleTimeout:       cfg.Server.IdleTimeout,
 		// WriteTimeout stays unset: streamable-HTTP responses may be SSE
 		// streams held open beyond any fixed write deadline.
+	}
+	listener, err := net.Listen("tcp", cfg.MCP.Address)
+	if err != nil {
+		return fmt.Errorf("failed to bind MCP HTTP listener: %w", err)
+	}
+	defer listener.Close()
+	var bridgeServer *http.Server
+	var bridgeResult <-chan error
+	if enableBridge {
+		listener, err := net.Listen("tcp", ":8082")
+		if err != nil {
+			return fmt.Errorf("failed to start WorkBuddy tunnel bridge: %w", err)
+		}
+		bridgeServer = &http.Server{Handler: tunnelbridge.Handler(handler), ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout, ReadTimeout: cfg.Server.ReadTimeout, IdleTimeout: cfg.Server.IdleTimeout}
+		result := make(chan error, 1)
+		bridgeResult = result
+		go func() { result <- bridgeServer.Serve(listener) }()
+		defer bridgeServer.Close()
 	}
 	serverCtx, stopServer := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopServer()
@@ -645,10 +719,10 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 	listenResult := make(chan error, 1)
 	go func() {
 		if cfg.MCP.TLSCertFile != "" {
-			listenResult <- server.ListenAndServeTLS(cfg.MCP.TLSCertFile, cfg.MCP.TLSKeyFile)
+			listenResult <- server.ServeTLS(listener, cfg.MCP.TLSCertFile, cfg.MCP.TLSKeyFile)
 			return
 		}
-		listenResult <- server.ListenAndServe()
+		listenResult <- server.Serve(listener)
 	}()
 
 	if cfg.MCP.TLSCertFile != "" {
@@ -663,8 +737,18 @@ func serveMCPHTTP(cfg *config.Config, handler http.Handler, streamingService ser
 			return fmt.Errorf("failed to start MCP HTTP server: %w", err)
 		}
 		return nil
+	case err := <-bridgeResult:
+		_ = server.Close()
+		<-listenResult
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("WorkBuddy tunnel bridge stopped: %w", err)
+		}
+		return errors.New("WorkBuddy tunnel bridge stopped unexpectedly")
 	case <-serverCtx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if bridgeServer != nil {
+			_ = bridgeServer.Shutdown(shutdownCtx)
+		}
 		shutdownErr := server.Shutdown(shutdownCtx)
 		cancel()
 		listenErr := <-listenResult

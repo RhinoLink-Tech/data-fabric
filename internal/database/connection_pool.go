@@ -33,6 +33,7 @@ func GetDriverRegistry() *DriverRegistry {
 
 // ConnectionPool manages database connections for different data sources
 type ConnectionPool struct {
+	egress                        *FixedIPEgressPolicy // immutable for the process lifetime
 	registry                      *DriverRegistry
 	pools                         map[string]*sql.DB
 	fingerprints                  map[string]string // Config fingerprint per pooled connection (#117)
@@ -70,6 +71,12 @@ func NewConnectionPool(registry *DriverRegistry, tokenManager *security.TokenMan
 func (cp *ConnectionPool) GetConnection(ctx context.Context, dataSource *model.DataSource) (*sql.DB, error) {
 	if dataSource == nil {
 		return nil, fmt.Errorf("data source is required")
+	}
+	if cp.egress != nil {
+		if err := cp.egress.Check(dataSource); err != nil {
+			_ = cp.CloseConnection(dataSource.ID)
+			return nil, err
+		}
 	}
 	fingerprint := dataSourceFingerprint(dataSource)
 
@@ -116,6 +123,12 @@ func (cp *ConnectionPool) GetNativeSQLAPIExecutor(ctx context.Context, dataSourc
 func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *model.DataSource) (execution.NativeAPIExecutor, bool, error) {
 	if dataSource == nil {
 		return nil, false, fmt.Errorf("data source is required")
+	}
+	if cp.egress != nil {
+		if err := cp.egress.Check(dataSource); err != nil {
+			_ = cp.CloseConnection(dataSource.ID)
+			return nil, false, err
+		}
 	}
 	driver, err := cp.registry.GetDriver(dataSource.Type)
 	if err != nil {
@@ -210,7 +223,12 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 	// Config-aware drivers can construct non-network database/sql adapters from
 	// structured source settings. This keeps secrets and object-store options out
 	// of the DSN while preserving the common query service path.
-	db, err := cp.openConfiguredDatabase(ctx, dataSource.Type, dsn, &dataSource.Config, readOnly)
+	var db *sql.DB
+	if cp.egress != nil {
+		db, err = cp.egress.OpenRestrictedDatabase(dataSource, readOnly)
+	} else {
+		db, err = cp.openConfiguredDatabase(ctx, dataSource.Type, dsn, &dataSource.Config, readOnly)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}

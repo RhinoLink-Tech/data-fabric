@@ -11,8 +11,9 @@ import (
 // caller may see (#9): own records and records of the caller's real tenant.
 // A nil scope means no restriction (admin or authorization-disabled mode).
 type AccessScope struct {
-	OwnerID  string
-	TenantID string
+	OwnerID               string
+	TenantID              string
+	StrictTenantIsolation bool
 }
 
 // ScopeForCaller derives the repository scope for a caller. Admins and the
@@ -21,7 +22,7 @@ func ScopeForCaller(caller *security.Caller) *AccessScope {
 	if caller == nil || caller.IsAdmin() {
 		return nil
 	}
-	return &AccessScope{OwnerID: caller.UserID, TenantID: caller.TenantID}
+	return &AccessScope{OwnerID: caller.UserID, TenantID: caller.TenantID, StrictTenantIsolation: caller.StrictTenantIsolation}
 }
 
 // apply adds the scope predicate to a query. A caller without a tenant claim
@@ -30,6 +31,12 @@ func ScopeForCaller(caller *security.Caller) *AccessScope {
 func (s *AccessScope) apply(query *gorm.DB) *gorm.DB {
 	if s == nil {
 		return query
+	}
+	if s.StrictTenantIsolation {
+		if s.TenantID == "" {
+			return query.Where("1 = 0")
+		}
+		return byteEqual(query, "tenant_id", s.TenantID)
 	}
 	if s.TenantID == "" {
 		return query.Where("owner_id = ?", s.OwnerID)

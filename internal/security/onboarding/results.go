@@ -16,6 +16,7 @@ import (
 type completion struct {
 	IDHash        string `gorm:"primaryKey;size:64"`
 	PrincipalHash string `gorm:"size:64;not null"`
+	TenantHash    string `gorm:"size:64;index"`
 	SourceID      string `gorm:"type:char(36);not null"`
 	ExpiresAt     int64  `gorm:"not null;index"`
 }
@@ -60,6 +61,10 @@ func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, app
 	if err != nil {
 		return "", err
 	}
+	tenantHash, err := actor.tenantDigest()
+	if err != nil {
+		return "", err
+	}
 	var created string
 	err = s.ConsumeAndApply(ctx, id, actor, func(tx *gorm.DB) error {
 		source, e := apply(tx)
@@ -74,7 +79,7 @@ func (s *Store) ApplyResult(ctx context.Context, id string, actor Principal, app
 		if e != nil {
 			return e
 		}
-		if e = tx.Create(&completion{IDHash: hash, PrincipalHash: principal, SourceID: source, ExpiresAt: now + s.ttl.Milliseconds()}).Error; e != nil {
+		if e = tx.Create(&completion{IDHash: hash, PrincipalHash: principal, TenantHash: tenantHash, SourceID: source, ExpiresAt: now + s.ttl.Milliseconds()}).Error; e != nil {
 			return e
 		}
 		created = source

@@ -18,7 +18,9 @@ When asked which databases, storage systems or file formats the connected
 server supports, use `list_source_types` if advertised for a compact overview.
 For a specific connector or before making compatibility claims, call it again
 with its exact type and include_details=true; report the version policy,
-operations, authentication disclosure and limitations. Registered types are not
+operations, authentication disclosure and limitations. If present, distinguish
+allowed_by_instance_type_policy and allowed_by_onboarding_type_policy; neither proves
+connectivity, authorization or version compatibility. Registered types are not
 configured data sources. An empty filter result only means no matching type is
 registered in this server build. For older servers without the tool, explain
 that capability discovery is unavailable; do not infer it from configured
@@ -61,11 +63,32 @@ or the tool rejects the operation, stop and ask the
 user to review the source again. Do not treat a general request to manage
 sources as confirmation to delete a specific source.
 
-Do not ask for database passwords, tokens or secret connection properties in
-chat or tool arguments. Creating a source or changing its credentials requires
-an independently supported secure credential-entry workflow; if the connected
-server does not offer one, direct the user to their Data Fabric administrator
-or management UI rather than inventing an MCP operation.
+## Add a source through the secure browser workflow
+
+Never ask for database passwords, tokens or secret connection properties in
+chat or tool arguments. If the user requests a new source and both
+`begin_data_source_onboarding` and `get_data_source_onboarding_status` are
+advertised, explain that the user will enter credentials in a separately
+authenticated browser. Call `begin_data_source_onboarding` with no arguments,
+and give the user its returned URL. The URL is not authorization: the user
+must sign in with the same verified issuer, subject and tenant as the MCP
+identity. Ask them to complete the browser's connection test and creation,
+then return to the conversation. Do not send the flow ID or credentials as a
+chat request, invent a URL, claim success, or continuously poll. After the
+user reports completing it, call `get_data_source_onboarding_status` with the
+returned `flow_id` and report only its actual status; if completed, use the
+returned `datasource_id` for any requested follow-up.
+
+This opt-in candidate accepts MySQL and PostgreSQL connections to server-allowed
+IPv4 addresses and ports, including TLS with verified server identity and system
+or operator-provisioned trust; it requires a matching
+management grant, audited OIDC deployment and browser access. Other source
+types, editing connection parameters and credential rotation are not provided
+by this workflow. If either tool is absent, access is denied, the flow expires
+or the browser cannot connect, explain the result and ask an administrator to
+check the deployment, identity, grants and network policy. Restart an expired
+flow only when the user requests it. Never fall back to collecting secrets in
+chat. See [Connected tool contracts](references/tools.md).
 
 ## Inspect metadata and prepare read-only SQL
 

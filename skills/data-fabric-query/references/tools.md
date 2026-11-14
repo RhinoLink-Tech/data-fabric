@@ -41,13 +41,36 @@ source and operation with the user before making changes.
 | --- | --- | --- |
 | `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
 | `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
-| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL without TLS only; TLS connections are never downgraded. PostgreSQL probing requires Linux with readable /proc/self/environ and is disabled when protocol debugging is enabled. |
+| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL only. Ordinary deployments reject TLS probes; the restricted onboarding candidate supports verified TLS. PostgreSQL probing is disabled when protocol debugging is enabled. |
 | `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
 
-These tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed. Never
-ask for database credentials in chat or pass them as tool arguments. When a
-secure source onboarding method is unavailable, direct the user to their
-Data Fabric administrator instead of claiming the operation completed.
+These existing-source tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed.
+
+## Add a source through the separately authenticated browser
+
+The following are opt-in candidate tools, absent from published v2.1.0-preview.1.
+Discover both and their advertised schemas before use. Their presence alone is
+not proof that the WorkBuddy client, deployment and identity are configured.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `begin_data_source_onboarding` | None | `flow_id`, `url`, `message`; the URL requires separate browser authentication and is not itself an access grant. |
+| `get_data_source_onboarding_status` | `flow_id` from begin | `status` is `pending`, or `completed` with `datasource_id`. Errors are not completion. |
+
+A verified HTTP/OIDC identity, management scope and matching server-side grant
+are required. The browser user must authenticate as the same issuer, subject
+and tenant as the MCP user. Direct them to the exact returned URL and have them
+enter the connection details and secret only in the authenticated browser;
+never put credentials in chat or MCP arguments. Check status after the user
+reports completion, not by repeated polling. Pending means creation is not
+complete. On expiration start a fresh flow if requested; on unavailable or
+permission errors ask the administrator to check configuration and grants.
+
+The candidate supports MySQL/PostgreSQL, verified TLS, and server-approved IPv4
+network destinations and ports. Other source types and editing or rotating
+existing connection credentials are not supported by this browser workflow.
+If either tool is unavailable, direct the user to an administrator or supported
+management UI; do not invent an operation or claim completion.
 
 ## Validate and execute
 

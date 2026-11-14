@@ -47,7 +47,9 @@ func (s *dataSourceService) SetSourceStatusScoped(ctx context.Context, caller *s
 	if err = repo.SetSourceStatusScoped(ctx, scope, id, status); err != nil {
 		return err
 	}
-	s.invalidatePool(id)
+	if !repository.AfterSourceManagementCommit(ctx, func() { s.invalidatePool(id) }) {
+		s.invalidatePool(id)
+	}
 	return nil
 }
 
@@ -64,6 +66,8 @@ func (s *dataSourceService) DeleteSourceScoped(ctx context.Context, caller *secu
 	if err = repo.DeleteSourceScoped(ctx, scope, id, expectedName); err != nil {
 		return err
 	}
-	s.invalidatePool(id)
+	if !repository.AfterSourceManagementCommit(ctx, func() { s.invalidatePool(id) }) {
+		s.invalidatePool(id)
+	}
 	return nil
 }

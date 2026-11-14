@@ -50,7 +50,7 @@ func (r *dataSourceRepository) Create(ctx context.Context, ds *model.DataSource)
 
 func (r *dataSourceRepository) GetByID(ctx context.Context, id string) (*model.DataSource, error) {
 	var ds model.DataSource
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&ds).Error; err != nil {
+	if err := SourceManagementDB(ctx, r.db).Where("id = ?", id).First(&ds).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDataSourceNotFound
 		}

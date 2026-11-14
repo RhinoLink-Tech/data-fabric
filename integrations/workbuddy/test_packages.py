@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import subprocess
@@ -12,6 +13,23 @@ ROOT = HERE.parents[1]
 
 
 class PackageTest(unittest.TestCase):
+    def test_build_is_reproducible(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            for target in (one, two):
+                subprocess.run([sys.executable, str(HERE / "build_packages.py"), target, "--connector-source", "data-fabric-access"], check=True)
+            for name in ("data-fabric-workbuddy-connector.zip", "data-fabric-workbuddy-skill.zip"):
+                self.assertEqual(hashlib.sha256((Path(one) / name).read_bytes()).digest(), hashlib.sha256((Path(two) / name).read_bytes()).digest())
+
+    def test_enterprise_source_matches_mcp_server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run([sys.executable, str(HERE / "build_packages.py"), tmp, "--connector-source", "data-fabric-access"], check=True)
+            with ZipFile(Path(tmp) / "data-fabric-workbuddy-connector.zip") as archive:
+                meta = json.loads(archive.read("connector-meta.json"))
+                config = json.loads(archive.read("mcp.json"))
+                self.assertEqual(meta["source"], "data-fabric-access")
+                self.assertEqual(list(config["mcpServers"]), ["data-fabric-access"])
+                self.assertEqual(config["mcpServers"]["data-fabric-access"]["url"], "https://${DATA_FABRIC_MCP_ENDPOINT}")
+
     def test_archives_preserve_skill_and_reference_credential_form(self):
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run([sys.executable, str(HERE / "build_packages.py"), tmp], check=True)
@@ -41,8 +59,8 @@ class PackageTest(unittest.TestCase):
                     if not path.is_file():
                         continue
                     rel = path.relative_to(ROOT / "skills/data-fabric-query").as_posix()
-                    a = connector.read("skills/data-fabric-query/" + rel)
-                    b = standalone.read("data-fabric-query/" + rel)
+                    a = connector.read("skills/data-fabric-access/" + rel)
+                    b = standalone.read("data-fabric-access/" + rel)
                     self.assertEqual(a, b)
                     if rel != "SKILL.md":
                         self.assertEqual(a, path.read_bytes())
@@ -53,12 +71,22 @@ class PackageTest(unittest.TestCase):
                                     "description_en:", "version:", "author:"):
                             self.assertIn(key, a.decode().split("\n---\n", 1)[0])
                 guide_path = "references/workbuddy-setup-zh.md"
-                entry = standalone.read("data-fabric-query/SKILL.md").decode()
+                entry = standalone.read("data-fabric-access/SKILL.md").decode()
                 self.assertIn(guide_path, entry)
-                guide = standalone.read("data-fabric-query/" + guide_path).decode()
+                guide = standalone.read("data-fabric-access/" + guide_path).decode()
                 self.assertIn("v2.1.0-preview.1", guide)
-                self.assertIn("不提供新建数据源", guide)
-                self.assertIn("较新服务", meta["description_zh"])
+                self.assertIn("不包含安全新增工具", guide)
+                self.assertIn("begin_data_source_onboarding", entry)
+                self.assertIn("get_data_source_onboarding_status", entry)
+                self.assertIn("allowed_by_instance_type_policy", entry)
+                self.assertIn("allowed_by_onboarding_type_policy", entry)
+                self.assertIn("TLS with verified server identity", entry)
+                self.assertIn("credential rotation are not provided", entry)
+                self.assertIn("较新版本", meta["description_zh"])
+                self.assertEqual(meta["version"], "1.2.0")
+                self.assertEqual(meta["source"], "data-fabric")
+                self.assertIn("name: data-fabric-access", entry.split("\n---\n", 1)[0])
+                self.assertIn("manage an existing source", entry.lower())
                 self.assertTrue(connector.read("icon.png").startswith(b"\x89PNG\r\n\x1a\n"))
 
 
