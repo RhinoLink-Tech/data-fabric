@@ -485,7 +485,7 @@ def source_connection_check(args, directory, env_path, values, results):
     else:
         try:
             config = secure_json_file(Path(args.source_config))
-        except (OSError, OnboardingError, json.JSONDecodeError):
+        except (OSError, OnboardingError, json.JSONDecodeError, UnicodeDecodeError):
             add_result(results, False, "source configuration could not be read safely; protect it with chmod 600 and verify its JSON")
             return
     if not isinstance(config, dict):
