@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const pageSize = 20;
-  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null };
+  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null, portManuallyEdited: false, testRun: 0 };
   const $ = (id) => document.getElementById(id);
   const tokenInput = $("bearerToken");
   const rows = $("sourceRows");
@@ -140,8 +140,14 @@
   async function loadSources() {
     try {
       const result = await api("/api/v1/datasources?limit=" + pageSize + "&offset=" + state.offset);
+      const total = Number(result && result.total);
+      if (state.offset > 0 && Number.isFinite(total) && state.offset >= total) {
+        // The list shrank past the current page (e.g. another operator removed sources): load the last valid page.
+        state.offset = total > 0 ? Math.floor((total - 1) / pageSize) * pageSize : 0;
+        return loadSources();
+      }
       state.sources = Array.isArray(result && result.dataSources) ? result.dataSources : [];
-      state.total = Number(result && result.total) || state.sources.length; renderSources();
+      state.total = total || state.sources.length; renderSources();
     } catch (error) { renderLoadError(error); }
   }
   function addTypeOption(select, item, suffix = "") {
@@ -157,11 +163,16 @@
   }
   function setFormError(message) { const box = $("formError"); box.textContent = message; box.hidden = !message; }
   function setTestResult(message, kind = "") { const box = $("testResult"); box.textContent = message; box.className = "test-result" + (kind ? " " + kind : ""); box.hidden = !message; }
+  // Any change to the form (or switching to another source) makes the shown result and any pending test stale.
+  function invalidateTestResult() {
+    state.testRun++; setTestResult("");
+    $("testButton").disabled = false; $("testButton").textContent = "测试连接";
+  }
   function resetEditor() {
-    form.reset(); state.editingID = ""; state.currentConfig = null; populateTypes();
+    form.reset(); state.editingID = ""; state.currentConfig = null; state.portManuallyEdited = false; populateTypes();
     $("editorTitle").textContent = "添加数据源"; $("saveButton").textContent = "保存数据源";
     $("passwordHint").textContent = "新建时只在保存请求中提交；不会写入浏览器存储。"; $("sourceAdditionalProps").value = "{}";
-    setFormError(""); setTestResult("");
+    setFormError(""); invalidateTestResult();
   }
   function openCreateDialog() {
     if (!state.catalog.length) { showNotice("无法读取可用连接器目录，请先检查服务状态。", "error"); return; }
@@ -187,8 +198,11 @@
       $("sourceMaxLifetime").value = source.config && source.config.maxLifetime || "";
       $("sourceTimezone").value = source.config && source.config.timezone || "";
       $("sourceAdditionalProps").value = JSON.stringify((source.config && source.config.additionalProps) || {}, null, 2);
-      setFormError(""); setTestResult(""); dialog.showModal(); $("sourceName").focus();
+      setFormError(""); invalidateTestResult(); dialog.showModal(); $("sourceName").focus();
     } catch (error) { showNotice("无法打开数据源：" + errorText(error), "error"); }
+  }
+  function hasRedactedHost(host) {
+    return Boolean(host && (host.includes("[redacted]") || /(?:^|\/\/)redacted@|[?#]redacted(?:[&#]|$)/i.test(host)));
   }
   function readConfig() {
     let additionalProps;
@@ -208,23 +222,41 @@
     const password = $("sourcePassword").value; if (password) config.password = password;
     const existingHost = state.currentConfig && state.currentConfig.host;
     if (existingHost && config.host === displayHost(existingHost)) config.host = existingHost;
+    else if (hasRedactedHost(existingHost)) {
+      throw new Error("当前地址包含隐藏的凭据或参数，不能在此直接修改主机；请使用完整的新连接配置创建数据源。");
+    }
     return config;
   }
   async function testConnection() {
+    const run = ++state.testRun; // a later edit or test makes this run stale, so its response is ignored
     setFormError(""); setTestResult("");
     try {
       const config = readConfig(); state.currentConfig = config;
+      if (state.editingID && hasRedactedHost(config.host)) {
+        throw new Error("该连接包含未回显的凭据或参数，页面无法直接测试；请使用支持该类型的已配置数据源连接测试工具。");
+      }
       const type = $("sourceType").value; if (!type) throw new Error("请先选择连接器类型。");
       $("testButton").disabled = true; $("testButton").textContent = "正在测试…";
       const result = await api("/api/v1/database/test-connection?type=" + encodeURIComponent(type), { method: "POST", body: config, sanitizeWith: config });
-      setTestResult("连接测试成功" + (result && result.status ? "（" + String(result.status) + "）" : "") + "。", "success");
-    } catch (error) { setTestResult(redact(errorText(error), state.currentConfig), "error"); }
-    finally { $("testButton").disabled = false; $("testButton").textContent = "测试连接"; }
+      if (run !== state.testRun) return;
+      const status = result && typeof result.status === "string" ? result.status.trim().toLowerCase() : "";
+      if (status === "healthy") {
+        setTestResult("连接测试成功。", "success");
+      } else {
+        const detail = result && typeof result.message === "string" ? redact(result.message, config) : "";
+        setTestResult(detail ? "连接测试失败：" + detail : "连接测试失败，请检查主机、端口、TLS 和凭据。", "error");
+      }
+    } catch (error) { if (run === state.testRun) setTestResult(redact(errorText(error), state.currentConfig), "error"); }
+    finally { if (run === state.testRun) { $("testButton").disabled = false; $("testButton").textContent = "测试连接"; } }
   }
   async function saveSource(event) {
-    event.preventDefault(); setFormError(""); if (!form.reportValidity()) return;
+    event.preventDefault(); setFormError("");
+    const type = $("sourceType").value;
+    if (!type) { setFormError("请先选择连接器类型。"); return; }
+    if (!form.reportValidity()) return;
     let config; try { config = readConfig(); } catch (error) { setFormError(error.message); return; }
     state.currentConfig = config; const body = { name: $("sourceName").value.trim(), config };
+    if (!state.editingID) body.type = type;
     $("saveButton").disabled = true; $("saveButton").textContent = "正在保存…";
     try {
       if (state.editingID) await api("/api/v1/datasources/" + encodeURIComponent(state.editingID), { method: "PUT", body, sanitizeWith: config });
@@ -271,15 +303,19 @@
   $("clearToken").addEventListener("click", () => { tokenInput.value = ""; showNotice("当前页面中的访问令牌已清除。"); loadSources(); });
   $("closeDialog").addEventListener("click", () => dialog.close()); $("cancelButton").addEventListener("click", () => dialog.close());
   $("testButton").addEventListener("click", testConnection); form.addEventListener("submit", saveSource);
+  $("sourcePort").addEventListener("input", () => { if (!state.editingID) state.portManuallyEdited = true; });
   $("sourceType").addEventListener("change", () => {
-    if (!state.editingID && !$("sourcePort").value) {
+    if (!state.editingID && !state.portManuallyEdited) {
       const item = state.catalog.find((entry) => entry.type === $("sourceType").value);
-      if (item && item.defaultPort) $("sourcePort").value = item.defaultPort;
+      $("sourcePort").value = item && item.defaultPort ? item.defaultPort : "";
     }
   });
   $("previousPage").addEventListener("click", () => { state.offset = Math.max(0, state.offset - pageSize); loadSources(); });
   $("nextPage").addEventListener("click", () => { if (state.offset + pageSize < state.total) { state.offset += pageSize; loadSources(); } });
-  dialog.addEventListener("close", () => { $("sourcePassword").value = ""; $("sourceAdditionalProps").value = "{}"; state.currentConfig = null; });
+  // The display name is not part of the connection config, so editing it keeps the result.
+  const onFormChange = (event) => { if (event.target !== $("sourceName")) invalidateTestResult(); };
+  form.addEventListener("input", onFormChange); form.addEventListener("change", onFormChange);
+  dialog.addEventListener("close", () => { $("sourcePassword").value = ""; $("sourceAdditionalProps").value = "{}"; state.currentConfig = null; invalidateTestResult(); });
   window.addEventListener("pagehide", () => { tokenInput.value = ""; $("sourcePassword").value = ""; $("sourceAdditionalProps").value = "{}"; });
   (async () => {
     const results = await Promise.allSettled([loadCatalog(), loadSources()]);

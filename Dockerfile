@@ -1,11 +1,13 @@
 # Build the Go service and its pinned Python SQL translation runtime.
 FROM golang:1.26.1 AS builder
+ARG DATA_FABRIC_VERSION=development
+ARG DATA_FABRIC_SOURCE_REVISION=unknown
 
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/main ./cmd/server \
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/RhinoLink-Tech/data-fabric/internal/buildinfo.Version=${DATA_FABRIC_VERSION} -X github.com/RhinoLink-Tech/data-fabric/internal/buildinfo.SourceRevision=${DATA_FABRIC_SOURCE_REVISION}" -o /app/main ./cmd/server \
     && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/replica-ingress ./cmd/replica-ingress \
     && go build -trimpath -o /app/license-bundle-generator ./cmd/license-bundle \
     && /app/license-bundle-generator --output /app/go-third-party-licenses
@@ -15,8 +17,10 @@ COPY requirements-sql-translation.txt /tmp/requirements-sql-translation.txt
 RUN python -m pip install --no-cache-dir --target=/opt/data-fabric/python --requirement /tmp/requirements-sql-translation.txt
 
 FROM alpine:3.22
+ARG DATA_FABRIC_VERSION=development
 ARG DATA_FABRIC_SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.title="Data Fabric" \
+      org.opencontainers.image.version="${DATA_FABRIC_VERSION}" \
       org.opencontainers.image.revision="${DATA_FABRIC_SOURCE_REVISION}"
 RUN apk --no-cache add ca-certificates tzdata python3 \
     && addgroup -S -g 10001 app \

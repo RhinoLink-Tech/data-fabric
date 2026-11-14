@@ -54,8 +54,10 @@ See [Codex Skills](https://learn.chatgpt.com/docs/build-skills) and
    python3 -m zipfile -c data-fabric-query.zip skills/data-fabric-query
    ```
 
-2. In **Skills → Add Skill → Upload Skill**, select the ZIP and confirm that
-   `data-fabric-query` appears among the installed skills.
+2. Open **Skills → Add Skill → Upload Skill → Select ZIP file** and choose
+   the bundle. When WorkBuddy reports that the Skill is safe, select
+   **Continue installation** if prompted. Confirm that `data-fabric-query`
+   appears among the installed skills.
 3. In **Connectors → Custom Connector**, configure `streamableHttp` and
    your `/mcp` URL using the
    [WorkBuddy example](../examples/mcp-clients/workbuddy.mcp.json). Supply the
@@ -71,6 +73,10 @@ and [MCP configuration](https://open.workbuddy.cn/docs/connector) guides.
 For applications calling the DeepSeek API directly, the
 [DeepSeek function-calling example](../examples/deepseek-agent/README.md)
 maps model function calls to the same authenticated MCP tools.
+
+## WorkBuddy marketplace submission candidates
+
+See the [WorkBuddy connector and standalone Skill package builder](../integrations/workbuddy/README.md). These packages use a user-supplied MCP endpoint and access token. Platform review and an end-to-end WorkBuddy client run are still required before publication.
 
 ## Bundle contents and limits
 

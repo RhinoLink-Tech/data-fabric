@@ -46,10 +46,10 @@ release 模式还要求管理认证、数据库只读会话和审计保持开启
 
 - list_data_sources：列出数据源 ID、名称、类型、状态和连接位置摘要。
 - get_data_source_info：返回指定数据源的基本信息和连接位置摘要，不返回用户名或密码。
-- execute_sql_query：通过统一查询服务执行查询；可选 source_dialect 用于在执行前转换 SQL；可选 parameters 为有序绑定值数组（null/布尔/数字/字符串，最多 64 个），由驱动绑定到 `?` 或 `$1..$N` 占位符，绝不拼接进 SQL 文本，续批与计数复用同一组绑定值。注意：MCP SDK 以标准 JSON 解码参数，±2^53 之外的整数会先退化为浮点数（HTTP API 无此限制）。
+- execute_sql_query：通过统一查询服务执行查询；可选 source_dialect 用于在执行前转换 SQL；可选 parameters 为有序绑定值数组（null/布尔/数字/字符串，最多 64 个），由驱动绑定到 `?` 或 `$1..$N` 占位符，绝不拼接进 SQL 文本，续批与计数复用同一组绑定值。MCP 与 REST 会保留接收到的 JSON 中签名 64 位整数的精确数字；客户端也需要精确序列化整数，例如 JavaScript Number 无法精确表示 ±(2^53 − 1) 之外的所有整数。字符串参数仍按字符串绑定。
 - fetch_next_batch：使用 execute_sql_query 返回的 query_id、slug 和 token 获取下一批结果。
 - validate_sql_query：对查询请求进行校验；可选 source_dialect。
-- list_tables：按数据源类型查询表名。
+- list_tables：按数据源类型查询表名。关闭表策略时，PostgreSQL 使用数据源配置的 schema；未配置时使用 `public`。开启表策略时按已有元数据授权规则过滤。若不同 schema 有同名表，在 describe_table 中显式指定 `schema`。
 - describe_table：返回指定表的列名、数据库类型、可空性、主键和索引（#184）。先用 list_tables 枚举表，再用 describe_table 检查单表结构后再编写 SQL；驱动不支持元数据发现时明确报错，不会猜测表结构。
 - translate_sql：在支持的 SQL 方言之间转换 SQL。
 - list_supported_dialects：列出转换器声明支持的方言。

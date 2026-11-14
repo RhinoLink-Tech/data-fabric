@@ -570,3 +570,288 @@ func TestDataSourceFingerprintIgnoresRotatedAccessToken(t *testing.T) {
 		t.Fatal("changing connection configuration did not change the fingerprint")
 	}
 }
+
+type blockingPoolConnector struct {
+	entered chan struct{}
+	resume  chan struct{}
+}
+
+func (c blockingPoolConnector) Connect(ctx context.Context) (sqldriver.Conn, error) {
+	close(c.entered)
+	select {
+	case <-c.resume:
+		return pingableConn{}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+func (c blockingPoolConnector) Driver() sqldriver.Driver { return failingDriver{} }
+
+type blockingPoolDriver struct {
+	drivers.Driver
+	entered chan struct{}
+	resume  chan struct{}
+}
+
+func (d blockingPoolDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{}
+}
+func (d blockingPoolDriver) BuildDSN(*model.DataSourceConfig) string { return "stub://" }
+func (d blockingPoolDriver) Open(string) (*sql.DB, error) {
+	return sql.OpenDB(blockingPoolConnector{d.entered, d.resume}), nil
+}
+func TestInvalidateFencesConnectionBeingCreated(t *testing.T) {
+	entered, resume := make(chan struct{}), make(chan struct{})
+	reg := NewDriverRegistry()
+	reg.RegisterDriver(stubPoolTestType, blockingPoolDriver{entered: entered, resume: resume})
+	pool := NewConnectionPool(reg, nil, nil, false)
+	result := make(chan error, 1)
+	go func() { _, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1")); result <- err }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("connect did not begin")
+	}
+	if err := pool.InvalidateDataSource("ds-1"); err != nil {
+		t.Fatal(err)
+	}
+	close(resume)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("in-flight stale connection escaped invalidation")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connection setup did not finish")
+	}
+	pool.mutex.RLock()
+	_, found := pool.pools["ds-1"]
+	pool.mutex.RUnlock()
+	if found {
+		t.Fatal("stale pool installed")
+	}
+}
+
+func TestFreshnessCheckFailsClosedForStaleAndUnavailableSnapshots(t *testing.T) {
+	reg := NewDriverRegistry()
+	reg.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(reg, nil, nil, false)
+	expected := "initial"
+	unavailable := false
+	if err := pool.SetSourceFreshnessCheck(func(_ context.Context, ds *model.DataSource) error {
+		if unavailable || ds.Config.Password != expected {
+			return errors.New("stale")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	source := stubPoolDataSource("ds-1")
+	source.Config.Password = expected
+	if _, err := pool.GetConnection(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	expected = "rotated"
+	if _, err := pool.GetConnection(context.Background(), source); err == nil {
+		t.Fatal("old snapshot accepted")
+	}
+	pool.mutex.RLock()
+	_, found := pool.pools["ds-1"]
+	pool.mutex.RUnlock()
+	if found {
+		t.Fatal("stale pool retained")
+	}
+	source.Config.Password = expected
+	if _, err := pool.GetConnection(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	unavailable = true
+	if _, err := pool.GetConnection(context.Background(), source); err == nil {
+		t.Fatal("unavailable metadata accepted")
+	}
+}
+
+func TestInvalidateDuringFreshnessCheckFencesConnection(t *testing.T) {
+	reg := NewDriverRegistry()
+	reg.RegisterDriver(stubPoolTestType, stubPoolDriver{})
+	pool := NewConnectionPool(reg, nil, nil, false)
+	entered, resume := make(chan struct{}), make(chan struct{})
+	if err := pool.SetSourceFreshnessCheck(func(context.Context, *model.DataSource) error { close(entered); <-resume; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1")); result <- err }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("freshness check not entered")
+	}
+	if err := pool.InvalidateDataSource("ds-1"); err != nil {
+		t.Fatal(err)
+	}
+	close(resume)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("stale setup escaped invalidation")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request blocked")
+	}
+}
+
+func TestStopPermanentlyFencesInflightBuilds(t *testing.T) {
+	entered, resume := make(chan struct{}), make(chan struct{})
+	reg := NewDriverRegistry()
+	reg.RegisterDriver(stubPoolTestType, blockingPoolDriver{entered: entered, resume: resume})
+	pool := NewConnectionPool(reg, nil, nil, false)
+	result := make(chan error, 1)
+	go func() { _, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1")); result <- err }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("connect did not begin")
+	}
+	if err := pool.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	close(resume)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("in-flight connection escaped stop")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connection blocked")
+	}
+	if _, err := pool.GetConnection(context.Background(), stubPoolDataSource("ds-1")); err == nil {
+		t.Fatal("new connection accepted after stop")
+	}
+}
+
+type delayedCloseConnector struct{ entered, release chan struct{} }
+
+func (c delayedCloseConnector) Connect(context.Context) (sqldriver.Conn, error) {
+	return delayedCloseConnection{c.entered, c.release}, nil
+}
+func (c delayedCloseConnector) Driver() sqldriver.Driver { return failingDriver{} }
+
+type delayedCloseConnection struct{ entered, release chan struct{} }
+
+func (c delayedCloseConnection) Prepare(string) (sqldriver.Stmt, error) {
+	return nil, errors.New("unused")
+}
+func (c delayedCloseConnection) Begin() (sqldriver.Tx, error) { return nil, errors.New("unused") }
+func (c delayedCloseConnection) Close() error                 { close(c.entered); <-c.release; return nil }
+func (c delayedCloseConnection) Ping(context.Context) error   { return nil }
+
+func TestExpiredPoolPreservesHealthyStatusAcrossConcurrentReplacement(t *testing.T) {
+	cp := NewConnectionPool(nil, nil, nil, false)
+	entered, release := make(chan struct{}), make(chan struct{})
+	old := sql.OpenDB(delayedCloseConnector{entered, release})
+	if err := old.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	cp.pools["s"] = old
+	cp.setHealth("s", true)
+	done := make(chan struct{})
+	go func() { cp.expireBoundedPool("s", old); close(done) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("old pool did not close")
+	}
+	// Expiry removed the old pool, but healthy describes the underlying source.
+	if !cp.getHealth("s") {
+		t.Fatal("ordinary expiry marked the source unhealthy")
+	}
+	replacement := sql.OpenDB(pingableConnector{})
+	cp.mutex.Lock()
+	cp.pools["s"] = replacement
+	cp.mutex.Unlock()
+	cp.setHealth("s", true)
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("expiry blocked")
+	}
+	if !cp.getHealth("s") {
+		t.Fatal("old expiry overwrote replacement health")
+	}
+	if err := replacement.Ping(); err != nil {
+		t.Fatal("old expiry closed replacement")
+	}
+	_ = cp.Stop()
+}
+
+type cancelPingConnector struct{ entered chan struct{} }
+
+func (c cancelPingConnector) Connect(context.Context) (sqldriver.Conn, error) {
+	return cancelPingConn{c.entered}, nil
+}
+func (c cancelPingConnector) Driver() sqldriver.Driver { return failingDriver{} }
+
+type cancelPingConn struct{ entered chan struct{} }
+
+func (c cancelPingConn) Prepare(string) (sqldriver.Stmt, error) { return nil, errors.New("unused") }
+func (c cancelPingConn) Close() error                           { return nil }
+func (c cancelPingConn) Begin() (sqldriver.Tx, error)           { return nil, errors.New("unused") }
+func (c cancelPingConn) Ping(ctx context.Context) error {
+	close(c.entered)
+	<-ctx.Done()
+	return ctx.Err()
+}
+func TestCanceledPoolPingDoesNotEvictSharedPool(t *testing.T) {
+	pool := NewConnectionPool(nil, nil, nil, false)
+	source := stubPoolDataSource("ping-cancel")
+	entered := make(chan struct{})
+	shared := sql.OpenDB(cancelPingConnector{entered})
+	defer shared.Close()
+	pool.pools[source.ID] = shared
+	pool.fingerprints[source.ID] = dataSourceFingerprint(source)
+	var invalidations atomic.Int32
+	pool.SetDataSourceInvalidationHandler(func(string) { invalidations.Add(1) })
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { _, e := pool.GetConnection(ctx, source); result <- e }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("ping did not start")
+	}
+	cancel()
+	if e := <-result; !errors.Is(e, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", e)
+	}
+	pool.mutex.RLock()
+	installed := pool.pools[source.ID]
+	pool.mutex.RUnlock()
+	if installed != shared || invalidations.Load() != 0 {
+		t.Fatal("canceled ping evicted a shared pool")
+	}
+}
+func TestCanceledFreshnessDoesNotInvalidateSharedPool(t *testing.T) {
+	for _, reason := range []error{context.Canceled, context.DeadlineExceeded} {
+		pool := NewConnectionPool(nil, nil, nil, false)
+		source := stubPoolDataSource("check-cancel")
+		shared := sql.OpenDB(pingableConnector{})
+		defer shared.Close()
+		pool.pools[source.ID] = shared
+		pool.fingerprints[source.ID] = dataSourceFingerprint(source)
+		var invalidations atomic.Int32
+		pool.SetDataSourceInvalidationHandler(func(string) { invalidations.Add(1) })
+		if e := pool.SetSourceFreshnessCheck(func(context.Context, *model.DataSource) error { return reason }); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := pool.GetConnection(context.Background(), source); !errors.Is(e, reason) {
+			t.Fatal("cancellation not preserved", e)
+		}
+		pool.mutex.RLock()
+		installed := pool.pools[source.ID]
+		pool.mutex.RUnlock()
+		if installed != shared || invalidations.Load() != 0 {
+			t.Fatal("canceled freshness check evicted a shared pool")
+		}
+	}
+}

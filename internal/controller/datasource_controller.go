@@ -85,7 +85,7 @@ func toDataSourceResponse(dataSource *model.DataSource) *DataSourceResponse {
 		CreatedAt: dataSource.CreatedAt,
 		UpdatedAt: dataSource.UpdatedAt,
 		Config: DataSourceConfigResponse{
-			Host:            config.Host,
+			Host:            model.PublicDataSourceHost(config.Host),
 			Port:            config.Port,
 			Database:        config.Database,
 			Schema:          config.Schema,
@@ -187,6 +187,9 @@ func (dc *DataSourceController) mapDataSourceError(c *gin.Context, caller *secur
 			return
 		}
 		dc.sendError(c, http.StatusInternalServerError, internalCode, internalMsg)
+	case errors.Is(err, service.ErrDataSourceExists):
+		appErr := utils.NewConflictError("data source", "Data source with this name already exists")
+		dc.sendError(c, utils.GetErrorStatus(appErr), appErr.Code, appErr.Message)
 	case errors.Is(err, service.ErrInvalidUUID):
 		dc.sendError(c, http.StatusBadRequest, "INVALID_ID", "Invalid data source ID format")
 	default:

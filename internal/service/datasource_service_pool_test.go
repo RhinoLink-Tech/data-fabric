@@ -18,8 +18,41 @@ type poolInvalidationRepository struct {
 	source *model.DataSource
 }
 
+func (r *poolInvalidationRepository) MutateSourceLocked(ctx context.Context, id string, status *model.DataSourceStatus, authorize func(*model.DataSource) error) error {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err = authorize(ds); err != nil {
+		return err
+	}
+	if status == nil {
+		return r.Delete(ctx, id)
+	}
+	if *status == model.DataSourceStatusActive {
+		return r.Activate(ctx, id)
+	}
+	return r.Deactivate(ctx, id)
+}
+
 func (r *poolInvalidationRepository) GetByID(_ context.Context, _ string) (*model.DataSource, error) {
 	return r.source, nil
+}
+
+func (r *poolInvalidationRepository) UpdateSourceLocked(ctx context.Context, id string, fields []string, mutate func(*model.DataSource) error) (*model.DataSource, error) {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = mutate(ds); err != nil {
+		return nil, err
+	}
+	if len(fields) > 0 {
+		if err = r.Update(ctx, ds); err != nil {
+			return nil, err
+		}
+	}
+	return ds, nil
 }
 
 func (r *poolInvalidationRepository) Update(_ context.Context, ds *model.DataSource) error {

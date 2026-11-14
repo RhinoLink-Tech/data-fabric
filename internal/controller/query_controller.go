@@ -125,7 +125,7 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 // @Param query_id path string true "Query ID"
 // @Param slug path string true "Query slug"
 // @Param token path string true "Query token"
-// @Param batch_size query int false "Batch size (1-10000, default 10000)"
+// @Param batch_size query int false "Batch size (1-10000, default 10000); invalid explicit values return 400"
 // @Success 200 {object} response.StandardResponse{data=model.FetchQueryResponse}
 // @Failure 400 {object} response.StandardResponse
 // @Failure 404 {object} response.StandardResponse
@@ -152,10 +152,18 @@ func (qc *QueryController) FetchNextBatch(c *gin.Context) {
 
 	// Parse batch size
 	batchSize := 10000
-	if bs := c.Query("batch_size"); bs != "" {
-		if size, err := strconv.Atoi(bs); err == nil && size > 0 && size <= 10000 {
-			batchSize = size
+	if bs, present := c.GetQuery("batch_size"); present {
+		size, err := strconv.Atoi(bs)
+		if err != nil || size < 1 || size > 10000 {
+			c.JSON(http.StatusBadRequest, response.ErrorResponse(
+				"INVALID_PARAMETERS",
+				"batch_size must be an integer between 1 and 10000",
+				"",
+				correlationID,
+			))
+			return
 		}
+		batchSize = size
 	}
 
 	// Create context
@@ -423,6 +431,10 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusServiceUnavailable, "QUERY_OWNER_DRAINING"
 	case errors.Is(err, queryservice.ErrQuerySessionUnavailable), errors.Is(err, queryservice.ErrInvalidQuerySession):
 		return http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE"
+	case errors.Is(err, queryservice.ErrQueryAdmissionLimit), errors.Is(err, queryservice.ErrMaxConcurrentStreams):
+		// The gateway is applying its own concurrency limit, not reporting a
+		// source failure (#524).
+		return http.StatusServiceUnavailable, "QUERY_OVERLOADED"
 	case errors.Is(err, queryservice.ErrQueryRateLimitExceeded):
 		return http.StatusTooManyRequests, "QUERY_RATE_LIMIT_EXCEEDED"
 	case errors.Is(err, queryservice.ErrQueryResultLimitExceeded):

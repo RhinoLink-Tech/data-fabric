@@ -17,11 +17,11 @@ This is the current synthetic first-use profile linked from the [first-adopter b
 
 ## Current published Preview
 
-`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation, use [Run a published image without compiling source](#run-a-published-image-without-compiling-source) and copy the tag plus digest from the [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation from a clean host, use the [version-specific published-image guide](releases/v2.1.0-preview.1-install.md). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
 
 ## What gets deployed
 
-When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are marked unknown and cannot produce a verified candidate backup. The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
+When run from a Git checkout, the initializer records the checkout SHA in `.env`; local Compose builds label the image with that revision so a recovery manifest can bind source and image identity. Source archives are initially marked unknown; supported release archives can be verified with the updated [backup and recovery helper](operations/mcp-profile-backup-recovery.md#alternative-the-published-v210-preview1-source-archive). The source-build Compose profile in [`deploy/mcp/`](../deploy/mcp/) builds one
 image from the repository `Dockerfile`; the release overlay pulls an immutable
 image digest. Both profiles run four services on a private network. The
 gateway runs either the HTTP API or MCP in a given process — never both — so
@@ -131,6 +131,8 @@ docker compose ps                 # all four services report "healthy"
 curl -s http://127.0.0.1:8080/health && echo
 curl -sk https://localhost:8443/mcp -o /dev/null -w '%{http_code}\n'   # 401
 ```
+
+`/health` reports the application build as `version` and `source_revision`. For a published image these match its `org.opencontainers.image.version` and `org.opencontainers.image.revision` labels and the release record. A local source build reports `development`; its revision is `unknown` unless a revision was supplied at build time. These fields describe the running build, not the `/api/v1` API version. The published `v2.1.0-preview.1` image predates these fields and still reports the old fixed version.
 
 Run the local profile doctor after the services start:
 
@@ -309,7 +311,11 @@ The variant reuses the same `.env` secrets and keeps its data in a separate
 named volume, so switching back to the MySQL variant later preserves both
 data sets. The container's `postgres` superuser initializes the database;
 `sample-source-init-postgres.sh` creates the same read-only `sample_reader`
-account and `orders` rows.
+account and `orders` rows. The PostgreSQL 18 mount path changed; this is not an
+in-place migration of an existing database. If a prior sample volume contains
+data you need, back it up and plan its PostgreSQL migration before changing the
+mount. Use a fresh isolated sample volume for a new evaluation; do not silently
+delete an existing volume.
 
 Register it with the PostgreSQL connection parameters — note `type` and
 `port` differ from step 6:
@@ -353,6 +359,10 @@ With a self-signed certificate, start `claude` with
 Use the [Data Fabric Agent Skill setup guide](agent-skill.md) to configure
 Streamable HTTP with the deployment's access token, install the same Skill
 bundle in either client, and run a bounded sample query.
+
+For a single-machine PostgreSQL demonstration behind a tunnel, see the
+[local tunnel deployment guide](operations/mcp-local-tunnel.md). It keeps the
+gateway on loopback and requires a separately managed OIDC provider.
 
 ### DeepSeek-backed agent host
 

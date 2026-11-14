@@ -9,6 +9,7 @@ assume that installing this skill connects a server.
 
 | Capability / tool | Arguments | Successful payload |
 | --- | --- | --- |
+| `list_source_types` | Optional exact `type`, `category`, `format` and boolean `include_details` | Registered types and verification overview; set include_details=true for operations, authentication and limitations. Not configured sources. |
 | `list_data_sources` | None | `{"data_sources":[{"id":"…","name":"…","type":"…","status":"active"}],"count":1}` |
 | `get_data_source_info` | `datasource_id` | One source object, including `id`, `name`, `type`, `status`, and non-secret connection metadata. |
 | `list_tables` | `datasource_id` | A batch response: table names are values in `entries`, aligned with `columns`. |
@@ -27,6 +28,60 @@ the intended schema; if ambiguity remains or the schema does not match,
 report the metadata limitation rather than assuming it was resolved.
 Table discovery itself can be batched: check its
 `nextUri` before claiming the list is complete.
+
+## Manage an existing source
+
+These tools are conditional: discover them on the connected remote server and
+check its advertised schema. They require the `data-fabric.sources.manage`
+scope and source ownership or administrator permission. Deletion additionally
+requires exact ownership and tenant match even for administrators. Confirm the intended
+source and operation with the user before making changes.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
+| `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
+| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL only. Ordinary deployments reject TLS connection tests; a service with the restricted onboarding policy supports verified TLS. PostgreSQL connection testing is disabled when protocol debugging is enabled. |
+| `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
+
+These existing-source tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed.
+
+## Add a source through the separately authenticated browser
+
+These tools must be enabled and advertised by the connected service.
+Discover both and their advertised schemas before use. Their presence alone is
+not proof that the WorkBuddy client, deployment and identity are configured.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `begin_data_source_onboarding` | None | `flow_id`, `url`, `message`; the URL requires separate browser authentication and is not itself an access grant. |
+| `get_data_source_onboarding_status` | `flow_id` from begin | `status` is `pending`, or `completed` with `datasource_id`. Errors are not completion. |
+
+A verified HTTP/OIDC identity, management scope and matching server-side grant
+are required. The browser user must authenticate as the same issuer, subject
+and tenant as the MCP user. Direct them to the exact returned URL and have them
+enter the connection details and secret only in the authenticated browser;
+never put credentials in chat or MCP arguments. Check status after the user
+reports completion, not by repeated polling. Pending means creation is not
+complete. On expiration start a fresh flow if requested; on unavailable or
+permission errors ask the administrator to check configuration and grants.
+
+The secure setup workflow supports MySQL/PostgreSQL, verified TLS, and server-approved IPv4
+network destinations and ports. Other source types are not supported by this creation workflow.
+If either tool is unavailable, direct the user to an administrator or supported
+management UI; do not invent an operation or claim completion.
+
+## Update source connection settings when enabled
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `begin_data_source_update` | `datasource_id` | `flow_id`, `url`, and source ID; browser login and current management authorization remain required. |
+| `get_data_source_update_status` | `flow_id`, `datasource_id` | `pending` or `completed`; do not infer success from an error. |
+
+Only use if both tools are advertised. Credentials are entered in the
+separately authenticated browser, never chat. Respect the server's permitted
+source types and network policy. In-flight queries can continue and connection
+changes are not a claim of immediate cross-instance revocation.
 
 ## Validate and execute
 

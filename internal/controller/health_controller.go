@@ -5,17 +5,19 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/buildinfo"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 type HealthResponse struct {
-	Status      string            `json:"status"`
-	Timestamp   time.Time         `json:"timestamp"`
-	Service     string            `json:"service"`
-	Version     string            `json:"version"`
-	Database    DatabaseStatus    `json:"database"`
-	Connections map[string]string `json:"connections"`
+	Status         string            `json:"status"`
+	Timestamp      time.Time         `json:"timestamp"`
+	Service        string            `json:"service"`
+	Version        string            `json:"version"`
+	SourceRevision string            `json:"source_revision"`
+	Database       DatabaseStatus    `json:"database"`
+	Connections    map[string]string `json:"connections"`
 }
 
 type DatabaseStatus struct {
@@ -35,11 +37,12 @@ func NewHealthController(db *gorm.DB) *HealthController {
 
 func (hc *HealthController) HealthCheck(c *gin.Context) {
 	response := HealthResponse{
-		Status:      "healthy",
-		Timestamp:   time.Now(),
-		Service:     "data-fabric",
-		Version:     "1.0.0",
-		Connections: make(map[string]string),
+		Status:         "healthy",
+		Timestamp:      time.Now(),
+		Service:        "data-fabric",
+		Version:        buildinfo.Version,
+		SourceRevision: buildinfo.SourceRevision,
+		Connections:    make(map[string]string),
 	}
 
 	// Check database connection

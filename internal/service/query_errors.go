@@ -86,7 +86,7 @@ func SafeQueryErrorMessage(err error) string {
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):
 		return "The query session is invalid or has expired. Submit the query again."
 	case errors.Is(err, ErrExactCountUnavailable):
-		return "The database cannot compute an exact row count for this statement. Simplify the statement or fetch without a total count."
+		return "The database cannot compute an exact row count for this statement. Give output columns unique names or simplify the statement, then retry."
 	case errors.Is(err, security.ErrNotSelectQuery):
 		return "Only read-only SELECT queries are supported."
 	case errors.Is(err, security.ErrSQLSyntaxError), errors.Is(err, security.ErrDangerousKeyword),

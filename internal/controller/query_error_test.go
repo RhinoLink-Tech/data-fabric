@@ -23,6 +23,8 @@ func TestQueryFailureStatusAndCodeAreStable(t *testing.T) {
 		{name: "table access denied", err: security.ErrTableAccessDenied, wantStatus: 403, wantCode: "TABLE_ACCESS_DENIED"},
 		{name: "dangerous statement", err: security.ErrDangerousKeyword, wantStatus: 400, wantCode: "INVALID_QUERY"},
 		{name: "unavailable session", err: service.ErrQuerySessionUnavailable, wantStatus: 404, wantCode: "QUERY_SESSION_UNAVAILABLE"},
+		{name: "query admission limit", err: fmt.Errorf("wrapped: %w", service.ErrQueryAdmissionLimit), wantStatus: 503, wantCode: "QUERY_OVERLOADED"},
+		{name: "maximum concurrent streams", err: fmt.Errorf("wrapped: %w", service.ErrMaxConcurrentStreams), wantStatus: 503, wantCode: "QUERY_OVERLOADED"},
 		{name: "tenant query rate limit", err: service.ErrQueryRateLimitExceeded, wantStatus: 429, wantCode: "QUERY_RATE_LIMIT_EXCEEDED"},
 		{name: "query result limit", err: service.ErrQueryResultLimitExceeded, wantStatus: 413, wantCode: "QUERY_RESULT_LIMIT_EXCEEDED"},
 		{name: "query duration budget", err: service.ErrQueryDurationLimitExceeded, wantStatus: 504, wantCode: "QUERY_BUDGET_TIMEOUT"},

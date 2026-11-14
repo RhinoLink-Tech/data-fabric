@@ -18,10 +18,32 @@ The Go workflow checks pull requests and pushes to master. The `publish-containe
 4. Confirm README, configuration, and the registered-source support matrix match the release code. Include the versioned upgrade and recovery guide.
 5. Move relevant Unreleased entries in [CHANGELOG.md](../CHANGELOG.md) under the selected version and date. Call out breaking changes and migration steps.
 6. Review the source, binary, and container artifact inventory and attach applicable license materials. Follow the [release artifact provenance checklist](operations/release-artifact-provenance.md).
-7. From the exact reviewed SHA, prepare the selected artifacts and record SHA-256 checksums. The source archive must contain LICENSE and THIRD_PARTY_NOTICES.md.
+7. From the exact reviewed SHA, prepare the selected artifacts and record SHA-256 checksums. The source archive must contain LICENSE and THIRD_PARTY_NOTICES.md. Generate its checksum with `scripts/release/source_archive_checksum.sh /path/to/data-fabric-vX.Y.Z-source.tar.gz`: the adjacent `.sha256` records the archive basename, so it checks the downloaded file instead of a build-host path.
 8. Create and push an annotated tag, for example git tag -a vX.Y.Z -m "Release vX.Y.Z" and git push origin vX.Y.Z.
 9. Create a GitHub Release with highlights, fixes, known limitations, the upgrade guide, changelog link, source commit, and checksums.
-10. Verify the release page and tag point to the intended master commit and the downloadable source archive contains the required license materials.
+10. Verify the release page and tag point to the intended master commit and the downloadable source archive contains the required license materials. Before publication, upload the archive and checksum to the draft release and verify the downloaded pair from a fresh directory using the procedure below; repeat the download check after publication.
+
+### Verify the downloadable source archive
+
+Download the attached archive and its `.sha256` from the draft or published release into a new empty directory, then verify the checksum record names that archive and checks its downloaded bytes. `gh` must be authenticated to download a draft release. Replace the version with the candidate tag:
+
+```bash
+VERSION=vX.Y.Z
+ARCHIVE="data-fabric-${VERSION}-source.tar.gz"
+VERIFY_DIR="$(mktemp -d)"
+gh release download "$VERSION" --repo RhinoLink-Tech/data-fabric \
+  --dir "$VERIFY_DIR" --pattern "$ARCHIVE" --pattern "$ARCHIVE.sha256"
+(
+  set -e
+  cd "$VERIFY_DIR"
+  test "$(wc -l < "$ARCHIVE.sha256")" -eq 1
+  read -r digest filename < "$ARCHIVE.sha256"
+  [[ "$digest" =~ ^[[:xdigit:]]{64}$ && "$filename" == "$ARCHIVE" ]]
+  sha256sum -c "$ARCHIVE.sha256"
+)
+```
+
+The checksum validates the **source archive**, not the container image. Compare the digest with the reviewed release record. A missing or changed archive must fail; stop if any check fails.
 
 ## Container images
 

@@ -36,6 +36,23 @@ func authzFixture() *model.DataSource {
 	}
 }
 
+func (r *authzRepositoryStub) MutateSourceLocked(ctx context.Context, id string, status *model.DataSourceStatus, authorize func(*model.DataSource) error) error {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err = authorize(ds); err != nil {
+		return err
+	}
+	if status == nil {
+		return r.Delete(ctx, id)
+	}
+	if *status == model.DataSourceStatusActive {
+		return r.Activate(ctx, id)
+	}
+	return r.Deactivate(ctx, id)
+}
+
 func (r *authzRepositoryStub) GetByID(context.Context, string) (*model.DataSource, error) {
 	if r.existing == nil {
 		return nil, repository.ErrDataSourceNotFound
@@ -55,6 +72,22 @@ func (r *authzRepositoryStub) GetByName(_ context.Context, tenantID, name string
 func (r *authzRepositoryStub) Create(_ context.Context, ds *model.DataSource) error {
 	r.created = append(r.created, ds)
 	return nil
+}
+
+func (r *authzRepositoryStub) UpdateSourceLocked(ctx context.Context, id string, fields []string, mutate func(*model.DataSource) error) (*model.DataSource, error) {
+	ds, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = mutate(ds); err != nil {
+		return nil, err
+	}
+	if len(fields) > 0 {
+		if err = r.Update(ctx, ds); err != nil {
+			return nil, err
+		}
+	}
+	return ds, nil
 }
 
 func (r *authzRepositoryStub) Update(_ context.Context, ds *model.DataSource) error {

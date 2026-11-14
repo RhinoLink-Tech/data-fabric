@@ -1,20 +1,22 @@
 package traditional
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"net/url"
+	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/mysqlutil"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/go-sql-driver/mysql"
 )
 
-const mysqlTLSRootCertParam = "datafabricsslrootcert"
+const mysqlTLSRootCertParam = mysqlutil.RootCertParam
 
 // MySQLDriver implements Driver for MySQL/MariaDB
 type MySQLDriver struct{}
@@ -45,27 +47,9 @@ func (d *MySQLDriver) Open(dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid MySQL connection string")
 	}
-	rootCertPath := config.Params[mysqlTLSRootCertParam]
-	delete(config.Params, mysqlTLSRootCertParam)
-	if rootCertPath == "" {
-		return sql.Open("mysql", dsn)
-	}
-
-	certificate, err := os.ReadFile(rootCertPath)
+	connector, err := mysqlutil.Connector(config)
 	if err != nil {
-		return nil, fmt.Errorf("MySQL sslRootCert must refer to a readable PEM CA certificate")
-	}
-	rootCAs := x509.NewCertPool()
-	if !rootCAs.AppendCertsFromPEM(certificate) {
-		return nil, fmt.Errorf("MySQL sslRootCert must contain at least one valid PEM CA certificate")
-	}
-	config.TLS = &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    rootCAs,
-	}
-	connector, err := mysql.NewConnector(config)
-	if err != nil {
-		return nil, fmt.Errorf("invalid MySQL TLS configuration")
+		return nil, err
 	}
 	return sql.OpenDB(connector), nil
 }
@@ -104,37 +88,31 @@ func (d *MySQLDriver) GetDefaultPort() int {
 }
 
 func (d *MySQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
-		config.Username,
-		config.Password,
-		config.Host,
-		config.Port,
-		config.Database,
-	)
-
-	// Add parameters
-	params := []string{}
+	if config == nil || config.Port < 1 || config.Port > 65535 || strings.Contains(config.Username, ":") || (config.Username == "" && config.Password != "") {
+		return ""
+	}
+	host, valid := normalizeDSNHost(config.Host, false)
+	if !valid {
+		return ""
+	}
+	c := mysql.NewConfig()
+	c.User, c.Passwd = config.Username, config.Password
+	c.Net, c.Addr = "tcp", net.JoinHostPort(host, strconv.Itoa(config.Port))
+	c.DBName = config.Database
 	if config.SSL {
-		params = append(params, "tls=true")
+		c.TLSConfig = "true"
 	}
 	if config.SSLRootCert != "" {
-		params = append(params, mysqlTLSRootCertParam+"="+url.QueryEscape(config.SSLRootCert))
+		c.Params = map[string]string{mysqlTLSRootCertParam: config.SSLRootCert}
 	}
 	if config.Timezone != "" {
-		params = append(params, "loc="+config.Timezone)
-	}
-
-	if len(params) > 0 {
-		dsn += "?"
-		for i, param := range params {
-			if i > 0 {
-				dsn += "&"
-			}
-			dsn += param
+		loc, err := time.LoadLocation(config.Timezone)
+		if err != nil {
+			return ""
 		}
+		c.Loc = loc
 	}
-
-	return dsn
+	return c.FormatDSN()
 }
 
 func (d *MySQLDriver) GetDatabaseTypeName() string {

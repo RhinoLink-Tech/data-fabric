@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -308,5 +310,28 @@ func TestDataSourceRepositoryStoresAccessTokensEncryptedWithAtomicCompareAndSwap
 	persisted, _, err = store.LoadAccessToken(context.Background(), ds.ID)
 	if err != nil || persisted != "replacement-access-token" {
 		t.Fatalf("stale compare-and-swap changed token to %q, error %v", persisted, err)
+	}
+}
+
+// A rename that hits the tenant/name constraint must surface as the sentinel,
+// not as the raw driver error (#516).
+func TestIsDuplicateEntry(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"mysql duplicate key", &mysql.MySQLError{Number: 1062, Message: "Duplicate entry 'orders' for key 'tenant_name'"}, true},
+		{"sqlite unique constraint", errors.New("UNIQUE constraint failed: data_sources.tenant_id, data_sources.name"), true},
+		{"wrapped mysql duplicate key", fmt.Errorf("update data source: %w", &mysql.MySQLError{Number: 1062}), true},
+		{"mysql other error", &mysql.MySQLError{Number: 1146, Message: "Table doesn't exist"}, false},
+		{"connection error", errors.New("connection reset by peer"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDuplicateEntry(tt.err); got != tt.want {
+				t.Errorf("isDuplicateEntry(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

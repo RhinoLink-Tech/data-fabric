@@ -6,7 +6,7 @@
 
 ## 当前已发布的 Preview
 
-`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的安装方式见下方“使用发布镜像”步骤；请从[对应 GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)复制完整 tag 与 digest。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
+`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的全新安装请使用[版本化发布镜像指南](releases/v2.1.0-preview.1-install-zh.md)。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
 
 ## 当前部署拓扑
 
@@ -57,7 +57,7 @@ OIDC/MCP、双副本或独立操作者演练，也不能替代
 python3 scripts/mcp/onboard.py init
 ```
 
-命令会创建 `deploy/mcp/.env`，若从 Git 检出运行，则记录当前源码 SHA；源码压缩包会标记为 `unknown`，不能用于可验证的候选备份。命令还会生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。本地 Compose 构建会把该 revision 写入镜像 OCI label，供恢复清单绑定源码和镜像身份。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
+命令会创建 `deploy/mcp/.env`，若从 Git 检出运行，则记录当前源码 SHA；源码压缩包初始标记为 `unknown`；受支持的发布压缩包可使用[新版备份恢复工具](operations/mcp-profile-backup-recovery-zh.md)核验。命令还会生成管理 API 密钥、数据库密码、32 字节 credential-vault key 和本地 TLS 证书。本地 Compose 构建会把该 revision 写入镜像 OCI label，供恢复清单绑定源码和镜像身份。`.env` 以 `0600` 权限原子写入。初始化不会替换非空密钥、已有数据库卷或已有 TLS 文件；再次运行只填补空值。若 keyring 状态不明确或证书/私钥只存在一份，会停止并保留现有文件。
 
 在 `deploy/mcp/.env` 设置：
 
@@ -85,6 +85,10 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 
 该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**已发布 Preview：** `v2.1.0-preview.1` 的公开镜像 digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`。对应的 [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)记录了精确镜像引用和验收结果；公开发布及匿名 clean-runner 镜像验收已完成。issue #442 仍开放跟踪剩余首次采用者证据。
 
+`/health` 的 `version` 和 `source_revision` 表示正在运行的应用构建版本和源码 revision。发布镜像中它们应与镜像的 `org.opencontainers.image.version`、`org.opencontainers.image.revision` 标签及发布记录一致。本地源码构建的版本为 `development`；构建时未提供 revision 则显示 `unknown`。这些字段不表示 `/api/v1` 的 API 版本。已发布的 `v2.1.0-preview.1` 镜像早于此改动，仍显示旧的固定版本号。
+
+如需 PostgreSQL 示例，可在基础 Compose 文件上叠加 `docker-compose.postgres.yml`；该变体使用 PostgreSQL 18 和独立的示例数据卷，默认 MySQL 示例不变。新版挂载路径不是已有数据库的原地迁移；若旧示例卷含有需要保留的数据，请先备份并规划 PostgreSQL 迁移，新试用应使用全新的隔离示例卷。
+
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 
 下面的可选命令会向 OIDC discovery URL 和 JWKS endpoint 分别发送 HTTPS GET；受限网络环境下不要添加 `--probe-oidc`。执行前先设置身份与租户变量：
@@ -106,7 +110,7 @@ python3 ../../scripts/mcp/onboard.py doctor --probe-oidc \
 ```bash
 export DF_USER_ID='<provider JWT 中稳定的 sub>'
 export DF_TENANT_ID='quickstart'
-export DF_MANAGEMENT_TOKEN="$(python3 scripts/mcp/onboard.py token \
+export DF_MANAGEMENT_TOKEN="$(python3 ../../scripts/mcp/onboard.py token \
   --user "$DF_USER_ID" --tenant "$DF_TENANT_ID")"
 ```
 

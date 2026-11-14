@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -42,14 +43,23 @@ type SchemaQualifiedTableDescriber interface {
 
 // MCPServer represents the MCP server that exposes Data Fabric functionality
 type MCPServer struct {
-	unifiedQueryService unifiedservice.UnifiedQueryService
-	datasourceRepo      repository.DataSourceRepository
-	tableDescriber      TableDescriber
-	tableAuthorizer     *security.TableAuthorizer
-	sqlTranslator       *sql_translator.SQLTranslationManager // Added SQL translator
-	server              *server.MCPServer
-	auditRecorder       auditlog.Recorder
-	tablePolicyManager  *security.TablePolicyManager
+	unifiedQueryService      unifiedservice.UnifiedQueryService
+	datasourceRepo           repository.DataSourceRepository
+	tableDescriber           TableDescriber
+	tableAuthorizer          *security.TableAuthorizer
+	sqlTranslator            *sql_translator.SQLTranslationManager // Added SQL translator
+	server                   *server.MCPServer
+	auditRecorder            auditlog.Recorder
+	tablePolicyManager       *security.TablePolicyManager
+	datasourceService        queryservice.DataSourceService
+	sourceConnectivityTester SourceConnectivityTester
+	sourceConnectivitySlots  chan struct{}
+	managementGrant          SourceManagementGrant
+	onboardingCoordinator    OnboardingCoordinator
+	updateCoordinator        SourceUpdateCoordinator
+	onboardingBaseURL        string
+	sourceTypePolicy         sourceTypePolicy
+	sourceOnboardingType     func(model.DatabaseType) bool
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -91,6 +101,13 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 
 // registerTools registers all available tools with the MCP server
 func (m *MCPServer) registerTools() {
+	m.addTool("list_source_types", mcp.NewTool("list_source_types",
+		mcp.WithDescription("List registered connector types and formats in this server build, not configured data sources. Verification depends on version and scenario. When present, allowed_by_instance_type_policy indicates only whether this instance policy permits the type; allowed_by_onboarding_type_policy indicates the browser wizard type gate. Credentials, network, authorization and actual functionality still require verification. Use include_details for connector limitations and operations."),
+		mcp.WithString("type", mcp.Description("Optional exact connector type filter")),
+		mcp.WithString("category", mcp.Description("Optional exact category filter")),
+		mcp.WithString("format", mcp.Description("Optional exact file format filter, such as csv or parquet")),
+		mcp.WithBoolean("include_details", mcp.Description("Include version policy, limitations, operations and authentication details; defaults to false"))), m.handleListSourceTypes)
+
 	// Tool to list available data sources
 	listDataSourcesTool := mcp.NewTool("list_data_sources",
 		mcp.WithDescription("List all configured data sources in Data Fabric"))
@@ -105,12 +122,7 @@ func (m *MCPServer) registerTools() {
 		mcp.WithArray("parameters", mcp.Description("Ordered values bound by the driver to ? (MySQL) or $1..$N (PostgreSQL) placeholders; never interpolated into the SQL text"),
 			mcp.MaxItems(64),
 			mcp.Items(map[string]interface{}{
-				"oneOf": []interface{}{
-					map[string]interface{}{"type": "null"},
-					map[string]interface{}{"type": "boolean"},
-					map[string]interface{}{"type": "number"},
-					map[string]interface{}{"type": "string"},
-				},
+				"type": []string{"null", "boolean", "number", "string"},
 			})),
 		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
 		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")),
@@ -346,7 +358,7 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 			"name":       ds.Name,
 			"type":       ds.Type,
 			"status":     ds.Status, // Use Status instead of Description/Enabled
-			"host":       ds.Config.Host,
+			"host":       model.PublicDataSourceHost(ds.Config.Host),
 			"port":       ds.Config.Port,
 			"database":   ds.Config.Database,
 			"created_at": ds.CreatedAt,
@@ -452,13 +464,37 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 // normalizes and validates them, so composite or invalid elements fail there
 // with messages that never echo the values themselves (#21).
 func parseExecuteParameters(request mcp.CallToolRequest) ([]interface{}, error) {
+	const invalid = "parameters must be an array of null, boolean, number, or string values"
+	// The SDK preserves the original argument bytes for requests received over
+	// either transport. Decode only the bind parameters with UseNumber: the
+	// generic SDK argument map has already rounded integers larger than 2^53.
+	if raw, ok := request.GetRawArguments().(json.RawMessage); ok {
+		var arguments struct {
+			Parameters json.RawMessage `json:"parameters"`
+		}
+		if err := json.Unmarshal(raw, &arguments); err != nil {
+			return nil, errors.New(invalid)
+		}
+		if len(arguments.Parameters) == 0 {
+			return nil, nil
+		}
+		decoder := json.NewDecoder(bytes.NewReader(arguments.Parameters))
+		decoder.UseNumber()
+		var parameters []interface{}
+		if err := decoder.Decode(&parameters); err != nil {
+			return nil, errors.New(invalid)
+		}
+		return parameters, nil
+	}
+
+	// Direct in-process callers can supply an already-decoded argument map.
 	raw, ok := request.GetArguments()["parameters"]
 	if !ok || raw == nil {
 		return nil, nil
 	}
 	parameters, ok := raw.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("parameters must be an array of null, boolean, number, or string values")
+		return nil, errors.New(invalid)
 	}
 	return parameters, nil
 }
@@ -508,7 +544,7 @@ func (m *MCPServer) handleGetDataSourceInfo(ctx context.Context, request mcp.Cal
 		"name":       dataSource.Name,
 		"type":       dataSource.Type,
 		"status":     dataSource.Status, // Use Status instead of Description/Enabled
-		"host":       dataSource.Config.Host,
+		"host":       model.PublicDataSourceHost(dataSource.Config.Host),
 		"port":       dataSource.Config.Port,
 		"database":   dataSource.Config.Database,
 		"created_at": dataSource.CreatedAt,
@@ -682,12 +718,20 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	// For now, we'll execute a query to list tables based on the database type
 	// This is a simplified approach - in a real implementation, you'd want more robust table discovery
 	var sql string
+	var parameters []interface{}
 	dbType := dataSource.Type
 	switch dbType {
 	case "mysql", "mariadb":
 		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
 	case "postgres", "postgresql":
-		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+		// PostgreSQL schema names are values, not SQL fragments. Keep the
+		// historical public default when no source schema is configured.
+		schema := dataSource.Config.Schema
+		if schema == "" {
+			schema = "public"
+		}
+		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = $1"
+		parameters = []interface{}{schema}
 	case "oracle":
 		sql = "SELECT table_name FROM user_tables"
 	case "sqlserver":
@@ -700,6 +744,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	req := &model.FetchQueryRequest{
 		DataSourceID: datasourceID,
 		SQL:          sql,
+		Parameters:   parameters,
 		BatchSize:    1000, // Limit the number of tables returned
 		Timeout:      30,
 	}

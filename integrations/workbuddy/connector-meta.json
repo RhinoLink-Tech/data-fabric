@@ -1,0 +1,23 @@
+{
+  "name": "Data Fabric Self-hosted",
+  "source": "data-fabric-selfhost",
+  "type": "mcp",
+  "auth_mode": "token",
+  "version": "1.2.0",
+  "minWorkbuddyVersion": "4.24.0",
+  "name_zh": "Data Fabric 自部署连接",
+  "name_en": "Data Fabric Self-hosted",
+  "description_zh": "连接自己部署的 Data Fabric，发现、查询和管理已授权的数据源。",
+  "description_en": "Connect to your own Data Fabric service to discover, query, and manage authorized sources.",
+  "examples_zh": [
+    "当前服务支持哪些数据库和文件格式？",
+    "服务启用安全向导时，帮我添加 PostgreSQL 数据源。",
+    "查看订单表结构并统计本月订单数量。"
+  ],
+  "examples_en": [
+    "Which databases and file formats does this server support?",
+    "Guide me to add PostgreSQL when secure onboarding is enabled.",
+    "Inspect the orders table and count orders this month."
+  ],
+  "description": "Connect to your own Data Fabric service to discover, query, and manage authorized sources."
+}

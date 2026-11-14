@@ -41,6 +41,8 @@ type Caller struct {
 	TenantID string
 	Roles    []string
 	Scopes   []string
+	// StrictTenantIsolation is server-controlled; remote clients cannot set it.
+	StrictTenantIsolation bool
 }
 
 // IsAdmin reports whether the caller holds the admin role.
@@ -121,6 +123,9 @@ func (c *Caller) CanRead(ds *model.DataSource) bool {
 	if c == nil || c.IsAdmin() {
 		return true
 	}
+	if c.StrictTenantIsolation {
+		return c.TenantID != "" && ds.TenantID == c.TenantID
+	}
 	if ds.OwnerID != "" && ds.OwnerID == c.UserID {
 		return true
 	}
@@ -139,6 +144,9 @@ func (c *Caller) CanWrite(ds *model.DataSource) bool {
 	}
 	if c == nil || c.IsAdmin() {
 		return true
+	}
+	if c.StrictTenantIsolation {
+		return c.TenantID != "" && ds.TenantID == c.TenantID && ds.OwnerID != "" && ds.OwnerID == c.UserID
 	}
 	return ds.OwnerID != "" && ds.OwnerID == c.UserID
 }

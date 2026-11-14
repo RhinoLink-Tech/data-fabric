@@ -99,6 +99,11 @@ jobs:
           set -o pipefail
           go test -count=1 -v ./internal/database/drivers/traditional -run '^(TestPostgreSQLDriverContract|TestMySQLDriverContract)$' 2>&1 | tee "$RUNNER_TEMP/live-contract.log"
 
+      - name: Verify PostgreSQL MCP schema discovery
+        env:
+          DATA_FABRIC_POSTGRES_SCHEMA_TEST_DSN: ${{ env.DATA_FABRIC_POSTGRES_CONTRACT_DSN }}
+        run: go test -count=1 -v ./internal/mcp -run '^TestPostgresListAndDescribeConfiguredSchemaContract$'
+
       - name: Require both reference contracts to run and pass
         if: always()
         run: python3 scripts/ci/contract_checks.py require --job reference-contracts --log "$RUNNER_TEMP/live-contract.log"
@@ -121,7 +126,9 @@ jobs:
 
       - name: Build one gateway image for both acceptance runs
         run: |
-          docker build --tag data-fabric:public-acceptance --file Dockerfile .
+          docker build --tag data-fabric:public-acceptance --file Dockerfile \
+            --build-arg DATA_FABRIC_VERSION=ci \
+            --build-arg "DATA_FABRIC_SOURCE_REVISION=$GITHUB_SHA" .
           echo "acceptance_image_id=$(docker image inspect --format '{{.Id}}' data-fabric:public-acceptance)"
 
       - name: Run standalone public reference acceptance
@@ -148,6 +155,56 @@ jobs:
           acceptance_args+=(-multi-replica)
           echo "acceptance_path=two-replica"
           go run ./deploy/mcp/reference/cmd/acceptance -image data-fabric:public-acceptance "${acceptance_args[@]}" | tee -a "$RUNNER_TEMP/public-reference.log"
+
+      - name: Set up Node.js for browser acceptance
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Exercise the candidate image's embedded UI
+        working-directory: deploy/mcp
+        shell: bash
+        env:
+          COMPOSE_PROJECT_NAME: df-ui-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          DATA_FABRIC_IMAGE: data-fabric:public-acceptance
+          MCP_OIDC_ISSUER: https://issuer.example.invalid
+          MCP_OIDC_AUDIENCE: ui-acceptance
+        run: |
+          set -euo pipefail
+          cleanup() { docker compose --project-name "$COMPOSE_PROJECT_NAME" -f docker-compose.yml down --volumes --remove-orphans >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python3 ../../scripts/mcp/onboard.py init
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" -f docker-compose.yml up --no-build -d metadata-db sample-source data-fabric-api
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          from urllib.request import urlopen
+
+          for _ in range(120):
+              try:
+                  with urlopen('http://127.0.0.1:8080/health', timeout=2) as response:
+                      if response.status == 200:
+                          health = json.load(response)
+                          if health.get('version') != 'ci' or health.get('source_revision') != os.environ['GITHUB_SHA']:
+                              raise SystemExit('Candidate health identity does not match its build inputs')
+                          print('Candidate health identity matches image build inputs.')
+                          break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit('Candidate API did not become healthy')
+          PY
+          export DF_UI_BROWSER="$(command -v google-chrome || command -v chromium)"
+          export DF_UI_BEARER_TOKEN="$(python3 ../../scripts/mcp/onboard.py token --user ui-release-acceptance --tenant quickstart)"
+          export DF_UI_SAMPLE_PASSWORD="$(python3 -c 'import sys; sys.path.insert(0, "../../scripts/mcp"); import onboard; print(onboard.parse_env(__import__("pathlib").Path(".env"))["SAMPLE_READER_PASSWORD"])')"
+          node ../../scripts/mcp/ui-release-acceptance.mjs 2>&1 | tee -a "$RUNNER_TEMP/public-reference.log"
+
+      - name: Exercise the PostgreSQL 18 sample overlay
+        env:
+          COMPOSE_PROJECT_NAME: df-pg18-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          DATA_FABRIC_IMAGE: data-fabric:public-acceptance
+        run: bash scripts/mcp/pg18-sample-acceptance.sh
 
       - name: Upload public acceptance evidence
         if: always()
@@ -487,6 +544,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node.js for UI tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: Install SQL translation dependency
         run: python -m pip install --requirement requirements-sql-translation.txt
 
@@ -511,6 +573,9 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Test source archive checksum portability
+        run: python -m unittest discover -s scripts/release -p "test_*.py"
+
       - name: Run self-hosted onboarding regression tests
         run: python -m unittest discover -s scripts/mcp -p "test_*.py"
 
@@ -519,6 +584,9 @@ jobs:
 
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
+
+      - name: Run data-source UI regression tests
+        run: node --test scripts/ui/*.test.js
 
       - name: Check formatting
         env:
@@ -707,6 +775,9 @@ jobs:
 
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
+
+      - name: Test source archive checksum portability
+        run: python -m unittest discover -s scripts/release -p "test_*.py"
 
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"

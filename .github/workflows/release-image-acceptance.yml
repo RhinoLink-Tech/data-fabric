@@ -64,6 +64,18 @@ jobs:
           ref: ${{ needs.validate_image.outputs.release_tag }}
           fetch-depth: 1
 
+      - name: Check out the acceptance tooling revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .release-acceptance-tools
+          fetch-depth: 1
+
+      - name: Set up Node.js for browser acceptance
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: Initialize and start the documented digest-pinned profile
         working-directory: deploy/mcp
         shell: bash
@@ -112,18 +124,31 @@ jobs:
           "${compose[@]}" config --quiet
           "${compose[@]}" pull data-fabric-api
           "${compose[@]}" up -d metadata-db sample-source data-fabric-api
-          python3 - <<'PY'
+          python3 - "$source_revision" <<'PY'
+          import json
+          import os
+          from pathlib import Path
           import sys
           import time
           from urllib.error import URLError
           from urllib.request import urlopen
 
+          expected_revision = sys.argv[1]
+          expected_version = os.environ['IMAGE_REF'].split('@', 1)[0].rsplit(':', 1)[1]
+          has_build_identity = Path('../../internal/buildinfo/buildinfo.go').is_file()
           deadline = time.monotonic() + 240
           last_error = 'API health endpoint did not return HTTP 200'
           while time.monotonic() < deadline:
               try:
                   with urlopen('http://127.0.0.1:8080/health', timeout=3) as response:
                       if response.status == 200:
+                          health = json.load(response)
+                          if has_build_identity:
+                              if health.get('version') != expected_version or health.get('source_revision') != expected_revision:
+                                  raise SystemExit('Published image health identity does not match the release tag and source revision')
+                              print('Published image health identity matches the release tag and source revision.')
+                          else:
+                              print('Historical tagged source predates the build-identity fields.')
                           print('Published image API is healthy on the documented loopback endpoint.')
                           break
                       last_error = f'health endpoint returned HTTP {response.status}'
@@ -141,6 +166,26 @@ jobs:
             exit 1
           fi
           echo "Started documented profile from $actual_image with no Go toolchain."
+
+      - name: Exercise the embedded first-use UI
+        working-directory: deploy/mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DF_UI_BROWSER="$(command -v google-chrome || command -v chromium)"
+          export DF_UI_BEARER_TOKEN="$(python3 ../../scripts/mcp/onboard.py token --user ui-release-acceptance --tenant quickstart)"
+          export DF_UI_SAMPLE_PASSWORD="$(python3 -c 'import sys; sys.path.insert(0, "../../scripts/mcp"); import onboard; print(onboard.parse_env(__import__("pathlib").Path(".env"))["SAMPLE_READER_PASSWORD"])')"
+          printf 'Image: %s\n' "$IMAGE_REF" > "$RUNNER_TEMP/published-image-ui-acceptance.log"
+          node "$GITHUB_WORKSPACE/.release-acceptance-tools/scripts/mcp/ui-release-acceptance.mjs" 2>&1 | tee -a "$RUNNER_TEMP/published-image-ui-acceptance.log"
+
+      - name: Upload UI acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-image-ui-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/published-image-ui-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Remove the isolated smoke stack
         if: always()
@@ -173,15 +218,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Pull and verify image platform and source revision
+      - name: Pull and verify image platform and release identity
         env:
           IMAGE_REF: ${{ needs.validate_image.outputs.image_ref }}
+          RELEASE_TAG: ${{ needs.validate_image.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
           docker pull "$IMAGE_REF"
           platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_REF")"
           revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_REF")"
+          version="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$IMAGE_REF")"
+          if [[ "$version" != "$RELEASE_TAG" ]]; then
+            echo "Image version $version does not match release tag $RELEASE_TAG" >&2
+            exit 1
+          fi
           if [[ "$platform" != "linux/amd64" ]]; then
             echo "Expected linux/amd64, found $platform" >&2
             exit 1

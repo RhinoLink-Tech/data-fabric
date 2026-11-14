@@ -31,6 +31,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/mysqlutil"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -140,7 +141,7 @@ func OpenDB(dbType model.DatabaseType, dsn string) (db *sql.DB, handled bool, er
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: invalid MySQL DSN: %w", ErrReadOnlyInitFailed, err)
 	}
-	base, err := mysql.NewConnector(cfg)
+	base, err := mysqlutil.Connector(cfg)
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: %w", ErrReadOnlyInitFailed, err)
 	}
@@ -179,4 +180,9 @@ func (c initConnector) Connect(ctx context.Context) (driver.Conn, error) {
 // Driver returns the wrapped connector's driver.
 func (c initConnector) Driver() driver.Driver {
 	return c.base.Driver()
+}
+
+// WrapMySQLConnector enforces the session mode on each physical connection.
+func WrapMySQLConnector(base driver.Connector) driver.Connector {
+	return initConnector{base: base, initSQL: MySQLInitSQL}
 }

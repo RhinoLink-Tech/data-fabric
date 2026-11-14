@@ -147,12 +147,8 @@ func postgresPrivilegeWarnings(ctx context.Context, db *sql.DB) []string {
 	return warnings
 }
 
-// redactProbeError strips the DSN (which carries credentials) from probe
-// errors so warnings stay safe to return to clients.
+// Driver messages may contain arbitrary fragments or encodings of credentials.
+// Privilege inspection errors are therefore never exposed to clients.
 func redactProbeError(err error) string {
-	msg := err.Error()
-	if idx := strings.Index(msg, "://"); idx >= 0 {
-		msg = msg[:idx] + "://[redacted]"
-	}
-	return msg
+	return "privilege inspection failed"
 }

@@ -50,6 +50,8 @@ values and does not assume binding support for other connectors.
 
 ## Worked example: a bounded orders preview
 
+The following orders are synthetic example data, not real customer records.
+
 Assume the user requested up to 20 orders, highest amount first. The table
 and columns below are fictional: use them only if metadata actually returns
 them. Replace uppercase placeholders with values from tool results. These

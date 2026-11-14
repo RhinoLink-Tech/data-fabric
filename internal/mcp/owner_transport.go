@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -219,24 +218,17 @@ func (m *MCPServer) StreamableHTTPHandlerWithOwner(tokenValidator MCPTokenValida
 		return m.StreamableHTTPHandlerWithLimits(tokenValidator, rateLimiter, limits)
 	}
 	transport := server.NewStreamableHTTPServer(m.server,
-		server.WithSessionIdManagerResolver(owner), server.WithLogger(ownerSDKLogger{}))
+		server.WithSessionIdManagerResolver(owner), server.WithStreamableHTTPLogger(safeMCPTransportLogger()))
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, owner.wrap(transport), m.auditRecorder))
 	return withRemoteLimits(rateLimiter, limits, mux)
 }
 
-// The SDK formats session IDs and protocol payloads into transport logs.
-// Preserve the failure signal and keep signed session headers out of logs.
-type ownerSDKLogger struct{}
-
-func (ownerSDKLogger) Infof(string, ...any)  {}
-func (ownerSDKLogger) Errorf(string, ...any) { slog.Error("routed MCP transport error") }
-
 func (t *OwnerTransport) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		caller, _ := r.Context().Value(callerContextKey{}).(*security.Caller)
 		if caller == nil || caller.UserID == "" {
-			writeMCPUnauthorized(w)
+			writeMCPUnauthorized(w, r)
 			return
 		}
 		principal := transportPrincipal{tenantID: caller.TenantID, userID: caller.UserID}
@@ -351,7 +343,7 @@ func (m *MCPServer) StreamableHTTPHandlerWithOwnerAdmin(tokenValidator MCPTokenV
 		return m.StreamableHTTPHandlerWithOwner(tokenValidator, rateLimiter, limits, owner)
 	}
 	transport := server.NewStreamableHTTPServer(m.server,
-		server.WithSessionIdManagerResolver(owner), server.WithLogger(ownerSDKLogger{}))
+		server.WithSessionIdManagerResolver(owner), server.WithStreamableHTTPLogger(safeMCPTransportLogger()))
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", authenticateMCPRequests(tokenValidator, owner.wrap(transport), m.auditRecorder))
 	admin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

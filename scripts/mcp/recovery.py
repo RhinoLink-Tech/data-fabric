@@ -26,6 +26,16 @@ FORMAT = "data-fabric-mcp-profile-v1"
 ALLOWED_MEMBERS = {"manifest.json", "metadata.sql", "deployment.env"}
 APP_SERVICES = ("data-fabric-api", "data-fabric-mcp")
 
+# A source archive has no Git object database. Only explicitly published,
+# digest-pinned archives may assert a source revision and image identity.
+RELEASE_SOURCE_ARCHIVES = {
+    "75714a13772b6a23940eece7a315bcc8d1c9715567e8d2ffb0021a4a9692c9dc": {
+        "root": "data-fabric-v2.1.0-preview.1",
+        "revision": "570c2975fedbc886a37003a8b64b68caa699678c",
+        "image": "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.1@sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf",
+    },
+}
+
 
 class RecoveryError(Exception):
     pass
@@ -132,6 +142,51 @@ def git_revision(project_root: Path) -> str:
     return result.stdout.strip()
 
 
+def release_source_identity(project_root: Path, archive_path: Path) -> tuple[str, str]:
+    """Bind an untouched extracted tree to an explicitly supported release archive."""
+    project_root = reject_symlink_components(project_root)
+    archive_path = reject_symlink_components(archive_path)
+    if not project_root.is_dir() or not archive_path.is_file():
+        raise RecoveryError("verified release source archive and extracted project directory are required")
+    try:
+        with archive_path.open("rb") as source:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+            release = RELEASE_SOURCE_ARCHIVES.get(digest.hexdigest())
+            if release is None:
+                raise RecoveryError("source archive checksum is not a supported published release")
+            source.seek(0)
+            seen: set[str] = set()
+            with tarfile.open(fileobj=source, mode="r:gz") as archive:
+                for member in archive:
+                    parts = PurePosixPath(member.name).parts
+                    if not parts or parts[0] != release["root"] or any(part in (".", "..") for part in parts):
+                        raise RecoveryError("release archive contains an invalid member path")
+                    if member.isdir():
+                        continue
+                    if not member.isfile() or len(parts) < 2 or member.name in seen:
+                        raise RecoveryError("release archive contains an unsupported member")
+                    seen.add(member.name)
+                    target = reject_symlink_components(project_root.joinpath(*parts[1:]))
+                    if not target.is_file():
+                        raise RecoveryError("extracted release files are missing or are not regular files")
+                    stream = archive.extractfile(member)
+                    if stream is None:
+                        raise RecoveryError("release archive member could not be read")
+                    expected = hashlib.sha256()
+                    with stream:
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                            expected.update(chunk)
+                    if file_sha256(target) != expected.hexdigest() or (target.stat().st_mode & 0o111) != (member.mode & 0o111):
+                        raise RecoveryError("extracted release files differ from the verified archive")
+            if not seen:
+                raise RecoveryError("release archive does not contain project files")
+            return release["revision"], release["image"]
+    except (OSError, tarfile.TarError) as exc:
+        raise RecoveryError("could not verify the release source archive and extracted files") from exc
+
+
 def validate_keyring(values: dict[str, str]) -> tuple[str, list[str]]:
     active = values.get("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "").strip()
     try:
@@ -179,7 +234,7 @@ def candidate_image_identity(directory: Path, env_path: Path, project_name: str,
         raise RecoveryError("candidate image provenance could not be recorded")
     revision_label, encoded_digests = inspected.stdout.strip().split("|", 1)
     if revision_label != source_revision:
-        raise RecoveryError("candidate image revision label does not match the clean source checkout")
+        raise RecoveryError("candidate image revision label does not match the verified source revision")
     try:
         repo_digests = json.loads(encoded_digests)
     except json.JSONDecodeError as exc:
@@ -246,9 +301,19 @@ def backup(args: argparse.Namespace) -> int:
         raise RecoveryError("deployment directory has no docker-compose.yml")
     values = parse_env(env_path)
     active_key, key_ids = validate_keyring(values)
-    source_revision = git_revision(directory.parent.parent)
-    if values.get("DATA_FABRIC_SOURCE_REVISION", "").strip() != source_revision:
-        raise RecoveryError(".env source revision does not match the clean checkout; run onboard.py init and rebuild the candidate")
+    source_archive = getattr(args, "release_source_archive", None)
+    image_ref = values.get("DATA_FABRIC_IMAGE", "data-fabric:local").strip() or "data-fabric:local"
+    recorded_revision = values.get("DATA_FABRIC_SOURCE_REVISION", "").strip()
+    if source_archive is not None:
+        source_revision, release_image = release_source_identity(directory.parent.parent, source_archive)
+        if recorded_revision not in ("", "unknown", source_revision):
+            raise RecoveryError(".env source revision conflicts with the verified release archive")
+        if image_ref != release_image:
+            raise RecoveryError("configured image does not match the verified release archive")
+    else:
+        source_revision = git_revision(directory.parent.parent)
+        if recorded_revision != source_revision:
+            raise RecoveryError(".env source revision does not match the clean checkout; run onboard.py init and rebuild the candidate")
 
     output = reject_symlink_components(args.output)
     if output.suffix != ".age" or output.exists() or output.is_symlink():
@@ -265,7 +330,6 @@ def backup(args: argparse.Namespace) -> int:
     running_to_restore: list[str] = []
     restart_error = False
     try:
-        image_ref = values.get("DATA_FABRIC_IMAGE", "data-fabric:local").strip() or "data-fabric:local"
         service_rows = compose_services(directory, env_path, args.project_name)
         db_running, db_healthy = service_running_and_healthy(service_rows.get("metadata-db"))
         if not db_running or not db_healthy:
@@ -305,7 +369,14 @@ def backup(args: argparse.Namespace) -> int:
             raise RecoveryError("metadata MySQL version could not be recorded")
 
         env_copy = work / "deployment.env"
-        shutil.copyfile(env_path, env_copy)
+        if source_archive is not None:
+            # Keep the running .env untouched, but make the protected backup
+            # self-contained for either a checkout or an archive restore.
+            env_copy.write_text(replace_env_values(env_path.read_text(encoding="utf-8"), {
+                "DATA_FABRIC_SOURCE_REVISION": source_revision,
+            }), encoding="utf-8")
+        else:
+            shutil.copyfile(env_path, env_copy)
         os.chmod(env_copy, 0o600)
         manifest = {
             "format": FORMAT,
@@ -573,7 +644,12 @@ def restore(args: argparse.Namespace) -> int:
     work, payload = decrypt_archive(archive, identity, staging)
     try:
         manifest = load_and_validate_payload(payload)
-        if git_revision(project_root) != manifest["source_revision"]:
+        source_archive = getattr(args, "release_source_archive", None)
+        if source_archive is not None:
+            target_revision, release_image = release_source_identity(project_root, source_archive)
+            if target_revision != manifest["source_revision"] or release_image != manifest["app_image_reference"]:
+                raise RecoveryError("verified release archive does not match the backup source and image")
+        elif git_revision(project_root) != manifest["source_revision"]:
             raise RecoveryError("target checkout must be clean and match the exact source revision recorded in the backup")
         image = run(["docker", "image", "inspect", "--format", '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}', manifest["app_image_reference"]], timeout=60)
         if image.returncode or "|" not in image.stdout:
@@ -628,6 +704,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     backup_parser = sub.add_parser("backup", help="quiesce the local API/MCP writers and create an age-encrypted profile backup")
     backup_parser.add_argument("--directory", type=Path, default=DEFAULT_DEPLOY_DIR)
+    backup_parser.add_argument("--release-source-archive", type=Path, help="verified supported source archive matching the extracted deployment")
     backup_parser.add_argument("--project-name", default="data-fabric-mcp")
     backup_parser.add_argument("--recipient", required=True, help="age public recipient; never a private identity")
     backup_parser.add_argument("--output", type=Path, required=True, help="new .age file; existing files are never overwritten")
@@ -641,6 +718,7 @@ def build_parser() -> argparse.ArgumentParser:
         item.add_argument("--staging-dir", type=Path, required=True, help="owner-only (0700), encrypted or memory-backed temporary storage")
         if command == "restore":
             item.add_argument("--target-deploy-dir", type=Path, required=True)
+            item.add_argument("--release-source-archive", type=Path, help="verified supported source archive matching the fresh extracted deployment")
             item.add_argument("--project-name", required=True, help="unique fresh Compose project name")
             item.add_argument("--api-port", type=int, default=18080)
             item.add_argument("--mcp-port", type=int, default=18443)

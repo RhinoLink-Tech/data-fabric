@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Return HTTP 400 `INVALID_PARAMETERS` for malformed or out-of-range explicit `batch_size` values on the REST continuation endpoint (`GET /api/v1/fetch/...`), instead of silently using the 10,000 default (#597).
+- Reject mismatched existing MCP TLS certificates and private keys during initialization and doctor checks without replacing either file (#499).
+- Register the local acceptance runner's synthetic source with the selected `--db-host` instead of the literal `mariadb` (#532).
+- Apply SQL three-valued logic to object-storage IN/NOT IN filters, so a NULL in the list excludes unmatched rows (#527).
+- Cancel the periodic token refresh with the manager's own context so shutdown cannot wait on a blocked provider call (#517).
+- Return HTTP 503 `QUERY_OVERLOADED` when the gateway's query concurrency limit rejects a request, instead of reporting a source-engine failure (#524).
+- Report a data-source rename that collides with an existing tenant name as HTTP 409 instead of an update failure (#516).
+- Return an empty query-history page when the requested offset is at the platform maximum, instead of panicking on an overflowing offset+limit (#523).
+- Mount the PostgreSQL 18 sample source volume at `/var/lib/postgresql` so the optional PostgreSQL quickstart overlay initializes instead of exiting on the old data path (#520).
+- Report Oracle columns marked nullable by the catalog as nullable in table descriptions (#529).
+- Honor the configured PostgreSQL schema in MCP table discovery when table authorization is disabled (#493).
+- Preserve binary and float column types across object SQL derived queries and paginated result encoding (#528).
+- Preserve exact signed 64-bit integer bind parameters received by MCP over HTTP and stdio (#486).
+- Include the selected connector type when creating a source from the management UI and report unsuccessful connection probes as failures (#484, #485).
+- Update automatically filled ports when switching connectors while preserving operator-entered values (#501).
+- Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
+- Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
+- Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
+- Reject invalid MCP URL ports during DeepSeek client validation (#594).
+
 ## [v2.1.0-preview.1] - 2026-11-11
 
 ### Added

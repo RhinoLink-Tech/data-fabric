@@ -6,7 +6,7 @@ The backup contains the deployment `.env` and the complete `data_fabric` metadat
 
 ## Prerequisites and key custody
 
-- Python 3.10+, Docker Engine with Docker Compose 2.24+, `age`, and a clean Git checkout of the exact candidate source revision; a source archive alone has no verifiable commit identity.
+- Python 3.10+, Docker Engine with Docker Compose 2.24+, and `age`. Use either a clean Git checkout of the exact candidate revision or the explicitly supported, verified release archive described below.
 - An `age` public recipient for the backup operator. Generate and keep the private identity on a separate recovery device or in a secret manager; do not place it on the application host beside the archive.
 - An owner-only staging directory on encrypted storage or a memory-backed filesystem. The CLI writes plaintext SQL and `.env` into this directory temporarily and removes it when finished. File deletion is not guaranteed secure erasure on SSDs or copy-on-write filesystems. A forced termination or host failure may leave plaintext in staging; treat leftovers as sensitive, do not share them, and clean them according to local policy.
 - An encrypted backup destination outside `deploy/mcp/`. Copy the encrypted archive off-host after creation and retain its checksum separately.
@@ -34,6 +34,25 @@ python3 scripts/mcp/recovery.py backup \
   --staging-dir /mnt/encrypted-staging/data-fabric \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
 ```
+
+### Alternative: the published v2.1.0-preview.1 source archive
+
+The original Preview archive contains an older recovery helper. For an archive installation, obtain the [updated recovery.py from this documentation revision](../../scripts/mcp/recovery.py) (open the link and save its Raw file) **outside** the extracted source directory. Keep the original downloaded source archive as well as the extracted files. The helper currently recognizes the published `v2.1.0-preview.1` archive by its exact SHA-256; it verifies every archived project file and executable bit, the release image reference, and the image revision before it stops services or dumps data. Modified, missing, symlinked, unknown, or mismatched inputs fail closed. Do not edit the extracted release files.
+
+```bash
+export DF_RECOVERY_HELPER=/path/outside/the/extracted/tree/recovery.py
+export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.1-source.tar.gz
+export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.1
+python3 "$DF_RECOVERY_HELPER" backup \
+  --directory "$DF_SOURCE_ROOT/deploy/mcp" \
+  --release-source-archive "$DF_RELEASE_ARCHIVE" \
+  --project-name data-fabric-preview1 \
+  --recipient "$(cat /secure/recovery/data-fabric.recipients)" \
+  --staging-dir /mnt/encrypted-staging/data-fabric \
+  --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
+```
+
+Use the actual Compose project name from installation. If the archive's initializer recorded `unknown`, the helper records the verified release revision in the **encrypted backup copy** of `.env`; it does not change the running `.env`. Run the same updated helper for `verify`, using the arguments in the next section. The released image is unchanged.
 
 The helper stops only the selected Compose project's running API and MCP services while it snapshots metadata, then restarts the services that were running before the backup. The metadata database stays online and uses a single-transaction dump. Do not rotate keys, migrate schemas, or run a second writer against the metadata database during the snapshot. If the machine stops abruptly, check and restart the two application services manually.
 
@@ -68,6 +87,21 @@ python3 scripts/mcp/recovery.py restore \
   --project-name data-fabric-restore-20261108 \
   --api-port 18080 --mcp-port 18443
 ```
+
+For an archive-based restore, extract the same verified source archive into a **new empty directory**, then use the updated helper instead of the Git checkout command above:
+
+```bash
+python3 "$DF_RECOVERY_HELPER" restore \
+  --archive /mnt/encrypted-backups/data-fabric/profile-20261108T000000Z.age \
+  --identity-file /secure/recovery/data-fabric.agekey \
+  --staging-dir /mnt/encrypted-staging/data-fabric \
+  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.1/deploy/mcp \
+  --release-source-archive "$DF_RELEASE_ARCHIVE" \
+  --project-name data-fabric-restore-20261108 \
+  --api-port 18080 --mcp-port 18443
+```
+
+The target files, backup revision and exact image must all match before the helper writes the restore payload. Then continue from the fresh target's `deploy/mcp/` directory with the TLS initialization, import, startup and acceptance steps below.
 
 The archive's TLS certificate/private key is intentionally not restored. `onboard.py init` generates a new localhost pair for this isolated instance. For a real hostname, install a matching certificate and update the TLS group before exposing the endpoint. Existing production profile and volumes remain untouched. Before restore preparation, the target host must already have the exact app image ID in the manifest: pull the recorded tag@sha256 for a registry candidate, or build/import the same-SHA local image and confirm its ID. The backup does not contain image layers.
 
