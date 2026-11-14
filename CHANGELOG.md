@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
 - Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
 - Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
+- Reject invalid MCP URL ports during DeepSeek client validation (#594).
 
 ## [v2.1.0-preview.1] - 2026-11-11
 

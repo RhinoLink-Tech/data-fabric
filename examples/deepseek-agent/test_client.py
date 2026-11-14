@@ -80,6 +80,31 @@ class InputValidationTests(unittest.TestCase):
                 {"datasource_id": "ds", "sql": "select 1", "parameters": list(range(65))},
             )
 
+    def test_mcp_url_rejects_invalid_ports(self):
+        invalid_urls = [
+            "https://gateway.example:invalid/mcp",
+            "https://gateway.example:65536/mcp",
+            "https://gateway.example:0/mcp",
+        ]
+
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    validate_mcp_url(url)
+
+    def test_mcp_url_accepts_valid_ports(self):
+        valid_urls = [
+            "https://gateway.example/mcp",
+            "https://gateway.example:1/mcp",
+            "https://gateway.example:443/mcp",
+            "https://gateway.example:65535/mcp",
+            "https://[::1]:443/mcp",
+        ]
+
+        for url in valid_urls:
+            with self.subTest(url=url):
+                self.assertEqual(validate_mcp_url(url), url)
+
 
 class FunctionBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_execution_validates_and_hides_server_cursor(self):
