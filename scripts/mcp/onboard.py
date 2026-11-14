@@ -31,9 +31,16 @@ class OnboardingError(Exception):
     pass
 
 
+def read_env_text(path):
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise OnboardingError(f"{path.name} is not valid UTF-8; rewrite it in UTF-8; its contents were left untouched") from None
+
+
 def parse_env(path):
     values, duplicates = {}, set()
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in read_env_text(path).splitlines():
         match = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", line)
         if not match:
             continue
@@ -245,11 +252,11 @@ def command_init(args):
     if env_path.exists():
         if not env_path.is_file():
             raise OnboardingError(".env must be a regular file")
-        text, current = env_path.read_text(encoding="utf-8"), parse_env(env_path)
+        text, current = read_env_text(env_path), parse_env(env_path)
     else:
         if not example_path.is_file():
             raise OnboardingError(".env.example is missing; restore the deployment template before initializing")
-        text, current = example_path.read_text(encoding="utf-8"), parse_env(example_path)
+        text, current = read_env_text(example_path), parse_env(example_path)
     replacements = {}
     for key in SECRET_KEYS:
         if is_placeholder(current.get(key, "")):
