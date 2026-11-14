@@ -143,7 +143,7 @@ Request fields:
 | `parameters` | array | No | Ordered bind values (null, boolean, number, string), at most 64; bound to `?`/`$N` placeholders, never interpolated into the SQL text |
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
 | `type` | integer | No | `1` selects paginated batches; `2` prefers streaming. Explicit `query.execution_mode` configuration can override the hint; if omitted, auto policy decides |
-| `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000 when omitted. An explicit value that is not an integer in this range returns HTTP 400 `INVALID_PARAMETERS` |
+| `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000. Values outside this range are replaced with the default |
 | `timeout` | integer | No | Seconds allowed for the initial request; default 60, maximum 1,800 |
 
 A successful response has this shape:
@@ -184,6 +184,8 @@ Call the exact relative URI returned in `data.nextUri`, adding the same base URL
 curl -X GET "http://localhost:8080/api/v1/fetch/QUERY_ID/SLUG/TOKEN?batch_size=1000" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
+
+For a continuation, `batch_size` may be omitted (default 10,000) or supplied as an integer from 1 to 10,000. An explicit empty, malformed, or out-of-range value returns HTTP 400 `INVALID_PARAMETERS` before the session advances.
 
 The path `token` is a per-session continuation credential; it does not replace the Bearer JWT.
 Tokens are random UUIDv4 values. Each successful continuation rotates the token, and a previous token

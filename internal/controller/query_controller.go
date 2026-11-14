@@ -152,7 +152,7 @@ func (qc *QueryController) FetchNextBatch(c *gin.Context) {
 
 	// Parse batch size
 	batchSize := 10000
-	if bs := c.Query("batch_size"); bs != "" {
+	if bs, present := c.GetQuery("batch_size"); present {
 		size, err := strconv.Atoi(bs)
 		if err != nil || size < 1 || size > 10000 {
 			c.JSON(http.StatusBadRequest, response.ErrorResponse(
