@@ -218,6 +218,123 @@ class SelectedSourceResultTests(unittest.TestCase):
         self.assertEqual(results, [(False, "source configuration could not be read safely; protect it with chmod 600 and verify its JSON")])
         self.assertNotIn("synthetic-secret", output.getvalue())
 
+    def test_non_ascii_source_config_is_sent_as_utf8_within_limit(self):
+        config = {"password": "é" * 200_000}
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            source.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            source.chmod(0o600)
+
+            class Response:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self, *_):
+                    return json.dumps({"success": True, "data": {"status": "healthy"}}).encode()
+
+            sent = {}
+
+            def fake_urlopen(request, timeout=None):
+                sent["body"] = request.data
+                return Response()
+
+            args = SimpleNamespace(source_config=str(source), source_type="mysql",
+                                   management_token_env="DATA_FABRIC_TEST_TOKEN")
+            results = []
+            with mock.patch.dict(os.environ, {"DATA_FABRIC_TEST_TOKEN": "synthetic-token"}), \
+                    mock.patch.object(onboard.urllib.request, "urlopen", fake_urlopen), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                onboard.source_connection_check(args, Path(directory), Path(directory) / ".env", {}, results)
+        self.assertLessEqual(len(sent["body"]), 1_048_576)
+        self.assertEqual(results[0][0], True)
+
+
+class SourceRequestBoundaryTests(unittest.TestCase):
+    def check_source(self, raw, *, from_stdin, status=200):
+        output, results, sent = io.StringIO(), [], []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, _limit):
+                return b'{"success":true,"data":{"status":"healthy"}}'
+
+        def send(request, timeout):
+            sent.append(request.data)
+            if status == 413:
+                error = onboard.urllib.error.HTTPError(request.full_url, 413, "too large", {}, io.BytesIO())
+                self.addCleanup(error.close)
+                raise error
+            response = Response()
+            response.status = status
+            return response
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            source.write_bytes(raw)
+            source.chmod(0o600)
+            args = SimpleNamespace(source_config="-" if from_stdin else str(source), source_type="mysql",
+                                   management_token_env="DATA_FABRIC_TEST_TOKEN")
+            stdin = SimpleNamespace(buffer=io.BytesIO(raw))
+            with mock.patch.object(onboard.sys, "stdin", stdin), \
+                    mock.patch.dict(os.environ, {"DATA_FABRIC_TEST_TOKEN": "synthetic-token"}), \
+                    mock.patch.object(onboard.urllib.request, "urlopen", side_effect=send), \
+                    contextlib.redirect_stdout(output):
+                onboard.source_connection_check(args, Path(directory), Path(directory) / ".env", {}, results)
+        return results, output.getvalue(), sent
+
+    def test_utf8_stdin_and_file_limit_is_in_bytes(self):
+        limit = onboard.MANAGEMENT_API_BODY_LIMIT
+        prefix, suffix = b'{"host":"', b'"}'
+        remaining = limit - len(prefix) - len(suffix)
+        exact = prefix + ("é" * (remaining // 2)).encode("utf-8") + b"a" * (remaining % 2) + suffix
+        self.assertEqual(len(exact), limit)
+        for from_stdin in (True, False):
+            with self.subTest(from_stdin=from_stdin, size="exact"):
+                results, _, sent = self.check_source(exact, from_stdin=from_stdin)
+                self.assertTrue(results[0][0])
+                self.assertEqual(len(sent[0]), limit)
+            with self.subTest(from_stdin=from_stdin, size="over"):
+                results, output, sent = self.check_source(exact[:-len(suffix)] + b"a" + suffix, from_stdin=from_stdin)
+                self.assertFalse(results[0][0])
+                self.assertEqual(sent, [])
+                self.assertIn("1 MiB", output)
+
+    def test_outgoing_body_limit_uses_encoded_bytes(self):
+        limit = onboard.MANAGEMENT_API_BODY_LIMIT
+        self.assertEqual(len(onboard.source_request_body({"x": "a" * (limit - 8)})), limit)
+        with self.assertRaisesRegex(onboard.OnboardingError, "limit"):
+            onboard.source_request_body({"x": "a" * (limit - 7)})
+
+    def test_http_413_is_actionable_and_redacts_configuration(self):
+        results, output, sent = self.check_source(b'{"password":"synthetic-secret"}', from_stdin=True, status=413)
+        self.assertFalse(results[0][0])
+        self.assertEqual(len(sent), 1)
+        self.assertIn("HTTP 413", output)
+        self.assertIn("request-body limit", output)
+        self.assertNotIn("synthetic-secret", output)
+        self.assertNotIn("synthetic-token", output)
+
+    def test_unpaired_surrogate_is_reported_without_traceback_or_secret(self):
+        raw = b'{"password":"synthetic-secret", "host":"\\ud800"}'
+        for from_stdin in (True, False):
+            with self.subTest(from_stdin=from_stdin):
+                results, output, sent = self.check_source(raw, from_stdin=from_stdin)
+                self.assertFalse(results[0][0])
+                self.assertEqual(sent, [])
+                self.assertIn("Unicode", output)
+                self.assertNotIn("synthetic-secret", output)
+                self.assertNotIn("synthetic-token", output)
+
 
 if __name__ == "__main__":
     unittest.main()
