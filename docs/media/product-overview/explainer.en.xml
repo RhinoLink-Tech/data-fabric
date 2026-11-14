@@ -1,0 +1,183 @@
+<explainer>
+<item anchor="intro" title="Data Fabric: From Data to AI Apps" text="Connect authorized data sources to AI applications through a self-hosted gateway."></item>
+<say lang="en-US" title="Data Fabric" text="[Data Fabric](#intro) connects authorized enterprise data to applications through one gateway."/>
+<item type="image" anchor="connected" title="Connect scattered data" prompt="A precise conceptual enterprise data network seen at a low isometric angle. On the left are three distinct database cylinders and a file archive; in the center a transparent luminous gateway cube; on the right two application panels and a compact AI node. Thin cyan paths connect the systems through the gateway while the source systems remain in place. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="en-US" title="From data to applications" text="[Enterprise data](#connected) often lives in business databases, analytics systems and object storage. Each application needs connections, authentication, query handling and result formats. The gateway centralizes those shared steps while data stays in the original systems."/>
+<item layout="cards" anchor="business" title="One business scenario">
+<item anchor="orders" title="Orders" text="Transaction records in the business database"/>
+<item anchor="analytics" title="Analytics" text="Business summaries in an analytics system"/>
+<item anchor="files" title="Files" text="Structured records in object storage"/>
+<item anchor="assistants" title="Applications" text="Business services, AI assistants and analytics"/>
+</item>
+<say lang="en-US" title="An order-data scenario" text="[Order analysis](#business) connects the examples in this overview. [Orders](#orders) record transactions, [analytics](#analytics) supplies business summaries, and [files](#files) contain structured records. Authorized [applications and assistants](#assistants) find data, inspect its structure and retrieve results within their permissions."/>
+<item type="animation" anchor="architecture" title="Applications, gateway and sources"><![CDATA[
+export function build(manim) {
+ const {Scene,Text,SurroundingRectangle,VGroup,Arrow,Dot,FadeIn,Create,Indicate,FadeOut}=manim;
+ const scene=new Scene();
+ const labels=["Applications / AI","Data Fabric","Source systems"];
+ const xs=[-4.4,0,4.4];
+ const groups=labels.map((s,i)=>{const t=Text(s,{color:"#dff8ff"}).scale_to_fit_width(i===1?2.4:2.8).move_to([xs[i],0.5,0]);const b=SurroundingRectangle(t,{buff:0.35,color:i===1?"#54e9ff":"#588cff"});return VGroup(t,b);});
+ const a=Arrow([-2.8,0.5,0],[-1.7,0.5,0],{color:"#54e9ff"});
+ const b=Arrow([1.7,0.5,0],[2.8,0.5,0],{color:"#54e9ff"});
+ const caption=Text("Connections · Identity · Query routing",{color:"#9baeff"}).scale_to_fit_width(8.2).move_to([0,-1.6,0]);
+ scene.play(...groups.map(g=>FadeIn(g)),{run_time:1.3});
+ scene.play(Create(a),Create(b),FadeIn(caption),{run_time:1.5});
+ const p=Dot({radius:0.11,color:"#54e9ff"}).move_to([-2.8,0.5,0]);
+ scene.play(FadeIn(p),{run_time:0.4});
+ scene.play(p.animate.move_to([-1.7,0.5,0]),{run_time:1.5});
+ scene.play(Indicate(groups[1]),{run_time:1.2});
+ scene.play(p.animate.move_to([2.8,0.5,0]),{run_time:1.5});
+ scene.play(Indicate(groups[2]),{run_time:1.2});
+ scene.play(FadeOut(p),{run_time:0.5});scene.wait(0.5);return scene;
+}
+]]></item>
+<say lang="en-US" title="A shared access path" text="[A request](#architecture) travels from an application through the gateway, where configured identity, permissions and routing are applied, to the target source. Results return through the same gateway. Teams can maintain one connection while authorized applications use separate identities."/>
+<item type="image" anchor="deployment" title="Deploy in your own environment" prompt="A compact self-hosted gateway module on a dark engineering workbench. Two slim service modules and a metadata storage block are arranged neatly inside a transparent private-network enclosure, with a separate source database beside it. A subtle illuminated deployment path leads from a small package icon on the far left to the working gateway on the right. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="en-US" title="Self-hosted deployment" text="[Self-hosted deployment](#deployment) runs the gateway in your own environment. A published image avoids local compilation. Prepare the required configuration, metadata storage and authentication, then start the services and use the health checks. Follow the guide for the exact release and profile."/>
+<item layout="ol" anchor="onboard" title="From startup to a first query">
+<item anchor="onboard-config" title="Prepare configuration" text="Service address, keys, metadata and identity provider"/>
+<item anchor="onboard-start" title="Start the services" text="Published image and Compose deployment"/>
+<item anchor="onboard-check" title="Check status" text="Health checks and deployment diagnostics"/>
+<item anchor="onboard-source" title="Register a source" text="Connection settings, a read-only account and grants"/>
+</item>
+<say lang="en-US" title="From startup to a first query" text="[A first deployment](#onboard) has four steps. [Prepare configuration](#onboard-config), [start the services](#onboard-start), [check health and diagnostics](#onboard-check), then [register a source](#onboard-source) with a restricted account and suitable caller grants."/>
+<item layout="cards" anchor="management" title="Manage sources once">
+<item anchor="mg-life" title="Lifecycle" text="Create, inspect, update, activate and deactivate"/>
+<item anchor="mg-check" title="Connection diagnostics" text="Validate settings, test connectivity and check health"/>
+<item anchor="mg-use" title="Shared entry point" text="Management UI and REST API"/>
+</item>
+<say lang="en-US" title="Source management" text="[Source management](#management) centralizes connection details. The [lifecycle](#mg-life) covers setup and changes; [diagnostics](#mg-check) help identify connectivity problems; and the [management UI and API](#mg-use) serve operators and automation. Authorized applications can reuse the registered source."/>
+<item layout="cards" anchor="sources" title="Connect different data types">
+<item anchor="src-db" title="Relational databases" text="MySQL, PostgreSQL, SQL Server and others"/>
+<item anchor="src-olap" title="Analytics and warehouses" text="ClickHouse, Doris, StarRocks and others"/>
+<item anchor="src-object" title="Objects and files" text="S3 or MinIO; CSV, JSON, Parquet and more"/>
+<item anchor="src-lake" title="Lakehouse and query engines" text="Supported table formats and engines such as Trino"/>
+</item>
+<say lang="en-US" title="Data-source options" text="[Source integrations](#sources) cover several data shapes: [relational databases](#src-db), [analytics systems](#src-olap), [objects and files](#src-object), and [lakehouse or query engines](#src-lake). Check the support catalog for the exact source, format, version and verification status before relying on a connector."/>
+<item layout="ol" anchor="schema" title="Understand data before querying">
+<item anchor="schema-find" title="Discover sources" text="Find connections available to the caller"/>
+<item anchor="schema-tables" title="Discover tables" text="List the tables available to query"/>
+<item anchor="schema-cols" title="Inspect columns" text="Column names, types and table structure"/>
+<item anchor="schema-search" title="Search schema" text="Find data relevant to the task"/>
+</item>
+<say lang="en-US" title="Schema discovery" text="[Schema discovery](#schema) gives an application the context to form a query. [Find an authorized source](#schema-find), [inspect its tables](#schema-tables), [check column names and types](#schema-cols), and [search the schema](#schema-search) for the relevant business data."/>
+<item type="code" anchor="query" title="Query from SQL to results" text="Synthetic orders example" language="sql" filename="orders.sql"><![CDATA[
+SELECT id
+FROM sample.orders
+ORDER BY id ASC;
+]]></item>
+<say lang="en-US" title="A query example" text="[This synthetic query](#query) [selects the identifier](#query:L1 &#x27;SELECT id&#x27;) from [the sample orders table](#query:L2 &#x27;sample.orders&#x27;) and [sorts it in ascending order](#query:L3 &#x27;ORDER BY id ASC&#x27;). Both business programs and authorized assistants can use the query workflow."/>
+<item layout="cards" anchor="dialect" title="SQL dialect adaptation">
+<item anchor="dialect-in" title="Input dialect" text="Declare it with sourceDialect"/>
+<item anchor="dialect-map" title="Translate syntax" text="Convert supported query constructs"/>
+<item anchor="dialect-out" title="Execute at the target" text="Send the query to the selected source"/>
+</item>
+<say lang="en-US" title="Dialect adaptation" text="[Dialect adaptation](#dialect) can address supported syntax differences. [Declare the input dialect](#dialect-in), apply [supported translations](#dialect-map), and [execute at the target](#dialect-out). Native target syntax is another option. Consult the published compatibility matrix for the actual scope."/>
+<item type="animation" anchor="pagination" title="Fetch batches until results are complete"><![CDATA[
+export function build(manim) {
+ const {Scene,Text,SurroundingRectangle,VGroup,FadeIn,Indicate,Arrow,Create}=manim;
+ const scene=new Scene();
+ const texts=["First batch: 1, 2","Next batch: 3","Results complete"];
+ const xs=[-4.3,0,4.3];
+ const boxes=texts.map((s,i)=>{const t=Text(s,{color:i===2?"#7bf5c4":"#dff8ff"}).scale_to_fit_width(2.5).move_to([xs[i],0.3,0]);return VGroup(t,SurroundingRectangle(t,{buff:0.4,color:i===2?"#7bf5c4":"#54e9ff"}));});
+ const caption=Text("batch_size = 2",{color:"#94aaff"}).scale_to_fit_width(3.8).move_to([0,2.2,0]);
+ const tail=Text("Fetch all batches and confirm completion",{color:"#dff8ff"}).scale_to_fit_width(8.4).move_to([0,-1.7,0]);
+ scene.play(FadeIn(caption),FadeIn(boxes[0]),{run_time:1.5});
+ scene.play(Indicate(boxes[0]),{run_time:1.2});
+ scene.play(Create(Arrow([-2.6,0.3,0],[-1.65,0.3,0],{color:"#54e9ff"})),{run_time:1});
+ scene.play(FadeIn(boxes[1]),{run_time:1.2});
+ scene.play(Indicate(boxes[1]),{run_time:1.2});
+ scene.play(Create(Arrow([1.65,0.3,0],[2.6,0.3,0],{color:"#7bf5c4"})),{run_time:1});
+ scene.play(FadeIn(boxes[2]),FadeIn(tail),{run_time:1.3});
+ scene.wait(0.5);return scene;
+}
+]]></item>
+<say lang="en-US" title="Batched results" text="[Batch retrieval](#pagination) lets a client receive a result in parts. In this synthetic example the first batch contains one and two, the next contains three, and the final state marks the result complete. Streaming behavior depends on the selected driver."/>
+<item layout="cards" anchor="control" title="Keep query consumption manageable">
+<item anchor="ctl-bound" title="Parameter binding" text="Separate supported inputs from the query structure"/>
+<item anchor="ctl-time" title="Timeout and cancellation" text="Bound individual requests"/>
+<item anchor="ctl-budget" title="Resource budgets" text="Configure concurrency, rates and result size"/>
+</item>
+<say lang="en-US" title="Query controls" text="[Query controls](#control) make shared execution manageable. [Parameter binding](#ctl-bound) passes supported values, [timeouts and cancellation](#ctl-time) bound requests, and [resource budgets](#ctl-budget) configure limits such as concurrency, rate and result size."/>
+<item layout="ol" anchor="federation" title="Add cross-source queries when needed">
+<item anchor="fed-register" title="Register a federation engine" text="Configure an engine such as Trino as a source"/>
+<item anchor="fed-plan" title="Query across catalogs" text="The engine connects the relevant systems"/>
+<item anchor="fed-result" title="Return results" text="Applications continue to use the gateway"/>
+</item>
+<say lang="en-US" title="Cross-source access" text="[Cross-source access](#federation) is optional. [Register a federation engine](#fed-register), let that engine [plan the cross-catalog query](#fed-plan), and [return results](#fed-result) through the gateway. Direct single-source requests use the corresponding driver."/>
+<item type="image" anchor="security-hero" title="Share data with identities and permissions" prompt="A transparent gateway cube between two distinct application nodes on the left and a database vault on the right. One cyan stream passes through an illuminated key-shaped access aperture; a separate violet stream stops cleanly before a closed boundary. Inside the gateway are neatly stacked identity badges, without any text. The paths and protected source remain clearly visible across the wide frame. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="en-US" title="Controlled sharing" text="[Controlled sharing](#security-hero) begins with the caller identity. The gateway applies configured owner, tenant and source permissions; a restricted database account adds a source-side boundary. Remote MCP requires the authentication and transport described in the release guide."/>
+<item layout="cards" anchor="policy" title="Control access to tables and columns">
+<item anchor="pol-table" title="Table rules" text="Allow access to selected tables"/>
+<item anchor="pol-col" title="Column rules" text="Restrict fields that should not be exposed"/>
+<item anchor="pol-read" title="Read-only checks" text="Validate queries and use restricted source accounts"/>
+<item anchor="pol-audit" title="Redacted audit" text="Record access decisions and query events"/>
+</item>
+<say lang="en-US" title="Table and column policies" text="[Access policies](#policy) can use [table rules](#pol-table) and [column rules](#pol-col) where supported. [Read-only validation](#pol-read) works alongside restricted source accounts, and [redacted audit events](#pol-audit) record access and query activity. Verify both allowed and denied paths in your environment."/>
+<item layout="ol" anchor="policy-life" title="Manage policy changes">
+<item anchor="policy-check" title="Review" text="Check a proposed policy before publication"/>
+<item anchor="policy-publish" title="Publish" text="Apply the intended policy version"/>
+<item anchor="policy-history" title="Review and adjust" text="Use supported history and rollback workflows"/>
+</item>
+<say lang="en-US" title="Policy changes" text="[Policy changes](#policy-life) can follow an operational workflow: [review a proposed change](#policy-check), [publish a version](#policy-publish), then use supported [history and rollback](#policy-history) when needed. Consult the documentation for the exact operations and scope."/>
+<item layout="cards" anchor="mcp-skill" title="MCP tools and Skill workflows">
+<item anchor="mcp-tools" title="MCP tools" text="Discover, inspect, validate, query and fetch"/>
+<item anchor="skill-flow" title="Agent Skill" text="Guide the assistant through the workflow"/>
+<item anchor="client-identity" title="Caller identity" text="Use the configured authentication and grants"/>
+</item>
+<say lang="en-US" title="MCP and Skills" text="[Assistant integration](#mcp-skill) combines [MCP tools](#mcp-tools) for discovery, schema inspection, validation, queries and batches, with [Skill instructions](#skill-flow) that guide their use. The [caller identity](#client-identity) determines the configured access."/>
+<item layout="ol" anchor="codex" title="Codex: connect data to development">
+<item anchor="codex-skill" title="Install the Skill" text="Keep the complete Skill and its references"/>
+<item anchor="codex-mcp" title="Configure MCP" text="Set the service endpoint and authentication"/>
+<item anchor="codex-task" title="Start a task" text="Select a source, inspect schema and query"/>
+</item>
+<say lang="en-US" title="Codex" text="[Codex setup](#codex) starts by [installing the complete Skill](#codex-skill) and its references. [Configure the MCP connection](#codex-mcp), then [start a data task](#codex-task) that discovers the source, inspects the schema and retrieves authorized results."/>
+<item layout="ol" anchor="workbuddy" title="WorkBuddy: ask a data question">
+<item anchor="wb-import" title="Import the Skill" text="Upload the Skill package"/>
+<item anchor="wb-connect" title="Configure a connector" text="Set the MCP endpoint and authentication"/>
+<item anchor="wb-ask" title="Ask a question" text="Specify the source, result and batch size"/>
+</item>
+<say lang="en-US" title="WorkBuddy" text="[WorkBuddy setup](#workbuddy) uses a client-specific workflow. [Import the Skill](#wb-import), [configure an MCP connector](#wb-connect), and [ask a business question](#wb-ask). Marketplace availability and direct HTTPS client acceptance require separate verification; consult the current integration guide."/>
+<item type="image" anchor="reuse" title="One data gateway, many applications" prompt="A central glass gateway hub on a midnight technical desk connected outward to a developer workstation on the left, a conversational desktop assistant on the upper right, and a business application panel on the lower right. A database cluster sits behind the hub. Each app has its own small illuminated identity badge and distinct cyan or blue connection path. Precisely organized network, elegant restrained enterprise technology concept. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="en-US" title="Reuse across applications" text="[A shared source](#reuse) can serve a developer assistant, a desktop assistant and a business service. Each application uses its own configured identity, while the team maintains the connection in one place. Access remains subject to the grants that were actually configured and tested."/>
+<item layout="cards" anchor="apps" title="Connect AI workflows to data">
+<item anchor="app-agent" title="AI agents" text="Retrieve authorized business context"/>
+<item anchor="app-rag" title="RAG data access" text="Retrieve structured and semi-structured records"/>
+<item anchor="app-t2s" title="Text to SQL" text="Validate and execute supported model-generated queries"/>
+<item anchor="app-api" title="REST and custom apps" text="Connect existing services and tool workflows"/>
+</item>
+<say lang="en-US" title="Application scenarios" text="[Applications](#apps) use the gateway in different workflows. [AI agents](#app-agent) obtain business context, [retrieval pipelines](#app-rag) read records for downstream processing, [text-to-SQL](#app-t2s) submits supported queries, and [business services](#app-api) use the API. Model inference and orchestration stay in the application stack."/>
+<item layout="cards" anchor="operations" title="Observe service and query activity">
+<item anchor="ops-health" title="Services and connections" text="Health, connectivity and connection pools"/>
+<item anchor="ops-query" title="Query lifecycle" text="Elapsed time, rows, batches and completion"/>
+<item anchor="ops-metrics" title="Metrics and audit" text="Authorized metrics and redacted events"/>
+</item>
+<say lang="en-US" title="Observability" text="[Operational visibility](#operations) includes [service and connection health](#ops-health), the [query lifecycle](#ops-query), and authorized [metrics and redacted audit events](#ops-metrics). Teams can distinguish a partially fetched result from a completed retrieval and review requests using the supported instrumentation."/>
+<item layout="cards" anchor="footprint" title="Size resources for your workload">
+<item anchor="foot-conn" title="Connections on demand" text="Open connections for configured sources"/>
+<item anchor="foot-path" title="Choose a query path" text="Use a direct driver or a federation engine"/>
+<item anchor="foot-budget" title="Control consumption" text="Tune batches, concurrency and result budgets"/>
+</item>
+<say lang="en-US" title="Resource choices" text="[Resource use](#footprint) depends on the actual workload. [Connections](#foot-conn) are opened for configured sources, [routing](#foot-path) is selected for the task, and [batch and execution budgets](#foot-budget) can be tuned. The standard build includes registered drivers; measure startup time and memory on your own deployment."/>
+<item layout="ol" anchor="recovery" title="Protect configuration and plan recovery">
+<item anchor="rec-encrypt" title="Protect credentials" text="Use the configured keyring and encryption"/>
+<item anchor="rec-backup" title="Encrypted backup" text="Check the supported metadata deployment profile"/>
+<item anchor="rec-restore" title="Verify and restore" text="Check integrity and rehearse an isolated restore"/>
+</item>
+<say lang="en-US" title="Backup and recovery" text="[Recovery planning](#recovery) includes protecting [credentials and keys](#rec-encrypt), checking the release-specific [backup procedure](#rec-backup), and rehearsing an [isolated restore](#rec-restore). Backup support and limitations vary by release and profile; do not assume an untested path is supported."/>
+<item layout="cards" anchor="extension" title="Extend around shared interfaces">
+<item anchor="ext-driver" title="Driver interfaces" text="Add or select source integrations"/>
+<item anchor="ext-catalog" title="Capability catalog" text="Check source types and compatibility evidence"/>
+<item anchor="ext-workflow" title="Application integration" text="Build workflows with REST, MCP and Skills"/>
+</item>
+<say lang="en-US" title="Extension" text="[The gateway](#extension) can grow through [driver interfaces](#ext-driver), a [capability catalog](#ext-catalog), and [application interfaces](#ext-workflow). Start with one verified data source and task, then check compatibility and permissions for additional integrations."/>
+<item layout="ol" anchor="start" title="Put data to work in applications">
+<item anchor="start-deploy" title="Deploy the gateway" text="Prepare the service and identity settings"/>
+<item anchor="start-connect" title="Connect data" text="Register a source and configure grants"/>
+<item anchor="start-app" title="Connect an application" text="Use REST, Codex, WorkBuddy or your own agent"/>
+<item anchor="start-query" title="Complete a task" text="Discover, validate, query and fetch results"/>
+</item>
+<say lang="en-US" title="Get started" text="[Getting started](#start) means [deploying the gateway](#start-deploy), [registering and authorizing a source](#start-connect), [connecting an application](#start-app), and [completing a representative query](#start-query). Use the versioned guides and known limitations. Feedback, contributions and a GitHub star are welcome."/>
+<followup prompt="How do I deploy Data Fabric and register a read-only source?"/>
+<followup prompt="How do I connect Data Fabric MCP and Skills to an assistant?"/>
+</explainer>
