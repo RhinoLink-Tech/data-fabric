@@ -44,3 +44,20 @@
 **安全新增（源码候选）**：尚未发布镜像且尚未完成 WorkBuddy 客户端端到端验收。管理员部署并启用候选后，只有实际发现 `begin_data_source_onboarding` 和 `get_data_source_onboarding_status`，才可请助手启动向导。打开返回的链接，用与 MCP 相同的 issuer、用户和租户登录，在浏览器安全填写连接信息、测试并保存，回到会话告知助手，再由助手读取真实状态。链接本身不授予权限。候选仅支持服务器允许的 IPv4 地址和端口上的 PostgreSQL/MySQL，支持验证服务端证书的 TLS；还需要 OIDC、管理 scope 和服务端身份授权。如部署还显式开启 DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES=true，且实际发现 begin_data_source_update 与 get_data_source_update_status，也可在浏览器中更新获授权的既有 MySQL/PostgreSQL 连接与凭据；否则请管理员通过已支持的管理界面处理。安全向导不支持添加其他类型。已发布的 v2.1.0-preview.1 不包含安全新增工具。
 
 如工具缺失、权限或连接失败，请管理员核对版本、授权和网络策略，或通过管理 UI 安全配置。切勿在聊天中发送密码或令牌。部署后应以实际服务和工具列表为准。
+
+## 可选：为自部署连接获取短期令牌（实验性）
+
+如果管理员的 OIDC 身份服务支持公开客户端的授权码与 PKCE，可使用仓库中的辅助工具在本机登录后获取访问令牌。**它不是自动授权或自动续期方案**；连接器不会刷新令牌，过期后需重新执行并更新 WorkBuddy。此工具尚需针对实际身份提供方和 WorkBuddy 客户端完成端到端验证。
+
+管理员需先注册一个不使用 client secret 的公开客户端，启用授权码和 S256 PKCE，并将精确回调 `http://127.0.0.1:8765/callback` 加入允许列表；配置 Data Fabric 所需 issuer、audience、用户租户和相应授权。客户端 ID、端口及范围必须以管理员配置为准；正式服务现有的浏览器客户端不能默认用于此回调。
+
+在运行 WorkBuddy 的用户所能操作的电脑上，使用受信任的终端运行（按管理员提供的信息替换示例值）：
+
+```sh
+python3 scripts/mcp/workbuddy_token.py \
+  --issuer https://identity.example.com/realms/team \
+  --client-id data-fabric-user \
+  --port 8765
+```
+
+按浏览器提示完成登录后，工具会要求你确认，再将短期 access token 显示在终端；把它复制到 WorkBuddy 连接表单的令牌字段。工具不会写入令牌文件，也不会显示或保存 refresh token。请确保终端没有被记录或共享，勿将令牌发送到聊天或日志；终端可能保留显示内容，使用后按终端自身方法清除。令牌过期后重新运行并更新连接。需要管理操作时，管理员必须授予管理权限，并按需传入 `--scope 'openid data-fabric.query data-fabric.sources.manage'`；如果身份服务需要 OAuth resource 参数，还需提供 `--resource`。客户端注册、audience、scope 和数据库权限最终由身份服务与 Data Fabric 网关校验，此辅助工具不验证访问令牌签名，也不授予额外权限。
