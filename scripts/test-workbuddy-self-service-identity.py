@@ -168,6 +168,45 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   token=session.post(base+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':values['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier},timeout=15)
   if token.status_code!=200:raise RuntimeError('verified token exchange '+str(token.status_code))
   tokenfile=spool/'token.txt';tokenfile.write_text(token.json()['access_token']);tokenfile.chmod(0o600)
+  # Exercise the password reset mail and form against the isolated SMTP server.
+  (spool/'message.eml').unlink()
+  resetbrowser=requests.Session();resetbrowser.trust_env=False;resetbrowser.verify=str(cert)
+  resetlogin=resetbrowser.get(auth,params=params,timeout=15)
+  f=Parser();f.feed(resetlogin.text)
+  resetlinks=[x for x in f.links if '/login-actions/reset-credentials' in urllib.parse.urlsplit(x).path]
+  if not resetlinks:raise RuntimeError('password reset link missing')
+  page=resetbrowser.get(urllib.parse.urljoin(base,resetlinks[0]),timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-reset-password-form')
+  if not form:raise RuntimeError('password reset form missing')
+  response=resetbrowser.post(urllib.parse.urljoin(base,form),data={'username':'trial-user'},timeout=15)
+  if response.status_code!=200:raise RuntimeError('password reset request failed')
+  for _ in range(25):
+   if (spool/'message.eml').is_file():break
+   time.sleep(1)
+  else:raise RuntimeError('password reset email missing')
+  msg=email.message_from_bytes((spool/'message.eml').read_bytes())
+  chunks=[]
+  for part in msg.walk():
+   if part.get_content_type() in ('text/plain','text/html'):
+    content=part.get_payload(decode=True)
+    if content:chunks.append(content.decode('utf-8','replace'))
+  resettext=html.unescape('\n'.join(chunks))
+  reseturls=re.findall(r'https?://[^\s<>"\']+',resettext)
+  reseturls=[x.rstrip('.,)') for x in reseturls if '/login-actions/action-token?' in x]
+  if not reseturls or urllib.parse.urlsplit(reseturls[0]).netloc!='127.0.0.1:'+str(port):raise RuntimeError('password reset link missing or invalid')
+  page=resetbrowser.get(reseturls[0],timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-passwd-update-form')
+  if not form:raise RuntimeError('new password form missing')
+  response=resetbrowser.post(urllib.parse.urljoin(base,form),data={'password-new':'NewTestingPassword123!','password-confirm':'NewTestingPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303):raise RuntimeError('password update failed')
+  # A fresh session must authenticate with the new password.
+  fresh=requests.Session();fresh.trust_env=False;fresh.verify=str(cert)
+  page=fresh.get(auth,params=params,timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-form-login')
+  if not form:raise RuntimeError('new-password login form missing')
+  response=fresh.post(urllib.parse.urljoin(base,form),data={'username':'trial-user','password':'NewTestingPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or urllib.parse.urlsplit(response.headers.get('Location','')).path!='/callback':raise RuntimeError('new-password login failed')
+  print('PASS: isolated password reset and login with new password')
   second={'username':'other-user','firstName':'Other','lastName':'User','enabled':True,'email':'other@example.invalid','emailVerified':True,'credentials':[{'type':'password','value':'OtherPassword123!','temporary':False}]}
   r=session.post(userurl,json=second,headers=headers,timeout=10)
   if r.status_code!=201:raise RuntimeError('second synthetic user setup '+str(r.status_code))

@@ -42,7 +42,7 @@ python3 scripts/test-workbuddy-self-service-identity.py
 ```
 
 It creates disposable local services and a fake SMTP server, runs registration,
-email verification, two-user MCP isolation and a synthetic PostgreSQL query,
+email verification, password recovery, two-user MCP isolation and a synthetic PostgreSQL query,
 and deletes its own containers and network. It does not send real email.
 
 Before production rollout, separately verify real mail delivery, password
