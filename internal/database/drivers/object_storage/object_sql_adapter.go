@@ -356,7 +356,7 @@ func objectSQLType(standardType string) string {
 		return "INTEGER"
 	case "bigint":
 		return "BIGINT"
-	case "float":
+	case "float", "real":
 		return "REAL"
 	case "double":
 		return "DOUBLE"
@@ -372,7 +372,7 @@ func objectSQLType(standardType string) string {
 		return "JSON"
 	case "uuid":
 		return "UUID"
-	case "binary":
+	case "binary", "varbinary":
 		return "VARBINARY"
 	default:
 		return "VARCHAR"

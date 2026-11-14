@@ -426,5 +426,45 @@ class SourceRequestBoundaryTests(unittest.TestCase):
                 self.assertNotIn("synthetic-token", output)
 
 
+class NonUtf8EnvTests(unittest.TestCase):
+    def make_deploy(self):
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, True)
+        env = directory / ".env"
+        env.write_bytes(b"JWT_SECRET=synthetic-secret" + bytes([0xFF]) + bytes([10]))
+        env.chmod(0o600)
+        return directory, env
+
+    def test_doctor_reports_encoding_failure_without_exposing_contents(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(onboard, "check_identity"):
+            code = onboard.command_doctor(SimpleNamespace(directory=directory, probe_oidc=False))
+        printed = output.getvalue()
+        self.assertEqual(code, 1)
+        self.assertIn("not valid UTF-8", printed)
+        self.assertNotIn("synthetic-secret", printed)
+        self.assertEqual(env.read_bytes(), before)
+
+    def test_init_fails_cleanly_and_preserves_files(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        with self.assertRaisesRegex(onboard.OnboardingError, "not valid UTF-8"):
+            onboard.command_init(SimpleNamespace(directory=directory))
+        self.assertEqual(env.read_bytes(), before)
+        self.assertFalse((directory / "tls").exists())
+
+    def test_token_fails_cleanly(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        args = SimpleNamespace(directory=directory, user="synthetic-user", tenant="quickstart",
+                               username=None, ttl_minutes=15, admin=False)
+        with mock.patch.object(onboard.stat, "S_IMODE", return_value=0o600):
+            with self.assertRaisesRegex(onboard.OnboardingError, "not valid UTF-8"):
+                onboard.command_token(args)
+        self.assertEqual(env.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()
