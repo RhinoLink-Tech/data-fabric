@@ -78,7 +78,7 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   r=run(['docker','run','-d','--name',smtp,'--network',network,'--network-alias','smtp','-v',td+':/work','--entrypoint','python3','python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1','/work/smtp.py'])
   if r.returncode:raise RuntimeError('fake SMTP start')
   created.append(smtp)
-  cmd=['docker','run','-d','--name',kc,'--network',network,'--network-alias','identity','-e','KC_BOOTSTRAP_ADMIN_USERNAME','-e','KC_BOOTSTRAP_ADMIN_PASSWORD','-e','KC_PROXY_HEADERS','-e','KC_HOSTNAME_STRICT','quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba','start-dev']
+  cmd=['docker','run','-d','--name',kc,'--network',network,'--network-alias','identity','-e','KC_BOOTSTRAP_ADMIN_USERNAME','-e','KC_BOOTSTRAP_ADMIN_PASSWORD','-e','KC_PROXY_HEADERS','-e','KC_HOSTNAME_STRICT','quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba','start-dev','--http-relative-path=/identity']
   if run(cmd,env=env).returncode:raise RuntimeError('identity container start')
   created.append(kc)
   r=run(['docker','run','-d','--name',proxy,'--network',network,'-p','127.0.0.1::443','-v',td+':/work:ro','-v',str(spool/'nginx.conf')+':/etc/nginx/nginx.conf:ro','nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10'])
@@ -86,7 +86,7 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   created.append(proxy)
   r=run(['docker','port',proxy,'443/tcp'])
   if r.returncode:raise RuntimeError('identity port')
-  port=int(r.stdout.strip().rsplit(':',1)[1]);base='https://127.0.0.1:'+str(port)
+  port=int(r.stdout.strip().rsplit(':',1)[1]);base='https://127.0.0.1:'+str(port)+'/identity'
   session=requests.Session();session.trust_env=False;session.verify=str(cert)
   for attempt in range(65):
    try:
@@ -231,6 +231,157 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   token2=session.post(base+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':values2['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier2},timeout=15)
   if token2.status_code!=200:raise RuntimeError('second token exchange '+str(token2.status_code))
   tokenfile2=spool/'token2.txt';tokenfile2.write_text(token2.json()['access_token']);tokenfile2.chmod(0o600)
+  # Exercise the restricted proxy fixture against the disposable identity.
+  prodproxy='df603-actualproxy-'+suffix
+  actual=(pathlib.Path(__file__).resolve().parent/'fixtures'/'workbuddy-identity-proxy.conf').read_text()
+  actual=actual.replace('${DF_PUBLIC_HOST}','127.0.0.1').replace('/realms/data-fabric/','/realms/df-selfservice-test/')
+  actual=actual.replace('proxy_set_header X-Forwarded-Port 443;', 'proxy_set_header X-Forwarded-Port '+chr(34)*2+';')
+  actual=actual.replace('/etc/df-proxy/tls.crt','/work/cert.pem').replace('/etc/df-proxy/tls.key','/work/key.pem')
+  actual=actual.replace('proxy_set_header Host 127.0.0.1;', 'proxy_set_header Host $http_host;').replace('proxy_set_header X-Forwarded-Host 127.0.0.1;', 'proxy_set_header X-Forwarded-Host $http_host;')
+  marker='  location = /mcp { proxy_pass $gateway; }'
+  cookies=('add_header Set-Cookie "AUTH_SESSION_ID=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; '
+           'add_header Set-Cookie "KC_AUTH_SESSION_HASH=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; '
+           'add_header Set-Cookie "KC_RESTART=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; ')
+  freshReg='  location = /register/start { '+cookies+'return 302 https://public.example/identity/realms/df-selfservice-test/protocol/openid-connect/registrations; }'
+  freshAccount='  location = /account/start { '+cookies+'return 302 https://public.example/identity/realms/df-selfservice-test/account/; }'
+  actual=actual.replace(marker,freshReg+'\n'+freshAccount+'\n'+marker)
+  (spool/'actual.conf').write_text(actual)
+  r=run(['docker','run','-d','--name',prodproxy,'--network',network,'-p','127.0.0.1::443','-v',td+':/work:ro','-v',str(spool/'actual.conf')+':/etc/nginx/conf.d/default.conf:ro','nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10'])
+  if r.returncode:raise RuntimeError('production-like proxy setup failed')
+  created.append(prodproxy)
+  r=run(['docker','port',prodproxy,'443/tcp'])
+  if r.returncode:
+   output=run(['docker','logs',prodproxy])
+   raise RuntimeError('production-like proxy port: '+output.stderr[-700:])
+  actualbase='https://127.0.0.1:'+r.stdout.strip().rsplit(':',1)[1]+'/identity'
+  actualauth=actualbase+'/realms/df-selfservice-test/protocol/openid-connect/auth'
+  prod=requests.Session();prod.trust_env=False;prod.verify=str(cert)
+  p3=dict(params2,state='proxy-test-state')
+  page=prod.get(actualauth,params=p3,timeout=15)
+  f=Parser();f.feed(page.text);login_action=f.forms.get('kc-form-login')
+  if not login_action:raise RuntimeError('actual proxy login form missing')
+  response=prod.post(urllib.parse.urljoin(actualbase,login_action),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or urllib.parse.urlsplit(response.headers.get('Location','')).path!='/callback':raise RuntimeError('actual proxy login failed')
+  callback=urllib.parse.parse_qs(urllib.parse.urlsplit(response.headers['Location']).query)
+  prodtoken=prod.post(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':callback['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier2},timeout=15)
+  if prodtoken.status_code!=200:raise RuntimeError('proxy token exchange failed')
+  accountapi=prod.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json','Authorization':'Bearer '+prodtoken.json()['access_token']},timeout=15)
+  if accountapi.status_code!=200 or accountapi.json().get('username')!='other-user':raise RuntimeError('account profile failed or returned wrong user: '+str(accountapi.status_code))
+  anonymous=requests.Session();anonymous.trust_env=False;anonymous.verify=str(cert)
+  noauth=anonymous.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json'},timeout=15)
+  if noauth.status_code!=401:raise RuntimeError('account profile accepted unauthenticated request')
+  for path in ('login-status-iframe.html','3p-cookies/step1.html','3p-cookies/step2.html'):
+   asset=prod.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/'+path,timeout=15)
+   if asset.status_code!=200:raise RuntimeError('account console OIDC asset unavailable: '+path+' '+str(asset.status_code))
+  print('PASS: account profile returns only the authenticated synthetic user')
+  account=prod.get(actualbase+'/realms/df-selfservice-test/account/',timeout=15)
+  if account.status_code!=200 or 'keycloak' not in account.text.lower():raise RuntimeError('account console unavailable')
+  accountRedirect=actualbase+'/realms/df-selfservice-test/account/'
+  aVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  aChallenge=base64.urlsafe_b64encode(hashlib.sha256(aVerifier.encode()).digest()).rstrip(b'=').decode()
+  acParams={'client_id':'account-console','response_type':'code','scope':'openid','redirect_uri':accountRedirect,'state':'account-console-test','code_challenge':aChallenge,'code_challenge_method':'S256'}
+  ac=prod.get(actualauth,params=acParams,allow_redirects=False,timeout=15)
+  acurl=urllib.parse.urlsplit(ac.headers.get('Location',''));acvalues=urllib.parse.parse_qs(acurl.query)
+  if ac.status_code not in (302,303) or not acurl.path.endswith('/account/') or acvalues.get('state')!=['account-console-test'] or not acvalues.get('code'):raise RuntimeError('account console SSO callback failed')
+  actoken=prod.post(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'account-console','redirect_uri':accountRedirect,'code':acvalues['code'][0],'code_verifier':aVerifier},timeout=15)
+  if actoken.status_code!=200:raise RuntimeError('account console token exchange failed')
+  profile=prod.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json','Authorization':'Bearer '+actoken.json()['access_token']},timeout=15)
+  if profile.status_code!=200 or profile.json().get('username')!='other-user':raise RuntimeError('account console cannot load authenticated user')
+  print('PASS: account console OAuth identifies the signed-in user')
+  time.sleep(3)
+  logout=prod.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',timeout=15)
+  class LogoutParser(Parser):
+   def __init__(self):super().__init__();self.action=None;self.values={}
+   def handle_starttag(self,tag,attrs):
+    super().handle_starttag(tag,attrs)
+    a=dict(attrs)
+    if tag=='form' and '/logout/logout-confirm' in a.get('action',''):self.action=a['action']
+    if tag=='input' and a.get('type')=='hidden' and a.get('name'):self.values[a['name']]=a.get('value','')
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('actual proxy logout form missing')
+  f.values['confirmLogout']='yes'
+  response=prod.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303):raise RuntimeError('actual proxy logout failed '+str(response.status_code))
+  page=prod.get(actualauth,params=p3,timeout=15,allow_redirects=False)
+  f=Parser();f.feed(page.text)
+  if page.status_code!=200 or 'kc-form-login' not in f.forms:raise RuntimeError('logout did not clear SSO session')
+  print('PASS: production-like proxy account console, successful login and logout clear the SSO session')
+  # A fresh sign-up starts only after explicitly ending an existing SSO session.
+  actualhost=actualbase.removesuffix('/identity')
+  signupCallback=actualhost+'/signup/complete'
+  signoutRedirect=actualhost+'/register/start'
+  signupClient={'clientId':'standalone-signup','enabled':True,'publicClient':True,'standardFlowEnabled':True,'redirectUris':[signupCallback],'attributes':{'pkce.code.challenge.method':'S256','post.logout.redirect.uris':signoutRedirect+'##'+actualhost+'/account/start'}}
+  r=session.post(clientsurl,json=signupClient,headers=headers,timeout=15)
+  if r.status_code!=201:raise RuntimeError('signup client setup '+str(r.status_code))
+  time.sleep(3)
+  switch=requests.Session();switch.trust_env=False;switch.verify=str(cert)
+  page=switch.get(actualauth,params=dict(params2,state='switch-login'),timeout=15)
+  f=Parser();f.feed(page.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('switch login form missing')
+  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('switch old login failed')
+  logout=switch.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',params={'client_id':'standalone-signup','post_logout_redirect_uri':signoutRedirect},timeout=15)
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('signup logout confirmation missing')
+  f.values['confirmLogout']='yes'
+  response=switch.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or response.headers.get('Location')!=signoutRedirect:raise RuntimeError('signup logout redirect failed '+str(response.status_code))
+  fresh=switch.get(signoutRedirect,timeout=15,allow_redirects=False)
+  if fresh.status_code!=302 or fresh.headers.get('Location')!='https://public.example/identity/realms/df-selfservice-test/protocol/openid-connect/registrations':raise RuntimeError('signup restart HTTPS redirect failed')
+  if any(c.name in ('AUTH_SESSION_ID','KC_AUTH_SESSION_HASH','KC_RESTART') for c in switch.cookies):raise RuntimeError('stale authentication cookies not cleared')
+  signupVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  signupChallenge=base64.urlsafe_b64encode(hashlib.sha256(signupVerifier.encode()).digest()).rstrip(b'=').decode()
+  signupParams={'client_id':'standalone-signup','response_type':'code','scope':'openid','redirect_uri':signupCallback,'state':'fresh-signup','code_challenge':signupChallenge,'code_challenge_method':'S256','prompt':'login'}
+  response=switch.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/registrations',params=signupParams,timeout=15)
+  f=Parser();f.feed(response.text)
+  if response.status_code!=200 or not f.forms.get('kc-register-form'):raise RuntimeError('fresh signup form unavailable')
+  (spool/'message.eml').unlink(missing_ok=True)
+  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-register-form']),data={'firstName':'Third','lastName':'User','email':'third@example.invalid','username':'third-user','password':'ThirdPassword123!','password-confirm':'ThirdPassword123!'},timeout=15)
+  if response.status_code!=200 or 'already authenticated as different user' in response.text.lower():raise RuntimeError('fresh signup conflicted with previous user')
+  for _ in range(25):
+   if (spool/'message.eml').is_file():break
+   time.sleep(1)
+  else:raise RuntimeError('signup verification mail missing')
+  msg=email.message_from_bytes((spool/'message.eml').read_bytes())
+  chunks=[]
+  for part in msg.walk():
+   if part.get_content_type() in ('text/plain','text/html'):
+    data=part.get_payload(decode=True)
+    if data:chunks.append(data.decode('utf-8','replace'))
+  links=re.findall(r'https?://[^\s<>"\']+',html.unescape('\n'.join(chunks)))
+  links=[x.rstrip('.,)') for x in links if '/login-actions/action-token?' in x]
+  if not links or urllib.parse.urlsplit(links[0]).netloc!=urllib.parse.urlsplit(actualhost).netloc:raise RuntimeError('signup verification link invalid')
+  response=switch.get(links[0],timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303) or 'already authenticated as different user' in response.text.lower():raise RuntimeError('signup verification conflicted with previous user')
+  r=session.get(userurl,headers=headers,params={'username':'third-user','exact':'true'},timeout=15);r.raise_for_status()
+  if len(r.json())!=1 or not r.json()[0].get('emailVerified'):raise RuntimeError('new user verification not persisted')
+  print('PASS: old SSO logout, fresh registration and email verification do not conflict')
+  # Sign out again and clear the stale authentication flow before account switch.
+  switch2=requests.Session();switch2.trust_env=False;switch2.verify=str(cert)
+  oldPage=switch2.get(actualauth,params=dict(params2,state='account-switch'),timeout=15)
+  f=Parser();f.feed(oldPage.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('account switch old login missing')
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('account switch old login failed')
+  time.sleep(2)
+  logout=switch2.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',params={'client_id':'standalone-signup','post_logout_redirect_uri':actualhost+'/account/start'},timeout=15)
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('account switch logout form missing')
+  f.values['confirmLogout']='yes'
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or response.headers.get('Location')!=actualhost+'/account/start':raise RuntimeError('account switch logout redirect failed')
+  fresh=switch2.get(response.headers['Location'],timeout=15,allow_redirects=False)
+  if fresh.status_code!=302 or fresh.headers.get('Location')!='https://public.example/identity/realms/df-selfservice-test/account/':raise RuntimeError('account switch HTTPS redirect failed')
+  if any(c.name in ('AUTH_SESSION_ID','KC_AUTH_SESSION_HASH','KC_RESTART') for c in switch2.cookies):raise RuntimeError('account switch stale cookies persist')
+  freshVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  freshChallenge=base64.urlsafe_b64encode(hashlib.sha256(freshVerifier.encode()).digest()).rstrip(b'=').decode()
+  freshParams=dict(acParams,state='account-new-user',code_challenge=freshChallenge)
+  response=switch2.get(actualauth,params=freshParams,timeout=15)
+  f=Parser();f.feed(response.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('new account login form unavailable')
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'third-user','password':'ThirdPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('new account login conflicted with old session')
+  print('PASS: account switch clears stale auth cookies and signs in the new user')
   testenv=os.environ.copy()
   testenv.update(DF_SELF_SERVICE_TEST_ISSUER=base+'/realms/df-selfservice-test',DF_SELF_SERVICE_TEST_CA=str(cert),DF_SELF_SERVICE_TEST_TOKEN=str(tokenfile),DF_SELF_SERVICE_TEST_OTHER_TOKEN=str(tokenfile2),DF_SELF_SERVICE_TEST_SOURCE_PORT=str(pgport))
   test=run([shutil.which('go') or 'go','test','./cmd/server','-run','^TestSelfServiceRealKeycloakMCPInitialize$','-count=1'],cwd=str(pathlib.Path(__file__).resolve().parents[1]),env=testenv)

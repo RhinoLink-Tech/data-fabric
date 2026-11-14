@@ -32,6 +32,8 @@ subject with the `workbuddy-seed-synthetic` server command. Run it within the
 same isolated deployment with `--subject <OIDC UUID> --tenant t-<OIDC UUID> --template <source UUID>`. This does not create
 an identity or grant and is restricted to the validated synthetic template.
 
+For a narrow reverse-proxy configuration with registration, account switching and logout, see [workbuddy-identity-proxy.md](workbuddy-identity-proxy.md).
+
 ## Verification
 
 Run the focused Go tests. The optional integration test requires Docker,

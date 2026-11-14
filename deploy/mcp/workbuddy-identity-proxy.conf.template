@@ -1,0 +1,57 @@
+# Only loopback-published HTTP is reached by the host tunnel; 443 is internal
+# HTTPS for the gateway's OIDC discovery. No access or request error logging.
+error_log /dev/null emerg;
+access_log off;
+resolver 127.0.0.11 valid=10s ipv6=off;
+limit_req_zone $server_name zone=wb_global:1m rate=30r/s;
+limit_req_zone $server_name zone=wb_identity:1m rate=3r/s;
+
+server {
+  listen 8080;
+  listen 443 ssl;
+  server_name ${DF_PUBLIC_HOST};
+  if ($host != "${DF_PUBLIC_HOST}") { return 421; }
+  ssl_certificate /etc/df-proxy/tls.crt;
+  ssl_certificate_key /etc/df-proxy/tls.key;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  client_max_body_size 64k;
+  limit_req zone=wb_global burst=60 nodelay;
+  limit_req_status 429;
+  set $identity http://identity:8080;
+  set $gateway http://gateway:8082;
+
+  proxy_set_header Host ${DF_PUBLIC_HOST};
+  proxy_set_header X-Forwarded-Host ${DF_PUBLIC_HOST};
+  proxy_set_header X-Forwarded-Proto https;
+  proxy_set_header X-Forwarded-Port 443;
+  proxy_set_header X-Forwarded-For "";
+  proxy_set_header Forwarded "";
+  proxy_buffering off;
+  proxy_read_timeout 120s;
+
+  location = /register { default_type text/html; add_header Cache-Control no-store always; add_header Referrer-Policy no-referrer always; return 200 '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>注册 Data Fabric</title><body style="font-family:system-ui,sans-serif;max-width:640px;margin:10vh auto;padding:24px;line-height:1.7;color:#182539"><h1>注册 Data Fabric</h1><p>为避免旧账号影响注册，开始前需要退出浏览器里当前的 Data Fabric 账号。WorkBuddy 之前保存的连接可能需要重新授权。</p><p><a href="https://${DF_PUBLIC_HOST}/identity/realms/data-fabric/protocol/openid-connect/logout?client_id=data-fabric-account-signup&amp;post_logout_redirect_uri=https%3A%2F%2F${DF_PUBLIC_HOST}%2Fregister%2Fstart">退出旧账号并开始注册</a></p><p>已有账号？<a href="/account">查看或登录当前账号</a></p></body></html>'; }
+  location = /register/start { add_header Cache-Control no-store always; add_header Set-Cookie "AUTH_SESSION_ID=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; add_header Set-Cookie "KC_AUTH_SESSION_HASH=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; add_header Set-Cookie "KC_RESTART=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; return 302 'https://${DF_PUBLIC_HOST}/identity/realms/data-fabric/protocol/openid-connect/registrations?client_id=data-fabric-account-signup&response_type=code&redirect_uri=https%3A%2F%2F${DF_PUBLIC_HOST}%2Fsignup%2Fcomplete&scope=openid&code_challenge=${DF_SIGNUP_CHALLENGE}&code_challenge_method=S256&state=${DF_SIGNUP_STATE}&prompt=login'; }
+  location = /signup/complete { default_type text/html; add_header Cache-Control no-store always; add_header Referrer-Policy no-referrer always; return 200 '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Data Fabric 注册</title><body style="font-family:system-ui,sans-serif;max-width:640px;margin:12vh auto;padding:24px;line-height:1.7;color:#182539"><h1>Data Fabric 注册</h1><p>注册流程已结束。请返回 WorkBuddy，使用刚注册的账号连接 Data Fabric。</p><p>如果 WorkBuddy 自动使用了其他账号，请在连接器中重新授权。</p></body></html>'; }
+  location = /identity/realms/data-fabric/protocol/openid-connect/logout/logout-confirm { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location = /identity/realms/data-fabric/protocol/openid-connect/registrations { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location = /account/switch { default_type text/html; add_header Cache-Control no-store always; add_header Referrer-Policy no-referrer always; return 200 '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>切换 Data Fabric 账号</title><body style="font-family:system-ui,sans-serif;max-width:640px;margin:10vh auto;padding:24px;line-height:1.7;color:#182539"><h1>切换 Data Fabric 账号</h1><p>继续前会退出浏览器中原来的 Data Fabric 账号，并清理旧的登录流程。WorkBuddy 中已有连接可能需要重新授权。</p><p><a href="https://${DF_PUBLIC_HOST}/identity/realms/data-fabric/protocol/openid-connect/logout?client_id=data-fabric-account-signup&amp;post_logout_redirect_uri=https%3A%2F%2F${DF_PUBLIC_HOST}%2Faccount%2Fstart">退出旧账号并登录新账号</a></p><p><a href="/account">返回账号中心</a></p></body></html>'; }
+  location = /account/start { add_header Set-Cookie "AUTH_SESSION_ID=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; add_header Set-Cookie "KC_AUTH_SESSION_HASH=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; add_header Set-Cookie "KC_RESTART=; Path=/identity/realms/data-fabric/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; add_header Cache-Control no-store always; return 302 https://${DF_PUBLIC_HOST}/identity/realms/data-fabric/account/; }
+  location = /account { add_header Cache-Control no-store always; return 302 https://${DF_PUBLIC_HOST}/identity/realms/data-fabric/account/; }
+  location = /identity/realms/data-fabric/account { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location ^~ /identity/realms/data-fabric/account/ { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location ^~ /identity/realms/data-fabric/protocol/openid-connect/login-status-iframe.html { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location ^~ /identity/realms/data-fabric/protocol/openid-connect/3p-cookies/ { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
+  location = /mcp { proxy_pass $gateway; }
+  location ^~ /onboarding/ { proxy_pass $gateway; }
+  location ^~ /identity/resources/ { proxy_pass $identity; }
+  location = /identity/realms/data-fabric/.well-known/openid-configuration { proxy_pass $identity; }
+  location ~ ^/identity/realms/data-fabric/protocol/openid-connect/(auth|token|certs|userinfo|logout)$ {
+    limit_req zone=wb_identity burst=12 nodelay;
+    proxy_pass $identity;
+  }
+  location ^~ /identity/realms/data-fabric/login-actions/ {
+    limit_req zone=wb_identity burst=12 nodelay;
+    proxy_pass $identity;
+  }
+  location / { return 404; }
+}
