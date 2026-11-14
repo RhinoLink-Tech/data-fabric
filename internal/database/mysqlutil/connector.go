@@ -29,7 +29,7 @@ func Connector(cfg *mysql.Config) (driver.Connector, error) {
 	if cfg.TLS != nil && !cfg.TLS.InsecureSkipVerify {
 		host, _, splitErr := net.SplitHostPort(cfg.Addr)
 		addr, parseErr := netip.ParseAddr(host)
-		if splitErr == nil && parseErr == nil && addr.Zone() != "" {
+		if splitErr == nil && parseErr == nil && addr.Zone() != "" && (cfg.TLS.ServerName == "" || cfg.TLS.ServerName == host) {
 			cfg.TLS.ServerName = addr.WithZone("").String()
 		}
 	}

@@ -25,6 +25,6 @@ with tempfile.TemporaryDirectory(prefix="df-scoped-tls-") as td:
     time.sleep(1)
    else: raise RuntimeError("synthetic mysql startup timeout")
   env=os.environ.copy(); env.update({"DF_SCOPED_TLS_CA":str(p/"ca.pem"),"SSL_CERT_FILE":str(p/"ca.pem"),"DF_SCOPED_TLS_GOOD_PORT":ports[0],"DF_SCOPED_TLS_BAD_PORT":ports[1]})
-  subprocess.run(["go","test","./internal/database/drivers/traditional","-run","^TestScopedMySQLTLSRealDatabase$","-count=1","-v"],env=env,check=True)
+  subprocess.run(["go","test","./internal/database/drivers/traditional","./internal/database/mysqlutil","-run","^TestScoped(MySQLTLS|TLSExplicitIdentity)RealDatabase$","-count=1","-v"],env=env,check=True)
  finally:
   for name in names: subprocess.run(["docker","stop",name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
