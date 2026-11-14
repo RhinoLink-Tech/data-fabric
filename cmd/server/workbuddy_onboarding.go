@@ -28,9 +28,14 @@ type workbuddyConfig struct {
 	ports                                             []int
 	policy                                            *database.FixedIPEgressPolicy
 	bridge                                            bool
+	sourceUpdates                                     bool
 }
 
 func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
+	updates := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES"))
+	if updates != "" && updates != "false" && updates != "true" {
+		return nil, errors.New("invalid WorkBuddy source updates toggle")
+	}
 	bridge := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_BRIDGE"))
 	if bridge != "" && bridge != "false" && bridge != "true" {
 		return nil, errors.New("invalid WorkBuddy bridge toggle")
@@ -39,6 +44,9 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if raw == "" || raw == "false" {
 		if bridge == "true" {
 			return nil, errors.New("WorkBuddy bridge requires onboarding")
+		}
+		if updates == "true" {
+			return nil, errors.New("WorkBuddy source updates require onboarding")
 		}
 		return nil, nil
 	}
@@ -56,7 +64,7 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if ip == nil || !ip.IsLoopback() {
 		return nil, errors.New("WorkBuddy listener must bind loopback")
 	}
-	c := &workbuddyConfig{bridge: bridge == "true", origin: os.Getenv("DATA_FABRIC_WORKBUDDY_ORIGIN"), clientID: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_CLIENT_ID"), clientSecret: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_CLIENT_SECRET"), authURL: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_AUTH_URL"), tokenURL: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_TOKEN_URL")}
+	c := &workbuddyConfig{sourceUpdates: updates == "true", bridge: bridge == "true", origin: os.Getenv("DATA_FABRIC_WORKBUDDY_ORIGIN"), clientID: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_CLIENT_ID"), clientSecret: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_CLIENT_SECRET"), authURL: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_AUTH_URL"), tokenURL: os.Getenv("DATA_FABRIC_WORKBUDDY_OIDC_TOKEN_URL")}
 	if c.origin == "" || c.clientID == "" || c.authURL == "" || c.tokenURL == "" || cfg.MCP.OIDCIssuer == "" {
 		return nil, errors.New("WorkBuddy OIDC configuration incomplete")
 	}
@@ -85,5 +93,5 @@ func (c *workbuddyConfig) start(ctx context.Context, cfg *config.Config, db *gor
 		return nil, errors.New("WorkBuddy OIDC unavailable")
 	}
 	oauth := oauth2.Config{ClientID: c.clientID, ClientSecret: c.clientSecret, RedirectURL: c.origin + "/onboarding/auth/callback", Scopes: []string{"openid"}, Endpoint: oauth2.Endpoint{AuthURL: c.authURL, TokenURL: c.tokenURL}}
-	return onboardingruntime.New(ctx, onboardingruntime.Options{Enabled: true, Origin: c.origin, MCPIssuer: cfg.MCP.OIDCIssuer, AuditKey: cfg.Security.JWTSecret, CIDRs: c.cidrs, Ports: c.ports, DB: db, Vault: vault, Validator: database.NewHealthChecker(pool), MCP: server, Fallback: http.NotFoundHandler(), OAuth: oauth, Verifier: verifier, HTTPClient: client, Pool: pool, Policy: c.policy})
+	return onboardingruntime.New(ctx, onboardingruntime.Options{Enabled: true, EnableUpdates: c.sourceUpdates, Origin: c.origin, MCPIssuer: cfg.MCP.OIDCIssuer, AuditKey: cfg.Security.JWTSecret, CIDRs: c.cidrs, Ports: c.ports, DB: db, Vault: vault, Validator: database.NewHealthChecker(pool), MCP: server, Fallback: http.NotFoundHandler(), OAuth: oauth, Verifier: verifier, HTTPClient: client, Pool: pool, Policy: c.policy})
 }

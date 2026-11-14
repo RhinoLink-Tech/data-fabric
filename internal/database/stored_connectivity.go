@@ -58,6 +58,22 @@ var probeHostname = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 // It builds driver configuration from a fixed allowlist, never from untrusted
 // URL/DSN fragments, and never downgrades a source configured for TLS.
 func (hc *HealthChecker) CheckStoredSourceConnectivity(ctx context.Context, source *model.DataSource) error {
+	if hc.connPool != nil {
+		hc.connPool.mutex.RLock()
+		ttl := hc.connPool.boundedPoolTTL
+		hc.connPool.mutex.RUnlock()
+		if ttl > 0 {
+			if source == nil {
+				return fmt.Errorf("source unavailable")
+			}
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, ttl)
+			defer cancel()
+			if err := hc.connPool.checkFreshness(ctx, source); err != nil {
+				return err
+			}
+		}
+	}
 	if hc.connPool != nil && hc.connPool.egress != nil {
 		return hc.connPool.egress.CheckRestrictedSourceConnectivity(ctx, source)
 	}

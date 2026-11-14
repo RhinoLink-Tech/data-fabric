@@ -571,13 +571,7 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		}
 		defer rt.Close()
 		onboardingOverlay = func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasPrefix(r.URL.Path, "/onboarding/") {
-					rt.Handler.ServeHTTP(w, r)
-					return
-				}
-				next.ServeHTTP(w, r)
-			})
+			return workbuddyHTTPOverlay(next, rt.Handler, rt.Guard)
 		}
 	}
 	if strings.TrimSpace(cfg.MCP.Transport) == config.MCPTransportStreamableHTTP {
@@ -640,6 +634,19 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 	defer stopAuditCleanup()
 	log.Println("Starting MCP server with transport: stdio")
 	return mcpServer.StartStdio()
+}
+
+// workbuddyHTTPOverlay guards the shared MCP and onboarding mux before
+// either the direct listener or same-process tunnel bridge sees a request.
+func workbuddyHTTPOverlay(next, onboarding http.Handler, guard func(http.Handler) http.Handler) http.Handler {
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/onboarding/") {
+			onboarding.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+	return guard(mux)
 }
 
 func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPTokenValidator, error) {

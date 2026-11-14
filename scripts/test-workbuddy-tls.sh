@@ -30,3 +30,5 @@ cd "$(dirname "$0")/.."
 DF_TLS_CA="$dir/ca.pem" DF_TLS_BAD_CA="$dir/bad.pem" DF_TLS_POSTGRES="$pgport" DF_TLS_MYSQL="$myport" go test -v ./internal/database -run '^TestRestrictedTLSRealDatabases$' -count=1
 
 DF_TLS_CA="$dir/ca.pem" DF_TLS_BAD_CA="$dir/bad.pem" DF_TLS_POSTGRES="$pgport" DF_TLS_MYSQL="$myport" go test -v ./internal/mcp -run '^TestMCPRestrictedTLSRealDatabases$' -count=1
+
+DF_TLS_CA="$dir/ca.pem" DF_TLS_BAD_CA="$dir/bad.pem" DF_TLS_POSTGRES="$pgport" DF_TLS_MYSQL="$myport" DF_TLS_PASSWORD="$password" go test -race -v ./internal/workbuddy/onboardinghttp -run '^TestTLSUpdateRealDatabases$' -count=1

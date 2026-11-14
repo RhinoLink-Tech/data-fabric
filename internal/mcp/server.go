@@ -56,6 +56,7 @@ type MCPServer struct {
 	sourceConnectivitySlots  chan struct{}
 	managementGrant          SourceManagementGrant
 	onboardingCoordinator    OnboardingCoordinator
+	updateCoordinator        SourceUpdateCoordinator
 	onboardingBaseURL        string
 	sourceTypePolicy         sourceTypePolicy
 	sourceOnboardingType     func(model.DatabaseType) bool

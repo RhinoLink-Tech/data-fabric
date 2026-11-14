@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -191,6 +192,8 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	origin := browserServer.URL
 	oauth := oauth2.Config{ClientID: "browser-client", RedirectURL: origin + "/onboarding/auth/callback", Scopes: []string{"openid"}, Endpoint: oauth2.Endpoint{AuthURL: provider.URL + "/authorize", TokenURL: provider.URL + "/token", AuthStyle: oauth2.AuthStyleInParams}}
 	opts := Options{Enabled: true, Origin: origin, MCPIssuer: provider.URL, AuditKey: strings.Repeat("x", 32), CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}, DB: db, Vault: vault, Validator: database.NewHealthChecker(pool), MCP: server, Fallback: http.NotFoundHandler(), OAuth: oauth, Verifier: verifier, HTTPClient: provider.Client(), Pool: pool, Policy: policy}
+	updateEnabled := os.Getenv("DF_WB_E2E_UPDATE") == "true"
+	opts.EnableUpdates = updateEnabled
 	rt, e := New(ctx, opts)
 	if e != nil {
 		t.Fatal(e)
@@ -201,11 +204,13 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	}
 	retryOpts := opts
 	retryOpts.MCP = mcp.NewMCPServer(nil, repo, nil)
-	second, e := New(ctx, retryOpts)
-	if e != nil {
-		t.Fatalf("repeated runtime init failed: %v", e)
+	if !updateEnabled {
+		second, e := New(ctx, retryOpts)
+		if e != nil {
+			t.Fatalf("repeated runtime init failed: %v", e)
+		}
+		second.Close()
 	}
-	second.Close()
 
 	runtimeHandler = rt.Handler
 	if e = rt.Grants.Provision(ctx, provider.URL, "alice", "alice", "tenant-a"); e != nil {
@@ -461,6 +466,54 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	status := toolJSON(t, mclient, "get_data_source_onboarding_status", map[string]any{"flow_id": flow})
 	if status["status"] != "completed" || status["datasource_id"] == "" {
 		t.Fatalf("bad status: %v", status)
+	}
+	if updateEnabled {
+		sourceID := status["datasource_id"].(string)
+		beginUpdate := toolJSON(t, mclient, "begin_data_source_update", map[string]any{"datasource_id": sourceID})
+		updateFlow, ok := beginUpdate["flow_id"].(string)
+		if !ok || len(updateFlow) != 43 {
+			t.Fatal("update flow unavailable")
+		}
+		updatedPayload := strings.Replace(payload, "synthetic-orders", "", 1)
+		if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			// Disposable synthetic Postgres only: create an old pool, rotate its DB
+			// password, and ensure the browser update creates usable new connections.
+			before, e := mclient.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "execute_sql_query", Arguments: map[string]any{"datasource_id": sourceID, "sql": "SELECT 42 AS answer", "execution_mode": "pagination"}}})
+			if e != nil || before.IsError {
+				t.Fatal("pre-update query failed", e)
+			}
+			pg, e := sql.Open("postgres", fmt.Sprintf("host=127.0.0.1 port=%d user=reader dbname=orders password=synthetic-password sslmode=disable", port))
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer pg.Close()
+			if _, e = pg.ExecContext(ctx, "ALTER ROLE reader PASSWORD 'rotated-synthetic-password'"); e != nil {
+				t.Fatal("synthetic rotation failed")
+			}
+			updatedPayload = strings.Replace(updatedPayload, "synthetic-password", "rotated-synthetic-password", 1)
+			req := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+updateFlow+"/update/"+sourceID+"/test", bytes.NewBufferString(updatedPayload))
+			req.AddCookie(cookie)
+			req.Header.Set("Origin", origin)
+			req.Header.Set("X-CSRF-Token", sessionBody.CSRF)
+			w := httptest.NewRecorder()
+			exchangeBrowser(t, browserClient, origin, w, req)
+			if w.Code != 200 || !strings.Contains(w.Body.String(), `"connected":true`) {
+				t.Fatalf("update probe %d %s", w.Code, w.Body.String())
+			}
+		}
+		req := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+updateFlow+"/update/"+sourceID+"/save", bytes.NewBufferString(updatedPayload))
+		req.AddCookie(cookie)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-CSRF-Token", sessionBody.CSRF)
+		w := httptest.NewRecorder()
+		exchangeBrowser(t, browserClient, origin, w, req)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "synthetic-password") {
+			t.Fatalf("browser update failed or leaked: %d %s", w.Code, w.Body.String())
+		}
+		st := toolJSON(t, mclient, "get_data_source_update_status", map[string]any{"flow_id": updateFlow, "datasource_id": sourceID})
+		if st["status"] != "completed" {
+			t.Fatal("update status not completed", st)
+		}
 	}
 	list, e := mclient.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "list_data_sources", Arguments: map[string]any{}}})
 	if e != nil || list.IsError {
