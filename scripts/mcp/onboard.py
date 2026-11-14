@@ -94,9 +94,20 @@ def validate_credential_keyring(ring_value, active_id):
     return existing_ring, active_id
 
 
+MANAGEMENT_API_BODY_LIMIT = 1_048_576
+
+
+def source_request_body(config):
+    # Measure the bytes actually sent: UTF-8 JSON, not ASCII-escaped JSON (which expands non-ASCII text).
+    body = json.dumps(config, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    if len(body) > MANAGEMENT_API_BODY_LIMIT:
+        raise OnboardingError("source configuration exceeds the 1 MiB management API limit as UTF-8 JSON")
+    return body
+
+
 def selected_source_result(code, response_body):
     connection_status, envelope_ok = "", False
-    if len(response_body) <= 1_048_576:
+    if len(response_body) <= MANAGEMENT_API_BODY_LIMIT:
         try:
             envelope = json.loads(response_body)
             data = envelope.get("data") if isinstance(envelope, dict) else None
@@ -106,6 +117,8 @@ def selected_source_result(code, response_body):
             envelope_ok = envelope.get("success") is True if isinstance(envelope, dict) else False
         except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
             pass
+    if code == 413:
+        return False, "selected-source request was rejected with HTTP 413 (request body too large); reduce the source configuration or check the management API request-body limit"
     if not 200 <= code < 300:
         return False, f"selected-source connection failed with HTTP {code}; check the source type and local API response"
     if envelope_ok and connection_status == "healthy":
@@ -475,10 +488,10 @@ def source_connection_check(args, directory, env_path, values, results):
         return
     if args.source_config == "-":
         try:
-            raw = sys.stdin.read(1_048_577)
-            if len(raw) > 1_048_576:
+            raw = sys.stdin.buffer.read(MANAGEMENT_API_BODY_LIMIT + 1)
+            if len(raw) > MANAGEMENT_API_BODY_LIMIT:
                 raise ValueError("source configuration exceeds 1 MiB")
-            config = json.loads(raw)
+            config = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, ValueError):
             add_result(results, False, "source configuration on stdin is not valid JSON or exceeds 1 MiB")
             return
@@ -505,9 +518,14 @@ def source_connection_check(args, directory, env_path, values, results):
     except ValueError:
         add_result(results, False, "API_PORT must be a valid TCP port before testing a selected source")
         return
+    try:
+        body = source_request_body(config)
+    except OnboardingError as exc:
+        add_result(results, False, f"{exc}; reduce it or confirm the server's configured request-body limit")
+        return
     request_id = str(uuid.uuid4())
     url = f"http://127.0.0.1:{port}/api/v1/database/test-connection?type={urllib.parse.quote(args.source_type, safe='')}"
-    request = urllib.request.Request(url, data=json.dumps(config, separators=(",", ":")).encode("utf-8"), method="POST", headers={
+    request = urllib.request.Request(url, data=body, method="POST", headers={
         "Content-Type": "application/json", "Authorization": f"Bearer {token}", "X-Correlation-ID": request_id,
     })
     response_body = b""

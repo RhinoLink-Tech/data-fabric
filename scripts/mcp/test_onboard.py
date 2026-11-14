@@ -218,6 +218,41 @@ class SelectedSourceResultTests(unittest.TestCase):
         self.assertEqual(results, [(False, "source configuration could not be read safely; protect it with chmod 600 and verify its JSON")])
         self.assertNotIn("synthetic-secret", output.getvalue())
 
+    def test_non_ascii_source_config_is_sent_as_utf8_within_limit(self):
+        config = {"password": "é" * 200_000}
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            source.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            source.chmod(0o600)
+
+            class Response:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self, *_):
+                    return json.dumps({"success": True, "data": {"status": "healthy"}}).encode()
+
+            sent = {}
+
+            def fake_urlopen(request, timeout=None):
+                sent["body"] = request.data
+                return Response()
+
+            args = SimpleNamespace(source_config=str(source), source_type="mysql",
+                                   management_token_env="DATA_FABRIC_TEST_TOKEN")
+            results = []
+            with mock.patch.dict(os.environ, {"DATA_FABRIC_TEST_TOKEN": "synthetic-token"}), \
+                    mock.patch.object(onboard.urllib.request, "urlopen", fake_urlopen), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                onboard.source_connection_check(args, Path(directory), Path(directory) / ".env", {}, results)
+        self.assertLessEqual(len(sent["body"]), 1_048_576)
+        self.assertEqual(results[0][0], True)
+
 
 if __name__ == "__main__":
     unittest.main()
