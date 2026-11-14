@@ -31,6 +31,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/mysqlutil"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 )
 
@@ -140,7 +141,7 @@ func OpenDB(dbType model.DatabaseType, dsn string) (db *sql.DB, handled bool, er
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: invalid MySQL DSN: %w", ErrReadOnlyInitFailed, err)
 	}
-	base, err := mysql.NewConnector(cfg)
+	base, err := mysqlutil.Connector(cfg)
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: %w", ErrReadOnlyInitFailed, err)
 	}

@@ -1,7 +1,6 @@
 package traditional
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"fmt"
@@ -12,11 +11,12 @@ import (
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/mysqlutil"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/go-sql-driver/mysql"
 )
 
-const mysqlTLSRootCertParam = "datafabricsslrootcert"
+const mysqlTLSRootCertParam = mysqlutil.RootCertParam
 
 // MySQLDriver implements Driver for MySQL/MariaDB
 type MySQLDriver struct{}
@@ -47,27 +47,9 @@ func (d *MySQLDriver) Open(dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid MySQL connection string")
 	}
-	rootCertPath := config.Params[mysqlTLSRootCertParam]
-	delete(config.Params, mysqlTLSRootCertParam)
-	if rootCertPath == "" {
-		return sql.Open("mysql", dsn)
-	}
-
-	certificate, err := os.ReadFile(rootCertPath)
+	connector, err := mysqlutil.Connector(config)
 	if err != nil {
-		return nil, fmt.Errorf("MySQL sslRootCert must refer to a readable PEM CA certificate")
-	}
-	rootCAs := x509.NewCertPool()
-	if !rootCAs.AppendCertsFromPEM(certificate) {
-		return nil, fmt.Errorf("MySQL sslRootCert must contain at least one valid PEM CA certificate")
-	}
-	config.TLS = &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    rootCAs,
-	}
-	connector, err := mysql.NewConnector(config)
-	if err != nil {
-		return nil, fmt.Errorf("invalid MySQL TLS configuration")
+		return nil, err
 	}
 	return sql.OpenDB(connector), nil
 }
