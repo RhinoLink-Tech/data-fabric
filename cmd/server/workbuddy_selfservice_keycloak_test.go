@@ -24,9 +24,11 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/security/onboarding"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
 	unifiedservice "github.com/RhinoLink-Tech/data-fabric/internal/unified_service"
+	"github.com/RhinoLink-Tech/data-fabric/internal/workbuddy/onboardingruntime"
 	sdk "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	protocol "github.com/mark3labs/mcp-go/mcp"
+	"golang.org/x/oauth2"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -99,6 +101,22 @@ func TestSelfServiceRealKeycloakMCPInitialize(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Query.ExecutionMode = "pagination"
 	m := mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, nil)
+	m.SetDataSourceManagementService(service.NewDataSourceService(repo, connPool, database.NewHealthChecker(connPool)))
+	idVerifier, err := security.NewOIDCIDTokenVerifier(context.Background(), issuer, "trial-client", client)
+	if err != nil {
+		t.Fatal("identity verifier unavailable")
+	}
+	runtime, err := onboardingruntime.New(context.Background(), onboardingruntime.Options{
+		Enabled: true, Origin: "https://gateway.example", MCPIssuer: issuer, AuditKey: strings.Repeat("k", 32),
+		CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}, DB: db, Vault: vault,
+		Validator: database.NewHealthChecker(connPool), MCP: m, Fallback: http.NotFoundHandler(),
+		OAuth:    oauth2.Config{ClientID: "trial-client", RedirectURL: "https://gateway.example/onboarding/auth/callback", Scopes: []string{"openid"}, Endpoint: oauth2.Endpoint{AuthURL: issuer + "/protocol/openid-connect/auth", TokenURL: issuer + "/protocol/openid-connect/token"}},
+		Verifier: idVerifier, HTTPClient: client, Pool: connPool, Policy: policy,
+	})
+	if err != nil {
+		t.Fatal("onboarding runtime unavailable:", err)
+	}
+	defer runtime.Close()
 	handler := mcp.StrictTenantHTTPHandler(m.StreamableHTTPHandler(v))
 	payload := []byte("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"selfservice-test\",\"version\":\"1\"}}}")
 	req := httptest.NewRequest("POST", "https://gateway.example/mcp", bytes.NewReader(payload))
@@ -140,6 +158,14 @@ func TestSelfServiceRealKeycloakMCPInitialize(t *testing.T) {
 	if err != nil || !bytes.Contains(result, []byte("2")) {
 		t.Fatal("sample order count missing")
 	}
+	management, err := mc.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "rename_data_source", Arguments: map[string]any{"datasource_id": source.ID, "name": "Orders Renamed"}}})
+	if err != nil || management.IsError {
+		t.Fatal("new user could not manage own source")
+	}
+	setup, err := mc.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "begin_data_source_onboarding", Arguments: map[string]any{}}})
+	if err != nil || setup.IsError {
+		t.Fatal("new user could not start source onboarding")
+	}
 	otherRaw, err := os.ReadFile(os.Getenv("DF_SELF_SERVICE_TEST_OTHER_TOKEN"))
 	if err != nil {
 		t.Fatal("second test token unavailable")
@@ -158,6 +184,10 @@ func TestSelfServiceRealKeycloakMCPInitialize(t *testing.T) {
 	foreign, err := other.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "execute_sql_query", Arguments: map[string]any{"datasource_id": source.ID, "sql": "SELECT COUNT(*) FROM public.orders", "execution_mode": "pagination"}}})
 	if err != nil || !foreign.IsError {
 		t.Fatal("another user accessed the first user's source")
+	}
+	foreignManage, err := other.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "rename_data_source", Arguments: map[string]any{"datasource_id": source.ID, "name": "Wrong User"}}})
+	if err != nil || !foreignManage.IsError {
+		t.Fatal("another user managed the first user's source")
 	}
 	listed, err := other.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "list_data_sources", Arguments: map[string]any{}}})
 	if err != nil || listed.IsError {

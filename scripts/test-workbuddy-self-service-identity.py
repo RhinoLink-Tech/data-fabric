@@ -107,6 +107,14 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   clientsurl=base+'/admin/realms/df-selfservice-test/clients'
   found=session.get(clientsurl,params={'clientId':'trial-client'},headers=headers,timeout=10);found.raise_for_status()
   clientid=found.json()[0]['id']
+  scope={'name':'data-fabric.sources.manage','protocol':'openid-connect','attributes':{'include.in.token.scope':'true'}}
+  r=session.post(base+'/admin/realms/df-selfservice-test/client-scopes',json=scope,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('management scope setup '+str(r.status_code))
+  r=session.get(base+'/admin/realms/df-selfservice-test/client-scopes',headers=headers,timeout=10);r.raise_for_status()
+  scopes=[x for x in r.json() if x['name']=='data-fabric.sources.manage']
+  if len(scopes)!=1:raise RuntimeError('management scope missing')
+  r=session.put(clientsurl+'/'+clientid+'/default-client-scopes/'+scopes[0]['id'],headers=headers,timeout=10)
+  if r.status_code!=204:raise RuntimeError('management scope assignment '+str(r.status_code))
   mapper={'name':'data-fabric-audience','protocol':'openid-connect','protocolMapper':'oidc-audience-mapper','consentRequired':False,'config':{'included.custom.audience':'data-fabric-mcp','access.token.claim':'true','id.token.claim':'false'}}
   r=session.post(clientsurl+'/'+clientid+'/protocol-mappers/models',json=mapper,headers=headers,timeout=10)
   if r.status_code!=201:raise RuntimeError('audience mapper setup '+str(r.status_code))
@@ -229,7 +237,7 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   if test.returncode:
    print('Go integration test output:',test.stdout[-1500:].replace(token.json()['access_token'],'[redacted]').replace(token2.json()['access_token'],'[redacted]'))
    raise RuntimeError('Keycloak-to-MCP integration failed')
-  print('PASS: two verified Keycloak identities initialized MCP; sample query and cross-tenant isolation passed')
+  print('PASS: two verified Keycloak identities initialized MCP; sample query, source management and cross-tenant isolation passed')
 except Exception as exc:
  print('Identity integration failed:',str(exc),file=sys.stderr)
  sys.exit(1)
