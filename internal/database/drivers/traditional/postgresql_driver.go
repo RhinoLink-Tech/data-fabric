@@ -81,7 +81,11 @@ func (d *PostgreSQLDriver) GetDefaultPort() int {
 }
 
 func (d *PostgreSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	if config == nil || !safeDSNHost(config.Host) || config.Port < 1 || config.Port > 65535 {
+	if config == nil || config.Port < 1 || config.Port > 65535 {
+		return ""
+	}
+	host, valid := normalizeDSNHost(config.Host, true)
+	if !valid {
 		return ""
 	}
 	sslMode := config.SSLMode
@@ -99,7 +103,7 @@ func (d *PostgreSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config.Timezone != "" {
 		params.Set("TimeZone", config.Timezone)
 	}
-	u := url.URL{Scheme: "postgres", User: url.UserPassword(config.Username, config.Password), Host: net.JoinHostPort(normalizeDSNHost(config.Host), strconv.Itoa(config.Port)), Path: "/" + config.Database, RawPath: "/" + url.PathEscape(config.Database), RawQuery: params.Encode()}
+	u := url.URL{Scheme: "postgres", User: url.UserPassword(config.Username, config.Password), Host: net.JoinHostPort(host, strconv.Itoa(config.Port)), Path: "/" + config.Database, RawPath: "/" + url.PathEscape(config.Database), RawQuery: params.Encode()}
 	return u.String()
 }
 
