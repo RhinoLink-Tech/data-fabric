@@ -164,6 +164,19 @@ def env_paths(directory):
     return directory, directory / ".env", directory / ".env.example"
 
 
+def validate_tls_pair(cert, key):
+    """Validate the pair without exposing key material or prompting for a password."""
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key, password=lambda: "")
+    except ssl.SSLError as exc:
+        if exc.reason in {"KEY_VALUES_MISMATCH", "KEY_TYPE_MISMATCH"}:
+            raise OnboardingError("TLS certificate and private key do not match; replace them with a matching pair; existing files were left untouched") from exc
+        raise OnboardingError("TLS certificate and private key could not be loaded together; check both files; existing files were left untouched") from exc
+    except (OSError, ValueError) as exc:
+        raise OnboardingError("TLS certificate and private key could not be loaded together; check both files; existing files were left untouched") from exc
+
+
 def init_tls(directory, group_id):
     tls_dir = directory / "tls"
     tls_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
@@ -171,7 +184,8 @@ def init_tls(directory, group_id):
         raise OnboardingError("refusing to use a symlink for the tls directory")
     cert, key = tls_dir / "tls.crt", tls_dir / "tls.key"
     if cert.exists() or key.exists() or cert.is_symlink() or key.is_symlink():
-        if cert.exists() and key.exists() and not cert.is_symlink() and not key.is_symlink():
+        if cert.is_file() and key.is_file() and not cert.is_symlink() and not key.is_symlink():
+            validate_tls_pair(cert, key)
             return "kept existing TLS certificate and key"
         raise OnboardingError("tls/tls.crt and tls/tls.key must both exist or both be absent; existing files were left untouched")
     if group_id != os.getgid():
@@ -549,6 +563,7 @@ def command_doctor(args):
     cert, key = tls_dir / "tls.crt", tls_dir / "tls.key"
     tls_files = cert.is_file() and key.is_file() and not tls_dir.is_symlink() and not cert.is_symlink() and not key.is_symlink()
     key_access = False
+    tls_error = "TLS files are missing or invalid; run onboard.py init or replace both with a matching pair"
     if tls_files:
         try:
             gid = int(values.get("DATA_FABRIC_TLS_GID", "10001") or "10001")
@@ -568,8 +583,14 @@ def command_doctor(args):
         except (OSError, subprocess.TimeoutExpired):
             cert_ok = key_ok = False
         tls_files = cert_ok and key_ok
-    add_result(results, tls_files, "TLS certificate and private key are present and parseable" if tls_files else "TLS files are missing or invalid; run onboard.py init or replace both with a matching pair")
-    add_result(results, tls_files and key_access, "TLS key group/mode allow gateway read access without world access" if tls_files and key_access else "TLS key must be group-readable by DATA_FABRIC_TLS_GID and not world-readable; use a restricted group and chmod 640")
+        if tls_files:
+            try:
+                validate_tls_pair(cert, key)
+            except OnboardingError as exc:
+                tls_files = False
+                tls_error = str(exc)
+    add_result(results, tls_files, "TLS certificate and private key are present, parseable and match" if tls_files else tls_error)
+    add_result(results, key_access, "TLS key group/mode allow gateway read access without world access" if key_access else "TLS key must be group-readable by DATA_FABRIC_TLS_GID and not world-readable; use a restricted group and chmod 640")
     if args.probe_oidc:
         if not issuer_ok:
             add_result(results, False, "OIDC discovery was not probed because the issuer URL is invalid")
