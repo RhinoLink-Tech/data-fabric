@@ -99,9 +99,12 @@ MANAGEMENT_API_BODY_LIMIT = 1_048_576
 
 def source_request_body(config):
     # Measure the bytes actually sent: UTF-8 JSON, not ASCII-escaped JSON (which expands non-ASCII text).
-    body = json.dumps(config, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    try:
+        body = json.dumps(config, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        raise OnboardingError("source configuration contains invalid Unicode; verify its UTF-8 JSON") from None
     if len(body) > MANAGEMENT_API_BODY_LIMIT:
-        raise OnboardingError("source configuration exceeds the 1 MiB management API limit as UTF-8 JSON")
+        raise OnboardingError("source configuration exceeds the helper's 1 MiB UTF-8 JSON limit; reduce it")
     return body
 
 
@@ -303,8 +306,8 @@ def secure_json_file(path):
     path = path.expanduser()
     if path.is_symlink() or not path.is_file():
         raise OnboardingError("source configuration must be a regular file, not a symlink")
-    if path.stat().st_size > 1_048_576:
-        raise OnboardingError("source configuration exceeds the 1 MiB management API limit")
+    if path.stat().st_size > MANAGEMENT_API_BODY_LIMIT:
+        raise OnboardingError("source configuration file exceeds the helper's 1 MiB input limit; reduce it")
     if stat.S_IMODE(path.stat().st_mode) & 0o077:
         raise OnboardingError("source configuration file must be readable only by its owner (chmod 600)")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -498,7 +501,10 @@ def source_connection_check(args, directory, env_path, values, results):
     else:
         try:
             config = secure_json_file(Path(args.source_config))
-        except (OSError, OnboardingError, json.JSONDecodeError, UnicodeDecodeError):
+        except OnboardingError as exc:
+            add_result(results, False, str(exc))
+            return
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             add_result(results, False, "source configuration could not be read safely; protect it with chmod 600 and verify its JSON")
             return
     if not isinstance(config, dict):
@@ -521,7 +527,7 @@ def source_connection_check(args, directory, env_path, values, results):
     try:
         body = source_request_body(config)
     except OnboardingError as exc:
-        add_result(results, False, f"{exc}; reduce it or confirm the server's configured request-body limit")
+        add_result(results, False, str(exc))
         return
     request_id = str(uuid.uuid4())
     url = f"http://127.0.0.1:{port}/api/v1/database/test-connection?type={urllib.parse.quote(args.source_type, safe='')}"
