@@ -1,0 +1,183 @@
+<explainer>
+<item anchor="intro" title="Data Fabric：从多源数据到 AI 应用" text="统一接入、统一查询、受控共享，让企业数据成为 AI 应用可使用的上下文。"></item>
+<say lang="zh-CN" title="Data Fabric" text="[数据网关](#intro)，让企业数据以统一、可控的方式服务智能应用。"/>
+<item type="image" anchor="connected" title="把分散的数据连接起来" prompt="A precise conceptual enterprise data network seen at a low isometric angle. On the left are three distinct database cylinders and a file archive; in the center a transparent luminous gateway cube; on the right two application panels and a compact AI node. Thin cyan paths connect the systems through the gateway while the source systems remain in place. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="zh-CN" title="从数据到应用" text="[企业数据](#connected)通常分散在业务数据库、分析系统和对象存储里。每增加一个应用，团队就要处理连接、认证、查询语法和结果格式。数据网关把这些工作集中起来，让应用通过统一入口，访问已经登记和授权的数据源。"/>
+<item layout="cards" anchor="business" title="一个业务场景，贯穿全部能力">
+<item anchor="orders" title="订单" text="业务数据库中的交易记录"/>
+<item anchor="analytics" title="分析" text="数仓中的经营汇总"/>
+<item anchor="files" title="文件" text="对象存储中的结构化数据"/>
+<item anchor="assistants" title="应用" text="业务服务、AI 助手与数据分析"/>
+</item>
+<say lang="zh-CN" title="订单业务主线" text="[订单分析](#business)是贯穿整段介绍的业务场景。[订单数据](#orders)记录交易，[分析系统](#analytics)提供经营汇总，[文件数据](#files)保存可查询的结构化记录。[业务应用和智能助手](#assistants)需要找到这些数据，理解表结构，并在各自的权限范围内获得结果。接下来，沿着这一过程了解产品的各项能力。"/>
+<item type="animation" anchor="architecture" title="应用、网关、数据源"><![CDATA[
+export function build(manim) {
+ const {Scene,Text,SurroundingRectangle,VGroup,Arrow,Dot,FadeIn,Create,Indicate,FadeOut}=manim;
+ const scene=new Scene();
+ const labels=["业务应用 / AI","Data Fabric","原始数据源"];
+ const xs=[-4.4,0,4.4];
+ const groups=labels.map((s,i)=>{const t=Text(s,{color:"#dff8ff"}).scale_to_fit_width(i===1?2.4:2.8).move_to([xs[i],0.5,0]);const b=SurroundingRectangle(t,{buff:0.35,color:i===1?"#54e9ff":"#588cff"});return VGroup(t,b);});
+ const a=Arrow([-2.8,0.5,0],[-1.7,0.5,0],{color:"#54e9ff"});
+ const b=Arrow([1.7,0.5,0],[2.8,0.5,0],{color:"#54e9ff"});
+ const caption=Text("连接管理 · 身份与权限 · 查询路由",{color:"#9baeff"}).scale_to_fit_width(8.2).move_to([0,-1.6,0]);
+ scene.play(...groups.map(g=>FadeIn(g)),{run_time:1.3});
+ scene.play(Create(a),Create(b),FadeIn(caption),{run_time:1.5});
+ const p=Dot({radius:0.11,color:"#54e9ff"}).move_to([-2.8,0.5,0]);
+ scene.play(FadeIn(p),{run_time:0.4});
+ scene.play(p.animate.move_to([-1.7,0.5,0]),{run_time:1.5});
+ scene.play(Indicate(groups[1]),{run_time:1.2});
+ scene.play(p.animate.move_to([2.8,0.5,0]),{run_time:1.5});
+ scene.play(Indicate(groups[2]),{run_time:1.2});
+ scene.play(FadeOut(p),{run_time:0.5});scene.wait(0.5);return scene;
+}
+]]></item>
+<say lang="zh-CN" title="统一访问路径" text="[数据访问路径](#architecture)从应用发起，经过网关完成身份检查、权限判断和查询路由，再交给目标数据源执行。查询结果沿同一入口返回。原始数据继续保存在原系统中，团队集中维护连接，多个应用使用各自的身份复用授权的数据访问能力。"/>
+<item type="image" anchor="deployment" title="在自己的环境中部署" prompt="A compact self-hosted gateway module on a dark engineering workbench. Two slim service modules and a metadata storage block are arranged neatly inside a transparent private-network enclosure, with a separate source database beside it. A subtle illuminated deployment path leads from a small package icon on the far left to the working gateway on the right. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="zh-CN" title="自托管部署" text="[自托管部署](#deployment)让团队把数据网关运行在自己的环境中。使用发布镜像，可以省去本机编译步骤。部署时准备配置、元数据存储和身份认证，再启动管理服务与远程工具服务。健康检查帮助确认服务已就绪，后续的数据源登记和应用接入都从这里展开。"/>
+<item layout="ol" anchor="onboard" title="从启动到第一次查询">
+<item anchor="onboard-config" title="准备配置" text="服务地址、密钥、元数据与身份提供方"/>
+<item anchor="onboard-start" title="启动服务" text="发布镜像与 Compose 部署"/>
+<item anchor="onboard-check" title="检查状态" text="健康检查与部署诊断"/>
+<item anchor="onboard-source" title="登记数据源" text="连接配置、只读账号与授权"/>
+</item>
+<say lang="zh-CN" title="部署流程" text="[第一次使用](#onboard)可以按四步推进。[准备配置](#onboard-config)，确定服务运行和认证所需的信息；[启动服务](#onboard-start)，运行发布镜像；[检查状态](#onboard-check)，通过健康检查和诊断定位配置问题；最后[登记数据源](#onboard-source)，为订单数据库配置只读账号和调用方权限。应用便有了明确的数据访问入口。"/>
+<item layout="cards" anchor="management" title="数据源管理：一处维护，多处使用">
+<item anchor="mg-life" title="生命周期" text="创建 · 查看 · 更新 · 启用 · 停用 · 删除"/>
+<item anchor="mg-check" title="连接诊断" text="配置校验 · 连接测试 · 健康状态"/>
+<item anchor="mg-use" title="统一入口" text="管理界面与 REST API"/>
+</item>
+<say lang="zh-CN" title="数据源管理" text="[数据源管理](#management)把连接维护集中到同一个地方。[生命周期操作](#mg-life)覆盖从创建到停用、删除的整个过程；[连接诊断](#mg-check)帮助排查地址、账号和配置问题；[管理界面与程序接口](#mg-use)分别服务人工操作和自动化。订单库配置完成后，新的应用可以在获得授权后复用它。"/>
+<item layout="cards" anchor="sources" title="连接不同形态的数据">
+<item anchor="src-db" title="关系数据库" text="MySQL · PostgreSQL · SQL Server 等"/>
+<item anchor="src-olap" title="分析与数仓" text="ClickHouse · Doris · StarRocks 等"/>
+<item anchor="src-object" title="对象与文件" text="S3 / MinIO · CSV / JSON / Parquet 等"/>
+<item anchor="src-lake" title="湖仓与查询引擎" text="表格式适配 · Trino 等引擎接入"/>
+</item>
+<say lang="zh-CN" title="多源接入" text="[数据源接入](#sources)覆盖多种数据形态。[关系数据库](#src-db)承载订单等业务数据，[分析与数仓](#src-olap)承载经营查询，[对象与文件](#src-object)提供结构化文件访问，[湖仓与查询引擎](#src-lake)扩展访问方式。产品提供统一的数据源目录，团队可以按所需类型和版本选择适配器，并沿用应用侧的访问流程。"/>
+<item layout="ol" anchor="schema" title="先理解数据，再提交查询">
+<item anchor="schema-find" title="发现数据源" text="找到当前身份可访问的连接"/>
+<item anchor="schema-tables" title="发现表" text="列出可查询的数据表"/>
+<item anchor="schema-cols" title="检查字段" text="列名、类型与表结构"/>
+<item anchor="schema-search" title="搜索 Schema" text="围绕业务问题寻找数据"/>
+</item>
+<say lang="zh-CN" title="结构发现" text="[结构发现](#schema)给应用和智能助手提供查询依据。[发现数据源](#schema-find)先确定可以访问哪里，[发现表](#schema-tables)找到订单表，[检查字段](#schema-cols)明确订单编号和金额的数据类型，[搜索结构](#schema-search)则帮助缩小查找范围。模型生成查询时，可以基于实际结构组织语句，而不是凭空猜测表名和字段。"/>
+<item type="code" anchor="query" title="统一查询：从 SQL 到结果" text="合成订单示例" language="sql" filename="orders.sql"><![CDATA[
+SELECT id
+FROM sample.orders
+ORDER BY id ASC;
+]]></item>
+<say lang="zh-CN" title="统一查询" text="[统一查询](#query)从一个清晰的业务目标开始：按编号升序取回订单。[选择编号](#query:L1 'SELECT id')决定返回哪些字段，[指定订单表](#query:L2 'sample.orders')决定读取哪里，[按编号排序](#query:L3 'ORDER BY id ASC')让结果顺序明确。同一套提交查询和获取结果的流程，可以由业务程序调用，也可以由智能助手的工具调用触发。"/>
+<item layout="cards" anchor="dialect" title="SQL 方言适配">
+<item anchor="dialect-in" title="输入方言" text="通过 sourceDialect 声明"/>
+<item anchor="dialect-map" title="语法转换" text="转换兼容的查询构造"/>
+<item anchor="dialect-out" title="目标执行" text="交给选定数据源执行"/>
+</item>
+<say lang="zh-CN" title="方言适配" text="[方言适配](#dialect)帮助应用处理不同引擎之间的常见语法差异。[声明输入方言](#dialect-in)后，网关对兼容的查询构造进行[语法转换](#dialect-map)，再交给[目标数据源执行](#dialect-out)。使用目标引擎原生语法时，也可以直接提交查询。团队可以围绕产品提供的兼容矩阵维护常用查询。"/>
+<item type="animation" anchor="pagination" title="分批取数，直到结果完整"><![CDATA[
+export function build(manim) {
+ const {Scene,Text,SurroundingRectangle,VGroup,FadeIn,Indicate,Arrow,Create}=manim;
+ const scene=new Scene();
+ const texts=["首批：1，2","续批：3","结果完整"];
+ const xs=[-4.3,0,4.3];
+ const boxes=texts.map((s,i)=>{const t=Text(s,{color:i===2?"#7bf5c4":"#dff8ff"}).scale_to_fit_width(2.5).move_to([xs[i],0.3,0]);return VGroup(t,SurroundingRectangle(t,{buff:0.4,color:i===2?"#7bf5c4":"#54e9ff"}));});
+ const caption=Text("batch_size = 2",{color:"#94aaff"}).scale_to_fit_width(3.8).move_to([0,2.2,0]);
+ const tail=Text("取回所有批次，明确结果是否完整",{color:"#dff8ff"}).scale_to_fit_width(8.4).move_to([0,-1.7,0]);
+ scene.play(FadeIn(caption),FadeIn(boxes[0]),{run_time:1.5});
+ scene.play(Indicate(boxes[0]),{run_time:1.2});
+ scene.play(Create(Arrow([-2.6,0.3,0],[-1.65,0.3,0],{color:"#54e9ff"})),{run_time:1});
+ scene.play(FadeIn(boxes[1]),{run_time:1.2});
+ scene.play(Indicate(boxes[1]),{run_time:1.2});
+ scene.play(Create(Arrow([1.65,0.3,0],[2.6,0.3,0],{color:"#7bf5c4"})),{run_time:1});
+ scene.play(FadeIn(boxes[2]),FadeIn(tail),{run_time:1.3});
+ scene.wait(0.5);return scene;
+}
+]]></item>
+<say lang="zh-CN" title="分页结果" text="[分批取数](#pagination)让客户端逐批接收结果。在合成订单查询中，每批设置为两条，第一批得到一和二，继续请求后得到三，随后结果结束。应用可以明确判断是否还有下一批，并在展示答案时说明结果已经取完。支持流式读取的驱动，还可以减少大结果集的一次性内存占用。"/>
+<item layout="cards" anchor="control" title="让查询消耗可管理">
+<item anchor="ctl-bound" title="参数绑定" text="将查询参数与语句结构分离"/>
+<item anchor="ctl-time" title="时间与取消" text="超时控制与查询取消"/>
+<item anchor="ctl-budget" title="资源预算" text="并发、速率与结果大小控制"/>
+</item>
+<say lang="zh-CN" title="查询控制" text="[查询控制](#control)把执行过程变成可以管理的服务能力。[参数绑定](#ctl-bound)帮助应用传递查询条件；[超时与取消](#ctl-time)控制一次请求的执行时间；[资源预算](#ctl-budget)约束并发、调用速率和结果大小。团队可以按自己的工作负载配置这些规则，让不同应用共享网关时有明确的资源安排。"/>
+<item layout="ol" anchor="federation" title="按需扩展跨源查询">
+<item anchor="fed-register" title="登记联邦引擎" text="将 Trino 等引擎作为数据源"/>
+<item anchor="fed-plan" title="规划跨目录查询" text="引擎通过 catalogs 连接多个系统"/>
+<item anchor="fed-result" title="统一返回结果" text="应用继续使用网关的查询入口"/>
+</item>
+<say lang="zh-CN" title="跨源访问" text="[跨源查询](#federation)可以在业务需要时接入。[登记联邦查询引擎](#fed-register)后，网关把查询路由到引擎，由它[访问不同目录并执行关联](#fed-plan)，再通过网关[返回结果](#fed-result)。单源查询走对应驱动，跨源查询交给联邦引擎处理，应用仍沿用统一的访问入口。"/>
+<item type="image" anchor="security-hero" title="让数据共享带上身份与权限" prompt="A transparent gateway cube between two distinct application nodes on the left and a database vault on the right. One cyan stream passes through an illuminated key-shaped access aperture; a separate violet stream stops cleanly before a closed boundary. Inside the gateway are neatly stacked identity badges, without any text. The paths and protected source remain clearly visible across the wide frame. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="zh-CN" title="受控共享" text="[受控的数据共享](#security-hero)从调用方身份开始。业务接口使用令牌认证，远程工具服务可以对接身份提供方。网关结合所有者、租户以及数据源权限，决定请求能访问什么。同一套数据连接可以被多个获授权应用使用，同时保留各自的身份和访问范围。"/>
+<item layout="cards" anchor="policy" title="细化到表与字段的访问策略">
+<item anchor="pol-table" title="表级控制" text="允许访问指定业务表"/>
+<item anchor="pol-col" title="列级控制" text="限制不应暴露的字段"/>
+<item anchor="pol-read" title="只读校验" text="验证查询并结合数据库只读配置"/>
+<item anchor="pol-audit" title="脱敏审计" text="记录访问决策与查询事件"/>
+</item>
+<say lang="zh-CN" title="权限控制" text="[表列访问策略](#policy)让授权更加具体。[表级控制](#pol-table)限定应用可以查询哪些业务表，[列级控制](#pol-col)限制敏感字段的访问。[只读校验](#pol-read)检查提交的语句，并结合支持的数据源只读配置约束执行。[脱敏审计](#pol-audit)记录访问和查询事件，帮助团队回看请求与权限决策。"/>
+<item layout="ol" anchor="policy-life" title="把策略变更纳入管理流程">
+<item anchor="policy-check" title="预检" text="发布前验证策略"/>
+<item anchor="policy-publish" title="发布" text="生成可追踪的策略版本"/>
+<item anchor="policy-history" title="追溯与调整" text="查看历史、撤销或回滚"/>
+</item>
+<say lang="zh-CN" title="策略生命周期" text="[策略生命周期](#policy-life)支持团队有步骤地调整访问规则。先[预检策略](#policy-check)，再[发布版本](#policy-publish)，需要复盘或恢复时，通过[历史记录、撤销和回滚](#policy-history)管理变更。随着应用和协作者增加，权限配置也能形成可追踪的操作过程。"/>
+<item layout="cards" anchor="mcp-skill" title="MCP 提供工具，Skill 组织工作流程">
+<item anchor="mcp-tools" title="MCP 工具" text="发现 · 检查结构 · 验证 · 查询 · 续页"/>
+<item anchor="skill-flow" title="Agent Skill" text="指导助手按步骤选择和调用工具"/>
+<item anchor="client-identity" title="调用方身份" text="沿用网关认证与访问权限"/>
+</item>
+<say lang="zh-CN" title="工具与技能" text="[智能助手接入](#mcp-skill)由三部分配合。[工具协议](#mcp-tools)提供数据发现、结构检查、查询验证和分页读取能力；[技能包](#skill-flow)指导助手按顺序使用这些工具；[调用方身份](#client-identity)决定它能访问什么。产品同时提供本地标准输入输出模式与远程流式连接方式，方便不同客户端接入。"/>
+<item layout="ol" anchor="codex" title="Codex：把数据访问带进开发任务">
+<item anchor="codex-skill" title="安装 Skill" text="放入项目的 .agents/skills/ 目录"/>
+<item anchor="codex-mcp" title="配置 MCP" text="服务地址与访问令牌"/>
+<item anchor="codex-task" title="发起任务" text="选择数据源、检查结构、查询结果"/>
+</item>
+<say lang="zh-CN" title="开发助手接入" text="[开发助手接入](#codex)可以从项目内完成。先[安装完整技能包](#codex-skill)，保留参考文件；再[配置工具连接](#codex-mcp)，填入服务地址和访问令牌；随后[发起数据任务](#codex-task)，让助手理解订单表、验证查询并读取结果。开发者可以把获得的数据上下文用于业务代码、分析逻辑和应用开发。"/>
+<item layout="ol" anchor="workbuddy" title="WorkBuddy：用自然语言发起查询">
+<item anchor="wb-import" title="上传 Skill ZIP" text="技能 → 添加技能 → 上传技能"/>
+<item anchor="wb-connect" title="添加自定义连接器" text="配置 MCP 地址与认证，确认信任"/>
+<item anchor="wb-ask" title="输入业务问题" text="指定数据源、目标结果与批次大小"/>
+</item>
+<say lang="zh-CN" title="桌面助手接入" text="[桌面助手接入](#workbuddy)通过图形界面完成。[上传技能压缩包](#wb-import)，再[添加自定义连接器](#wb-connect)，配置地址、认证并确认信任。连接成功后，[输入业务问题](#wb-ask)，例如查出全部订单编号，并要求每批两条。助手依次发现数据、检查结构、验证语句和读取后续批次，最后汇总结果。"/>
+<item type="image" anchor="reuse" title="一个数据入口，服务多种应用" prompt="A central glass gateway hub on a midnight technical desk connected outward to a developer workstation on the left, a conversational desktop assistant on the upper right, and a business application panel on the lower right. A database cluster sits behind the hub. Each app has its own small illuminated identity badge and distinct cyan or blue connection path. Precisely organized network, elegant restrained enterprise technology concept. Premium futuristic technical illustration, midnight navy background, luminous cyan and electric blue accents, restrained violet highlights, precision glass and metal forms, crisp studio lighting, clean widescreen composition. No text, no words, no labels."></item>
+<say lang="zh-CN" title="多应用复用" text="[多应用复用](#reuse)把连接维护与应用开发联系起来。开发助手、桌面助手和业务服务，可以使用不同身份访问同一网关。团队在一个地方维护订单数据源，应用各自获得授权后便能查询。统一入口也适合接入自建智能体，让数据访问成为多个应用可以共同使用的基础能力。"/>
+<item layout="cards" anchor="apps" title="围绕数据访问，连接 AI 工作流">
+<item anchor="app-agent" title="AI Agent" text="通过工具获取业务上下文"/>
+<item anchor="app-rag" title="RAG 数据获取" text="提供结构化与半结构化记录"/>
+<item anchor="app-t2s" title="Text-to-SQL" text="模型生成查询，网关验证并执行"/>
+<item anchor="app-api" title="REST / 自建应用" text="接入现有服务与函数调用流程"/>
+</item>
+<say lang="zh-CN" title="应用场景" text="[智能应用](#apps)可以按自己的工作流使用这些能力。[智能体](#app-agent)通过工具获得业务上下文，[检索增强流程](#app-rag)从网关获取记录后继续处理和检索，[自然语言查询](#app-t2s)把模型生成的语句交给网关验证和执行。[业务接口与自建应用](#app-api)则直接复用数据访问服务，连接现有系统。"/>
+<item layout="cards" anchor="operations" title="看见服务状态，也看见查询全过程">
+<item anchor="ops-health" title="服务与连接" text="健康检查 · 连接状态 · 连接池"/>
+<item anchor="ops-query" title="查询生命周期" text="总耗时 · 总行数 · 批数 · 完成状态"/>
+<item anchor="ops-metrics" title="监控与审计" text="Prometheus 指标 · 脱敏事件"/>
+</item>
+<say lang="zh-CN" title="可观测性" text="[运维可观测性](#operations)覆盖服务和查询两个层面。[服务与连接状态](#ops-health)帮助排查连接问题，[查询生命周期](#ops-query)把全部分页纳入观察，区分部分结果与完整取回。[监控和审计](#ops-metrics)提供指标与事件，让团队能够追踪查询耗时、返回规模和访问情况，把数据访问纳入日常运维。"/>
+<item layout="cards" anchor="footprint" title="按实际需求组织部署与资源">
+<item anchor="foot-conn" title="连接按需建立" text="使用已配置的数据源时建立连接"/>
+<item anchor="foot-path" title="选择查询路径" text="单源走驱动，跨源接联邦引擎"/>
+<item anchor="foot-budget" title="控制运行消耗" text="批次、并发、结果预算与监控"/>
+</item>
+<say lang="zh-CN" title="资源管理" text="[资源管理](#footprint)从实际使用需求出发。[连接按需建立](#foot-conn)，避免为未使用的数据源预先维持连接；[查询路径按业务选择](#foot-path)，单源访问使用驱动，需要跨源时再接入联邦引擎；结合[批次和执行预算](#foot-budget)，团队可以观察并调整运行消耗，让部署规模与业务负载相匹配。"/>
+<item layout="ol" anchor="recovery" title="保护连接配置，准备恢复路径">
+<item anchor="rec-encrypt" title="凭证保护" text="密钥环与连接凭证加密"/>
+<item anchor="rec-backup" title="加密备份" text="MySQL 元数据部署配置的备份流程"/>
+<item anchor="rec-restore" title="校验与恢复" text="检查完整性，在隔离环境验证恢复"/>
+</item>
+<say lang="zh-CN" title="备份恢复" text="[配置保护](#recovery)让已经维护好的数据连接能够持续使用。[凭证加密与密钥环](#rec-encrypt)保护保存的连接凭证；[加密备份流程](#rec-backup)保存当前元数据部署所需的信息；通过[完整性校验和隔离恢复](#rec-restore)，团队可以提前演练恢复过程，把恢复准备纳入运行管理。"/>
+<item layout="cards" anchor="extension" title="围绕统一接口继续扩展">
+<item anchor="ext-driver" title="驱动接口" text="扩展新的数据源类型"/>
+<item anchor="ext-catalog" title="能力目录" text="查询数据源类型与兼容信息"/>
+<item anchor="ext-workflow" title="应用集成" text="用 REST、MCP 与 Skill 组合工作流"/>
+</item>
+<say lang="zh-CN" title="扩展能力" text="[产品扩展](#extension)围绕已有接口继续进行。[驱动接口](#ext-driver)支持扩展数据源类型，[能力目录](#ext-catalog)提供类型与兼容信息，[应用集成接口](#ext-workflow)让不同客户端接入。团队可以从一个订单数据源开始，逐步接入更多系统和应用，沿用统一的管理与查询方式。"/>
+<item layout="ol" anchor="start" title="让数据成为应用可使用的能力">
+<item anchor="start-deploy" title="部署网关" text="准备服务与身份认证"/>
+<item anchor="start-connect" title="接入数据" text="登记数据源并配置授权"/>
+<item anchor="start-app" title="连接应用" text="业务 API、Codex、WorkBuddy 与自建 Agent"/>
+<item anchor="start-query" title="完成任务" text="发现、验证、查询、取回结果"/>
+</item>
+<say lang="zh-CN" title="开始使用" text="[从数据到智能应用](#start)，可以沿着这条路径开始：[部署网关](#start-deploy)，[接入数据并授权](#start-connect)，[连接应用](#start-app)，然后[完成一次真实查询任务](#start-query)。项目主页提供部署、数据源和客户端接入文档。欢迎试用，也欢迎通过贡献代码、反馈问题和点亮星标，参与产品的持续完善。"/>
+<followup prompt="如何用发布镜像部署 Data Fabric，并接入第一个只读数据源？"/>
+<followup prompt="如何把 Data Fabric MCP 和 Skill 接入 Codex 或 WorkBuddy？"/>
+</explainer>

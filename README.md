@@ -32,9 +32,11 @@
 
 ## Product overview video
 
-[![Watch the Data Fabric product overview — Chinese narration](assets/data-fabric-overview.svg)](https://scrimba.com/explain/guide0ui5us658?fullscreen=1)
+[![Watch the Data Fabric product overview in English](assets/data-fabric-overview-en.svg)](https://scrimba.com/explain/guide0f5v746fn?fullscreen=1)
 
-Explore deployment, data-source management, unified queries, access policies, observability, and MCP/Skill integration with Codex and WorkBuddy. This illustrated product overview has Chinese narration; follow the [deployment guide](docs/mcp-deployment.md) and [client setup guide](docs/agent-skill.md) for configuration steps.
+[English video](https://scrimba.com/explain/guide0f5v746fn?fullscreen=1) · [中文视频](https://scrimba.com/explain/guide078dm0nba?fullscreen=1) · [English transcript](docs/media/product-overview/transcript.en.md)
+
+Explore deployment, data-source management, unified queries, access policies, observability, and MCP/Skill integration with Codex and WorkBuddy. Both illustrated versions use the same scenes, with narration and captions in the selected language. Follow the [deployment guide](docs/mcp-deployment.md) and [client setup guide](docs/agent-skill.md) for configuration steps.
 
 ## AI application scenarios
 

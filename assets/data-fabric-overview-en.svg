@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">Data Fabric product overview</title>
+  <desc id="desc">A dark navy and cyan diagram connects data sources through Data Fabric to applications. Play the illustrated overview with English narration and captions.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#071323"/><stop offset="1" stop-color="#101c38"/></linearGradient>
+    <linearGradient id="accent"><stop stop-color="#57efe3"/><stop offset="1" stop-color="#70a7ff"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#176c87" stop-opacity=".42"/><stop offset="1" stop-color="#176c87" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#6284ae" stroke-opacity=".09"/></pattern>
+  </defs>
+  <rect width="1200" height="600" rx="24" fill="url(#bg)"/>
+  <rect width="1200" height="600" rx="24" fill="url(#grid)"/>
+  <ellipse cx="600" cy="340" rx="410" ry="255" fill="url(#halo)"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="66" y="65" fill="#62e8dc" font-size="15" font-weight="700" letter-spacing="3">PRODUCT OVERVIEW</text>
+    <text x="62" y="130" fill="#f4f8ff" font-size="58" font-weight="700" letter-spacing="1">DATA FABRIC</text>
+    <text x="66" y="169" fill="#a6bbd3" font-size="22">Connect your data. Power your AI.</text>
+    <g transform="translate(1045 112)"><circle r="44" fill="#62e8dc" fill-opacity=".08" stroke="#62e8dc" stroke-width="2"/><path d="M-10-17L19 0-10 17Z" fill="#62e8dc"/></g>
+    <g fill="none" stroke="url(#accent)" stroke-width="2" stroke-opacity=".75">
+      <path d="M288 282H352L420 342"/><path d="M288 350H420"/><path d="M288 418H352L420 358"/>
+      <path d="M780 342L848 282H912"/><path d="M780 350H912"/><path d="M780 358L848 418H912"/>
+    </g>
+    <g fill="#0e2035" stroke="#385b77">
+      <rect x="66" y="254" width="222" height="56" rx="12"/><rect x="66" y="322" width="222" height="56" rx="12"/><rect x="66" y="390" width="222" height="56" rx="12"/>
+      <rect x="912" y="254" width="222" height="56" rx="12"/><rect x="912" y="322" width="222" height="56" rx="12"/><rect x="912" y="390" width="222" height="56" rx="12"/>
+    </g>
+    <g fill="#d5e5f5" font-size="19" text-anchor="middle">
+      <text x="177" y="289">Databases</text><text x="177" y="357">Warehouses</text><text x="177" y="425">Objects &amp; files</text>
+      <text x="1023" y="289">AI assistants</text><text x="1023" y="357">Business apps</text><text x="1023" y="425">Analytics</text>
+    </g>
+    <rect x="420" y="274" width="360" height="152" rx="20" fill="#0b2236" stroke="url(#accent)" stroke-width="2"/>
+    <rect x="434" y="288" width="332" height="124" rx="12" fill="none" stroke="#72d6e5" stroke-opacity=".13"/>
+    <text x="600" y="338" fill="#f4f8ff" font-size="31" font-weight="700" text-anchor="middle">Data Fabric</text>
+    <text x="600" y="376" fill="#6edddc" font-size="18" text-anchor="middle" letter-spacing="2">REST API  /  MCP  /  SKILL</text>
+    <g fill="#62e8dc"><circle cx="352" cy="282" r="4"/><circle cx="352" cy="418" r="4"/><circle cx="848" cy="282" r="4"/><circle cx="848" cy="418" r="4"/></g>
+    <path d="M66 503H1134" stroke="#2c425e"/>
+    <text x="66" y="544" fill="#b7cce0" font-size="17" letter-spacing="2">CONNECT  /  QUERY  /  GOVERN  /  OBSERVE</text>
+    <text x="1134" y="544" fill="#78dcd6" font-size="17" text-anchor="end">English narration · Watch overview →</text>
+  </g>
+</svg>
