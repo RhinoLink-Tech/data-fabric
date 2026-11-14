@@ -80,16 +80,27 @@ user reports completing it, call `get_data_source_onboarding_status` with the
 returned `flow_id` and report only its actual status; if completed, use the
 returned `datasource_id` for any requested follow-up.
 
-This opt-in candidate accepts MySQL and PostgreSQL connections to server-allowed
+When enabled, the secure setup workflow accepts MySQL and PostgreSQL connections to server-allowed
 IPv4 addresses and ports, including TLS with verified server identity and system
 or operator-provisioned trust; it requires a matching
 management grant, audited OIDC deployment and browser access. Other source
-types, editing connection parameters and credential rotation are not provided
-by this workflow. If either tool is absent, access is denied, the flow expires
+types are not provided by this creation workflow. If either tool is absent, access is denied, the flow expires
 or the browser cannot connect, explain the result and ask an administrator to
 check the deployment, identity, grants and network policy. Restart an expired
 flow only when the user requests it. Never fall back to collecting secrets in
 chat. See [Connected tool contracts](references/tools.md).
+
+## Update an existing source through a secure browser
+When a user requests a connection update, identify the source from the visible
+list and confirm its name and ID. If both `begin_data_source_update` and
+`get_data_source_update_status` are advertised, call the former with only
+`datasource_id`, share its exact returned URL, and ask the user to sign in
+and enter connection details only in the browser. Never collect credentials in
+chat or tool arguments. After the user reports completion, call the status tool
+with the returned `flow_id` and the same `datasource_id`; report the actual
+status without inventing success. These tools must be enabled on the connected service; if absent, ask the administrator. Existing
+queries may finish with earlier settings; do not promise instantaneous global
+revocation. Never disable TLS verification or silently downgrade transport.
 
 ## Inspect metadata and prepare read-only SQL
 
@@ -114,7 +125,7 @@ requires a configured federation-engine source and supported catalogs.
 
 When the application supplies an approved, source-specific context asset, check its source profile and version before using it. Describe each referenced table and compare the required columns and types. If the source or schema no longer matches, stop, mark that asset version stale, and have its owner refresh the query and increment the version. Do not guess a replacement column.
 
-Use the asset's parameterized template, validate it, and pass values separately. The gateway rechecks the current caller's policy and read-only rules on every execution; an asset never grants access. See the [warehouse batch-route example](https://github.com/RhinoLink-Tech/data-fabric/blob/v2.1.0-preview.1/examples/warehouse-batch-route/README.md).
+Use the asset's parameterized template, validate it, and pass values separately. The gateway rechecks the current caller's policy and read-only rules on every execution; an asset never grants access. See the [warehouse batch-route example](https://github.com/RhinoLink-Tech/data-fabric/blob/master/examples/warehouse-batch-route/README.md).
 
 ## Validate, execute, and bound the result
 

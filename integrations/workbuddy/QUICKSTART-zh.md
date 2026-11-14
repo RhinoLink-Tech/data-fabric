@@ -1,6 +1,6 @@
 # 在 WorkBuddy 中开始使用 Data Fabric
 
-这份指南面向已经部署 Data Fabric 的团队。管理员先准备一次服务和数据源；每位使用者再将 WorkBuddy 连接到该服务，然后直接提问。
+这份指南面向已经部署 Data Fabric 的团队。管理员先准备一次自部署服务和身份；每位使用者将 WorkBuddy 连接到该服务，然后发现、查询或管理被授权的数据源。在线体验是另一个连接器，请根据实际使用的服务选择。
 
 ## 管理员准备一次
 
@@ -41,6 +41,6 @@
 - **测试连接**：可测试已配置的 MySQL 或 PostgreSQL 数据源。普通部署仅支持非 TLS；启用受限向导的候选服务可测试验证证书的 TLS 连接。
 - **删除**：明确确认数据源名称和 ID 后才执行；该操作永久删除，服务端还要求对应租户和所有权。
 
-**安全新增（源码候选）**：尚未发布镜像且尚未完成 WorkBuddy 客户端端到端验收。管理员部署并启用候选后，只有实际发现 `begin_data_source_onboarding` 和 `get_data_source_onboarding_status`，才可请助手启动向导。打开返回的链接，用与 MCP 相同的 issuer、用户和租户登录，在浏览器安全填写连接信息、测试并保存，回到会话告知助手，再由助手读取真实状态。链接本身不授予权限。候选仅支持服务器允许的 IPv4 地址和端口上的 PostgreSQL/MySQL，支持验证服务端证书的 TLS；还需要 OIDC、管理 scope 和服务端身份授权。暂不支持安全向导添加其他类型或修改已有连接凭据。已发布的 v2.1.0-preview.1 不包含安全新增工具。
+**安全新增（源码候选）**：尚未发布镜像且尚未完成 WorkBuddy 客户端端到端验收。管理员部署并启用候选后，只有实际发现 `begin_data_source_onboarding` 和 `get_data_source_onboarding_status`，才可请助手启动向导。打开返回的链接，用与 MCP 相同的 issuer、用户和租户登录，在浏览器安全填写连接信息、测试并保存，回到会话告知助手，再由助手读取真实状态。链接本身不授予权限。候选仅支持服务器允许的 IPv4 地址和端口上的 PostgreSQL/MySQL，支持验证服务端证书的 TLS；还需要 OIDC、管理 scope 和服务端身份授权。如部署还显式开启 DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES=true，且实际发现 begin_data_source_update 与 get_data_source_update_status，也可在浏览器中更新获授权的既有 MySQL/PostgreSQL 连接与凭据；否则请管理员通过已支持的管理界面处理。安全向导不支持添加其他类型。已发布的 v2.1.0-preview.1 不包含安全新增工具。
 
 如工具缺失、权限或连接失败，请管理员核对版本、授权和网络策略，或通过管理 UI 安全配置。切勿在聊天中发送密码或令牌。部署后应以实际服务和工具列表为准。

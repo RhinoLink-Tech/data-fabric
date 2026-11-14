@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "data-fabric": {
+    "data-fabric-selfhost": {
       "type": "streamableHttp",
       "url": "https://${DATA_FABRIC_MCP_ENDPOINT}",
       "headers": {
