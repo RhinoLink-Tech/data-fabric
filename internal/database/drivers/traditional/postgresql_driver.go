@@ -99,7 +99,7 @@ func (d *PostgreSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config.Timezone != "" {
 		params.Set("TimeZone", config.Timezone)
 	}
-	u := url.URL{Scheme: "postgres", User: url.UserPassword(config.Username, config.Password), Host: net.JoinHostPort(strings.Trim(config.Host, "[]"), strconv.Itoa(config.Port)), Path: "/" + config.Database, RawPath: "/" + url.PathEscape(config.Database), RawQuery: params.Encode()}
+	u := url.URL{Scheme: "postgres", User: url.UserPassword(config.Username, config.Password), Host: net.JoinHostPort(normalizeDSNHost(config.Host), strconv.Itoa(config.Port)), Path: "/" + config.Database, RawPath: "/" + url.PathEscape(config.Database), RawQuery: params.Encode()}
 	return u.String()
 }
 

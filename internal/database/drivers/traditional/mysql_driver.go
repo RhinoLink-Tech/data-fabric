@@ -111,7 +111,7 @@ func (d *MySQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 	}
 	c := mysql.NewConfig()
 	c.User, c.Passwd = config.Username, config.Password
-	c.Net, c.Addr = "tcp", net.JoinHostPort(strings.Trim(config.Host, "[]"), strconv.Itoa(config.Port))
+	c.Net, c.Addr = "tcp", net.JoinHostPort(normalizeDSNHost(config.Host), strconv.Itoa(config.Port))
 	c.DBName = config.Database
 	if config.SSL {
 		c.TLSConfig = "true"
