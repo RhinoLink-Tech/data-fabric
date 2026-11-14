@@ -185,6 +185,20 @@ def validate_mcp_url(value: str) -> str:
         raise InputError(
             "DATA_FABRIC_MCP_URL must use HTTPS and must not embed credentials, query parameters, or fragments."
         )
+
+    # port validation
+    try:
+        port = parsed.port
+    except ValueError:
+        raise InputError(
+            "DATA_FABRIC_MCP_URL port must be an integer between 1 and 65535."
+        ) from None
+
+    if port is not None and port == 0:
+        raise InputError(
+            "DATA_FABRIC_MCP_URL port must be an integer between 1 and 65535."
+        )
+
     return value
 
 
