@@ -106,12 +106,16 @@ func (d *MySQLDriver) GetDefaultPort() int {
 }
 
 func (d *MySQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	if config == nil || !safeDSNHost(config.Host) || config.Port < 1 || config.Port > 65535 || strings.Contains(config.Username, ":") || (config.Username == "" && config.Password != "") {
+	if config == nil || config.Port < 1 || config.Port > 65535 || strings.Contains(config.Username, ":") || (config.Username == "" && config.Password != "") {
+		return ""
+	}
+	host, valid := normalizeDSNHost(config.Host, false)
+	if !valid {
 		return ""
 	}
 	c := mysql.NewConfig()
 	c.User, c.Passwd = config.Username, config.Password
-	c.Net, c.Addr = "tcp", net.JoinHostPort(normalizeDSNHost(config.Host), strconv.Itoa(config.Port))
+	c.Net, c.Addr = "tcp", net.JoinHostPort(host, strconv.Itoa(config.Port))
 	c.DBName = config.Database
 	if config.SSL {
 		c.TLSConfig = "true"
