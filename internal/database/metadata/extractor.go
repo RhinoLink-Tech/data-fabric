@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -162,6 +165,7 @@ func (e *MetadataExtractor) ExtractTableSchemaInSchema(ctx context.Context, data
 	// when the engine cannot provide them, like full-schema extraction does.
 	indexes, err := e.extractIndexes(ctx, db, dataSource.Type, tableName, schemaName)
 	if err != nil {
+		log.Printf("data source %s: indexes for table %q unavailable, returning none: %v", dataSourceID, tableName, err)
 		indexes = []IndexSchema{}
 	}
 	pk, err := e.extractPrimaryKey(ctx, db, dataSource.Type, tableName, schemaName)
@@ -625,36 +629,112 @@ func (e *MetadataExtractor) extractIndexes(ctx context.Context, db *sql.DB, dbTy
 	}
 	defer rows.Close()
 
+	readRow, err := indexRowReader(dbType, rows)
+	if err != nil {
+		return nil, err
+	}
+
 	var indexes []IndexSchema
 	indexMap := make(map[string]*IndexSchema)
+	parts := make(map[string][]indexPart)
 
 	for rows.Next() {
-		var indexName, columnName string
-		var isUnique bool
-
-		if err := rows.Scan(&indexName, &columnName, &isUnique); err != nil {
+		indexName, columnName, seq, isUnique, err := readRow(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan index row: %w", err)
 		}
 
-		if idx, exists := indexMap[indexName]; exists {
-			idx.Columns = append(idx.Columns, columnName)
-		} else {
+		parts[indexName] = append(parts[indexName], indexPart{column: columnName, seq: seq})
+		if _, exists := indexMap[indexName]; !exists {
 			indexMap[indexName] = &IndexSchema{
-				Name:    indexName,
-				Columns: []string{columnName},
-				Unique:  isUnique,
+				Name:   indexName,
+				Unique: isUnique,
 			}
 		}
-	}
-
-	for _, idx := range indexMap {
-		indexes = append(indexes, *idx)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate index rows: %w", err)
 	}
 
+	for name, idx := range indexMap {
+		// Composite columns follow Seq_in_index, not the order the rows arrive in.
+		p := parts[name]
+		sort.SliceStable(p, func(i, j int) bool { return p[i].seq < p[j].seq })
+		for _, part := range p {
+			idx.Columns = append(idx.Columns, part.column)
+		}
+		indexes = append(indexes, *idx)
+	}
+
 	return indexes, nil
+}
+
+// indexRowReader returns a function that reads one index row as
+// (indexName, columnName, isUnique). MySQL/MariaDB SHOW INDEX returns 14-15
+// columns that vary by server version, so its fields are located by name rather
+// than by position. Other dialects return exactly the three scanned columns.
+// indexPart is one column of an index, with its position within the index.
+type indexPart struct {
+	column string
+	seq    int64
+}
+
+func indexRowReader(dbType model.DatabaseType, rows *sql.Rows) (func(*sql.Rows) (string, string, int64, bool, error), error) {
+	switch dbType {
+	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB:
+		cols, err := rows.Columns()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read index result columns: %w", err)
+		}
+		pos := make(map[string]int, len(cols))
+		for i, name := range cols {
+			pos[name] = i
+		}
+		keyPos, hasKey := pos["Key_name"]
+		colPos, hasCol := pos["Column_name"]
+		nonUniquePos, hasNonUnique := pos["Non_unique"]
+		seqPos, hasSeq := pos["Seq_in_index"]
+		if !hasKey || !hasCol || !hasNonUnique || !hasSeq {
+			return nil, fmt.Errorf("SHOW INDEX result lacks Key_name, Column_name, Non_unique or Seq_in_index: %v", cols)
+		}
+		return func(rows *sql.Rows) (string, string, int64, bool, error) {
+			vals := make([]any, len(cols))
+			ptrs := make([]any, len(cols))
+			for i := range vals {
+				ptrs[i] = &vals[i]
+			}
+			if err := rows.Scan(ptrs...); err != nil {
+				return "", "", 0, false, err
+			}
+			seq, err := strconv.ParseInt(indexValueString(vals[seqPos]), 10, 64)
+			if err != nil {
+				return "", "", 0, false, fmt.Errorf("invalid Seq_in_index %q: %w", indexValueString(vals[seqPos]), err)
+			}
+			isUnique := indexValueString(vals[nonUniquePos]) == "0"
+			return indexValueString(vals[keyPos]), indexValueString(vals[colPos]), seq, isUnique, nil
+		}, nil
+	default:
+		// Only the three scanned columns exist; row order is the column order.
+		return func(rows *sql.Rows) (string, string, int64, bool, error) {
+			var indexName, columnName string
+			var isUnique bool
+			err := rows.Scan(&indexName, &columnName, &isUnique)
+			return indexName, columnName, 0, isUnique, err
+		}, nil
+	}
+}
+
+// indexValueString renders a driver value from SHOW INDEX, which may arrive as
+// []byte (text protocol) or an integer or string depending on the driver.
+func indexValueString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case []byte:
+		return string(x)
+	default:
+		return fmt.Sprint(x)
+	}
 }
 
 // extractPrimaryKey extracts primary key information for a table
