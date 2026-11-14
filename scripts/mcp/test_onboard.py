@@ -75,6 +75,62 @@ class CredentialKeyringTests(unittest.TestCase):
             self.assertFalse((deploy / "tls").exists())
 
 
+class OIDCIssuerDoctorTests(unittest.TestCase):
+    def test_doctor_validates_oidc_issuer(self):
+        cases = [
+            ("valid_path", "https://id.example.test/issuer", True),
+            ("query", "https://id.example.test/issuer?wrong=1", False),
+            ("fragment", "https://id.example.test/issuer#fragment", False),
+            ("userinfo", "https://user:synthetic-secret@id.example.test/issuer", False),
+            ("bad_ipv6", "https://[invalid", False),
+            ("http", "http://id.example.test/issuer", False),
+        ]
+
+        for name, issuer, expected_ok in cases:
+            with self.subTest(case=name):
+                with tempfile.TemporaryDirectory() as directory:
+                    deploy = Path(directory)
+                    env = deploy / ".env"
+                    env.write_text(
+                        f"MCP_OIDC_ISSUER={issuer}\n"
+                        "MCP_OIDC_AUDIENCE=test-audience\n",
+                        encoding="utf-8",
+                    )
+
+                    output = io.StringIO()
+                    args = SimpleNamespace(
+                        directory=deploy,
+                        probe_oidc=False,
+                    )
+
+                    with (
+                        contextlib.redirect_stdout(output),
+                        mock.patch.object(
+                            onboard, "compose_command",
+                            return_value=SimpleNamespace(returncode=1),
+                        ),
+                        mock.patch.object(onboard, "check_identity"),
+                        mock.patch.object(onboard, "source_connection_check"),
+                    ):
+                        onboard.command_doctor(args)
+
+                    result = output.getvalue()
+
+                    if expected_ok:
+                        self.assertIn(
+                            "OK  MCP OIDC issuer uses HTTPS", result
+                        )
+                    else:
+                        self.assertIn(
+                            "ERR MCP_OIDC_ISSUER must be a valid HTTPS issuer URL",
+                            result,
+                        )
+
+                    self.assertIn("Doctor completed:", result)
+                    self.assertIn("MCP OIDC audience is configured", result)
+                    self.assertNotIn("synthetic-secret", result)
+
+
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
 class TLSPairTests(unittest.TestCase):
     def setUp(self):

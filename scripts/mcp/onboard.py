@@ -575,10 +575,32 @@ def command_doctor(args):
         add_result(results, True, "credential keyring is valid and its active AES-256 key is present")
     except (json.JSONDecodeError, ValueError, binascii.Error, TypeError):
         add_result(results, False, "credential keyring is invalid or lacks its active 32-byte key; do not replace an existing key without a verified backup")
+
+    # Reject malformed issuer URLs and disallow embedded credentials, queries, and fragments.
     issuer = values.get("MCP_OIDC_ISSUER", "").strip()
-    parsed_issuer = urllib.parse.urlparse(issuer)
-    issuer_ok = parsed_issuer.scheme == "https" and bool(parsed_issuer.hostname)
-    add_result(results, issuer_ok, "MCP OIDC issuer uses HTTPS" if issuer_ok else "MCP_OIDC_ISSUER must be the HTTPS issuer URL from your identity provider")
+    try:
+        parsed_issuer = urllib.parse.urlparse(issuer)
+        issuer_ok = (
+            parsed_issuer.scheme == "https"
+            and bool(parsed_issuer.hostname)
+            and parsed_issuer.username is None
+            and parsed_issuer.password is None
+            and not parsed_issuer.query
+            and not parsed_issuer.fragment
+        )
+    except ValueError:
+        issuer_ok = False
+
+    add_result(
+        results,
+        issuer_ok,
+        "MCP OIDC issuer uses HTTPS"
+        if issuer_ok
+        else (
+            "MCP_OIDC_ISSUER must be a valid HTTPS issuer URL "
+            "without credentials, query parameters, or fragments"
+        ),
+    )
     audience = values.get("MCP_OIDC_AUDIENCE", "").strip()
     add_result(results, bool(audience), "MCP OIDC audience is configured" if audience else "set MCP_OIDC_AUDIENCE to the resource audience registered with your identity provider")
     scopes = (values.get("MCP_OIDC_REQUIRED_SCOPES", "data-fabric.query").strip() or "data-fabric.query").split()
