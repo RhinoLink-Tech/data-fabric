@@ -25,6 +25,12 @@ class Parser(HTMLParser):
   if tag=='a' and a.get('href'):self.links.append(a['href'])
   if tag=='form' and a.get('id'):self.forms[a['id']]=a.get('action')
 try:
+ theme_dir=os.environ.get('DF_IDENTITY_THEME_DIR','').strip()
+ theme_path=None
+ if theme_dir:
+  theme_path=pathlib.Path(theme_dir).expanduser().resolve()
+  if not (theme_path/'login'/'theme.properties').is_file() or not (theme_path/'email'/'theme.properties').is_file():
+   raise RuntimeError('DF_IDENTITY_THEME_DIR must contain login and email theme.properties')
  with tempfile.TemporaryDirectory(prefix='df603-identity-') as td:
   spool=pathlib.Path(td)
   smtpcode='''import pathlib,socketserver
@@ -64,8 +70,9 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   r=run(['docker','run','-d','--name',pg,'--network',network,'-p','127.0.0.1::5432','-e','POSTGRES_USER','-e','POSTGRES_PASSWORD','-e','POSTGRES_DB','postgres@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b'],env=pgenv)
   if r.returncode:raise RuntimeError('test PostgreSQL start')
   created.append(pg)
+  # The temporary initdb server uses a socket; wait for the final TCP listener.
   for attempt in range(40):
-   ready=run(['docker','exec',pg,'pg_isready','-U','source_admin','-d','synthetic_orders'])
+   ready=run(['docker','exec',pg,'pg_isready','-h','127.0.0.1','-U','source_admin','-d','synthetic_orders'])
    if ready.returncode==0:break
    time.sleep(1)
   else:raise RuntimeError('test PostgreSQL startup timeout')
@@ -79,6 +86,9 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   if r.returncode:raise RuntimeError('fake SMTP start')
   created.append(smtp)
   cmd=['docker','run','-d','--name',kc,'--network',network,'--network-alias','identity','-e','KC_BOOTSTRAP_ADMIN_USERNAME','-e','KC_BOOTSTRAP_ADMIN_PASSWORD','-e','KC_PROXY_HEADERS','-e','KC_HOSTNAME_STRICT','quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba','start-dev','--http-relative-path=/identity']
+  if theme_path:
+   image_index=cmd.index('quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba')
+   cmd[image_index:image_index]=['-v',str(theme_path)+':/opt/keycloak/themes/data-fabric:ro']
   if run(cmd,env=env).returncode:raise RuntimeError('identity container start')
   created.append(kc)
   r=run(['docker','run','-d','--name',proxy,'--network',network,'-p','127.0.0.1::443','-v',td+':/work:ro','-v',str(spool/'nginx.conf')+':/etc/nginx/nginx.conf:ro','nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10'])
@@ -99,8 +109,15 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   if r.status_code!=200:raise RuntimeError('bootstrap admin '+str(r.status_code))
   headers={'Authorization':'Bearer '+r.json()['access_token']}
   realm={'realm':'df-selfservice-test','enabled':True,'registrationAllowed':True,'verifyEmail':True,'resetPasswordAllowed':True,'sslRequired':'none','smtpServer':{'host':'smtp','port':'1025','from':'no-reply@example.invalid','ssl':'false','starttls':'false','auth':'false'}}
+  if theme_path:realm.update(loginTheme='data-fabric',emailTheme='data-fabric')
   r=session.post(base+'/admin/realms',json=realm,headers=headers,timeout=10)
   if r.status_code!=201:raise RuntimeError('realm setup '+str(r.status_code))
+  if theme_path:
+   # This is a newly created disposable realm, never an existing deployment.
+   profileurl=base+'/admin/realms/df-selfservice-test/users/profile'
+   r=session.get(profileurl,headers=headers,timeout=10);r.raise_for_status();profile=r.json()
+   profile['attributes']=[a for a in profile['attributes'] if a.get('name') not in ('firstName','lastName')]
+   r=session.put(profileurl,json=profile,headers=headers,timeout=10);r.raise_for_status()
   client={'clientId':'trial-client','enabled':True,'publicClient':True,'standardFlowEnabled':True,'redirectUris':['http://127.0.0.1/callback'],'attributes':{'pkce.code.challenge.method':'S256'}}
   r=session.post(base+'/admin/realms/df-selfservice-test/clients',json=client,headers=headers,timeout=10)
   if r.status_code!=201:raise RuntimeError('client setup '+str(r.status_code))
@@ -136,7 +153,7 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
    raise RuntimeError('registration page '+str(r.status_code))
   p=Parser();p.feed(r.text);action=p.forms.get('kc-register-form')
   if not action:raise RuntimeError('registration form missing')
-  r=browser.post(urllib.parse.urljoin(base,action),data={'firstName':'Trial','lastName':'User','email':'trial@example.invalid','username':'trial-user','password':'TestingPassword123!','password-confirm':'TestingPassword123!'},timeout=15)
+  r=browser.post(urllib.parse.urljoin(base,action),data={**({} if theme_path else {'firstName':'Trial','lastName':'User'}),'email':'trial@example.invalid','username':'trial-user','password':'TestingPassword123!','password-confirm':'TestingPassword123!'},timeout=15)
   if r.status_code!=200:raise RuntimeError('registration response '+str(r.status_code))
   for _ in range(25):
    if (spool/'message.eml').is_file():break
@@ -336,7 +353,7 @@ Server(("0.0.0.0",1025),Handler).serve_forever()
   f=Parser();f.feed(response.text)
   if response.status_code!=200 or not f.forms.get('kc-register-form'):raise RuntimeError('fresh signup form unavailable')
   (spool/'message.eml').unlink(missing_ok=True)
-  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-register-form']),data={'firstName':'Third','lastName':'User','email':'third@example.invalid','username':'third-user','password':'ThirdPassword123!','password-confirm':'ThirdPassword123!'},timeout=15)
+  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-register-form']),data={**({} if theme_path else {'firstName':'Third','lastName':'User'}),'email':'third@example.invalid','username':'third-user','password':'ThirdPassword123!','password-confirm':'ThirdPassword123!'},timeout=15)
   if response.status_code!=200 or 'already authenticated as different user' in response.text.lower():raise RuntimeError('fresh signup conflicted with previous user')
   for _ in range(25):
    if (spool/'message.eml').is_file():break

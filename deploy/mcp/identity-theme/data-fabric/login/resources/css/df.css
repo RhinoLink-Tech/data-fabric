@@ -1,0 +1,260 @@
+/* Data Fabric identity theme — warm minimal style (#618).
+ * Cream canvas, white card, terracotta accent, serif headline.
+ * One file styles every base login page: overridden pages (login, register)
+ * and the ones that fall through to base templates (reset credentials,
+ * required action, error pages) all use the same df-* classes. */
+
+:root {
+  --df-bg: #f0eee6;
+  --df-card: #ffffff;
+  --df-line: #e0dcd0;
+  --df-input-line: #d8d4c8;
+  --df-text: #1f1d1a;
+  --df-sub: #6b6862;
+  --df-accent: #c96442;
+  --df-accent-dark: #b55335;
+  --df-danger: #a03a22;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--df-bg);
+  color: var(--df-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layout: brand row above a centered card. */
+.df-login {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.df-header { margin-bottom: 20px; }
+
+.df-header-wrapper {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.df-header-wrapper::before {
+  content: "\25C6"; /* diamond mark */
+  color: var(--df-accent);
+  font-size: 13px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.df-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--df-card);
+  border: 1px solid var(--df-line);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(31, 29, 26, 0.06);
+  padding: 30px 30px 26px;
+}
+
+.df-card-header { margin-bottom: 18px; }
+
+h1#kc-page-title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", ui-serif, serif;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.subtitle { font-size: 12.5px; color: var(--df-sub); }
+
+/* Forms. */
+.df-group { margin-bottom: 16px; }
+
+.df-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.df-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--df-input-line);
+  border-radius: 10px;
+  background: #fcfbf8;
+  color: var(--df-text);
+  font-size: 14.5px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.df-input:focus {
+  border-color: var(--df-accent);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(201, 100, 66, 0.15);
+}
+
+.df-input[aria-invalid="true"] { border-color: var(--df-danger); }
+
+.df-input-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--df-danger);
+}
+
+.df-right { text-align: right; margin: -6px 0 14px; }
+
+/* Buttons. */
+.df-btn {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  padding: 10px 18px;
+  transition: background 0.15s ease;
+}
+
+.df-btn-primary { background: var(--df-accent); color: #ffffff; }
+.df-btn-primary:hover { background: var(--df-accent-dark); }
+
+.df-btn-block {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 0 18px;
+  font-size: 15px;
+}
+
+#kc-form-buttons { margin-bottom: 0; }
+
+/* Links and helper text. */
+a { color: var(--df-accent); font-weight: 500; text-decoration: none; }
+a:hover { color: var(--df-accent-dark); text-decoration: underline; }
+
+/* Social / external identity providers (restored from base login.ftl). */
+.df-social { margin-top: 20px; }
+
+.df-social hr {
+  border: 0;
+  border-top: 1px solid var(--df-line);
+  margin: 0 0 14px;
+}
+
+.df-social h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--df-sub);
+  text-align: center;
+}
+
+.df-social-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.df-social-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--df-input-line);
+  border-radius: 10px;
+  background: #fcfbf8;
+  color: var(--df-text);
+  font-weight: 600;
+  text-align: center;
+}
+
+.df-social-btn:hover {
+  border-color: var(--df-accent);
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.df-social-btn-disabled { opacity: 0.5; pointer-events: none; }
+
+.df-social-name { font-size: 14px; }
+
+.df-info,
+#kc-registration-container {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--df-sub);
+}
+
+#kc-registration {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--df-sub);
+}
+
+/* Messages / alerts. */
+.df-alert {
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+}
+
+.df-alert-text { display: block; }
+
+.df-alert.alert-error,
+.df-alert.alert-danger {
+  background: #fbede9;
+  border: 1px solid #eac8bc;
+  color: #8a3b22;
+}
+
+.df-alert.alert-success {
+  background: #edf3ea;
+  border: 1px solid #cfe0c8;
+  color: #3f6334;
+}
+
+.df-alert.alert-warning {
+  background: #fbf3e4;
+  border: 1px solid #ecd9b4;
+  color: #7a5a1e;
+}
+
+.df-alert.alert-info {
+  background: #eef1f6;
+  border: 1px solid #d4dbe8;
+  color: #3d4a63;
+}
+
+/* Restart-login username recap and other base-page bits. */
+#kc-username label { font-weight: 600; }
+.kc-tooltip-text { font-size: 12.5px; color: var(--df-sub); }
+
+footer {
+  margin-top: 18px;
+  font-size: 12.5px;
+  color: var(--df-sub);
+  text-align: center;
+}
