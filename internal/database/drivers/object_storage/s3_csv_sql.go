@@ -855,6 +855,7 @@ func compareCSVValues(left, right interface{}) int {
 		return 0
 	}
 }
+
 // csvExactInteger returns the exact value of an integer operand (any Go integer
 // type, or a base-10 integer string). It never routes through float64.
 func csvExactInteger(value interface{}) (*big.Int, bool) {
