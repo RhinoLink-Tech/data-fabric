@@ -123,6 +123,18 @@ Verified end to end on the pinned image (26.3.5):
 - password reset: the themed reset email (zh subject 重置你的密码, branded
   card, 重置密码 button) arrives with a valid action-token link
 
+For a repeatable self-service identity and MCP acceptance run with this theme,
+execute the existing test with the optional theme path from the repository root:
+
+```bash
+DF_IDENTITY_THEME_DIR="$PWD/deploy/mcp/identity-theme/data-fabric" \
+  python3 scripts/test-workbuddy-self-service-identity.py
+```
+
+This starts disposable containers and configures only their synthetic realm;
+it does not change an existing Keycloak deployment. It requires Docker, Go,
+OpenSSL and the Python `requests` package.
+
 Keycloak session cookies are `Secure`, so smoke-test over TLS (self-signed
 dev cert), not plain HTTP, and point the realm SMTP at a local sink for the
 email journey:
