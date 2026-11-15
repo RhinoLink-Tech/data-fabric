@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
 - Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
 - Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
+- Refresh the source list when Enter is pressed in the management UI token field.
 - Reject invalid MCP URL ports during DeepSeek client validation (#594).
 - Retry the management UI connector catalog on Refresh and when Add is opened after a temporary `/api/v1/database/types` failure, instead of requiring a page reload (#591).
 - Reject malformed OIDC issuer URLs in MCP onboarding doctor checks (#564).
