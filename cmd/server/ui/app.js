@@ -301,8 +301,6 @@
   $("addButton").addEventListener("click", openCreateDialog); $("emptyAddButton").addEventListener("click", openCreateDialog);
   $("refreshButton").addEventListener("click", loadSources);
   $("clearToken").addEventListener("click", () => { tokenInput.value = ""; showNotice("当前页面中的访问令牌已清除。"); loadSources(); });
-  // Enter refreshes the list once; ordinary typing never sends a request.
-  tokenInput.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) void loadSources(); });
   $("closeDialog").addEventListener("click", () => dialog.close()); $("cancelButton").addEventListener("click", () => dialog.close());
   $("testButton").addEventListener("click", testConnection); form.addEventListener("submit", saveSource);
   $("sourcePort").addEventListener("input", () => { if (!state.editingID) state.portManuallyEdited = true; });
@@ -313,6 +311,8 @@
     }
   });
   $("previousPage").addEventListener("click", () => { state.offset = Math.max(0, state.offset - pageSize); loadSources(); });
+  // Enter refreshes the list once; ordinary typing never sends a request.
+  tokenInput.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) void loadSources(); });
   $("nextPage").addEventListener("click", () => { if (state.offset + pageSize < state.total) { state.offset += pageSize; loadSources(); } });
   // The display name is not part of the connection config, so editing it keeps the result.
   const onFormChange = (event) => { if (event.target !== $("sourceName")) invalidateTestResult(); };
