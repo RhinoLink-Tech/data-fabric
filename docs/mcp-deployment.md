@@ -49,18 +49,22 @@ check against an existing local MySQL/MariaDB network, use the API-only
 and the WSL acceptance runner:
 
 ```bash
-cd /home/fengfei/data-fabric
+cd /path/to/your/data-fabric/checkout
 scripts/mcp/dsh-local-acceptance.sh \
-  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64-hex-digest>'
+  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64-hex-digest>' \
+  --deploy-dir /path/to/your/DataSemanticHub/deploy
 ```
 
-The runner defaults to `/home/fengfei/DataSemanticHub/deploy`,
-`datasemantichub-mariadb`, and `datasemantichub-network`; override those with
-`--deploy-dir`, `--db-container`, and `--network` when needed. It verifies
-the deploy directory's MariaDB service, starts that existing container only
-when it was stopped, and joins one Data Fabric API container to the existing
-network. The API listens on loopback port 18180 by default; `--api-port`
-changes it.
+Replace both paths with your own checkout and deployment directories. The
+deploy directory (required; `--deploy-dir` or the `DSH_DEPLOY_DIR`
+environment variable) must contain `docker-compose.yaml` and `.env` and must
+expose the internal-db MariaDB service; the runner fails early with an
+actionable message when it is missing. It verifies the deploy directory's
+MariaDB service, starts that existing container only when it was stopped, and
+joins one Data Fabric API container to the existing network. The API listens
+on loopback port 18180 by default; `--api-port` changes it, and
+`--db-container` / `--network` override the container and network names when
+your deployment uses different ones.
 
 The runner requires an immutable Data Fabric image that is already present in
 the local Docker engine. It never pulls images. It creates uniquely named,
