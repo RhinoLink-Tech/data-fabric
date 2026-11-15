@@ -35,6 +35,7 @@ COPY --from=builder --chown=10001:10001 /app/main /app/main
 COPY --from=builder --chown=10001:10001 /app/replica-ingress /app/replica-ingress
 COPY --from=builder --chown=10001:10001 /app/configs/config.yaml.example /app/configs/config.yaml.example
 COPY --from=builder --chown=10001:10001 /app/LICENSE /app/LICENSE
+COPY --from=builder --chown=10001:10001 /app/NOTICE /app/NOTICE
 COPY --from=builder --chown=10001:10001 /app/THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
 COPY --from=builder --chown=10001:10001 /app/go-third-party-licenses /app/third-party-licenses/go
 COPY --from=builder --chown=10001:10001 /app/requirements-sql-translation.txt /app/requirements-sql-translation.txt
