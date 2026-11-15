@@ -20,17 +20,20 @@ MySQL/MariaDB 做容器级验证，可使用
 和 WSL 验收脚本：
 
 ```bash
-cd /home/fengfei/data-fabric
+cd /path/to/your/data-fabric/checkout
 scripts/mcp/dsh-local-acceptance.sh \
-  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64 位十六进制 digest>'
+  --image 'ghcr.io/rhinolink-tech/data-fabric@sha256:<64 位十六进制 digest>' \
+  --deploy-dir /path/to/your/DataSemanticHub/deploy
 ```
 
-脚本默认使用 `/home/fengfei/DataSemanticHub/deploy`、
-`datasemantichub-mariadb` 和 `datasemantichub-network`；可通过
-`--deploy-dir`、`--db-container`、`--network` 覆盖。它会检查 deploy
-目录中声明了 MariaDB 服务，仅在原容器处于停止状态时启动它，并让一个
-Data Fabric API 容器加入现有网络。API 默认只绑定本机 loopback 的
-18180 端口；端口冲突时可传 `--api-port`。
+两处路径请替换为你自己的代码检出目录和部署目录。部署目录为必填
+（`--deploy-dir` 或环境变量 `DSH_DEPLOY_DIR`），其中必须包含
+`docker-compose.yaml` 与 `.env`，并声明 internal-db MariaDB 服务；
+缺失时脚本会在访问 Docker 或数据库之前直接报错并说明需要提供什么。
+脚本会检查 deploy 目录中声明了 MariaDB 服务，仅在原容器处于停止状态时
+启动它，并让一个 Data Fabric API 容器加入现有网络。API 默认只绑定本机
+loopback 的 18180 端口；端口冲突时可传 `--api-port`，容器与网络名不同时
+可用 `--db-container` / `--network` 覆盖。
 
 验收镜像必须已存在于本地 Docker 引擎；脚本不会拉取镜像。运行时会创建
 带随机名称的合成元数据库和样例源库，样例源账号只有 `SELECT`、
