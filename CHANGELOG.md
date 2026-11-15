@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- Retry the management UI connector catalog on Refresh and when Add is opened after a temporary `/api/v1/database/types` failure, instead of requiring a page reload (#591).
 - Return MySQL and MariaDB table indexes in table descriptions instead of an empty list when SHOW INDEX returns its wider result (#530).
 - Return HTTP 400 `INVALID_PARAMETERS` for malformed or out-of-range explicit `batch_size` values on the REST continuation endpoint (`GET /api/v1/fetch/...`), instead of silently using the 10,000 default (#597).
 - Reject mismatched existing MCP TLS certificates and private keys during initialization and doctor checks without replacing either file (#499).
@@ -26,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
 - Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
 - Reject invalid MCP URL ports during DeepSeek client validation (#594).
+- Retry the management UI connector catalog on Refresh and when Add is opened after a temporary `/api/v1/database/types` failure, instead of requiring a page reload (#591).
 - Reject malformed OIDC issuer URLs in MCP onboarding doctor checks (#564).
 
 ## [v2.1.0-preview.1] - 2026-11-11
