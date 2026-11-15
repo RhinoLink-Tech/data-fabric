@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Include PostgreSQL ordinary views in table discovery and description with type `VIEW`, so an advertised view can be described by name (#531).
 - Return MySQL and MariaDB table indexes in table descriptions instead of an empty list when SHOW INDEX returns its wider result (#530).
 - Return HTTP 400 `INVALID_PARAMETERS` for malformed or out-of-range explicit `batch_size` values on the REST continuation endpoint (`GET /api/v1/fetch/...`), instead of silently using the 10,000 default (#597).
 - Reject mismatched existing MCP TLS certificates and private keys during initialization and doctor checks without replacing either file (#499).
