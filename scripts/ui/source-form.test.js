@@ -34,7 +34,7 @@ class Element {
   reportValidity() { return true; }
 }
 
-async function loadApp(existing = []) {
+async function loadApp(existing = [], { catalogFailures = 0 } = {}) {
   const elements = new Map();
   const $ = (id) => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
   $("sourceForm").reset = () => {
@@ -57,6 +57,10 @@ async function loadApp(existing = []) {
     const request = { url, method: options.method || "GET", body: options.body ? JSON.parse(options.body) : undefined };
     calls.push(request);
     const route = new URL(url, "http://localhost");
+    if (route.pathname === "/api/v1/database/types" && catalogFailures > 0) {
+      catalogFailures--;
+      return jsonResponse({ success: false, error: { code: "UNAVAILABLE", message: "catalog busy" } }, 503);
+    }
     if (route.pathname === "/api/v1/database/types") return jsonResponse({ data: [
       { type: "mysql", driverName: "MySQL", registered: true, supported: true, recommended: true, defaultPort: 3306 },
       { type: "postgresql", driverName: "PostgreSQL", registered: true, supported: true, defaultPort: 5432 },
@@ -88,7 +92,7 @@ async function loadApp(existing = []) {
     throw new Error("Unexpected request: " + request.method + " " + url);
   };
   const document = { getElementById: $, createElement: () => new Element(), body: new Element() };
-  const context = { document, window: { addEventListener() {} }, fetch, URL, Node: Element, console, Intl,
+  const context = { document, window: { addEventListener() {} }, fetch, URL, AbortSignal, Node: Element, console, Intl,
     Event: class Event { constructor(type) { this.type = type; } } };
   vm.createContext(context);
   vm.runInContext(appSource, context);
@@ -220,4 +224,27 @@ test("switching connectors updates automatic ports but preserves deliberate edit
   app.$("sourceType").value = "mysql";
   await app.emit("sourceType", "change");
   assert.equal(app.$("sourcePort").value, "6543");
+});
+
+test("a transient catalog failure at startup is retried when Add is opened", async () => {
+  const app = await loadApp([], { catalogFailures: 1 });
+  await app.emit("addButton", "click");
+  assert.equal(app.calls.filter((item) => item.url === "/api/v1/database/types").length, 2);
+  assert.equal(app.$("sourceType").children.some((option) => option.value === "mysql"), true);
+});
+
+test("Refresh retries a failed connector catalog load", async () => {
+  const app = await loadApp([], { catalogFailures: 1 });
+  await app.emit("refreshButton", "click");
+  assert.equal(app.calls.filter((item) => item.url === "/api/v1/database/types").length, 2);
+  await app.emit("addButton", "click");
+  assert.equal(app.calls.filter((item) => item.url === "/api/v1/database/types").length, 2);
+  assert.equal(app.$("sourceType").children.some((option) => option.value === "mysql"), true);
+});
+
+test("a repeated catalog failure shows the specific error when Add is opened", async () => {
+  const app = await loadApp([], { catalogFailures: 2 });
+  await app.emit("addButton", "click");
+  assert.match(app.$("notice").textContent, /catalog busy/);
+  assert.equal(app.$("notice").className.includes("error"), true);
 });
