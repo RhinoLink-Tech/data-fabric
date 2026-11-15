@@ -119,6 +119,81 @@ class ReleaseArchiveTests(unittest.TestCase):
         self.assertFalse((target / ".env").exists())
         self.assertFalse((target / "recovery").exists())
 
+    def test_concurrent_env_creation_is_preserved(self):
+        target = self.config.parent
+        (target / "docker-compose.recovery.yml").write_text("services: {}\n")
+        (target / ".env.example").write_text("")
+        env_path = target / ".env"
+        competing = b"OPERATOR_SECRET_PLACEHOLDER=keep\n"
+        work = self.base / "decrypted"
+        payload = work / "payload"
+        payload.mkdir(parents=True)
+        image = self.release["image"]
+        (payload / "deployment.env").write_text(
+            f"DATA_FABRIC_IMAGE={image}\nDATA_FABRIC_SOURCE_REVISION={'a' * 40}\n")
+        (payload / "metadata.sql").write_bytes(b"SELECT 1;\n")
+        args = SimpleNamespace(archive=self.base / "backup.age", identity_file=self.base / "identity",
+                               staging_dir=self.base / "staging", target_deploy_dir=target,
+                               project_name="restore-project", api_port=18080, mcp_port=18443,
+                               release_source_archive=None)
+        manifest = {"source_revision": "a" * 40, "app_image_reference": image,
+                    "app_image_id": "sha256:" + "c" * 64}
+        real_open = recovery.os.open
+        raced = []
+
+        def racing_open(path, flags, *args, **kwargs):
+            if recovery.os.fspath(path) == str(env_path) and not raced:
+                env_path.write_bytes(competing)
+                env_path.chmod(0o640)
+                raced.append(True)
+            return real_open(path, flags, *args, **kwargs)
+
+        image_inspect = SimpleNamespace(returncode=0, stdout=f"sha256:{'c' * 64}|{'a' * 40}\n")
+        with mock.patch.object(recovery, "require_fresh_compose_project"), \
+             mock.patch.object(recovery, "require_free_loopback_port"), \
+             mock.patch.object(recovery, "decrypt_archive", return_value=(work, payload)), \
+             mock.patch.object(recovery, "load_and_validate_payload", return_value=manifest), \
+             mock.patch.object(recovery, "git_revision", return_value="a" * 40), \
+             mock.patch.object(recovery, "run", return_value=image_inspect), \
+             mock.patch.object(recovery.os, "open", side_effect=racing_open):
+            with self.assertRaises(recovery.RecoveryError):
+                recovery.restore(args)
+        self.assertTrue(raced)
+        self.assertEqual(env_path.read_bytes(), competing)
+        self.assertEqual(env_path.stat().st_mode & 0o777, 0o640)
+        self.assertFalse((target / "recovery").exists())
+
+    def test_failure_after_own_env_creation_cleans_own_outputs(self):
+        target = self.config.parent
+        (target / "docker-compose.recovery.yml").write_text("services: {}\n")
+        (target / ".env.example").write_text("")
+        env_path = target / ".env"
+        work = self.base / "decrypted"
+        payload = work / "payload"
+        payload.mkdir(parents=True)
+        image = self.release["image"]
+        (payload / "deployment.env").write_text(
+            f"DATA_FABRIC_IMAGE={image}\nDATA_FABRIC_SOURCE_REVISION={'a' * 40}\n")
+        (payload / "metadata.sql").write_bytes(b"SELECT 1;\n")
+        args = SimpleNamespace(archive=self.base / "backup.age", identity_file=self.base / "identity",
+                               staging_dir=self.base / "staging", target_deploy_dir=target,
+                               project_name="restore-project", api_port=18080, mcp_port=18443,
+                               release_source_archive=None)
+        manifest = {"source_revision": "a" * 40, "app_image_reference": image,
+                    "app_image_id": "sha256:" + "c" * 64}
+        image_inspect = SimpleNamespace(returncode=0, stdout=f"sha256:{'c' * 64}|{'a' * 40}\n")
+        with mock.patch.object(recovery, "require_fresh_compose_project"), \
+             mock.patch.object(recovery, "require_free_loopback_port"), \
+             mock.patch.object(recovery, "decrypt_archive", return_value=(work, payload)), \
+             mock.patch.object(recovery, "load_and_validate_payload", return_value=manifest), \
+             mock.patch.object(recovery, "git_revision", return_value="a" * 40), \
+             mock.patch.object(recovery, "run", return_value=image_inspect), \
+             mock.patch.object(recovery.shutil, "copyfileobj", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                recovery.restore(args)
+        self.assertFalse(env_path.exists())
+        self.assertFalse((target / "recovery").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
