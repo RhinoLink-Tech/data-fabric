@@ -1,7 +1,7 @@
 <#import "template.ftl" as layout>
 <#-- Data Fabric themed registration page (#618): only the fields a signup
      actually requires. With registrationEmailAsUsername enabled the email
-     doubles as the username (one field, posted as "username"); otherwise
+     doubles as the username (one field, posted as "email"); otherwise
      username and email render separately. firstName and lastName are not
      rendered here; the realm user profile must also stop requiring them
      (see README). Form id "kc-register-form" and POST to
