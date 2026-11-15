@@ -671,9 +671,19 @@ def restore(args: argparse.Namespace) -> int:
         })
         # The target and payload are checked above; exclusive creation prevents a race from replacing user files.
         recovery_dir.mkdir(mode=0o700)
+        env_created = False
         try:
-            fd = os.open(env_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            try:
+                fd = os.open(env_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError as exc:
+                raise RecoveryError("restore refused: a .env appeared after preflight; the existing file was preserved unchanged") from exc
+            env_created = True
+            try:
+                stream = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+            except BaseException:
+                os.close(fd)
+                raise
+            with stream:
                 stream.write(configured)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -683,7 +693,9 @@ def restore(args: argparse.Namespace) -> int:
                 shutil.copyfileobj(source, output, length=1024 * 1024)
             os.chmod(env_path, 0o600)
         except Exception:
-            env_path.unlink(missing_ok=True)
+            # Remove only what this invocation created; a competing .env is never ours to delete.
+            if env_created:
+                env_path.unlink(missing_ok=True)
             shutil.rmtree(recovery_dir, ignore_errors=True)
             raise
         print(f"Restore payload prepared in {target}; no container was started and no database was overwritten.")
