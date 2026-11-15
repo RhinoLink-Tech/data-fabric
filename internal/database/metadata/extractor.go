@@ -796,7 +796,10 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 		// (SHOW TABLE STATUS would feed the row count into the schema column).
 		return "SELECT table_name, table_type, table_schema FROM information_schema.tables WHERE table_schema = DATABASE()"
 	case model.DatabaseTypePostgreSQL:
-		return "SELECT tablename, 'TABLE' as tabletype, schemaname FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')"
+		// Ordinary views live in pg_views, separate from pg_tables. Materialized
+		// views are not included: they are a distinct relation kind.
+		return "SELECT tablename, 'TABLE' as tabletype, schemaname FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') " +
+			"UNION ALL SELECT viewname, 'VIEW' as tabletype, schemaname FROM pg_views WHERE schemaname NOT IN ('pg_catalog', 'information_schema')"
 	case model.DatabaseTypeOracle:
 		return "SELECT table_name, 'TABLE', owner FROM all_tables WHERE owner NOT IN ('SYS', 'SYSTEM')"
 	case model.DatabaseTypeSnowflake, model.DatabaseTypeBigQuery, model.DatabaseTypeRedshift:

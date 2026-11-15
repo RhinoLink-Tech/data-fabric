@@ -1470,10 +1470,10 @@ func (ss *streamingService) mapGenericDatabaseTypeToStandard(dbTypeName string, 
 	upperTypeName := strings.ToUpper(dbTypeName)
 
 	switch {
-	case strings.Contains(upperTypeName, "INT"):
-		return model.StandardizedTypeInteger
 	case strings.Contains(upperTypeName, "BIGINT"):
 		return model.StandardizedTypeBigInt
+	case strings.Contains(upperTypeName, "INT"):
+		return model.StandardizedTypeInteger
 	case strings.Contains(upperTypeName, "FLOAT"), strings.Contains(upperTypeName, "REAL"):
 		return model.StandardizedTypeFloat
 	case strings.Contains(upperTypeName, "DOUBLE"):
@@ -1483,12 +1483,14 @@ func (ss *streamingService) mapGenericDatabaseTypeToStandard(dbTypeName string, 
 	case strings.Contains(upperTypeName, "VARCHAR"), strings.Contains(upperTypeName, "CHAR"),
 		strings.Contains(upperTypeName, "TEXT"), strings.Contains(upperTypeName, "CLOB"):
 		return model.StandardizedTypeString
+	case strings.Contains(upperTypeName, "DATETIME"):
+		return model.StandardizedTypeDateTime
 	case strings.Contains(upperTypeName, "DATE"):
 		return model.StandardizedTypeDate
-	case strings.Contains(upperTypeName, "TIME"):
-		return model.StandardizedTypeTime
 	case strings.Contains(upperTypeName, "TIMESTAMP"):
 		return model.StandardizedTypeTimestamp
+	case strings.Contains(upperTypeName, "TIME"):
+		return model.StandardizedTypeTime
 	case strings.Contains(upperTypeName, "BOOLEAN"), strings.Contains(upperTypeName, "BOOL"):
 		return model.StandardizedTypeBoolean
 	case strings.Contains(upperTypeName, "BINARY"), strings.Contains(upperTypeName, "VARBINARY"),

@@ -56,6 +56,7 @@
     const token = tokenInput.value.trim();
     if (options.auth !== false && token) headers.Authorization = "Bearer " + token;
     let response;
+    request.signal = options.signal;
     try { response = await fetch(path, request); }
     catch (_) { throw new ApiError("无法连接到同源 Data Fabric API。请确认服务运行状态和当前页面地址。", "", "", 0); }
     let payload = null;
@@ -130,8 +131,8 @@
     $("sourceSummary").textContent = "数据源暂时无法读取"; $("tableWrap").hidden = true; $("emptyState").hidden = true; $("pagination").hidden = true;
     $("loadError").textContent = errorText(error); $("loadError").hidden = false;
   }
-  async function loadCatalog() {
-    const result = await api("/api/v1/database/types", { auth: false });
+  async function loadCatalog(options = {}) {
+    const result = await api("/api/v1/database/types", { auth: false, signal: options.signal });
     const entries = Array.isArray(result) ? result : Object.values(result || {});
     state.catalog = entries.filter((item) => item && item.registered && item.supported && item.type)
       .sort((a, b) => Number(Boolean(b.recommended)) - Number(Boolean(a.recommended)) || String(a.type).localeCompare(String(b.type)));
@@ -174,7 +175,15 @@
     $("passwordHint").textContent = "新建时只在保存请求中提交；不会写入浏览器存储。"; $("sourceAdditionalProps").value = "{}";
     setFormError(""); invalidateTestResult();
   }
-  function openCreateDialog() {
+  async function openCreateDialog() {
+    if (!state.catalog.length) {
+      // A failed startup or refresh load is retried here, so Add does not depend on a page reload.
+      // The timeout keeps a hung catalog request from leaving the Add button silently unresponsive.
+      showNotice("正在读取可用连接器目录…");
+      try { await loadCatalog({ signal: AbortSignal.timeout(10000) }); }
+      catch (error) { showNotice("连接器支持目录无法读取：" + errorText(error), "error"); return; }
+      showNotice("");
+    }
     if (!state.catalog.length) { showNotice("无法读取可用连接器目录，请先检查服务状态。", "error"); return; }
     resetEditor();
     $("sourceType").value = (state.catalog.find((item) => item.recommended) || state.catalog[0]).type;
@@ -299,7 +308,12 @@
   $("copyMCPCommand").addEventListener("click", () => { void copyGuideText("mcpClientCommand", "MCP 连接命令已复制。请替换主机名并使用独立的 OIDC token。"); });
   $("copyFirstTaskPrompt").addEventListener("click", () => { void copyGuideText("firstQueryPrompt", "首次查询任务提示已复制。请在已连接的 MCP 客户端中使用。"); });
   $("addButton").addEventListener("click", openCreateDialog); $("emptyAddButton").addEventListener("click", openCreateDialog);
-  $("refreshButton").addEventListener("click", loadSources);
+  // Refresh reloads both the connector catalog and the source list, so a failed catalog load can recover.
+  async function refreshAll() {
+    const results = await Promise.allSettled([loadCatalog(), loadSources()]);
+    if (results[0].status === "rejected") showNotice("连接器支持目录无法读取：" + errorText(results[0].reason), "error");
+  }
+  $("refreshButton").addEventListener("click", refreshAll);
   $("clearToken").addEventListener("click", () => { tokenInput.value = ""; showNotice("当前页面中的访问令牌已清除。"); loadSources(); });
   $("closeDialog").addEventListener("click", () => dialog.close()); $("cancelButton").addEventListener("click", () => dialog.close());
   $("testButton").addEventListener("click", testConnection); form.addEventListener("submit", saveSource);
@@ -311,14 +325,13 @@
     }
   });
   $("previousPage").addEventListener("click", () => { state.offset = Math.max(0, state.offset - pageSize); loadSources(); });
+  // Enter refreshes the list once; ordinary typing never sends a request.
+  tokenInput.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) void loadSources(); });
   $("nextPage").addEventListener("click", () => { if (state.offset + pageSize < state.total) { state.offset += pageSize; loadSources(); } });
   // The display name is not part of the connection config, so editing it keeps the result.
   const onFormChange = (event) => { if (event.target !== $("sourceName")) invalidateTestResult(); };
   form.addEventListener("input", onFormChange); form.addEventListener("change", onFormChange);
   dialog.addEventListener("close", () => { $("sourcePassword").value = ""; $("sourceAdditionalProps").value = "{}"; state.currentConfig = null; invalidateTestResult(); });
   window.addEventListener("pagehide", () => { tokenInput.value = ""; $("sourcePassword").value = ""; $("sourceAdditionalProps").value = "{}"; });
-  (async () => {
-    const results = await Promise.allSettled([loadCatalog(), loadSources()]);
-    if (results[0].status === "rejected") showNotice("连接器支持目录无法读取：" + errorText(results[0].reason), "error");
-  })();
+  void refreshAll();
 })();

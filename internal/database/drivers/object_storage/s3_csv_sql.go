@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"path"
 	"regexp"
 	"sort"
@@ -815,6 +816,23 @@ func compareCSVValues(left, right interface{}) int {
 	if right == nil {
 		return 1
 	}
+	// Integers are compared exactly: float64 cannot represent every int64 or
+	// uint64 above 2^53, so adjacent source IDs would otherwise compare equal.
+	// Mixed integer/float operands are compared exactly too; NaN falls through
+	// to the ordinary float path.
+	if leftInt, ok := csvExactInteger(left); ok {
+		if rightInt, ok := csvExactInteger(right); ok {
+			return leftInt.Cmp(rightInt)
+		}
+		if rightFloat, ok := csvNumber(right); ok && !math.IsNaN(rightFloat) {
+			return compareExactIntegerFloat(leftInt, rightFloat)
+		}
+	}
+	if rightInt, ok := csvExactInteger(right); ok {
+		if leftFloat, ok := csvNumber(left); ok && !math.IsNaN(leftFloat) {
+			return -compareExactIntegerFloat(rightInt, leftFloat)
+		}
+	}
 	leftNumber, leftOK := csvNumber(left)
 	rightNumber, rightOK := csvNumber(right)
 	if leftOK && rightOK {
@@ -837,6 +855,45 @@ func compareCSVValues(left, right interface{}) int {
 		return 0
 	}
 }
+
+// csvExactInteger returns the exact value of an integer operand (any Go integer
+// type, or a base-10 integer string). It never routes through float64.
+func csvExactInteger(value interface{}) (*big.Int, bool) {
+	switch v := value.(type) {
+	case int:
+		return big.NewInt(int64(v)), true
+	case int8:
+		return big.NewInt(int64(v)), true
+	case int16:
+		return big.NewInt(int64(v)), true
+	case int32:
+		return big.NewInt(int64(v)), true
+	case int64:
+		return big.NewInt(v), true
+	case uint:
+		return new(big.Int).SetUint64(uint64(v)), true
+	case uint8:
+		return new(big.Int).SetUint64(uint64(v)), true
+	case uint16:
+		return new(big.Int).SetUint64(uint64(v)), true
+	case uint32:
+		return new(big.Int).SetUint64(uint64(v)), true
+	case uint64:
+		return new(big.Int).SetUint64(v), true
+	case string:
+		return new(big.Int).SetString(v, 10)
+	default:
+		return nil, false
+	}
+}
+
+// compareExactIntegerFloat compares an exact integer with a non-NaN float64
+// without rounding the integer. Both operands are exactly representable in a
+// big.Float, so the result is exact, including for infinities.
+func compareExactIntegerFloat(integer *big.Int, number float64) int {
+	return new(big.Float).SetInt(integer).Cmp(big.NewFloat(number))
+}
+
 func csvNumber(value interface{}) (float64, bool) {
 	switch v := value.(type) {
 	case int:
