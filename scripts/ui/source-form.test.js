@@ -221,3 +221,21 @@ test("switching connectors updates automatic ports but preserves deliberate edit
   await app.emit("sourceType", "change");
   assert.equal(app.$("sourcePort").value, "6543");
 });
+
+test("pressing Enter in the token field refreshes the list once, while typing sends nothing", async () => {
+  const app = await loadApp();
+  const listRequests = () => app.calls.filter((item) => item.method === "GET" && item.url.startsWith("/api/v1/datasources?")).length;
+  const press = async (key, extra = {}) => {
+    for (const handler of app.$("bearerToken").listeners.keydown || []) await handler({ type: "keydown", key, target: app.$("bearerToken"), preventDefault() {}, ...extra });
+  };
+  const before = listRequests();
+  app.$("bearerToken").value = "t";
+  await press("t");
+  app.$("bearerToken").value = "to";
+  await press("o");
+  assert.equal(listRequests(), before, "ordinary typing in the token field must not send a request");
+  await press("Enter");
+  assert.equal(listRequests(), before + 1, "Enter in the token field must refresh the source list once");
+  await press("Enter", { isComposing: true });
+  assert.equal(listRequests(), before + 1, "Enter that confirms an IME composition must not send a request");
+});
