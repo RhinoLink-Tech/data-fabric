@@ -1,28 +1,40 @@
-# Data Fabric identity login theme
+# Data Fabric identity theme
 
-Branded, Chinese-first Keycloak login pages for the WorkBuddy identity stack
-(#618). The theme covers the two pages users see most — sign-in and
-registration — plus one stylesheet and message overrides that restyle every
-other base page (password reset, required action, error pages).
+Branded, Chinese-first Keycloak login and email pages for the WorkBuddy
+identity stack (#618). The theme covers the two pages users see most —
+sign-in and registration — the identity emails (verification, password
+reset), plus one stylesheet and message overrides that restyle every other
+base page (password reset, required action, error pages).
 
 Layout and copy: warm cream canvas, single white card, terracotta accent,
-serif headline. The registration form keeps only the fields a signup actually
-requires: username, email, password, confirmation.
+serif headline. The registration form keeps only the fields a signup
+actually requires: with the default username mode that is username, email,
+password, confirmation; with `registrationEmailAsUsername` enabled the email
+field doubles as the username (posted as `email`, synced server-side, exactly
+like the base theme in that mode).
 
 ## What is overridden
 
 ```
-data-fabric/login/
-  theme.properties                  parent=base + df-* class wiring + one stylesheet
-  login.ftl                         登录页 (zh labels, required-only form)
-  register.ftl                      注册页 (username / email / password / confirm)
-  resources/css/df.css              all styling, for overridden and base pages alike
-  messages/messages_en.properties   zh copy for the most visible base messages
+data-fabric/
+  login/
+    theme.properties                  parent=base + df-* class wiring + one stylesheet
+    login.ftl                         登录页 (zh labels; social/external IdP links preserved)
+    register.ftl                      注册页 (required fields only; both username modes)
+    resources/css/df.css              all styling, for overridden and base pages alike
+    messages/messages_en.properties   zh copy for the most visible base messages
+  email/
+    theme.properties                  parent=base
+    html/template.ftl                 branded email layout (inline styles)
+    messages/messages_en.properties   zh subjects and bodies (placeholders preserved)
 ```
 
 Everything else (reset-credentials, required-action, action-token, error
-pages, shared JS) falls through to the Keycloak `base` theme and inherits the
-same `df-*` classes, so those pages share the look automatically.
+pages, shared JS, text-only email variants) falls through to the Keycloak
+`base` theme and inherits the same classes, so those pages share the look
+automatically. The base `socialProviders` section is kept in `login.ftl`, so
+configured external identity providers keep appearing when this theme is
+selected.
 
 ## Deployment
 
@@ -34,15 +46,18 @@ same `df-*` classes, so those pages share the look automatically.
    - ./deploy/mcp/identity-theme/data-fabric:/opt/keycloak/themes/data-fabric:ro
    ```
 
-2. In the Keycloak admin console: **Realm Settings → Themes → Login Theme →
-   `data-fabric`**, then **Realm Settings → General → Display Name** if the
-   header wordmark should say something else.
+2. In the Keycloak admin console: **Realm Settings → Themes** — set both
+   **Login Theme** and **Email Theme** to `data-fabric`. Adjust **Realm
+   Settings → General → Display Name** if the header wordmark should say
+   something else.
 
 3. Make the registration form actually minimal. The template no longer
    renders `firstName`/`lastName`, but Keycloak still rejects the POST until
-   those attributes are **removed from the realm user profile** — marking
-   them optional is not enough (verified on 26.3.5: `required.scopes: []`
-   and `required.scopes: ["profile"]` are still enforced at registration):
+   those attributes are **removed from the realm user profile**. On 26.3.5
+   every lighter variant was tested and still enforced at registration:
+   `required.scopes: []`, `required.scopes: ["profile"]`, and removing the
+   `required` key while keeping the attributes — the four-field POST only
+   goes through once the attributes are deleted:
 
    ```bash
    # fetch, delete the firstName/lastName attribute entries, PUT back
@@ -55,7 +70,18 @@ same `df-*` classes, so those pages share the look automatically.
    ```
 
    Admin-console path: **Realm Settings → User Profile → firstName /
-   lastName → Delete** (delete, not just uncheck Required).
+   lastName → Delete**.
+
+   Impact and reversibility before doing this:
+
+   - Stored values on existing users are **not erased** — deleting the
+     schema entry leaves their saved `firstName`/`lastName` in the database;
+     only the managed profile stops exposing the fields.
+   - Integrations or exports that read names through the user-profile API or
+     the account console lose those fields after the change; export first if
+     the data matters.
+   - The change is reversible: re-adding the two attributes restores the
+     schema, and previously stored values become visible again.
 
 4. Optional, for remaining system messages (verification emails, validation
    errors on pages this theme does not template-override): set the realm
@@ -69,8 +95,12 @@ same `df-*` classes, so those pages share the look automatically.
   macros to copy in).
 - **Password visibility toggle** is intentionally omitted (plain password
   inputs) to keep the page minimal.
+- **Email placeholders**: the zh overrides in `email/messages` must keep the
+  base templates' `{0}`…`{n}` placeholders; re-diff against the base bundle
+  when upgrading.
 - **Keycloak upgrades**: templates here mirror base 26.3.5. On a major
-  upgrade, re-diff against the new base `login.ftl` / `register.ftl`.
+  upgrade, re-diff against the new base `login.ftl` / `register.ftl` and the
+  email bundle.
 - **Acceptance script contract**: form ids `kc-form-login` /
   `kc-register-form`, the registrations link, and the
   `/login-actions/reset-credentials` link must stay; they are what
@@ -78,11 +108,24 @@ same `df-*` classes, so those pages share the look automatically.
 
 ## Local verification
 
-Verified end to end on the pinned image (26.3.5): with the theme selected and
-the two name attributes removed, a four-field registration POST returns 302,
-the user is created, and a login with the new credentials returns the OAuth
-callback code. Keycloak session cookies are `Secure`, so smoke-test over TLS
-(self-signed dev cert), not plain HTTP:
+Verified end to end on the pinned image (26.3.5):
+
+- default username mode: four-field registration POST returns 302, the user
+  is created, and a login with the new credentials returns the OAuth
+  callback code
+- `registrationEmailAsUsername` mode: the single email field (posted as
+  `email`) registers successfully with username synced to the email
+- a configured external identity provider renders in the login page's social
+  section alongside the native form
+- email verification: the themed verification email (zh subject, branded
+  card, 验证邮箱 button) arrives via SMTP; clicking through the action-token
+  confirmation flips the user to `emailVerified: true`
+- password reset: the themed reset email (zh subject 重置你的密码, branded
+  card, 重置密码 button) arrives with a valid action-token link
+
+Keycloak session cookies are `Secure`, so smoke-test over TLS (self-signed
+dev cert), not plain HTTP, and point the realm SMTP at a local sink for the
+email journey:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 2 -nodes \

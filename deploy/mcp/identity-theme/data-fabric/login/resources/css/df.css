@@ -150,6 +150,54 @@ h1#kc-page-title {
 a { color: var(--df-accent); font-weight: 500; text-decoration: none; }
 a:hover { color: var(--df-accent-dark); text-decoration: underline; }
 
+/* Social / external identity providers (restored from base login.ftl). */
+.df-social { margin-top: 20px; }
+
+.df-social hr {
+  border: 0;
+  border-top: 1px solid var(--df-line);
+  margin: 0 0 14px;
+}
+
+.df-social h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--df-sub);
+  text-align: center;
+}
+
+.df-social-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.df-social-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--df-input-line);
+  border-radius: 10px;
+  background: #fcfbf8;
+  color: var(--df-text);
+  font-weight: 600;
+  text-align: center;
+}
+
+.df-social-btn:hover {
+  border-color: var(--df-accent);
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.df-social-btn-disabled { opacity: 0.5; pointer-events: none; }
+
+.df-social-name { font-size: 14px; }
+
 .df-info,
 #kc-registration-container {
   margin-top: 16px;
@@ -158,7 +206,12 @@ a:hover { color: var(--df-accent-dark); text-decoration: underline; }
   color: var(--df-sub);
 }
 
-#kc-registration { margin-top: 16px; text-align: center; font-size: 14px; color: var(--df-sub); }
+#kc-registration {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--df-sub);
+}
 
 /* Messages / alerts. */
 .df-alert {
