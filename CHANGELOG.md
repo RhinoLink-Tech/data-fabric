@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- Allow the `X-Correlation-ID` request header in CORS preflight responses and expose the returned header to cross-origin browser clients (#593).
 - Return MySQL and MariaDB table indexes in table descriptions instead of an empty list when SHOW INDEX returns its wider result (#530).
 - Return HTTP 400 `INVALID_PARAMETERS` for malformed or out-of-range explicit `batch_size` values on the REST continuation endpoint (`GET /api/v1/fetch/...`), instead of silently using the 10,000 default (#597).
 - Reject mismatched existing MCP TLS certificates and private keys during initialization and doctor checks without replacing either file (#499).
@@ -27,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
 - Reject invalid MCP URL ports during DeepSeek client validation (#594).
 - Reject malformed OIDC issuer URLs in MCP onboarding doctor checks (#564).
+- Allow the `X-Correlation-ID` request header in CORS preflight responses and expose the returned header to cross-origin browser clients (#593).
 
 ## [v2.1.0-preview.1] - 2026-11-11
 
