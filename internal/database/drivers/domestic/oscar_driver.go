@@ -73,18 +73,27 @@ func (d *OscarDriver) GetDefaultPort() int {
 	return 2003
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value OscarDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only tunings are consulted defensively.
 func (d *OscarDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "UTF8"
+	if config == nil {
+		return ""
+	}
+
+	charset := "UTF8"
+	if d.config != nil && d.config.Charset != "" {
+		charset = d.config.Charset
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable client_encoding=%s",
 		config.Host, config.Port, config.Database, config.Username, config.Password, charset)
 
 	// Add schema if specified
-	if d.config.Schema != "" {
+	if d.config != nil && d.config.Schema != "" {
 		dsn += " search_path=" + d.config.Schema
 	}
 

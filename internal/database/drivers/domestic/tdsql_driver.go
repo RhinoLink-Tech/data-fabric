@@ -75,23 +75,32 @@ func (d *TDSQLDriver) GetDefaultPort() int {
 	return 3306
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value TDSQLDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only tuning fields are consulted defensively.
 func (d *TDSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "utf8mb4"
+	if config == nil {
+		return ""
+	}
+
+	charset := "utf8mb4"
+	if d.config != nil && d.config.Charset != "" {
+		charset = d.config.Charset
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s",
 		config.Username, config.Password, config.Host, config.Port, config.Database, charset)
 
 	// Add read-write split parameters
-	if d.config.ReadWriteSplit {
+	if d.config != nil && d.config.ReadWriteSplit {
 		dsn += "&readWriteSplit=true"
 	}
 
 	// Add consistency level
-	if d.config.Consistency != "" {
+	if d.config != nil && d.config.Consistency != "" {
 		dsn += "&consistency=" + d.config.Consistency
 	}
 

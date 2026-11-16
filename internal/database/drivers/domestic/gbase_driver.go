@@ -71,11 +71,20 @@ func (d *GBaseDriver) GetDefaultPort() int {
 	return 9088
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value GBaseDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only charset is consulted defensively.
 func (d *GBaseDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "utf8"
+	if config == nil {
+		return ""
+	}
+
+	charset := "utf8"
+	if d.config != nil && d.config.Charset != "" {
+		charset = d.config.Charset
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s",

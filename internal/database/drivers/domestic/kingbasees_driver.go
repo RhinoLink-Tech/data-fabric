@@ -72,18 +72,27 @@ func (d *KingbaseESDriver) GetDefaultPort() int {
 	return 54321
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value KingbaseESDriver (d.config ==
+// nil); dereferencing d.config here panicked every registry-sourced BuildDSN
+// call. The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only tunings are consulted defensively.
 func (d *KingbaseESDriver) BuildDSN(config *model.DataSourceConfig) string {
-	sslMode := d.config.SSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+	if config == nil {
+		return ""
+	}
+
+	sslMode := "disable"
+	if d.config != nil && d.config.SSLMode != "" {
+		sslMode = d.config.SSLMode
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
 		config.Host, config.Port, config.Database, config.Username, config.Password, sslMode)
 
 	// Add schema if specified
-	if d.config.Schema != "" {
+	if d.config != nil && d.config.Schema != "" {
 		dsn += " search_path=" + d.config.Schema
 	}
 
