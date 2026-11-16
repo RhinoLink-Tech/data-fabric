@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).
+
 ## [v2.1.0-preview.2] - 2026-11-16
 
 ### Added

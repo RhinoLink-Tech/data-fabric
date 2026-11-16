@@ -217,13 +217,13 @@ func (dtm *DataTypeMapper) mapPostgreSQLType(columnType string, nullable bool) m
 		return model.TypeText
 	case columnType == "bytea":
 		return model.TypeBinary
-	case columnType == "timestamp":
+	case columnType == "timestamp" || columnType == "timestamp without time zone" || columnType == "timestamp with time zone":
 		return model.TypeTimestamp
 	case columnType == "timestamptz":
 		return model.TypeTimestamp
 	case columnType == "date":
 		return model.TypeDate
-	case columnType == "time":
+	case columnType == "time" || columnType == "time without time zone" || columnType == "time with time zone":
 		return model.TypeTime
 	case columnType == "timetz":
 		return model.TypeTime
