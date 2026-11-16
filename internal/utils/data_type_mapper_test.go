@@ -227,9 +227,18 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 		{columnType: "xml", want: model.TypeText},
 		{columnType: "bytea", want: model.TypeBinary},
 		{columnType: "timestamp", want: model.TypeTimestamp},
+		{columnType: "timestamp without time zone", want: model.TypeTimestamp},
+		{columnType: "timestamp with time zone", want: model.TypeTimestamp},
+		{columnType: "timestamp(3) without time zone", want: model.TypeTimestamp},
+		{columnType: "TiMeStAmP(6) WiTh TiMe ZoNe", want: model.TypeTimestamp},
 		{columnType: "timestamptz", want: model.TypeTimestamp},
 		{columnType: "date", want: model.TypeDate},
 		{columnType: "time", want: model.TypeTime},
+		{columnType: "time without time zone", want: model.TypeTime},
+		{columnType: "time with time zone", want: model.TypeTime},
+		{columnType: "time(3) with time zone", want: model.TypeTime},
+		{columnType: "tImE(6) WiThOuT TiMe ZoNe", want: model.TypeTime},
+		{columnType: "timetz", want: model.TypeTime},
 		{columnType: "boolean", want: model.TypeBoolean},
 		{columnType: "uuid", want: model.TypeUUID},
 		{columnType: "json", want: model.TypeJSON},
@@ -240,6 +249,8 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 		{columnType: "INTEGER", want: model.TypeInteger},
 		{columnType: "NUMERIC(10,2)", want: model.TypeDecimal},
 		{columnType: "unknown_type", want: model.TypeUnknown},
+		{columnType: "timestamp with local time zone", want: model.TypeUnknown},
+		{columnType: "timestamp without timezone", want: model.TypeUnknown},
 	}
 
 	for _, tt := range tests {
