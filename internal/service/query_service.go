@@ -937,7 +937,7 @@ func (sm *SessionManager) deleteTransportSession(sessionID string) {
 	}
 	sm.mutex.Unlock()
 	for _, session := range sessions {
-		closeQueryCursor(session)
+		closeQueryCursorSerialized(session)
 	}
 }
 
@@ -967,7 +967,7 @@ func (sm *SessionManager) shutdown() {
 			<-sm.cleanupDone
 		}
 		for _, session := range sessions {
-			closeQueryCursor(session)
+			closeQueryCursorSerialized(session)
 		}
 	})
 }
@@ -1023,6 +1023,31 @@ func closeQueryCursor(session *QuerySession) {
 	}
 }
 
+// queryCursorCloseTimeout bounds how long a teardown path waits for an active
+// continuation to finish before closing a cursor regardless.
+const queryCursorCloseTimeout = 2 * time.Second
+
+// closeQueryCursorSerialized closes a session's cursor only after the in-flight
+// continuation (which holds session.continuationLock and is reading the cursor)
+// finishes. Teardown paths that run outside FetchNextBatch — TTL expiry cleanup,
+// transport-session removal, and shutdown — must use this so a concurrent read
+// is never racing a Close() on the same cursor (which is a driver-level error
+// and, on some cursors, a panic). If a continuation is stuck past the timeout,
+// the cursor is closed anyway rather than leaked.
+func closeQueryCursorSerialized(session *QuerySession) {
+	if session == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), queryCursorCloseTimeout)
+	defer cancel()
+	if err := session.continuationLock.Lock(ctx); err == nil {
+		closeQueryCursor(session)
+		session.continuationLock.Unlock()
+		return
+	}
+	closeQueryCursor(session)
+}
+
 func (sm *SessionManager) cleanupSessions() {
 	ticker := time.NewTicker(min(time.Minute, sm.ttl))
 	defer ticker.Stop()
@@ -1049,7 +1074,7 @@ func (sm *SessionManager) cleanupExpiredSessions(now time.Time) int {
 	}
 	sm.mutex.Unlock()
 	for _, session := range expired {
-		closeQueryCursor(session)
+		closeQueryCursorSerialized(session)
 	}
 	return len(expired)
 }
