@@ -4,9 +4,9 @@
 
 这是当前的合成数据首次使用 profile，画像与边界见[首个采用者说明](product/first-adopter-profile.md)。该画像仍是假设；尚无外部团队评估或生产结论。
 
-## 当前已发布的 Preview
+## 已发布的 Preview 镜像
 
-`v2.1.0-preview.1` 已于 2026-11-11 发布，GHCR 镜像包现已公开。发布镜像工作流和精确 digest 的 clean-runner 验收均已通过。无需本地编译的全新安装请使用[版本化发布镜像指南](releases/v2.1.0-preview.1-install-zh.md)。本版本范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或从 v2.0.0 原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
+从[GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases)选择可用版本，并使用对应安装指南：[v2.1.0-preview.2](releases/v2.1.0-preview.2-install-zh.md) 或较早的 [v2.1.0-preview.1](releases/v2.1.0-preview.1-install-zh.md)。preview.1 于 2026-11-11 发布并通过该版本的精确 digest 验收；不同版本的验收证据不能直接互用，请以对应 Release 中的源码 SHA、digest 和记录为准。评估范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
 
 ## 当前部署拓扑
 
@@ -86,7 +86,7 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml pull
 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 ```
 
-该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**已发布 Preview：** `v2.1.0-preview.1` 的公开镜像 digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`。对应的 [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)记录了精确镜像引用和验收结果；公开发布及匿名 clean-runner 镜像验收已完成。issue #442 仍开放跟踪剩余首次采用者证据。
+该 release overlay 会移除本地 build 配置，并让 API 与 MCP 使用同一个 tag@sha256 镜像。运行主机不需要 Go、源码编译或手动安装 Python 第三方包；初始化与诊断脚本只用 Python 标准库。镜像还包含 SQLGlot 运行时、项目与第三方 notices，以及按实际 Go 模块版本生成的许可证材料和 SHA-256 manifest。**preview.1 历史发布记录：** `v2.1.0-preview.1` 的公开镜像 digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`。对应的 [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)记录了精确镜像引用和验收结果；公开发布及匿名 clean-runner 镜像验收已完成。issue #442 仍开放跟踪剩余首次采用者证据。
 
 `/health` 的 `version` 和 `source_revision` 表示正在运行的应用构建版本和源码 revision。发布镜像中它们应与镜像的 `org.opencontainers.image.version`、`org.opencontainers.image.revision` 标签及发布记录一致。本地源码构建的版本为 `development`；构建时未提供 revision 则显示 `unknown`。这些字段不表示 `/api/v1` 的 API 版本。已发布的 `v2.1.0-preview.1` 镜像早于此改动，仍显示旧的固定版本号。
 

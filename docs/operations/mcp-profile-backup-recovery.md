@@ -1,5 +1,7 @@
 # Self-Hosted MCP Profile Backup and Recovery
 
+> **Preview.2 limitations:** the source-archive allowlist below recognizes preview.1, not preview.2. The helper also does not yet verify that the running API/MCP credential keyrings match the `.env` being archived ([#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)). A clean checkout alone does not resolve that risk. Do not rely on an untested backup or restore for valuable data; verify the effective key material and rehearse recovery independently.
+
 This runbook covers the current single-host profile: MySQL metadata, a pinned Data Fabric image, the credential-vault keyring and the OIDC configuration. Use it with the immutable candidate recorded in the backup manifest. It does not back up business-source databases, query results, live cursors, logs or the TLS private key.
 
 The backup contains the deployment `.env` and the complete `data_fabric` metadata database. Treat the encrypted archive as a secret. The metadata rows contain encrypted source credentials; they are useful only with every key in the recorded keyring. A syntactically valid keyring does not prove that every stored credential can be decrypted, so the restore rehearsal includes a selected-source connection check.

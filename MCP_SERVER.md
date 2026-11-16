@@ -37,6 +37,6 @@ The gateway validates tokens; it does not issue OAuth tokens or provide dynamic 
 
 ## Tools and limits
 
-The server exposes list_data_sources, get_data_source_info, execute_sql_query, fetch_next_batch, validate_sql_query, list_tables, describe_table, translate_sql, and list_supported_dialects. Source information does not include stored usernames or passwords.
+The server provides source discovery, schema inspection, query validation and execution, result continuation, and supported SQL translation tools. Additional source-management and policy tools depend on the configured service, transport and authorization. See the [tool reference](docs/mcp-tools.md) for the full current list and scope requirements. Source information does not include stored usernames or passwords. Local stdio has an open diagnostic-output limitation ([#535](https://github.com/RhinoLink-Tech/data-fabric/issues/535)); the evaluated Preview profile uses authenticated remote MCP.
 
 Queries remain subject to read-only validation, owner/tenant/source authorization, table/column policies where configured, bounded result and session limits, and audit behavior. SQL translation covers only the documented compatibility subset; successful translation does not guarantee equivalent execution semantics. The support catalog records which connector versions have an end-to-end contract.

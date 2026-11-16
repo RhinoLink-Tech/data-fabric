@@ -15,9 +15,9 @@ first — the quickstart below is the remote path.
 
 This is the current synthetic first-use profile linked from the [first-adopter brief](product/first-adopter-profile.md). The brief remains a hypothesis: no external team evaluation or production claim is recorded.
 
-## Current published Preview
+## Published Preview images
 
-`v2.1.0-preview.1` was published on 2026-11-11. The GHCR package is public, and the published-image workflow and exact-digest clean-runner acceptance passed. For a no-compile installation from a clean host, use the [version-specific published-image guide](releases/v2.1.0-preview.1-install.md). This release is limited to a single `linux/amd64` host; it has no HA, automatic failover, response-time SLA, or in-place upgrade path from v2.0.0. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+Choose an available [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases) and its matching installation guide: [v2.1.0-preview.2](releases/v2.1.0-preview.2-install.md) or the earlier [v2.1.0-preview.1](releases/v2.1.0-preview.1-install.md). The preview.1 image was published on 2026-11-11 and passed its own exact-digest clean-runner acceptance. Use the source SHA, digest and acceptance evidence recorded for the version you select; evidence does not automatically transfer between versions. The evaluated profile is one `linux/amd64` host without an HA, automatic failover, response-time SLA or in-place upgrade promise. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
 
 ## What gets deployed
 
@@ -296,7 +296,7 @@ The source-build quickstart above remains useful for contributors. The release p
 
 The release overlay removes the Compose build definition and always pulls the selected image. Use only the version and digest recorded by the successful tag workflow and matching GitHub Release; the placeholder above is not a usable image reference. If that release record is not available, continue using the source-build quickstart.
 
-**Published Preview (2026-11-11):** `v2.1.0-preview.1` is available from the public GHCR package at `ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.1@sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. The matching [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) records the source revision, digest, provenance and clean-runner acceptance. Release publication and image acceptance are complete; issue #442 remains open for its remaining first-adopter evidence. The Preview scope and limitations above still apply.
+**Historical preview.1 publication (2026-11-11):** `v2.1.0-preview.1` is available from the public GHCR package at `ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.1@sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. The matching [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) records the source revision, digest, provenance and clean-runner acceptance. Release publication and image acceptance are complete; issue #442 remains open for its remaining first-adopter evidence. The Preview scope and limitations above still apply.
 
 ## PostgreSQL sample source variant
 
