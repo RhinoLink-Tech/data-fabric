@@ -37,9 +37,9 @@ These were follow-up items after the v1.2.0 review. The later v2.1.0-preview.1 r
 This review does not create an SBOM. SBOM generation remains a separate release-policy task unless a future artifact format or policy requires it.
 
 
-## Current v2.1.0-preview.1 and container status (updated 2026-11-12)
+## Historical v2.1.0-preview.1 and container status (updated 2026-11-12)
 
-The artifact inventory and distribution statements above describe the historical 2026-10-20 review; this section is the current status.
+The artifact inventory and distribution statements above describe the historical 2026-10-20 review; the following section records preview.1. Consult the [Release list](https://github.com/RhinoLink-Tech/data-fabric/releases) for later artifact identities and acceptance evidence.
 
 - The latest stable GitHub Release is [v2.0.0](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.0.0). The public Preview [v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1) was published on 2026-11-11. Its annotated tag points to source SHA `570c2975fedbc886a37003a8b64b68caa699678c`; the public linux/amd64 GHCR image digest is `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`. Anonymous image retrieval and published-image acceptance on a clean GitHub runner passed. Issue #442 remains open for first-adopter evidence; publication is not a stable-release or production-readiness claim.
 - PR #463 merged the annotated-semver tag-gated GHCR publisher. It requires successful push CI for the exact master SHA, refuses existing version and source tags, publishes linux/amd64 version and source-SHA references, and attaches BuildKit SBOM and provenance. Ordinary pull requests do not publish.

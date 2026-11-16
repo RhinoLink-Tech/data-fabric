@@ -1,5 +1,7 @@
 # 自托管 MCP Profile 备份与恢复
 
+> **Preview.2 限制：**下方源码归档白名单识别 preview.1，不识别 preview.2。工具目前也未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）；使用干净 Git checkout 不能单独消除该风险。迁移有价值的数据前，请独立核对实际密钥并演练恢复，不要依赖未经验证的备份。
+
 本文覆盖当前单机 profile：MySQL 元数据库、固定身份的 Data Fabric 镜像、credential-vault keyring 和 OIDC 配置。操作时使用备份清单记录的不可变候选版本。流程不备份业务源数据库、查询结果、活动游标、日志或 TLS 私钥。
 
 备份包含 `deploy/mcp/.env` 和完整的 `data_fabric` 元数据库。加密归档必须按秘密管理：元数据行中的来源凭据虽已加密，仍依赖清单中的全部历史密钥才能解密。工具只能验证 keyring 格式，不能证明每个已存凭据都可解密；恢复验收会包含所选来源连接检查。
