@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const pageSize = 20;
-  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null, portManuallyEdited: false, testRun: 0 };
+  const state = { catalog: [], sources: [], total: 0, offset: 0, editingID: "", currentConfig: null, portManuallyEdited: false, testRun: 0, listRun: 0 };
   const $ = (id) => document.getElementById(id);
   const tokenInput = $("bearerToken");
   const rows = $("sourceRows");
@@ -139,8 +139,11 @@
     if (state.sources.length) renderSources();
   }
   async function loadSources() {
+    // Only the newest load may write the list; an older response that completes late is ignored.
+    const run = ++state.listRun;
     try {
       const result = await api("/api/v1/datasources?limit=" + pageSize + "&offset=" + state.offset);
+      if (run !== state.listRun) return;
       const total = Number(result && result.total);
       if (state.offset > 0 && Number.isFinite(total) && state.offset >= total) {
         // The list shrank past the current page (e.g. another operator removed sources): load the last valid page.
@@ -149,7 +152,7 @@
       }
       state.sources = Array.isArray(result && result.dataSources) ? result.dataSources : [];
       state.total = total || state.sources.length; renderSources();
-    } catch (error) { renderLoadError(error); }
+    } catch (error) { if (run === state.listRun) renderLoadError(error); }
   }
   function addTypeOption(select, item, suffix = "") {
     const option = document.createElement("option"); option.value = item.type;
