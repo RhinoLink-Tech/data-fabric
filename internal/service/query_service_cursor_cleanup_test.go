@@ -57,7 +57,10 @@ func TestCleanupExpiredSessionsWaitsForInFlightContinuation(t *testing.T) {
 	case <-time.After(150 * time.Millisecond):
 	}
 
-	// When the continuation finishes, the cleanup may close the cursor.
+	// When the continuation finishes, the cleanup may close the cursor. The
+	// cursor.channel and cleanupDone are closed by two separate goroutines (the
+	// Close(), then the cleanupExpiredSessions return), so both waits must block
+	// — a non-blocking default here races the return and flakes under -race.
 	session.continuationLock.Unlock()
 	select {
 	case <-cursor.closed:
@@ -66,7 +69,7 @@ func TestCleanupExpiredSessionsWaitsForInFlightContinuation(t *testing.T) {
 	}
 	select {
 	case <-cleanupDone:
-	default:
+	case <-time.After(2 * time.Second):
 		t.Fatal("cleanup did not finish")
 	}
 }
