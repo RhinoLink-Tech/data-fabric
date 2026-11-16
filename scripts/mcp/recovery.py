@@ -50,7 +50,17 @@ def parse_env(path: Path) -> dict[str, str]:
             continue
         key, value = match.groups()
         value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        quoted = re.match(r'''^(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(?:#.*)?$''', value)
+        if quoted:
+            if value[0] == '"':
+                try:
+                    value = json.loads(value[: quoted.end(1) + 1])
+                except json.JSONDecodeError as exc:
+                    raise RecoveryError(f".env contains invalid quoted value for {key}") from exc
+            else:
+                value = quoted.group(2)
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            # Malformed quoting keeps the earlier behavior: a bad double-quoted value is rejected.
             if value[0] == '"':
                 try:
                     value = json.loads(value)
@@ -58,6 +68,9 @@ def parse_env(path: Path) -> dict[str, str]:
                     raise RecoveryError(f".env contains invalid quoted value for {key}") from exc
             else:
                 value = value[1:-1]
+        elif value[:1] not in ("\"", "'"):
+            # Compose: an unquoted value ends at whitespace followed by '#'; a leading '#' starts a comment.
+            value = "" if value.startswith("#") else re.split(r"\s+#", value, maxsplit=1)[0].strip()
         if key in values:
             duplicates.add(key)
         values[key] = value

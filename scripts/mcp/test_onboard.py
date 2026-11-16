@@ -426,6 +426,33 @@ class SourceRequestBoundaryTests(unittest.TestCase):
                 self.assertNotIn("synthetic-token", output)
 
 
+class EnvInlineCommentTests(unittest.TestCase):
+    def test_env_inline_comments_match_compose_in_both_parsers(self):
+        import recovery
+
+        content = (
+            "API_PORT=18181 # loopback port\n"
+            'AUDIENCE="api.example" # audience\n'
+            "PLAIN=a#b\n"
+            'LITERAL="a # b"\n'
+        )
+        expected = {"API_PORT": "18181", "AUDIENCE": "api.example", "PLAIN": "a#b", "LITERAL": "a # b"}
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text(content, encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), expected)
+            self.assertEqual(recovery.parse_env(env), expected)
+
+    def test_malformed_quoted_values_keep_outer_quote_stripping(self):
+        import recovery
+
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text('KEY="a"b"\n', encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), {"KEY": 'a"b'})
+            self.assertRaises(recovery.RecoveryError, recovery.parse_env, env)
+
+
 class NonUtf8EnvTests(unittest.TestCase):
     def make_deploy(self):
         directory = Path(tempfile.mkdtemp())
