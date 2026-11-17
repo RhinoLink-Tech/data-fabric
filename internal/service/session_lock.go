@@ -63,6 +63,17 @@ func (lock *sessionContinuationLock) Lock(ctx context.Context) error {
 	}
 }
 
+// TryLock takes the continuation lock without waiting.
+func (lock *sessionContinuationLock) TryLock() bool {
+	lock.once.Do(func() { lock.gate = make(chan struct{}, 1) })
+	select {
+	case lock.gate <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
 func (lock *sessionContinuationLock) Unlock() {
 	lock.once.Do(func() {
 		lock.gate = make(chan struct{}, 1)
