@@ -443,6 +443,22 @@ class EnvInlineCommentTests(unittest.TestCase):
             self.assertEqual(onboard.parse_env(env), expected)
             self.assertEqual(recovery.parse_env(env), expected)
 
+    def test_leading_hash_without_space_is_a_literal_value(self):
+        import recovery
+
+        content = (
+            "HASH=#synthetic-secret\n"
+            "SPACE_HASH= # comment\n"
+            "LITERAL=abc#suffix\n"
+            "WITH_COMMENT=abc # comment\n"
+        )
+        expected = {"HASH": "#synthetic-secret", "SPACE_HASH": "# comment", "LITERAL": "abc#suffix", "WITH_COMMENT": "abc"}
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text(content, encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), expected)
+            self.assertEqual(recovery.parse_env(env), expected)
+
     def test_malformed_quoted_values_keep_outer_quote_stripping(self):
         import recovery
 

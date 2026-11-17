@@ -69,8 +69,8 @@ def parse_env(path: Path) -> dict[str, str]:
             else:
                 value = value[1:-1]
         elif value[:1] not in ("\"", "'"):
-            # Compose: an unquoted value ends at whitespace followed by '#'; a leading '#' starts a comment.
-            value = "" if value.startswith("#") else re.split(r"\s+#", value, maxsplit=1)[0].strip()
+            # Compose recognizes an unquoted comment only when whitespace precedes the hash.
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
         if key in values:
             duplicates.add(key)
         values[key] = value
