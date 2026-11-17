@@ -482,7 +482,18 @@ func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model
 	if err != nil {
 		return "", err
 	}
-	return driver.BuildDSN(config), nil
+	dsn := driver.BuildDSN(config)
+	// These registry-created drivers reject TLS settings they cannot safely
+	// translate into a verified transport. Check before read-only or egress
+	// paths can transform or open the DSN.
+	switch dbType {
+	case model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES,
+		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+		if err := driver.ValidateDSN(dsn); err != nil {
+			return "", err
+		}
+	}
+	return dsn, nil
 }
 
 // defaultIdleTimeout is how long a pooled data-source connection may sit

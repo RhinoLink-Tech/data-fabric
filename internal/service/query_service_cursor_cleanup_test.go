@@ -30,7 +30,7 @@ func (c *blockingCursor) Close() error {
 // (and, on some cursors, a panic). This test pins the required behavior: the
 // expiry cleanup must wait for the active continuation to release the lock
 // before closing the cursor.
-func TestCleanupExpiredSessionsWaitsForInFlightContinuation(t *testing.T) {
+func TestCleanupExpiredSessionsDefersCloseUntilContinuationFinishes(t *testing.T) {
 	cursor := newBlockingCursor()
 	session := &QuerySession{
 		QueryID:   "q",
@@ -50,26 +50,23 @@ func TestCleanupExpiredSessionsWaitsForInFlightContinuation(t *testing.T) {
 		close(cleanupDone)
 	}()
 
-	// The cleanup must not close the cursor while the continuation is reading it.
+	// Cleanup should remain responsive without closing an active cursor.
+	select {
+	case <-cleanupDone:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup blocked on an active continuation")
+	}
 	select {
 	case <-cursor.closed:
 		t.Fatal("cleanup closed the cursor while a continuation was still reading it")
-	case <-time.After(150 * time.Millisecond):
+	default:
 	}
 
-	// When the continuation finishes, the cleanup may close the cursor. The
-	// cursor.channel and cleanupDone are closed by two separate goroutines (the
-	// Close(), then the cleanupExpiredSessions return), so both waits must block
-	// — a non-blocking default here races the return and flakes under -race.
 	session.continuationLock.Unlock()
 	select {
 	case <-cursor.closed:
 	case <-time.After(2 * time.Second):
 		t.Fatal("cleanup did not close the cursor after the continuation finished")
 	}
-	select {
-	case <-cleanupDone:
-	case <-time.After(2 * time.Second):
-		t.Fatal("cleanup did not finish")
-	}
+	manager.closing.Wait()
 }

@@ -43,6 +43,9 @@ func NewKingbaseESDriver(config *KingbaseESConfig) (*KingbaseESDriver, error) {
 
 // Open opens a connection to KingbaseES (PostgreSQL-compatible)
 func (d *KingbaseESDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open KingbaseES connection: %w", err)
@@ -61,6 +64,9 @@ func (d *KingbaseESDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *KingbaseESDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -81,6 +87,13 @@ func (d *KingbaseESDriver) GetDefaultPort() int {
 func (d *KingbaseESDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config == nil {
 		return ""
+	}
+	constructorMode := ""
+	if d.config != nil {
+		constructorMode = d.config.SSLMode
+	}
+	if unsupportedDomesticTLS(config, constructorMode) {
+		return unsupportedDomesticTLSDSN
 	}
 
 	sslMode := "disable"

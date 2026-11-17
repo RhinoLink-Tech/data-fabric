@@ -63,6 +63,7 @@ type QuerySession struct {
 type SessionManager struct {
 	sessions     map[string]*QuerySession
 	mutex        sync.RWMutex
+	closing      sync.WaitGroup
 	ttl          time.Duration
 	closed       bool
 	stopCleanup  chan struct{}
@@ -932,12 +933,20 @@ func (sm *SessionManager) deleteTransportSession(sessionID string) {
 	for id, session := range sm.sessions {
 		if session.creator.transportSessionID == sessionID {
 			delete(sm.sessions, id)
-			sessions = append(sessions, session)
+			if session.Cursor != nil {
+				sm.closing.Add(1)
+				sessions = append(sessions, session)
+			}
 		}
 	}
 	sm.mutex.Unlock()
+	var pending []<-chan struct{}
 	for _, session := range sessions {
-		closeQueryCursorSerialized(session)
+		pending = append(pending, sm.scheduleCursorClose(session))
+	}
+	// The owner transport keeps its slot charged until these closes finish.
+	for _, done := range pending {
+		<-done
 	}
 }
 
@@ -960,15 +969,25 @@ func (sm *SessionManager) shutdown() {
 		sm.closed = true
 		sessions := sm.sessions
 		sm.sessions = nil
+		var cursors []*QuerySession
+		for _, session := range sessions {
+			if session.Cursor != nil {
+				sm.closing.Add(1)
+				cursors = append(cursors, session)
+			}
+		}
 		sm.mutex.Unlock()
 
 		if sm.stopCleanup != nil {
 			close(sm.stopCleanup)
 			<-sm.cleanupDone
 		}
-		for _, session := range sessions {
-			closeQueryCursorSerialized(session)
+		for _, session := range cursors {
+			sm.scheduleCursorClose(session)
 		}
+		// All Add calls are made while holding sm.mutex, before sm.closed
+		// becomes visible; no new closers can be registered after shutdown.
+		sm.closing.Wait()
 	})
 }
 
@@ -1023,29 +1042,27 @@ func closeQueryCursor(session *QuerySession) {
 	}
 }
 
-// queryCursorCloseTimeout bounds how long a teardown path waits for an active
-// continuation to finish before closing a cursor regardless.
-const queryCursorCloseTimeout = 2 * time.Second
-
-// closeQueryCursorSerialized closes a session's cursor only after the in-flight
-// continuation (which holds session.continuationLock and is reading the cursor)
-// finishes. Teardown paths that run outside FetchNextBatch — TTL expiry cleanup,
-// transport-session removal, and shutdown — must use this so a concurrent read
-// is never racing a Close() on the same cursor (which is a driver-level error
-// and, on some cursors, a panic). If a continuation is stuck past the timeout,
-// the cursor is closed anyway rather than leaked.
-func closeQueryCursorSerialized(session *QuerySession) {
-	if session == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), queryCursorCloseTimeout)
-	defer cancel()
-	if err := session.continuationLock.Lock(ctx); err == nil {
+// scheduleCursorClose is called only after the caller registered the close
+// under sm.mutex. Idle cursors close immediately; a cursor in use is closed
+// after its continuation releases the lock, without blocking the TTL sweeper.
+// Shutdown and transport cleanup wait for registered closes.
+func (sm *SessionManager) scheduleCursorClose(session *QuerySession) <-chan struct{} {
+	done := make(chan struct{})
+	finish := func() {
+		defer close(done)
+		defer sm.closing.Done()
+		defer session.continuationLock.Unlock()
 		closeQueryCursor(session)
-		session.continuationLock.Unlock()
-		return
 	}
-	closeQueryCursor(session)
+	if session.continuationLock.TryLock() {
+		finish()
+	} else {
+		go func() {
+			_ = session.continuationLock.Lock(context.Background())
+			finish()
+		}()
+	}
+	return done
 }
 
 func (sm *SessionManager) cleanupSessions() {
@@ -1070,11 +1087,16 @@ func (sm *SessionManager) cleanupExpiredSessions(now time.Time) int {
 		if now.After(session.ExpiresAt) {
 			delete(sm.sessions, id)
 			expired = append(expired, session)
+			if session.Cursor != nil {
+				sm.closing.Add(1)
+			}
 		}
 	}
 	sm.mutex.Unlock()
 	for _, session := range expired {
-		closeQueryCursorSerialized(session)
+		if session.Cursor != nil {
+			sm.scheduleCursorClose(session)
+		}
 	}
 	return len(expired)
 }

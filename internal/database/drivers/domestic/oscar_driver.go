@@ -44,6 +44,9 @@ func NewOscarDriver(config *OscarConfig) (*OscarDriver, error) {
 
 // Open opens a connection to Oscar (PostgreSQL-compatible)
 func (d *OscarDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Oscar connection: %w", err)
@@ -62,6 +65,9 @@ func (d *OscarDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *OscarDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -82,6 +88,9 @@ func (d *OscarDriver) GetDefaultPort() int {
 func (d *OscarDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config == nil {
 		return ""
+	}
+	if unsupportedDomesticTLS(config, "") {
+		return unsupportedDomesticTLSDSN
 	}
 
 	charset := "UTF8"

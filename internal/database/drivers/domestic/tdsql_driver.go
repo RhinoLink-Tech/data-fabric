@@ -46,6 +46,9 @@ func NewTDSQLDriver(config *TDSQLConfig) (*TDSQLDriver, error) {
 
 // Open opens a connection to TDSQL
 func (d *TDSQLDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TDSQL connection: %w", err)
@@ -64,6 +67,9 @@ func (d *TDSQLDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *TDSQLDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -84,6 +90,9 @@ func (d *TDSQLDriver) GetDefaultPort() int {
 func (d *TDSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config == nil {
 		return ""
+	}
+	if unsupportedDomesticTLS(config, "") {
+		return unsupportedDomesticTLSDSN
 	}
 
 	charset := "utf8mb4"
