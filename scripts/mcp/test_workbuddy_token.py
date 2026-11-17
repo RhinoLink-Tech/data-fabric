@@ -14,6 +14,24 @@ spec.loader.exec_module(helper)
 
 
 class PkceTests(unittest.TestCase):
+    def test_request_json_identifies_the_helper(self):
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return None
+            def read(self, *args):
+                return b'{"ok": true}'
+        class Opener:
+            def open(self, request, timeout):
+                self.request = request
+                self.timeout = timeout
+                return Response()
+        opener = Opener()
+        with patch.object(helper.urllib.request, "build_opener", return_value=opener):
+            self.assertEqual(helper.request_json("https://identity.test/metadata"), {"ok": True})
+            self.assertEqual(opener.request.get_header("User-agent"), "Data-Fabric-WorkBuddy-PKCE/1.0")
+
     def test_challenge_is_s256_and_unique(self):
         verifier, challenge = helper.pkce()
         expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()

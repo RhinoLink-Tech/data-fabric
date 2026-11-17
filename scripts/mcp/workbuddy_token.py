@@ -36,7 +36,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def request_json(url, data=None):
     https_url(url)
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": "Data-Fabric-WorkBuddy-PKCE/1.0"}
     if data is not None:
         data = urllib.parse.urlencode(data).encode("ascii")
         headers["Content-Type"] = "application/x-www-form-urlencoded"
