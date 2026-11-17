@@ -47,14 +47,24 @@ def parse_env(path):
             continue
         key, value = match.groups()
         value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        quoted = re.match(r'''^(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(?:#.*)?$''', value)
+        if quoted:
             if value[0] == '"':
                 try:
-                    value = json.loads(value)
+                    value = json.loads(value[: quoted.end(1) + 1])
                 except json.JSONDecodeError:
-                    value = value[1:-1]
+                    value = quoted.group(1)
             else:
+                value = quoted.group(2)
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            # Malformed quoting keeps the earlier behavior: strip the matching outer quotes.
+            try:
+                value = json.loads(value) if value[0] == '"' else value[1:-1]
+            except json.JSONDecodeError:
                 value = value[1:-1]
+        elif value[:1] not in ("\"", "'"):
+            # Compose recognizes an unquoted comment only when whitespace precedes the hash.
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
         if key in values:
             duplicates.add(key)
         values[key] = value
