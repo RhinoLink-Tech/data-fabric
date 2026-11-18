@@ -165,6 +165,85 @@ class OIDCIssuerDoctorTests(unittest.TestCase):
             self.assertIn("Doctor completed:", output.getvalue())
 
 
+
+
+class OAuthResourceDoctorTests(unittest.TestCase):
+    def test_opt_in_resource_and_audience(self):
+        cases = [
+            ("disabled", "", "old-audience", None),
+            ("valid", "https://fabric.example/mcp", "https://fabric.example/mcp", True),
+            ("mismatched audience", "https://fabric.example/mcp", "old-audience", False),
+            ("http", "http://fabric.example/mcp", "http://fabric.example/mcp", False),
+            ("query", "https://fabric.example/mcp?token=synthetic-secret", "https://fabric.example/mcp?token=synthetic-secret", False),
+            ("wrong path", "https://fabric.example/api", "https://fabric.example/api", False),
+            ("credentials", "https://user:synthetic-secret@fabric.example/mcp", "https://user:synthetic-secret@fabric.example/mcp", False),
+            ("bad port", "https://fabric.example:invalid/mcp", "https://fabric.example:invalid/mcp", False),
+        ]
+        for name, resource, audience, valid in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                deploy = Path(directory)
+                (deploy / ".env").write_text(
+                    f"MCP_OIDC_ISSUER=https://id.example/realm\nMCP_OIDC_AUDIENCE={audience}\n"
+                    f"DATA_FABRIC_MCP_OAUTH_RESOURCE={resource}\n", encoding="utf-8")
+                output = io.StringIO()
+                args = SimpleNamespace(directory=deploy, probe_oidc=False)
+                with (contextlib.redirect_stdout(output),
+                      mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                      mock.patch.object(onboard, "check_identity"),
+                      mock.patch.object(onboard, "source_connection_check")):
+                    onboard.command_doctor(args)
+                result = output.getvalue()
+                self.assertNotIn("synthetic-secret", result)
+                if valid is None:
+                    self.assertNotIn("MCP OAuth resource URL and audience match", result)
+                    self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE must", result)
+                elif valid:
+                    self.assertIn("OK  MCP OAuth resource URL and audience match", result)
+                else:
+                    self.assertIn("ERR DATA_FABRIC_MCP_OAUTH_RESOURCE must", result)
+
+    @unittest.skipUnless(shutil.which("docker"), "Docker Compose is required")
+    def test_compose_passes_discovery_only_to_mcp(self):
+        compose_dir = Path(__file__).resolve().parents[2] / "deploy" / "mcp"
+        env_values = {
+            "DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID": "synthetic",
+            "DATA_FABRIC_CREDENTIAL_KEYS": "synthetic",
+            "JWT_SECRET": "synthetic",
+            "MCP_OIDC_AUDIENCE": "https://fabric.example/mcp",
+            "MCP_OIDC_ISSUER": "https://identity.example/realm",
+            "METADATA_DB_PASSWORD": "synthetic",
+            "METADATA_DB_ROOT_PASSWORD": "synthetic",
+            "SAMPLE_READER_PASSWORD": "synthetic",
+            "SAMPLE_SOURCE_ROOT_PASSWORD": "synthetic",
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            env_path = Path(temp) / ".env"
+            def config(resource):
+                vals = dict(env_values)
+                if resource is not None:
+                    vals["DATA_FABRIC_MCP_OAUTH_RESOURCE"] = resource
+                env_path.write_text("".join(f"{key}={value}\n" for key, value in vals.items()))
+                proc = onboard.compose_command(compose_dir, env_path, "config", "--format", "json")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                return json.loads(proc.stdout)["services"]
+            services = config(None)
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["DATA_FABRIC_MCP_OAUTH_RESOURCE"], "")
+            services = config("https://fabric.example/mcp")
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["DATA_FABRIC_MCP_OAUTH_RESOURCE"], "https://fabric.example/mcp")
+            self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE", services["data-fabric-api"]["environment"])
+
+    def test_doctor_compose_uses_file_resource_not_shell_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            captured = {}
+            def fake_run(command, **kwargs):
+                captured.update(kwargs["env"])
+                return SimpleNamespace(returncode=0)
+            with mock.patch.dict(os.environ, {"DATA_FABRIC_MCP_OAUTH_RESOURCE": "https://shell.example/mcp"}), \
+                 mock.patch.object(onboard.subprocess, "run", side_effect=fake_run):
+                onboard.compose_command(Path(directory), Path(directory) / ".env", "config", "--quiet")
+            self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE", captured)
+
+
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
 class TLSPairTests(unittest.TestCase):
     def setUp(self):
