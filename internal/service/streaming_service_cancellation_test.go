@@ -125,10 +125,17 @@ func TestFetchStreamChunkCancellationDeletesCoordinatorQuery(t *testing.T) {
 			http.Error(w, "unexpected request", http.StatusMethodNotAllowed)
 		}
 	}))
-	defer func() { close(releaseFetch); server.Close() }()
+	var pool *database.ConnectionPool
+	defer func() {
+		close(releaseFetch)
+		if pool != nil {
+			_ = pool.CloseAll()
+		}
+		server.Close()
+	}()
 
-	svc, pool := newStreamingTestService(t, server)
-	defer func() { _ = pool.CloseAll() }()
+	var svc *streamingService
+	svc, pool = newStreamingTestService(t, server)
 	streamID, total, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM sales.orders",
