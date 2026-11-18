@@ -42,6 +42,9 @@ server {
   location ^~ /identity/realms/data-fabric/protocol/openid-connect/login-status-iframe.html { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
   location ^~ /identity/realms/data-fabric/protocol/openid-connect/3p-cookies/ { limit_req zone=wb_identity burst=12 nodelay; proxy_pass $identity; }
   location = /mcp { proxy_pass $gateway; }
+  # Forward only the RFC 9728 paths; the gateway controls opt-in discovery.
+  location = /.well-known/oauth-protected-resource { proxy_pass $gateway; }
+  location = /.well-known/oauth-protected-resource/mcp { proxy_pass $gateway; }
   location ^~ /onboarding/ { proxy_pass $gateway; }
   location ^~ /identity/resources/ { proxy_pass $identity; }
   location = /identity/realms/data-fabric/.well-known/openid-configuration { proxy_pass $identity; }

@@ -20,6 +20,8 @@ func TestWorkBuddyIdentityProxyContract(t *testing.T) {
 		t.Fatal("deployment template must use the configured public hostname")
 	}
 	shared := []string{
+		"location = /.well-known/oauth-protected-resource { proxy_pass $gateway; }",
+		"location = /.well-known/oauth-protected-resource/mcp { proxy_pass $gateway; }",
 		"location = /identity/realms/data-fabric/protocol/openid-connect/logout/logout-confirm",
 		"location = /identity/realms/data-fabric/protocol/openid-connect/registrations",
 		"location ^~ /identity/realms/data-fabric/account/",
