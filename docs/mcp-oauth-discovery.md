@@ -36,3 +36,20 @@ resource URL can break existing WorkBuddy clients whose tokens use a different
 audience. Coordinate the identity-provider audience mapping and compatibility
 checks before rollout; preserve the existing default when not explicitly enabled.
 Discovery alone does not create clients, register callbacks, or issue tokens.
+
+## Standard Compose profile
+
+In `deploy/mcp/.env`, optionally set `DATA_FABRIC_MCP_OAUTH_RESOURCE` to the
+exact external HTTPS URL ending in `/mcp`, and set `MCP_OIDC_AUDIENCE` to the
+same value. Leave the resource blank to keep discovery disabled. Run
+`python3 scripts/mcp/onboard.py doctor` to check the URL and audience, then
+recreate the MCP container through your normal deployment process. The doctor
+checks configuration, not issuer token behavior or external proxy routing.
+Docker Compose environment variables exported in the shell take precedence over
+`.env` when running Compose directly; verify the effective MCP configuration
+without exposing secrets before restarting the container.
+Verify both public metadata paths, the 401 challenge, token audience, callback
+and refresh using an authorized client before claiming a working connection.
+The authorization server must support the chosen client onboarding method.
+Changing the audience can invalidate existing WorkBuddy tokens; do not change a
+live deployment until the identity provider and all affected clients are ready.
