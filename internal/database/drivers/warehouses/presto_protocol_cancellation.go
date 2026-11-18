@@ -96,7 +96,7 @@ func (rt *queryCancellationRoundTripper) RoundTrip(request *http.Request) (*http
 		}
 	}
 
-	cancelURI, stopAfterFunc := rt.finishRequest(ctx, query, request.Method, nextURI, nextURIFound, responseComplete, requestErr != nil)
+	cancelURI, stopAfterFunc := rt.finishRequest(ctx, query, request.Method, nextURI, nextURIFound, responseComplete)
 	if stopAfterFunc != nil {
 		stopAfterFunc()
 	}
@@ -237,7 +237,6 @@ func (rt *queryCancellationRoundTripper) finishRequest(
 	nextURI string,
 	nextURIFound bool,
 	responseComplete bool,
-	requestFailed bool,
 ) (string, func() bool) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -246,12 +245,6 @@ func (rt *queryCancellationRoundTripper) finishRequest(
 		query.inFlight--
 	}
 	if method == http.MethodGet && query.inFlightFetches > 0 {
-		// A canceled fetch is handled by the Presto client, which sends its
-		// own DELETE. Record it before decrementing the counter: AfterFunc
-		// may otherwise observe zero and issue a duplicate cancellation.
-		if requestFailed && ctx.Err() != nil {
-			query.cancelDuringFetch = true
-		}
 		query.inFlightFetches--
 	}
 	if nextURIFound {
