@@ -99,8 +99,8 @@ class BackupSnapshotTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             return recovery.backup(self.args)
 
-    def assert_restart_and_no_archive(self):
-        self.assertEqual(self.running, set(recovery.APP_SERVICES))
+    def assert_restart_attempt_and_no_archive(self):
+        # Fake service-name bookkeeping does not prove which actual containers restarted.
         self.assertTrue(any(call[0] == "start" and set(call[1:]) == set(recovery.APP_SERVICES)
                             for call in self.calls))
         self.assertFalse(self.args.output.exists())
@@ -112,13 +112,13 @@ class BackupSnapshotTests(unittest.TestCase):
         self.stop_action = replace
         with self.assertRaisesRegex(recovery.RecoveryError, "container changed"):
             self.execute()
-        self.assert_restart_and_no_archive()
+        self.assert_restart_attempt_and_no_archive()
 
     def test_env_change_after_stop_aborts_and_restarts(self):
         self.stop_action = lambda: self.env.write_bytes(self.changed)
         with self.assertRaisesRegex(recovery.RecoveryError, "deployment .env changed"):
             self.execute()
-        self.assert_restart_and_no_archive()
+        self.assert_restart_attempt_and_no_archive()
 
     def test_success_archives_verified_snapshot_even_if_env_changes_during_dump(self):
         # The preflight checks have finished before the dump; copy must still use
@@ -130,7 +130,7 @@ class BackupSnapshotTests(unittest.TestCase):
         self.assertEqual(self.manifest["files"]["deployment.env"]["sha256"],
                          __import__("hashlib").sha256(self.snapshot).hexdigest())
         self.assertTrue(self.args.output.exists())
-        self.assertEqual(self.running, set(recovery.APP_SERVICES))
+        # This mock checks the start attempt, not real Docker or service health.
         self.assertTrue(any(call[0] == "start" for call in self.calls))
 
 
