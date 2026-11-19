@@ -80,6 +80,15 @@ if [ "$ready" != true ]; then
   exit 1
 fi
 
+# A separate account has SELECT on one synthetic table only; the contract
+# checks source-side privileges independently of the gateway read-only session.
+docker exec --env MYSQL_PWD=contract-test-only "$container_name" \
+  mariadb --user=root --protocol=tcp --host=127.0.0.1 --execute="
+    CREATE TABLE data_fabric_contract.browser_orders (id BIGINT PRIMARY KEY, status VARCHAR(16) NOT NULL);
+    INSERT INTO data_fabric_contract.browser_orders VALUES (1, 'shipped'), (2, 'new'), (3, 'shipped');
+    CREATE USER 'browser_reader'@'%' IDENTIFIED BY 'browser-test-only';
+    GRANT SELECT ON data_fabric_contract.browser_orders TO 'browser_reader'@'%';"
+
 cd "$repo_root"
 DATA_FABRIC_MARIADB_TLS_CONTRACT_HOST=localhost \
   DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
@@ -105,8 +114,8 @@ DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
   go test ./internal/database -run '^TestMariaDBRestrictedOnboardingTLSContract$' -count=1 -v
 
 DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
-  DATA_FABRIC_MARIADB_TLS_CONTRACT_USERNAME=data_fabric_contract \
-  DATA_FABRIC_MARIADB_TLS_CONTRACT_PASSWORD=contract-test-only \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_USERNAME=browser_reader \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_PASSWORD=browser-test-only \
   DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE=data_fabric_contract \
   DATA_FABRIC_MARIADB_TLS_ROOT_CA="$work_dir/ca.crt" \
   go test ./internal/workbuddy/onboardinghttp -run '^TestMariaDBBrowserRestrictedTLSContract$' -count=1 -v

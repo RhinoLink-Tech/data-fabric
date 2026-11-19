@@ -128,8 +128,55 @@ func TestMariaDBBrowserRestrictedTLSContract(t *testing.T) {
 	if err = conn.QueryRow("SELECT 1").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("created source query: %v", err)
 	}
+	rows, err := conn.Query("SELECT id, status FROM browser_orders ORDER BY id")
+	if err != nil {
+		t.Fatalf("order query failed: %v", err)
+	}
+	defer rows.Close()
+	want := []struct {
+		id     int
+		status string
+	}{{1, "shipped"}, {2, "new"}, {3, "shipped"}}
+	index := 0
+	for rows.Next() {
+		var id int
+		var status string
+		if index >= len(want) || rows.Scan(&id, &status) != nil || id != want[index].id || status != want[index].status {
+			t.Fatal("unexpected order result")
+		}
+		index++
+	}
+	if err = rows.Err(); err != nil || index != len(want) {
+		t.Fatal("incomplete order results")
+	}
+	metadata, err := conn.Query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'browser_orders' ORDER BY ordinal_position")
+	if err != nil {
+		t.Fatalf("order metadata query failed: %v", err)
+	}
+	defer metadata.Close()
+	var columns []string
+	for metadata.Next() {
+		var name string
+		if err = metadata.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		columns = append(columns, name)
+	}
+	if err = metadata.Err(); err != nil || len(columns) != 2 || columns[0] != "id" || columns[1] != "status" {
+		t.Fatal("unexpected order metadata")
+	}
 	if _, err = conn.Exec("CREATE TABLE should_fail_browser (id INT)"); err == nil {
-		t.Fatal("created source allowed write")
+		t.Fatal("gateway session allowed write")
+	}
+	// The database account must independently deny writes even without the
+	// gateway's read-only session initializer.
+	unwrapped, err := policy.OpenRestrictedDatabase(source, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unwrapped.Close()
+	if _, err = unwrapped.Exec("INSERT INTO browser_orders (id,status) VALUES (4,'new')"); err == nil {
+		t.Fatal("source account allowed write")
 	}
 }
 
