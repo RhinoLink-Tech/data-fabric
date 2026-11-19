@@ -276,16 +276,28 @@ func (iq *HudiIncrementalQuery) GetLatestChanges(ctx context.Context, basePath s
 		return nil, fmt.Errorf("not enough commits (requested %d changes, have %d commits)", numCommits, len(commits))
 	}
 
-	// Hudi metadata readers do not guarantee timeline order. Sort a copy so
-	// the selected range is based on the latest completed instants without
-	// changing the order of the reader's returned slice.
-	orderedCommits := append([]HudiCommit(nil), commits...)
-	sort.Slice(orderedCommits, func(i, j int) bool {
-		return orderedCommits[i].CommitTime < orderedCommits[j].CommitTime
+	// Compare the supported instant formats chronologically, not as strings:
+	// a reader can return compact Hudi timestamps alongside RFC3339 or epoch
+	// boundaries. Reject invalid timeline entries instead of silently choosing
+	// a potentially incomplete range, and leave the reader's slice unchanged.
+	type orderedCommit struct {
+		commit  HudiCommit
+		instant time.Time
+	}
+	orderedCommits := make([]orderedCommit, 0, len(commits))
+	for _, commit := range commits {
+		instant, err := parseHudiReadBoundary(iq.driver.parser, commit.CommitTime, false)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Hudi commit instant %q: %w", commit.CommitTime, err)
+		}
+		orderedCommits = append(orderedCommits, orderedCommit{commit: commit, instant: instant})
+	}
+	sort.SliceStable(orderedCommits, func(i, j int) bool {
+		return orderedCommits[i].instant.Before(orderedCommits[j].instant)
 	})
 
-	beginInstantTime := orderedCommits[len(orderedCommits)-numCommits-1].CommitTime
-	endInstantTime := orderedCommits[len(orderedCommits)-1].CommitTime
+	beginInstantTime := orderedCommits[len(orderedCommits)-numCommits-1].commit.CommitTime
+	endInstantTime := orderedCommits[len(orderedCommits)-1].commit.CommitTime
 
 	return iq.GetChangesInRange(ctx, basePath, beginInstantTime, endInstantTime)
 }

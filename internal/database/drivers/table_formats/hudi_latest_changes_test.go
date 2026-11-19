@@ -94,3 +94,42 @@ func TestHudiGetLatestChangesUsesLatestInstantsRegardlessOfReaderOrder(t *testin
 		t.Errorf("GetLatestChanges mutated metadata reader order")
 	}
 }
+
+func TestHudiGetLatestChangesSortsMixedSupportedInstantFormats(t *testing.T) {
+	reader := &latestChangesMetadataReader{commits: []HudiCommit{
+		{CommitTime: "20240101000000000", State: "COMPLETED"},
+		{CommitTime: "20240301000000000", State: "COMPLETED"},
+		{CommitTime: "2024-06-01T00:00:00Z", State: "COMPLETED"},
+	}}
+	executor := &fakeHudiIncrementalExecutor{result: &HudiQueryResult{}}
+	driver, err := NewHudiDriver(&HudiConfig{MetadataReader: reader, IncrementalExecutor: executor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = NewHudiIncrementalQuery(driver).GetLatestChanges(context.Background(), "table", 1); err != nil {
+		t.Fatal(err)
+	}
+	if executor.options.BeginInstantTime != "20240301000000000" || executor.options.EndInstantTime != "2024-06-01T00:00:00Z" {
+		t.Fatalf("wrong latest range: begin=%s end=%s", executor.options.BeginInstantTime, executor.options.EndInstantTime)
+	}
+}
+
+func TestHudiGetLatestChangesRejectsInvalidTimeline(t *testing.T) {
+	reader := &latestChangesMetadataReader{commits: []HudiCommit{
+		{CommitTime: "invalid"},
+		{CommitTime: "20240101000000000"},
+		{CommitTime: "20240301000000000"},
+	}}
+	executor := &fakeHudiIncrementalExecutor{result: &HudiQueryResult{}}
+	driver, err := NewHudiDriver(&HudiConfig{MetadataReader: reader, IncrementalExecutor: executor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewHudiIncrementalQuery(driver).GetLatestChanges(context.Background(), "table", 1)
+	if err == nil || !strings.Contains(err.Error(), "invalid Hudi commit instant") {
+		t.Fatalf("expected invalid timeline error, got %v", err)
+	}
+	if executor.called {
+		t.Fatal("invalid timeline must not reach the executor")
+	}
+}
