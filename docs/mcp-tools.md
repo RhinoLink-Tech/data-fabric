@@ -23,7 +23,7 @@ client-visible contract change — update this page in the same PR.
 | `validate_sql_query` | `datasource_id`, `sql` | `source_dialect` | Validate a query (read-only rules, dialect) without executing it. |
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
-| `search_schema` | `datasource_id`, `query` | `schema`, `limit` (default 10, max 20) | Case-insensitive 2–128 character substring search over permitted catalog/schema/table names and visible column names/comments. Returns stable identifiers, matched fields, and explicit `ambiguous`/`truncated` flags; comments themselves are not returned. |
+| `search_schema` | `datasource_id`, `query` | `schema`, `limit` (default 10, max 20), `cursor` | Case-insensitive 2–128 character substring search over permitted catalog/schema/table names and visible column names/comments. Continue with the returned `next_cursor` and identical search inputs; comments themselves are not returned. |
 | `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects. |
 | `list_supported_dialects` | — | — | Enumerate the dialects `translate_sql` accepts. |
 | `get_table_policy` | — | `revision` | Read the active policy, version and freshness, or inspect an immutable historical revision. Administrator role required. |
@@ -32,6 +32,8 @@ client-visible contract change — update this page in the same PR.
 | `list_table_policy_publications` | — | `limit` (1–100; default 50) | List publisher, revision and outcome history. Administrator role required. |
 
 The `list_data_sources` response retains `data_sources` and page `count`, and adds the visible `total`, `limit`, `offset`, `has_more`, and (when available) `next_offset`. Every request re-applies current authorization. Pagination uses a stable created-time/ID order but is not a snapshot: concurrent source or permission changes can cause duplicates or omissions between pages.
+
+`search_schema` scans at most 100 permitted table identities per request. A `next_cursor` continues the same source, query, schema, limit and caller; it expires after 15 minutes, is bound to the issuing server process and becomes invalid when the permitted table-identity list changes. Reapply the same authorization for every page and restart when a cursor expires, the server restarts, or a different replica receives it. Table-list changes are detected; column metadata changes are not a snapshot and may alter later results. `truncated` may also indicate more matching columns than the per-table output cap, even when no `next_cursor` is present. `ambiguous` is page-local; combine all pages and check truncation before concluding that a match is unique.
 
 ## Conditional registration
 
