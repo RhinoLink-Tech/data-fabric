@@ -754,16 +754,8 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		return nil, ErrQueryRateLimitExceeded
 	}
 
+	batchSize = effectiveContinuationBatchSize(batchSize, session.BatchSize)
 	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {
-		if batchSize <= 0 {
-			batchSize = session.BatchSize
-		}
-		if batchSize <= 0 {
-			batchSize = 10000
-		}
-		if batchSize > 10000 {
-			batchSize = 10000
-		}
 		batch, sourceColumns, totalRows, err := cursor.NextBatch(ctx, batchSize)
 		if err != nil {
 			if session.budget.expired(time.Now()) {
@@ -791,6 +783,7 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 			qs.discardBudgetSession(session)
 			return nil, ErrQueryDurationLimitExceeded
 		}
+		session.BatchSize = batchSize
 		session.Columns = columns
 		session.Entries = entries
 		session.FetchedRows += int64(len(entries))
@@ -849,6 +842,8 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 		qs.discardBudgetSession(session)
 		return nil, ErrQueryDurationLimitExceeded
 	}
+	// Update the effective size only after the page succeeds.
+	session.BatchSize = batchSize
 	// Update session
 	session.Entries = entries
 	session.FetchedRows += int64(len(entries))

@@ -145,7 +145,7 @@ func (m *MCPServer) registerTools() {
 		mcp.WithString("query_id", mcp.Required(), mcp.Description("Query ID returned by execute_sql_query")),
 		mcp.WithString("slug", mcp.Required(), mcp.Description("Query slug returned by execute_sql_query")),
 		mcp.WithString("token", mcp.Required(), mcp.Description("Current pagination token")),
-		mcp.WithNumber("batch_size", mcp.Description("Number of records to return, default 10000")))
+		mcp.WithNumber("batch_size", mcp.Description("Optional page size; omitted uses the previous effective size. Explicit invalid values default to 10000.")))
 	m.addTool("fetch_next_batch", fetchNextBatchTool, m.handleFetchNextBatch)
 
 	// Tool to get information about a specific data source
@@ -545,9 +545,13 @@ func (m *MCPServer) handleFetchNextBatch(ctx context.Context, request mcp.CallTo
 	queryID := mcp.ParseString(request, "query_id", "")
 	slug := mcp.ParseString(request, "slug", "")
 	token := mcp.ParseString(request, "token", "")
-	batchSize := int(mcp.ParseInt(request, "batch_size", 10000))
-	if batchSize <= 0 || batchSize > 10000 {
-		batchSize = 10000
+	// Zero signals the service to use the session's previous effective size.
+	batchSize := 0
+	if _, supplied := request.GetArguments()["batch_size"]; supplied {
+		batchSize = int(mcp.ParseInt(request, "batch_size", 10000))
+		if batchSize <= 0 || batchSize > 10000 {
+			batchSize = 10000
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
