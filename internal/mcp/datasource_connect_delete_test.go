@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -151,5 +152,32 @@ func TestConnectionProbeDelegatesTLS(t *testing.T) {
 	result, err = srv.handleTestDataSourceConnection(ctx, req)
 	if err != nil || !result.IsError {
 		t.Fatal("TLS verifier failure was not propagated")
+	}
+}
+
+func TestMariaDBConnectionProbeRequiresOptInAndOwnership(t *testing.T) {
+	stub := &managementStub{source: &model.DataSource{ID: "id", OwnerID: "alice", TenantID: "a", Type: model.DatabaseTypeMariaDB, Config: model.DataSourceConfig{Password: "secret-marker"}}}
+	srv := NewMCPServer(nil, nil, nil)
+	srv.SetDataSourceManagementService(stub)
+	srv.SetSourceConnectivityTester(&probeStub{})
+	req := callToolRequest("test_data_source_connection", map[string]any{"datasource_id": "id"})
+	owner := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "alice", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err := srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || !result.IsError {
+		t.Fatal("MariaDB accepted without policy")
+	}
+	policy, err := database.NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"192.0.2.0/24"}, []int{3306}, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetSourceTypePolicy(policy, nil)
+	result, err = srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || result.IsError || strings.Contains(resultText(t, result), "secret-marker") {
+		t.Fatal("authorized test failed or leaked")
+	}
+	stranger := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "other", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err = srv.handleTestDataSourceConnection(stranger, req)
+	if err != nil || !result.IsError {
+		t.Fatal("non-owner MariaDB test accepted")
 	}
 }

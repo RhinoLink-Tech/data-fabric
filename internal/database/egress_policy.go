@@ -24,10 +24,11 @@ import (
 // The policy admits pinned IPv4 MySQL/PostgreSQL sources; TLS verifies
 // the original hostname against system or operator-provisioned trust roots.
 type FixedIPEgressPolicy struct {
-	prefixes []netip.Prefix
-	ports    map[int]struct{}
-	caTag    string
-	caPEM    []byte
+	prefixes     []netip.Prefix
+	ports        map[int]struct{}
+	caTag        string
+	caPEM        []byte
+	allowMariaDB bool
 }
 
 var safeDSNPart = regexp.MustCompile(`^[A-Za-z0-9._~-]*$`)
@@ -57,10 +58,17 @@ func NewFixedIPEgressPolicy(cidrs []string, ports []int) (*FixedIPEgressPolicy, 
 // NewFixedIPEgressPolicyWithCA adds one operator-provisioned custom CA.
 // caFile is configured by the administrator, never accepted from a source.
 func NewFixedIPEgressPolicyWithCA(cidrs []string, ports []int, caFile string) (*FixedIPEgressPolicy, error) {
+	return NewFixedIPEgressPolicyWithCAAndMariaDB(cidrs, ports, caFile, false)
+}
+
+// NewFixedIPEgressPolicyWithCAAndMariaDB enables MariaDB only by explicit opt-in.
+// The returned policy is immutable for the lifetime of the connection pool.
+func NewFixedIPEgressPolicyWithCAAndMariaDB(cidrs []string, ports []int, caFile string, allowMariaDB bool) (*FixedIPEgressPolicy, error) {
 	p, err := NewFixedIPEgressPolicy(cidrs, ports)
 	if err != nil {
 		return nil, err
 	}
+	p.allowMariaDB = allowMariaDB
 	if caFile == "" {
 		return p, nil
 	}
@@ -96,7 +104,7 @@ func NewRestrictedConnectionPool(registry *DriverRegistry, tm *security.TokenMan
 // AllowsSourceType reports only the connector-type constraint. A true result
 // does not grant access or imply that a source configuration will pass policy.
 func (p *FixedIPEgressPolicy) AllowsSourceType(t model.DatabaseType) bool {
-	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL)
+	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL || (p.allowMariaDB && t == model.DatabaseTypeMariaDB))
 }
 
 func (p *FixedIPEgressPolicy) Check(ds *model.DataSource) error {

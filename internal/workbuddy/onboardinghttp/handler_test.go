@@ -296,3 +296,76 @@ func TestTLSPinningRejectsDNSRebinding(t *testing.T) {
 		t.Fatal("pinned configuration mutated")
 	}
 }
+
+type validMariaDB struct{}
+
+func (validMariaDB) IsSupportedDataSourceType(t model.DatabaseType) bool {
+	return t == model.DatabaseTypeMariaDB
+}
+func (validMariaDB) ValidateDataSourceConfiguration(*model.DataSourceConfig, model.DatabaseType) error {
+	return nil
+}
+
+func TestMariaDBWizardTypeGateAndCreation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "maria.db")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Exec(`CREATE TABLE data_sources (id text primary key, name text, type text, config json not null, status text, owner_id text not null default '', tenant_id text not null default '', created_at datetime, updated_at datetime, UNIQUE (tenant_id, name))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = onboarding.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err = onboarding.MigrateCompletions(db); err != nil {
+		t.Fatal(err)
+	}
+	flow, err := onboarding.New(db, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := onboarding.Principal{Issuer: "https://issuer.test", Subject: "alice", Tenant: "a"}
+	id, err := flow.Begin(context.Background(), principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault, err := security.NewCredentialVaultWithKeyring("test", map[string][]byte{"test": []byte(strings.Repeat("a", 32))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := &testAuth{actor: Actor{Issuer: principal.Issuer, Subject: principal.Subject, Tenant: principal.Tenant, UserID: "alice", CSRF: "csrf"}, allow: true, csrf: true}
+	probe := &testProbe{}
+	handler, err := New(db, vault, validMariaDB{}, auth, testStore{flow, id, principal}, probe, &testAudit{}, []model.DatabaseType{model.DatabaseTypeMySQL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"name":"orders","type":"mariadb","config":{"host":"db.example.test","port":3306,"database":"orders","username":"reader","password":"synthetic-secret"}}`
+	invoke := func(action string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		handler.ServeFlow(w, httptest.NewRequest("POST", "https://example.test", strings.NewReader(body)), id, action)
+		return w
+	}
+	if w := invoke("test"); w.Code != 400 || probe.calls != 0 {
+		t.Fatal("disabled type was probed")
+	}
+	handler, err = New(db, vault, validMariaDB{}, auth, testStore{flow, id, principal}, probe, &testAudit{}, []model.DatabaseType{model.DatabaseTypeMariaDB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := invoke("test"); w.Code != 200 || strings.Contains(w.Body.String(), "synthetic-secret") {
+		t.Fatal("enabled probe failed or leaked")
+	}
+	if w := invoke("sources"); w.Code != 200 || strings.Contains(w.Body.String(), "synthetic-secret") {
+		t.Fatal("enabled creation failed or leaked")
+	}
+	var row struct {
+		Type   string
+		Config string
+	}
+	if err = db.Table("data_sources").Select("type, config").Where("name = ?", "orders").Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Type != "mariadb" || strings.Contains(row.Config, "synthetic-secret") || !strings.Contains(row.Config, "dfcred:v1:") {
+		t.Fatal("type or encrypted credential was not preserved")
+	}
+}

@@ -32,6 +32,10 @@ type workbuddyConfig struct {
 }
 
 func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
+	mariadb := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_MARIADB"))
+	if mariadb != "" && mariadb != "false" && mariadb != "true" {
+		return nil, errors.New("invalid WorkBuddy MariaDB toggle")
+	}
 	updates := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES"))
 	if updates != "" && updates != "false" && updates != "true" {
 		return nil, errors.New("invalid WorkBuddy source updates toggle")
@@ -44,6 +48,9 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if raw == "" || raw == "false" {
 		if bridge == "true" {
 			return nil, errors.New("WorkBuddy bridge requires onboarding")
+		}
+		if mariadb == "true" {
+			return nil, errors.New("WorkBuddy MariaDB requires onboarding")
 		}
 		if updates == "true" {
 			return nil, errors.New("WorkBuddy source updates require onboarding")
@@ -80,7 +87,7 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 		}
 		c.ports = append(c.ports, n)
 	}
-	c.policy, err = database.NewFixedIPEgressPolicyWithCA(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")))
+	c.policy, err = database.NewFixedIPEgressPolicyWithCAAndMariaDB(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true")
 	if err != nil {
 		return nil, errors.New("invalid WorkBuddy egress policy")
 	}

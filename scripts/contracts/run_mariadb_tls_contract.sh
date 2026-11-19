@@ -93,3 +93,20 @@ DATA_FABRIC_MARIADB_TLS_CONTRACT_HOST=localhost \
     docker logs "$container_name" 2>&1 | grep -iE 'error|ready for connections|ssl' | tail -40 || true
     exit 1
   }
+
+# The same pinned server also verifies the browser's restricted connector,
+# not just the generic MariaDB driver. This runs on remote CI when selected.
+DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_USERNAME=data_fabric_contract \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_PASSWORD=contract-test-only \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE=data_fabric_contract \
+  DATA_FABRIC_MARIADB_TLS_ROOT_CA="$work_dir/ca.crt" \
+  DATA_FABRIC_MARIADB_TLS_BAD_CA="$work_dir/bad-ca.crt" \
+  go test ./internal/database -run '^TestMariaDBRestrictedOnboardingTLSContract$' -count=1 -v
+
+DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_USERNAME=data_fabric_contract \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_PASSWORD=contract-test-only \
+  DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE=data_fabric_contract \
+  DATA_FABRIC_MARIADB_TLS_ROOT_CA="$work_dir/ca.crt" \
+  go test ./internal/workbuddy/onboardinghttp -run '^TestMariaDBBrowserRestrictedTLSContract$' -count=1 -v

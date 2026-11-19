@@ -11,8 +11,9 @@ policy to the **entire MCP instance**, including existing sources, metadata,
 health checks, and queries. Use a separate metadata database and an isolated
 MCP instance. Never run an unrestricted Data Fabric API against that database
 or provide another unrestricted database access path. Existing unsupported
-sources will stop working in this instance. The policy supports only MySQL and
-PostgreSQL with pinned IPv4 destinations. Verified TLS uses system trust or
+sources will stop working in this instance. The default policy supports MySQL and
+PostgreSQL with pinned IPv4 destinations. A separate opt-in candidate adds MariaDB;
+it has not yet completed actual WorkBuddy client acceptance. Verified TLS uses system trust or
 an operator-provisioned CA; see [TLS source setup](../../docs/workbuddy-tls-sources.md).
 Plaintext connections remain available only for environments where the operator
 accepts that risk. Policy changes require restarting and draining every instance
@@ -47,6 +48,7 @@ Settings in addition to the normal MCP/OIDC/audit/vault configuration:
 - `DATA_FABRIC_WORKBUDDY_OIDC_AUTH_URL` and
   `DATA_FABRIC_WORKBUDDY_OIDC_TOKEN_URL`: the issuer's discovery endpoints;
   they are checked against discovery at startup.
+- `DATA_FABRIC_WORKBUDDY_MARIADB`: optional `true` enables the MariaDB type in the isolated fixed-IP policy and browser wizard. Default is off. This does not grant a user permission; the configured CIDR/port and management grant still apply. Restart/drain every instance when changing it.
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_CIDRS`: comma-separated IPv4 CIDRs.
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_PORTS`: comma-separated TCP ports. The
   destination must match both CIDR and port. CIDRs and ports are policy, not

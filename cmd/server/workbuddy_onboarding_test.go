@@ -2,12 +2,23 @@ package main
 
 import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"testing"
 )
 
 func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_ONBOARDING", "")
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "true")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("MariaDB without onboarding accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "invalid")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("invalid MariaDB toggle accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_BRIDGE", "true")
 	if _, err := readWorkbuddyConfig(nil); err == nil {
 		t.Fatal("bridge without onboarding accepted")
@@ -55,6 +66,18 @@ func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
 	if err != nil || c == nil || c.policy == nil || !c.bridge {
 		t.Fatal("valid config rejected", err)
 	}
+	if c.policy.AllowsSourceType(model.DatabaseTypeMariaDB) {
+		t.Fatal("MariaDB should be off by default")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "true")
+	enabled, err := readWorkbuddyConfig(cfg)
+	if err != nil || !enabled.policy.AllowsSourceType(model.DatabaseTypeMariaDB) {
+		t.Fatal("explicit MariaDB rejected", err)
+	}
+	if c.policy.AllowsSourceType(model.DatabaseTypeMariaDB) {
+		t.Fatal("existing policy must remain immutable")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "false")
 	if c.sourceUpdates {
 		t.Fatal("source updates should be off by default")
 	}
