@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -108,5 +110,38 @@ func TestEditedSourceProbeRedactsFailureAndPropagatesCancellation(t *testing.T) 
 		if rec.Code != 500 || tester.calls != 1 || strings.Contains(rec.Body.String(), "secret-value") {
 			t.Fatalf("canceled=%v status=%d calls=%d body=%s", canceled, rec.Code, tester.calls, rec.Body.String())
 		}
+	}
+}
+
+// Optional live contract against an isolated synthetic PostgreSQL instance.
+// It is intentionally skipped unless its dynamically allocated port is provided.
+func TestEditedSourceProbePostgresLive(t *testing.T) {
+	portText := os.Getenv("DATA_FABRIC_EDIT_PROBE_PG_PORT")
+	if portText == "" {
+		t.Skip("no isolated PostgreSQL fixture configured")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &model.DataSource{ID: authzTestUUID, Type: model.DatabaseTypePostgreSQL, OwnerID: "owner", Config: model.DataSourceConfig{Host: "127.0.0.1", Port: port, Database: "postgres", Username: "postgres", Password: "synthetic-515-password"}}
+	dc := NewDataSourceController(&dataSourceControllerServiceStub{dataSource: source})
+	dc.SetConnectionTester(database.NewHealthChecker(database.NewConnectionPool(nil, nil, nil, false)))
+	for _, tc := range []struct{ name, password, status string }{{"retained", "", "healthy"}, {"replacement", "wrong-synthetic-password", "unhealthy"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"host":"127.0.0.1","port":` + portText + `,"database":"postgres","username":"postgres","password":"` + tc.password + `"}`
+			ctx, rec := authzMutationContext(t, &security.Claims{UserID: "owner"}, body)
+			ctx.Params = gin.Params{{Key: "id", Value: authzTestUUID}}
+			dc.TestEditedDataSourceConnection(ctx)
+			if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"status":"`+tc.status+`"`) {
+				t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), source.Config.Password) || strings.Contains(rec.Body.String(), "wrong-synthetic-password") {
+				t.Fatal("credential leaked")
+			}
+			if source.Config.Password != "synthetic-515-password" {
+				t.Fatal("probe persisted the replacement")
+			}
+		})
 	}
 }
