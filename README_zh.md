@@ -78,7 +78,7 @@ flowchart LR
 
 ## 数据源与支持声明
 
-Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持目录。目录区分已登记实现与端到端验证、声明的版本范围与精确测试版本，也区分协议 fixture 与真实服务证据。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已登记实现仍处于实验状态。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
+Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持目录。目录区分已登记实现与端到端验证、声明的版本范围与精确测试版本，也区分协议 fixture 与真实服务证据。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已登记实现仍处于实验状态。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)、[版本支持策略](docs/connector-version-policy-zh.md)和[Ozone 支持状态](docs/ozone-support.md)。
 
 标准构建为单可执行文件，注册驱动编译进二进制；只有实际配置并使用的数据源才会建连。
 
