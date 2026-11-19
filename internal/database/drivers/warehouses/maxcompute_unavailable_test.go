@@ -2,6 +2,7 @@ package warehouses
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 )
@@ -23,5 +24,21 @@ func TestMaxComputeDoesNotCreatePlaceholderQueryConnection(t *testing.T) {
 	caps := driver.GetCapabilities()
 	if caps.SupportsSQL || caps.SupportsSchemaDiscovery {
 		t.Fatalf("unimplemented query capabilities advertised: %+v", caps)
+	}
+}
+
+func TestMaxComputeBatchPaginationRejectsOffsets(t *testing.T) {
+	driver := NewMaxComputeDriver()
+	got, err := driver.ApplyBatchPagination("SELECT id FROM orders", 100, 0)
+	if err != nil || got != "SELECT id FROM orders LIMIT 100" {
+		t.Fatalf("first batch = %q, %v", got, err)
+	}
+	if got, err := driver.ApplyBatchPagination("SELECT id FROM orders", 100, 100); !errors.Is(err, ErrMaxComputeOffsetUnsupported) {
+		t.Fatalf("second batch = %q, %v; want offset unsupported", got, err)
+	}
+	for _, bounds := range [][2]int64{{0, 0}, {-1, 0}, {100, -1}, {1, math.MaxInt64}} {
+		if got, err := driver.ApplyBatchPagination("SELECT id FROM orders", bounds[0], bounds[1]); err == nil {
+			t.Fatalf("ApplyBatchPagination(%d, %d) = %q, want error", bounds[0], bounds[1], got)
+		}
 	}
 }

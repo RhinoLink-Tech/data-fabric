@@ -23,11 +23,22 @@ func NewMaxComputeDriver() *MaxComputeDriver {
 	}
 }
 
+// ErrMaxComputeOffsetUnsupported is returned for batches after the first one,
+// because no ordered MaxCompute OFFSET contract has been verified.
+var ErrMaxComputeOffsetUnsupported = errors.New("MaxCompute batch pagination does not support a nonzero offset")
+
 // ApplyBatchPagination applies pagination to SQL query for batch processing
 func (md *MaxComputeDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	// MaxCompute doesn't support traditional LIMIT/OFFSET in all contexts
-	// However, we can apply standard LIMIT clause for supported scenarios
-	return fmt.Sprintf("%s LIMIT %d", sql, batchSize+offset), nil
+	if batchSize <= 0 {
+		return "", fmt.Errorf("batch size must be greater than 0")
+	}
+	if offset < 0 {
+		return "", fmt.Errorf("offset cannot be negative")
+	}
+	if offset > 0 {
+		return "", ErrMaxComputeOffsetUnsupported
+	}
+	return fmt.Sprintf("%s LIMIT %d", sql, batchSize), nil
 }
 
 // ErrMaxComputeQueryUnavailable is returned until actual SQL results can be
