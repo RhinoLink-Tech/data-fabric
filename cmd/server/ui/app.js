@@ -134,7 +134,7 @@
   async function loadCatalog(options = {}) {
     const result = await api("/api/v1/database/types", { auth: false, signal: options.signal });
     const entries = Array.isArray(result) ? result : Object.values(result || {});
-    state.catalog = entries.filter((item) => item && item.registered && item.supported && item.type)
+    state.catalog = entries.filter((item) => item && item.registered && item.supported && item.status !== "unsupported" && item.type)
       .sort((a, b) => Number(Boolean(b.recommended)) - Number(Boolean(a.recommended)) || String(a.type).localeCompare(String(b.type)));
     if (state.sources.length) renderSources();
   }

@@ -671,3 +671,16 @@ func TestSupportCatalogDocumentationIsCurrent(t *testing.T) {
 		t.Fatal("docs/data-source-support.md is stale; run go run ./cmd/generate-support-catalog")
 	}
 }
+
+func TestMaxComputeCatalogDoesNotAdvertiseUnavailableQuery(t *testing.T) {
+	for _, profile := range SupportCatalog(NewDriverRegistry()) {
+		if profile.Type != string(model.DatabaseTypeMaxCompute) {
+			continue
+		}
+		if !profile.Registered || profile.Status != ConnectorStatusUnsupported || profile.EndToEndVerified || profile.Capabilities.SupportsSQL || profile.Capabilities.SupportsSchemaDiscovery || len(profile.Operations) != 0 {
+			t.Fatalf("MaxCompute unavailable catalog state = %+v", profile)
+		}
+		return
+	}
+	t.Fatal("MaxCompute missing from the registered catalog")
+}

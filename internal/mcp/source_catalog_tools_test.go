@@ -206,3 +206,24 @@ func TestCatalogDistinguishesInstanceAndWizardTypePolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxComputeCatalogReportsUnavailableToMCP(t *testing.T) {
+	srv := NewMCPServer(nil, nil, nil)
+	result, err := srv.handleListSourceTypes(context.Background(), callToolRequest("list_source_types", map[string]any{"type": "maxcompute", "include_details": true}))
+	if err != nil || result.IsError {
+		t.Fatalf("catalog error: %v, %+v", err, result)
+	}
+	var payload struct {
+		Sources []struct {
+			Status      string   `json:"status"`
+			Operations  []string `json:"operations"`
+			Limitations []string `json:"limitations"`
+		} `json:"source_types"`
+	}
+	if err := json.Unmarshal([]byte(resultText(t, result)), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Sources) != 1 || payload.Sources[0].Status != "unsupported" || len(payload.Sources[0].Operations) != 0 || len(payload.Sources[0].Limitations) == 0 {
+		t.Fatalf("unexpected MCP catalog: %+v", payload)
+	}
+}

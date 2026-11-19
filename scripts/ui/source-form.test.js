@@ -65,6 +65,7 @@ async function loadApp(existing = [], { catalogFailures = 0 } = {}) {
       { type: "mysql", driverName: "MySQL", registered: true, supported: true, recommended: true, defaultPort: 3306 },
       { type: "postgresql", driverName: "PostgreSQL", registered: true, supported: true, defaultPort: 5432 },
       { type: "file", driverName: "File", registered: true, supported: true },
+      { type: "maxcompute", driverName: "MaxCompute", registered: true, supported: true, status: "unsupported" },
     ] });
     if (route.pathname === "/api/v1/database/test-connection") {
       if (testGate) await testGate;
@@ -266,4 +267,13 @@ test("a repeated catalog failure shows the specific error when Add is opened", a
   await app.emit("addButton", "click");
   assert.match(app.$("notice").textContent, /catalog busy/);
   assert.equal(app.$("notice").className.includes("error"), true);
+});
+
+
+test("unsupported registered sources are excluded from new source options", async () => {
+  const app = await loadApp();
+  await app.emit("addButton", "click");
+  const types = app.$("sourceType").children.map((item) => item.value);
+  assert.ok(types.includes("mysql"));
+  assert.ok(!types.includes("maxcompute"));
 });

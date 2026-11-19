@@ -487,6 +487,11 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeMaxCompute:
+		profile.Status = ConnectorStatusUnsupported
+		profile.VersionPolicy = "SQL execution and schema discovery are unavailable until real MaxCompute result retrieval is implemented and verified."
+		profile.Limitations = append(profile.Limitations,
+			"The registered driver rejects connections before submitting a task because MaxCompute result retrieval is not implemented; it never returns placeholder rows.")
 	case model.DatabaseTypeHDFSText:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
