@@ -2,13 +2,17 @@
 
 [English](agent-skill.md)
 
-两个客户端共用 [`data-fabric-query`](../skills/data-fabric-query/SKILL.md)。MCP 提供数据源、表结构和查询工具，Skill 指导客户端选择数据源、检查字段、校验只读 SQL，并按需取回结果。
+两个客户端共用 [`data-fabric-query`](../skills/data-fabric-query/SKILL.md)。MCP 提供数据源、表结构和查询工具，Skill 指导客户端转换 SQL 方言、选择数据源、检查字段、校验只读 SQL，并按需取回结果。
 
 ## 准备连接
 
-准备客户端可访问的 HTTPS `/mcp` 地址、已有读取权限的数据源，以及身份提供方签发的访问 token。token 的 issuer、audience 和 scope 必须符合网关配置，默认 scope 为 `data-fabric.query`。测试证书需要客户端信任。使用 JWT 访问 token，管理 token 用于 REST API。访问 token 过期后从身份提供方重新获取。部署和 token 配置见 [MCP 部署指南](mcp-deployment.md#5-prepare-management-and-mcp-access-tokens)。
+准备客户端可访问的 HTTPS `/mcp` 地址和身份提供方签发的访问 token。执行数据查询时还需准备已有读取权限的数据源；只做 SQL 转换不需要数据源。token 的 issuer、audience 和 scope 必须符合网关配置，默认 scope 为 `data-fabric.query`。测试证书需要客户端信任。使用 JWT 访问 token，管理 token 用于 REST API。访问 token 过期后从身份提供方重新获取。部署和 token 配置见 [MCP 部署指南](mcp-deployment.md#5-prepare-management-and-mcp-access-tokens)。
 
 下载 Data Fabric 仓库或发布源码包，保留完整的 `skills/data-fabric-query/` 目录，包括 `SKILL.md`、`references/` 和 `LICENSE.txt`。
+
+## 只转换 SQL 方言
+
+连接启用了 SQL 转换工具的 Data Fabric MCP 服务后，可以请求“将这条 MySQL SQL 转为 PostgreSQL，只转换不执行”。Skill 会发现可用方言并调用转换工具，不需要先注册数据源。输出仍需要在目标数据库验证，转换本身不执行 SQL，也不保证语义完全一致。具体输入与输出见 [SQL 转换示例](../skills/data-fabric-query/references/sql-and-examples.md#convert-sql-text-only)。
 
 ## Codex
 

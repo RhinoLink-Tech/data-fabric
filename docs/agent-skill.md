@@ -3,17 +3,17 @@
 The canonical, provider-neutral bundle is
 [`skills/data-fabric-query`](../skills/data-fabric-query/SKILL.md). It follows
 the [Agent Skills format](https://agentskills.io/specification) and teaches a
-compatible agent client to discover sources, resolve source ambiguity,
+compatible agent client to convert SQL dialects, discover sources, resolve source ambiguity,
 inspect schema, validate read-only SQL, and retrieve bounded result batches.
 
 ## Prepare the connection
 
 [中文接入指南](agent-skill-zh.md)
 
-Use a reachable HTTPS Streamable HTTP endpoint ending in `/mcp`, a data
-source the caller can read, and an access token issued by the deployment's
-OIDC provider. The gateway checks the configured issuer, audience, and
-scopes, including `data-fabric.query` by default. Trust the gateway's
+Use a reachable HTTPS Streamable HTTP endpoint ending in `/mcp` and an access
+token issued by the deployment's OIDC provider. Data queries also require a
+source the caller can read; SQL-only conversion does not. The gateway checks
+the configured issuer, audience, and scopes, including `data-fabric.query` by default. Trust the gateway's
 certificate in the client and obtain a fresh token from the provider when
 it expires. Use the provider's JWT access token and reserve the management
 token for the REST API. See the
@@ -23,6 +23,14 @@ Obtain the repository checkout or a release source archive. Install the
 complete `skills/data-fabric-query/` directory with its `references/`
 directory and license. For other Agent Skills hosts, use the host's skill
 installer and connect Data Fabric MCP or an equivalent tool adapter.
+
+## Convert SQL without querying a database
+
+With a connected Data Fabric MCP server that advertises SQL conversion tools,
+ask for a dialect conversion without execution. The Skill discovers supported
+dialects and calls the translator without requiring a configured data source.
+Translation does not execute SQL or prove equivalent behavior in the target
+database. See [conversion examples](../skills/data-fabric-query/references/sql-and-examples.md#convert-sql-text-only).
 
 ## Codex
 

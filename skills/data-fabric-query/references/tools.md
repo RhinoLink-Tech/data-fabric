@@ -146,6 +146,16 @@ is satisfied, and disclose when the answer uses only part of the result.
 `totalCount` is supplied by the gateway and may involve an extra backend
 count; do not substitute the number of rows fetched for the total.
 
+## Convert SQL without executing it
+
+When advertised, call `list_supported_dialects` with `{}` and use its
+`supported_dialects` list to select the exact identifiers. Call `translate_sql`
+with `sql`, `source_dialect`, and `target_dialect`; read `translated_sql` from
+the returned JSON text. Both tools require a connected, translation-enabled
+server. No `datasource_id`, schema discovery, or query execution is needed.
+Return the tool's SQL unchanged and report conversion errors. Conversion does
+not prove syntax acceptance or semantic equivalence on a target database.
+
 ## Capability gaps and failures
 
 `describe_table` depends on the server's metadata support. `translate_sql`
