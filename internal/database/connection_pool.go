@@ -488,7 +488,8 @@ func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model
 	// paths can transform or open the DSN.
 	switch dbType {
 	case model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES,
-		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t,
+		model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres:
 		if err := driver.ValidateDSN(dsn); err != nil {
 			return "", err
 		}

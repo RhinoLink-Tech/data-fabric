@@ -45,6 +45,9 @@ func NewGaussDBDriver(config *GaussDBConfig) (*GaussDBDriver, error) {
 
 // Open opens a connection to GaussDB (PostgreSQL-compatible)
 func (d *GaussDBDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open GaussDB connection: %w", err)
@@ -63,6 +66,9 @@ func (d *GaussDBDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *GaussDBDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -83,6 +89,14 @@ func (d *GaussDBDriver) GetDefaultPort() int {
 func (d *GaussDBDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config == nil {
 		return ""
+	}
+
+	constructorMode := ""
+	if d.config != nil {
+		constructorMode = d.config.SSLMode
+	}
+	if unsupportedDomesticTLS(config, constructorMode) {
+		return unsupportedDomesticTLSDSN
 	}
 
 	sslMode := "disable"
