@@ -66,7 +66,7 @@ func TestMariaDBBrowserRestrictedTLSContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	auth := &testAuth{actor: Actor{Issuer: principal.Issuer, Subject: principal.Subject, Tenant: principal.Tenant, UserID: "alice", CSRF: "csrf"}, allow: true, csrf: true}
-	handler, err := New(db, vault, validMariaDB{}, auth, testStore{flow, id, principal}, actualTLSProbe{probe, policy}, &testAudit{}, []model.DatabaseType{model.DatabaseTypeMariaDB})
+	handler, err := New(db, vault, database.NewHealthChecker(nil), auth, testStore{flow, id, principal}, actualTLSProbe{probe, policy}, &testAudit{}, []model.DatabaseType{model.DatabaseTypeMariaDB})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,5 +130,16 @@ func TestMariaDBBrowserRestrictedTLSContract(t *testing.T) {
 	}
 	if _, err = conn.Exec("CREATE TABLE should_fail_browser (id INT)"); err == nil {
 		t.Fatal("created source allowed write")
+	}
+}
+
+func TestMariaDBProductionValidator(t *testing.T) {
+	validator := database.NewHealthChecker(nil)
+	if !validator.IsSupportedDataSourceType(model.DatabaseTypeMariaDB) {
+		t.Fatal("MariaDB absent from registry")
+	}
+	cfg := model.DataSourceConfig{Host: "localhost", Port: 3306, Database: "orders", Username: "reader", Password: "synthetic", SSL: true, TLSCA: "custom", MaxPoolSize: 2, Timeout: 5}
+	if err := validator.ValidateDataSourceConfiguration(&cfg, model.DatabaseTypeMariaDB); err != nil {
+		t.Fatalf("MariaDB configuration rejected: %v", err)
 	}
 }
