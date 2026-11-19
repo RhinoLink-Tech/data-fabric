@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare full and experimental restricted driver registries offline.
+"""Compare the full registry and two experimental restricted registries offline.
 
 This is a sizing experiment, not a supported Core build. It never edits the
 checkout, uses no Docker, and fails rather than downloading Go dependencies.
@@ -67,25 +67,34 @@ def main():
                                              "build_seconds": times}
 
         build("full")
-        candidate = original
-        for package in PACKAGES:
-            line = f'\t"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/{package}"\n'
-            if candidate.count(line) != 1:
-                raise SystemExit(f"registry import changed: {package}")
-            candidate = candidate.replace(line, "")
-        start = candidate.index("func (dr *DriverRegistry) registerDrivers() {")
-        end = candidate.index("func (dr *DriverRegistry) register(", start)
-        replacement = """func (dr *DriverRegistry) registerDrivers() {
+
+        def restricted(include_trino):
+            candidate = original
+            for package in PACKAGES:
+                if include_trino and package == "warehouses":
+                    continue
+                line = f'\t"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers/{package}"\n'
+                if candidate.count(line) != 1:
+                    raise SystemExit(f"registry import changed: {package}")
+                candidate = candidate.replace(line, "")
+            start = candidate.index("func (dr *DriverRegistry) registerDrivers() {")
+            end = candidate.index("func (dr *DriverRegistry) register(", start)
+            replacement = """func (dr *DriverRegistry) registerDrivers() {
  dr.mutex.Lock()
  defer dr.mutex.Unlock()
  dr.register(model.DatabaseTypeMySQL, func() drivers.Driver { return &traditional.MySQLDriver{} })
  dr.register(model.DatabaseTypeMariaDB, func() drivers.Driver { return &traditional.MySQLDriver{} })
  dr.register(model.DatabaseTypePostgreSQL, func() drivers.Driver { return &traditional.PostgreSQLDriver{} })
-}
-
 """
-        registry.write_text(candidate[:start] + replacement + candidate[end:], encoding="utf-8")
+            if include_trino:
+                replacement += " dr.register(model.DatabaseTypeTrino, func() drivers.Driver { return warehouses.NewTrinoDriver() })\n"
+            replacement += "}\n\n"
+            registry.write_text(candidate[:start] + replacement + candidate[end:], encoding="utf-8")
+
+        restricted(False)
         build("restricted_registry")
+        restricted(True)
+        build("federated_registry")
     print(json.dumps(result, indent=2))
 
 
