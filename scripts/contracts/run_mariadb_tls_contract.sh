@@ -4,12 +4,13 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-mariadb-tls-$RANDOM-$RANDOM"
+metadata_name="data-fabric-mariadb-e2e-meta-$RANDOM-$RANDOM"
 image_tag="data-fabric-mariadb-tls:$RANDOM-$RANDOM"
 mariadb_image="${DATA_FABRIC_MARIADB_TLS_IMAGE:-mariadb:11@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68}"
 mariadb_expected_version="${DATA_FABRIC_MARIADB_TLS_EXPECTED_VERSION:-11.8.9}"
 
 cleanup() {
-  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  docker rm -f "$container_name" "$metadata_name" >/dev/null 2>&1 || true
   docker image rm -f "$image_tag" >/dev/null 2>&1 || true
   rm -rf "$work_dir"
 }
@@ -119,3 +120,34 @@ DATA_FABRIC_MARIADB_TLS_CONTRACT_PORT="$port" \
   DATA_FABRIC_MARIADB_TLS_CONTRACT_DATABASE=data_fabric_contract \
   DATA_FABRIC_MARIADB_TLS_ROOT_CA="$work_dir/ca.crt" \
   go test ./internal/workbuddy/onboardinghttp -run '^TestMariaDBBrowserRestrictedTLSContract$' -count=1 -v
+
+# One pinned MariaDB version also covers the signed-OIDC, browser and MCP
+# lifecycle. MySQL remains the separate supported metadata backend.
+if [ "$mariadb_expected_version" = "11.8.9" ]; then
+  docker run --detach --name "$metadata_name" \
+    --env MYSQL_ROOT_PASSWORD=metadata-root-test-only \
+    --env MYSQL_DATABASE=df_metadata \
+    --env MYSQL_USER=df_meta \
+    --env MYSQL_PASSWORD=metadata-test-only \
+    --publish 127.0.0.1::3306 \
+    mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7 >/dev/null
+  metadata_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3306/tcp") 0).HostPort}}' "$metadata_name")"
+  metadata_ready=false
+  for _ in $(seq 1 120); do
+    if docker exec "$metadata_name" mysqladmin ping --protocol=tcp --host=127.0.0.1 \
+      --user=root --password=metadata-root-test-only --silent >/dev/null 2>&1; then
+      metadata_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [ "$metadata_ready" != true ]; then
+    printf 'temporary metadata service did not become ready\n' >&2
+    exit 1
+  fi
+  DF_WB_E2E_UPDATE=false DF_WB_E2E_POSTGRES_PORT= \
+    DF_WB_E2E_MYSQL_DSN="df_meta:metadata-test-only@tcp(127.0.0.1:${metadata_port})/df_metadata?parseTime=true" \
+    DF_WB_E2E_MARIADB_PORT="$port" \
+    DF_WB_E2E_MARIADB_CA="$work_dir/ca.crt" \
+    go test -count=1 ./internal/workbuddy/onboardingruntime -run '^TestSignedOIDCAndMCPBrowserLifecycle$' -v
+fi

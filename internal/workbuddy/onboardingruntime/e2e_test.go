@@ -158,7 +158,22 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	policy, e := database.NewFixedIPEgressPolicy([]string{"127.0.0.1/32"}, []int{port})
+	mariaPort := os.Getenv("DF_WB_E2E_MARIADB_PORT")
+	if mariaPort != "" {
+		if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			t.Fatal("choose only one source fixture")
+		}
+		port, e = strconv.Atoi(mariaPort)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	var policy *database.FixedIPEgressPolicy
+	if mariaPort != "" {
+		policy, e = database.NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_MARIADB_CA"), true)
+	} else {
+		policy, e = database.NewFixedIPEgressPolicy([]string{"127.0.0.1/32"}, []int{port})
+	}
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -308,7 +323,14 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		t.Fatalf("missing csrf: %s", session.Body.String())
 	}
 	payload := fmt.Sprintf(`{"name":"synthetic-orders","type":"postgresql","config":{"host":"127.0.0.1","port":%d,"database":"orders","username":"reader","password":"synthetic-password"}}`, port)
-	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+	if mariaPort != "" {
+		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "mariadb", "config": map[string]any{"host": "localhost", "port": port, "database": "data_fabric_contract", "username": "browser_reader", "password": "browser-test-only", "ssl": true, "tlsCA": "custom"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = string(encoded)
+	}
+	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" {
 		probe := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+flow+"/test", bytes.NewBufferString(payload))
 		probe.AddCookie(cookie)
 		probe.Header.Set("Origin", origin)
@@ -520,7 +542,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		t.Fatalf("list: %v %+v", e, list)
 	}
 	encoded, _ := json.Marshal(list)
-	if !bytes.Contains(encoded, []byte("synthetic-orders")) || bytes.Contains(encoded, []byte("synthetic-password")) {
+	if !bytes.Contains(encoded, []byte("synthetic-orders")) || bytes.Contains(encoded, []byte("synthetic-password")) || bytes.Contains(encoded, []byte("browser-test-only")) {
 		t.Fatal("list failed or credential leaked")
 	}
 	foreign := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": provider.URL, "sub": "alice", "aud": "fabric-api", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "tenant": "tenant-b", "scope": "data-fabric.sources.manage data-fabric.query"})
@@ -562,6 +584,35 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		b, _ := json.Marshal(query)
 		if !bytes.Contains(b, []byte("42")) {
 			t.Fatalf("missing result %s", b)
+		}
+	}
+
+	if mariaPort != "" {
+		sourceID := status["datasource_id"].(string)
+		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
+		listed, _ := json.Marshal(tables)
+		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {
+			t.Fatal("MariaDB table discovery failed or leaked")
+		}
+		first := toolJSON(t, mclient, "execute_sql_query", map[string]any{"datasource_id": sourceID, "sql": "SELECT id, status FROM browser_orders ORDER BY id", "batch_size": 2, "execution_mode": "pagination"})
+		entries, ok := first["entries"].([]any)
+		if !ok || len(entries) != 2 || first["nextUri"] == nil || first["nextUri"] == "" {
+			t.Fatal("first MariaDB page incomplete")
+		}
+		for i, want := range []float64{1, 2} {
+			row, ok := entries[i].([]any)
+			if !ok || len(row) != 2 || row[0] != want {
+				t.Fatal("unexpected MariaDB first page")
+			}
+		}
+		second := toolJSON(t, mclient, "fetch_next_batch", map[string]any{"query_id": first["queryId"], "slug": first["slug"], "token": first["token"], "batch_size": 2})
+		entries, ok = second["entries"].([]any)
+		if !ok || len(entries) != 1 {
+			t.Fatal("unexpected MariaDB final page")
+		}
+		row, ok := entries[0].([]any)
+		if !ok || len(row) != 2 || row[0] != float64(3) || (second["nextUri"] != nil && second["nextUri"] != "") {
+			t.Fatal("MariaDB final page incomplete")
 		}
 	}
 
