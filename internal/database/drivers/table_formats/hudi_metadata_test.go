@@ -38,6 +38,8 @@ func TestParseInstantTime(t *testing.T) {
 		{name: "one digit short", instantTime: "2024010115304", wantErr: true},
 		{name: "one digit long", instantTime: "2024010115304512", wantErr: true},
 		{name: "non-digit milliseconds", instantTime: "20240101153045abc", wantErr: true},
+		{name: "negative millisecond suffix", instantTime: "20240101153045-10", wantErr: true},
+		{name: "positive millisecond suffix", instantTime: "20240101153045+10", wantErr: true},
 		{name: "non-digit seconds", instantTime: "20240101153O45123", wantErr: true},
 		{name: "impossible month", instantTime: "20241301153045123", wantErr: true},
 	}
