@@ -22,6 +22,15 @@ go build ./...
 
 Format changed Go files with `gofmt`. CI checks formatting, runs `go vet` and tests, and builds all packages.
 
+## Your first contribution
+
+New here? Browse the [open `good first issue` list](https://github.com/RhinoLink-Tech/data-fabric/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and pick a task that interests you.
+
+1. Check that nobody is already on it: look at the issue's assignees and read the recent comments. Pick another issue if someone has already said they are working on it.
+2. Comment on the issue that you would like to work on it and briefly say how you plan to approach it, so others can coordinate. You do not need to be assigned first, and there is no guaranteed response time, so if you hear nothing, please keep the scope small and start when you are ready.
+3. Open a focused pull request and link the issue in its description (for example, `Fixes #123`).
+4. Run the checks listed on the issue (and the checks under [Development](#development) for Go changes) and describe in the pull request what you ran.
+
 ## Pull requests
 
 1. Fork the repository and create a focused branch.
