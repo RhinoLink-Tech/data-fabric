@@ -188,3 +188,5 @@ failure and any partial-result limits; do not silently retry with a broader
 query, larger batch, or longer timeout.
 
 For paginated `list_data_sources` results, if `has_more` is true, call it again with `offset` set to `next_offset`. Older servers may omit these fields. Each page reflects current permissions and is not a snapshot.
+
+For `search_schema`, when `next_cursor` is present, repeat the same source, query, schema and limit with `cursor` set to that value. Cursors are short-lived and process-bound; restart if invalid. A `truncated` response without a cursor can also mean a per-table column cap, so do not claim a unique complete result. Combine all pages before concluding a match is unique. Older servers may not support cursors.

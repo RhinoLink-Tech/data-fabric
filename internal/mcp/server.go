@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,7 @@ type MCPServer struct {
 	onboardingBaseURL        string
 	sourceTypePolicy         sourceTypePolicy
 	sourceOnboardingType     func(model.DatabaseType) bool
+	schemaCursorKey          []byte
 }
 
 // NewMCPServer creates a new MCP server instance. A nil tableDescriber leaves
@@ -91,6 +93,13 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 		tableAuthorizer:     authorizer,
 		sqlTranslator:       translator,
 		server:              s,
+	}
+
+	// A per-process key binds schema continuations without exposing table names.
+	// If randomness is unavailable, a search that needs a continuation fails closed.
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err == nil {
+		mcpServer.schemaCursorKey = key
 	}
 
 	// Register tools that will be available to LLMs
@@ -171,11 +180,12 @@ func (m *MCPServer) registerTools() {
 		m.addTool("describe_table", describeTableTool, m.handleDescribeTable)
 
 		searchSchemaTool := mcp.NewTool("search_schema",
-			mcp.WithDescription("Search permitted table, schema, column names, and visible column comments. Returns bounded stable identifiers and explicit ambiguity/truncation; use describe_table for details."),
+			mcp.WithDescription("Search permitted table, schema and visible column names/comments. At most 100 tables are scanned per call; continue with next_cursor using identical inputs. Cursors expire and are invalidated by table-list or access changes."),
 			mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to search")),
 			mcp.WithString("query", mcp.Required(), mcp.Description("Case-insensitive substring, 2–128 characters")),
 			mcp.WithString("schema", mcp.Description("Optional exact schema filter")),
 			mcp.WithNumber("limit", mcp.Description("Maximum matches, default 10 and maximum 20")),
+			mcp.WithString("cursor", mcp.Description("Optional next_cursor from the previous search with identical inputs")),
 		)
 		m.addTool("search_schema", searchSchemaTool, m.handleSearchSchema)
 	}

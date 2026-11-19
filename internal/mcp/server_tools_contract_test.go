@@ -28,7 +28,7 @@ var documentedToolContract = map[string]toolContract{
 	"validate_sql_query":      {required: []string{"datasource_id", "sql"}, properties: []string{"datasource_id", "sql", "source_dialect"}},
 	"list_tables":             {required: []string{"datasource_id"}, properties: []string{"datasource_id"}},
 	"describe_table":          {required: []string{"datasource_id", "table_name"}, properties: []string{"datasource_id", "table_name", "schema"}, conditional: true},
-	"search_schema":           {required: []string{"datasource_id", "query"}, properties: []string{"datasource_id", "query", "schema", "limit"}, conditional: true},
+	"search_schema":           {required: []string{"datasource_id", "query"}, properties: []string{"datasource_id", "query", "schema", "limit", "cursor"}, conditional: true},
 	"translate_sql":           {required: []string{"sql", "source_dialect", "target_dialect"}, properties: []string{"sql", "source_dialect", "target_dialect"}, conditional: true},
 	"list_supported_dialects": {properties: []string{}, conditional: true},
 }

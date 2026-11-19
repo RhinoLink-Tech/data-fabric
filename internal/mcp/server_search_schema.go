@@ -31,6 +31,7 @@ type schemaSearchResponse struct {
 	Matches      []schemaSearchMatch `json:"matches"`
 	Ambiguous    bool                `json:"ambiguous"`
 	Truncated    bool                `json:"truncated"`
+	NextCursor   string              `json:"next_cursor,omitempty"`
 }
 
 type schemaSearchMatch struct {
@@ -121,18 +122,31 @@ func (m *MCPServer) handleSearchSchema(ctx context.Context, request mcp.CallTool
 		return candidates[i].identity.Type < candidates[j].identity.Type
 	})
 
-	truncated := len(candidates) > maxSchemaSearchScan
-	if truncated {
-		candidates = candidates[:maxSchemaSearchScan]
+	inventory := schemaSearchInventory(candidates)
+	start := 0
+	if raw, provided := request.GetArguments()["cursor"]; provided {
+		rawCursor, ok := raw.(string)
+		if !ok || rawCursor == "" {
+			return mcp.NewToolResultError("cursor must be a nonempty continuation string"), nil
+		}
+		var cursorErr error
+		start, cursorErr = m.decodeSchemaCursor(rawCursor, dataSourceID, query, requestedSchema, limit, caller, inventory, len(candidates))
+		if cursorErr != nil {
+			return mcp.NewToolResultError(cursorErr.Error()), nil
+		}
 	}
+	end := min(start+maxSchemaSearchScan, len(candidates))
+	next := end
+	truncated := end < len(candidates)
 	response := schemaSearchResponse{
 		DataSourceID: dataSourceID,
 		Query:        query,
-		Matches:      make([]schemaSearchMatch, 0, min(limit, len(candidates))),
+		Matches:      make([]schemaSearchMatch, 0, min(limit, end-start)),
 		Truncated:    truncated,
 	}
 	queryFolded := strings.ToLower(query)
-	for _, candidate := range candidates {
+	for index := start; index < end; index++ {
+		candidate := candidates[index]
 		match := schemaSearchMatch{
 			Catalog: candidate.reference.Catalog,
 			Schema:  candidate.reference.Schema,
@@ -187,11 +201,20 @@ func (m *MCPServer) handleSearchSchema(ctx context.Context, request mcp.CallTool
 
 		if len(response.Matches) == limit {
 			response.Truncated = true
+			next = index // this matching candidate has not been returned yet
 			break
 		}
 		response.Matches = append(response.Matches, match)
 	}
 	response.Truncated = response.Truncated || truncated
+	if next < len(candidates) {
+		cursor, cursorErr := m.encodeSchemaCursor(next, dataSourceID, query, requestedSchema, limit, caller, inventory)
+		if cursorErr != nil {
+			return mcp.NewToolResultError("schema search continuation is unavailable"), nil
+		}
+		response.NextCursor = cursor
+		response.Truncated = true
+	}
 	response.Ambiguous = len(response.Matches) > 1 || response.Truncated
 
 	body, err := json.Marshal(response)
