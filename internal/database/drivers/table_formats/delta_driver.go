@@ -259,14 +259,7 @@ func (d *DeltaDriver) GetVersionInfo(ctx context.Context, tablePath string, vers
 
 // Vacuum runs vacuum operation to clean up old files
 func (d *DeltaDriver) Vacuum(ctx context.Context, tablePath string, retentionHours float64, dryRun bool) (*VacuumResult, error) {
-	// Vacuum would require executing SQL command
-	// VACUUM table_name RETAIN num_hours DRY RUN
-	// This is a placeholder implementation
-	return &VacuumResult{
-		FilesDeleted: 0,
-		BytesDeleted: 0,
-		DryRun:       dryRun,
-	}, nil
+	return nil, fmt.Errorf("Delta Lake VACUUM is not supported: SQL execution is not implemented")
 }
 
 // VacuumResult represents vacuum operation result
