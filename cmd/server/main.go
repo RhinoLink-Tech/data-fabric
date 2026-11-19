@@ -249,6 +249,7 @@ func startHTTPServer(cfg *config.Config, vault *security.CredentialVault) error 
 
 	// Initialize controllers
 	datasourceController := controller.NewDataSourceController(datasourceService)
+	datasourceController.SetConnectionTester(healthChecker)
 	queryController := controller.NewQueryController(unifiedQueryService)
 	databaseController := controller.NewDatabaseController(datasourceRepo, healthChecker)
 	healthController := controller.NewHealthController(db)

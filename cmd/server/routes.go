@@ -153,6 +153,7 @@ func newRouter(deps routerDeps) *gin.Engine {
 			datasources.GET("/stats", deps.datasourceController.GetDataSourceStats)
 			datasources.GET("/:id", deps.datasourceController.GetDataSource)
 			datasources.PUT("/:id", jsonRequestLimit, deps.datasourceController.UpdateDataSource)
+			datasources.POST("/:id/test-connection", jsonRequestLimit, deps.datasourceController.TestEditedDataSourceConnection)
 			datasources.DELETE("/:id", deps.datasourceController.DeleteDataSource)
 			datasources.POST("/:id/activate", deps.datasourceController.ActivateDataSource)
 			datasources.POST("/:id/deactivate", deps.datasourceController.DeactivateDataSource)

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
 
+	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/service"
@@ -17,8 +19,9 @@ import (
 )
 
 type DataSourceController struct {
-	service   service.DataSourceService
-	validator *validator.Validate
+	service          service.DataSourceService
+	validator        *validator.Validate
+	connectionTester savedSourceConnectionTester
 }
 
 type Response struct {
@@ -161,6 +164,96 @@ func NewDataSourceController(service service.DataSourceService) *DataSourceContr
 		service:   service,
 		validator: validator.New(),
 	}
+}
+
+// savedSourceConnectionTester uses the same validation and egress-aware probe as
+// the existing stateless test endpoint.
+type savedSourceConnectionTester interface {
+	IsSupportedDataSourceType(model.DatabaseType) bool
+	ValidateDataSourceConfiguration(*model.DataSourceConfig, model.DatabaseType) error
+	CheckDataSourceConnectivity(context.Context, *model.DataSourceConfig, model.DatabaseType) (*database.HealthCheckResult, error)
+}
+
+// SetConnectionTester enables testing unsaved edits to a stored source.
+func (dc *DataSourceController) SetConnectionTester(tester savedSourceConnectionTester) {
+	dc.connectionTester = tester
+}
+
+func samePublicProperties(a, b map[string]interface{}) bool {
+	left, right := redactDataSourceProperties(a), redactDataSourceProperties(b)
+	return (len(left) == 0 && len(right) == 0) || reflect.DeepEqual(left, right)
+}
+
+// TestEditedDataSourceConnection tests a source configuration without saving it.
+// The source type and transport endpoint remain fixed so a caller cannot use
+// retained credentials against a different host or altered transport settings.
+func (dc *DataSourceController) TestEditedDataSourceConnection(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		dc.sendError(c, http.StatusBadRequest, "MISSING_ID", "Data source ID is required")
+		return
+	}
+	var config model.DataSourceConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		dc.sendError(c, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	caller := security.CallerFromGin(c)
+	source, err := dc.service.GetDataSource(c.Request.Context(), caller, id)
+	if err != nil {
+		dc.mapDataSourceError(c, caller, err, "TEST_FAILED", "Failed to test data source")
+		return
+	}
+	if !caller.CanWrite(source) {
+		dc.mapDataSourceError(c, caller, security.ErrDataSourceAccessDenied, "TEST_FAILED", "Failed to test data source")
+		return
+	}
+	if dc.connectionTester == nil {
+		dc.sendError(c, http.StatusServiceUnavailable, "TEST_UNAVAILABLE", "Connection test is unavailable")
+		return
+	}
+	effective := service.PreserveDataSourceSecrets(source.Config, config)
+	// The management DTO does not return these server-controlled TLS fields.
+	if (config.TLSServerName != "" && config.TLSServerName != source.Config.TLSServerName) ||
+		(config.TLSCA != "" && config.TLSCA != source.Config.TLSCA) {
+		dc.sendError(c, http.StatusBadRequest, "TEST_ENDPOINT_CHANGED", "Cannot change transport settings during a retained-credential test.")
+		return
+	}
+	effective.TLSServerName = source.Config.TLSServerName
+	effective.TLSCA = source.Config.TLSCA
+	// Non-secret properties can include endpoint or transport settings, so the
+	// saved-credential probe permits only changes to ordinary database settings.
+	if effective.Host != source.Config.Host || effective.Port != source.Config.Port ||
+		effective.Timezone != source.Config.Timezone ||
+		((source.Type != model.DatabaseTypeMySQL && source.Type != model.DatabaseTypePostgreSQL) &&
+			(effective.Database != source.Config.Database || effective.Schema != source.Config.Schema)) ||
+		effective.Username != source.Config.Username || effective.SSL != source.Config.SSL ||
+		effective.SSLMode != source.Config.SSLMode || effective.SSLRootCert != source.Config.SSLRootCert ||
+		!samePublicProperties(effective.AdditionalProps, source.Config.AdditionalProps) {
+		dc.sendError(c, http.StatusBadRequest, "TEST_ENDPOINT_CHANGED", "To test changed connection or transport settings, enter complete credentials and use a new-source connection test.")
+		return
+	}
+	if !dc.connectionTester.IsSupportedDataSourceType(source.Type) {
+		dc.sendError(c, http.StatusBadRequest, "INVALID_TYPE", "Unsupported data source type")
+		return
+	}
+	if err := dc.connectionTester.ValidateDataSourceConfiguration(&effective, source.Type); err != nil {
+		dc.sendError(c, http.StatusBadRequest, "INVALID_CONFIG", "Invalid data source configuration")
+		return
+	}
+	result, err := dc.connectionTester.CheckDataSourceConnectivity(c.Request.Context(), &effective, source.Type)
+	if err != nil {
+		dc.sendError(c, http.StatusInternalServerError, "CONNECTION_TEST_FAILED", "Failed to test connection; check the source settings and server logs")
+		return
+	}
+	if result == nil {
+		dc.sendError(c, http.StatusInternalServerError, "CONNECTION_TEST_FAILED", "Connection test returned no result")
+		return
+	}
+	// Do not reflect driver-provided version strings or diagnostic fields from
+	// an endpoint that may echo retained credentials.
+	safeResult := map[string]interface{}{"status": result.Status, "latency": result.Latency, "checkedAt": result.CheckedAt}
+	c.JSON(http.StatusOK, Response{Success: true, Data: safeResult, CorrelationID: dc.getCorrelationID(c)})
 }
 
 // datasourceAccessDeniedMessage is the single response body non-admin callers

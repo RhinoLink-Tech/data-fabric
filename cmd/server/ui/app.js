@@ -43,6 +43,7 @@
   }
   function errorText(error) {
     if (!(error instanceof ApiError)) return error && error.message ? String(error.message) : "请求失败，请检查服务状态后重试。";
+    if (error.code === "TEST_ENDPOINT_CHANGED") return "连接地址、账号或传输设置已变更。请使用完整凭据在新建数据源中测试。";
     const parts = [];
     if (error.code) parts.push(error.code);
     parts.push(error.message || ("请求失败（HTTP " + error.status + "）"));
@@ -244,12 +245,12 @@
     setFormError(""); setTestResult("");
     try {
       const config = readConfig(); state.currentConfig = config;
-      if (state.editingID && hasRedactedHost(config.host)) {
-        throw new Error("该连接包含未回显的凭据或参数，页面无法直接测试；请使用支持该类型的已配置数据源连接测试工具。");
-      }
       const type = $("sourceType").value; if (!type) throw new Error("请先选择连接器类型。");
       $("testButton").disabled = true; $("testButton").textContent = "正在测试…";
-      const result = await api("/api/v1/database/test-connection?type=" + encodeURIComponent(type), { method: "POST", body: config, sanitizeWith: config });
+      const testPath = state.editingID
+        ? "/api/v1/datasources/" + encodeURIComponent(state.editingID) + "/test-connection"
+        : "/api/v1/database/test-connection?type=" + encodeURIComponent(type);
+      const result = await api(testPath, { method: "POST", body: config, sanitizeWith: config });
       if (run !== state.testRun) return;
       const status = result && typeof result.status === "string" ? result.status.trim().toLowerCase() : "";
       if (status === "healthy") {
