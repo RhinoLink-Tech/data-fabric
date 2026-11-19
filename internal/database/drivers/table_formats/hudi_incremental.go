@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -263,17 +264,28 @@ func (iq *HudiIncrementalQuery) GetChangesSinceTimestamp(ctx context.Context, ba
 
 // GetLatestChanges retrieves changes since the last N commits
 func (iq *HudiIncrementalQuery) GetLatestChanges(ctx context.Context, basePath string, numCommits int) (*IncrementalQueryResult, error) {
+	if numCommits <= 0 {
+		return nil, fmt.Errorf("numCommits must be greater than zero")
+	}
+
 	commits, err := iq.driver.GetCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(commits) < numCommits+1 {
-		return nil, fmt.Errorf("not enough commits (need at least %d, have %d)", numCommits+1, len(commits))
+	if numCommits >= len(commits) {
+		return nil, fmt.Errorf("not enough commits (requested %d changes, have %d commits)", numCommits, len(commits))
 	}
 
-	beginInstantTime := commits[len(commits)-numCommits-1].CommitTime
-	endInstantTime := commits[len(commits)-1].CommitTime
+	// Hudi metadata readers do not guarantee timeline order. Sort a copy so
+	// the selected range is based on the latest completed instants without
+	// changing the order of the reader's returned slice.
+	orderedCommits := append([]HudiCommit(nil), commits...)
+	sort.Slice(orderedCommits, func(i, j int) bool {
+		return orderedCommits[i].CommitTime < orderedCommits[j].CommitTime
+	})
+
+	beginInstantTime := orderedCommits[len(orderedCommits)-numCommits-1].CommitTime
+	endInstantTime := orderedCommits[len(orderedCommits)-1].CommitTime
 
 	return iq.GetChangesInRange(ctx, basePath, beginInstantTime, endInstantTime)
 }
