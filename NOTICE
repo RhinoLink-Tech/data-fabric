@@ -1,0 +1,9 @@
+Data Fabric
+Copyright 2025-2026 RhinoLink-Tech
+
+This product includes software licensed under the Apache License, Version 2.0
+(see LICENSE) and development scaffolding adapted from GitHub Spec Kit,
+licensed under the MIT License (see THIRD_PARTY_NOTICES.md).
+
+The published container image carries a generated Go dependency license
+bundle at /app/third-party-licenses/go/ (see THIRD_PARTY_NOTICES.md).

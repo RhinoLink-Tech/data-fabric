@@ -5,7 +5,7 @@ umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE=""
-DSH_DEPLOY_DIR="${DSH_DEPLOY_DIR:-/home/fengfei/DataSemanticHub/deploy}"
+DSH_DEPLOY_DIR="${DSH_DEPLOY_DIR:-}"
 DB_CONTAINER="${DSH_MARIADB_CONTAINER:-datasemantichub-mariadb}"
 NETWORK="${DATA_FABRIC_EXTERNAL_NETWORK:-datasemantichub-network}"
 DB_HOST="${EXTERNAL_MYSQL_HOST:-mariadb}"
@@ -13,10 +13,13 @@ API_PORT="${API_PORT:-18180}"
 
 usage() {
   cat <<'USAGE'
-Usage: dsh-local-acceptance.sh --image ghcr.io/rhinolink-tech/data-fabric@sha256:<digest> [options]
+Usage: dsh-local-acceptance.sh --image ghcr.io/rhinolink-tech/data-fabric@sha256:<digest> --deploy-dir PATH [options]
 
 Options:
-  --deploy-dir PATH   DataSemanticHub deploy directory
+  --deploy-dir PATH   Required: your own local DataSemanticHub deploy directory
+                      (also read from the DSH_DEPLOY_DIR environment variable).
+                      It must contain docker-compose.yaml and .env and must
+                      expose the internal-db MariaDB service.
   --db-container NAME Existing DataSemanticHub MariaDB container
   --network NAME      Existing Docker network shared with MariaDB
   --db-host NAME      MariaDB DNS name on that network
@@ -44,6 +47,10 @@ if [[ ! "$IMAGE" =~ ^ghcr\.io/rhinolink-tech/data-fabric(:[[:alnum:]_.-]+)?@sha2
 fi
 if ! [[ "$API_PORT" =~ ^[0-9]{1,5}$ ]] || ((API_PORT < 1024 || API_PORT > 65535)); then
   echo "API port must be between 1024 and 65535." >&2
+  exit 2
+fi
+if [[ -z "$DSH_DEPLOY_DIR" ]]; then
+  echo "No DataSemanticHub deployment directory provided. Pass --deploy-dir PATH (or export DSH_DEPLOY_DIR) pointing at your own deploy directory containing docker-compose.yaml and .env." >&2
   exit 2
 fi
 if [[ ! -f "$DSH_DEPLOY_DIR/docker-compose.yaml" || ! -f "$DSH_DEPLOY_DIR/.env" ]]; then

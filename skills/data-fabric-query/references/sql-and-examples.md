@@ -1,5 +1,78 @@
 # SQL compatibility and examples
 
+## Convert SQL text only
+
+When the user wants a dialect conversion, start with `list_supported_dialects`
+and `{}`, then call `translate_sql`. Do not list data sources or call query
+validation/execution tools for this task. An authenticated MCP connection and
+an enabled translator are sufficient; example table names need not exist.
+
+The current translator advertises these 12 canonical identifiers:
+
+```text
+mysql, postgres, trino, presto, openlookeng, spark,
+oracle, sqlserver, snowflake, sqlite, duckdb, redshift
+```
+
+Use the connected instance's returned list. For familiar product names, use
+`postgres` for PostgreSQL and `sqlserver` for SQL Server/T-SQL. Keep the advertised
+`openlookeng` name even though the parser internally uses Presto grammar.
+Other parser compatibility mappings are not additional advertised conversion
+contracts. If the intended source or target dialect is unknown, ask before
+converting. Conversion success does not guarantee all engine-specific syntax
+or equivalent results on a live database.
+
+These examples were checked with the pinned SQLGlot 30.23.0 runtime. Each JSON
+object is the argument payload for `translate_sql`; the following SQL block is
+the returned text. No statement is executed.
+
+### MySQL to PostgreSQL: a common function
+
+```json
+{"sql":"SELECT IFNULL(amount, 0) AS amount FROM orders LIMIT 10","source_dialect":"mysql","target_dialect":"postgres"}
+```
+
+```sql
+SELECT
+  COALESCE(amount, 0) AS amount
+FROM orders
+LIMIT 10
+```
+
+### PostgreSQL to Trino: a type cast
+
+```json
+{"sql":"SELECT order_id::VARCHAR AS order_id FROM orders LIMIT 5","source_dialect":"postgres","target_dialect":"trino"}
+```
+
+```sql
+SELECT
+  CAST(order_id AS VARCHAR) AS order_id
+FROM orders
+LIMIT 5
+```
+
+### SQL Server to PostgreSQL: row limits and identifiers
+
+```json
+{"sql":"SELECT TOP 5 [order_id] FROM [orders] ORDER BY [order_id]","source_dialect":"sqlserver","target_dialect":"postgres"}
+```
+
+```sql
+SELECT
+  "order_id"
+FROM "orders"
+ORDER BY
+  "order_id" NULLS FIRST
+LIMIT 5
+```
+
+Preserve the returned `NULLS FIRST` and quoted identifiers; removing them can
+change the intended behavior. On unsupported input or a tool error, report the
+failure instead of inventing a successful conversion. If the user later asks
+to execute converted SQL, follow the source-aware query workflow below and
+use its target dialect, avoiding a second conversion with the original dialect.
+
 ## Choose the source's supported SQL
 
 Use the selected source's native dialect when possible and omit

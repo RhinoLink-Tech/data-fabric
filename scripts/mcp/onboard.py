@@ -5,6 +5,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -31,22 +32,39 @@ class OnboardingError(Exception):
     pass
 
 
+def read_env_text(path):
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise OnboardingError(f"{path.name} is not valid UTF-8; rewrite it in UTF-8; its contents were left untouched") from None
+
+
 def parse_env(path):
     values, duplicates = {}, set()
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in read_env_text(path).splitlines():
         match = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", line)
         if not match:
             continue
         key, value = match.groups()
         value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        quoted = re.match(r'''^(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(?:#.*)?$''', value)
+        if quoted:
             if value[0] == '"':
                 try:
-                    value = json.loads(value)
+                    value = json.loads(value[: quoted.end(1) + 1])
                 except json.JSONDecodeError:
-                    value = value[1:-1]
+                    value = quoted.group(1)
             else:
+                value = quoted.group(2)
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            # Malformed quoting keeps the earlier behavior: strip the matching outer quotes.
+            try:
+                value = json.loads(value) if value[0] == '"' else value[1:-1]
+            except json.JSONDecodeError:
                 value = value[1:-1]
+        elif value[:1] not in ("\"", "'"):
+            # Compose recognizes an unquoted comment only when whitespace precedes the hash.
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
         if key in values:
             duplicates.add(key)
         values[key] = value
@@ -245,11 +263,11 @@ def command_init(args):
     if env_path.exists():
         if not env_path.is_file():
             raise OnboardingError(".env must be a regular file")
-        text, current = env_path.read_text(encoding="utf-8"), parse_env(env_path)
+        text, current = read_env_text(env_path), parse_env(env_path)
     else:
         if not example_path.is_file():
             raise OnboardingError(".env.example is missing; restore the deployment template before initializing")
-        text, current = example_path.read_text(encoding="utf-8"), parse_env(example_path)
+        text, current = read_env_text(example_path), parse_env(example_path)
     replacements = {}
     for key in SECRET_KEYS:
         if is_placeholder(current.get(key, "")):
@@ -395,7 +413,7 @@ def probe_oidc(issuer, timeout=5):
 def compose_command(directory, env_path, *args):
     command = ["docker", "compose", "--env-file", str(env_path), "-f", "docker-compose.yml", *args]
     env = os.environ.copy()
-    keys = SECRET_KEYS + ("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "DATA_FABRIC_CREDENTIAL_KEYS", "MCP_OIDC_ISSUER", "MCP_OIDC_AUDIENCE", "MCP_OIDC_REQUIRED_SCOPES", "MCP_OIDC_SCOPE_CLAIM", "MCP_OIDC_TENANT_CLAIM", "DATA_FABRIC_TLS_GID", "API_PORT", "MCP_HTTPS_PORT")
+    keys = SECRET_KEYS + ("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "DATA_FABRIC_CREDENTIAL_KEYS", "MCP_OIDC_ISSUER", "MCP_OIDC_AUDIENCE", "DATA_FABRIC_MCP_OAUTH_RESOURCE", "MCP_OIDC_REQUIRED_SCOPES", "MCP_OIDC_SCOPE_CLAIM", "MCP_OIDC_TENANT_CLAIM", "DATA_FABRIC_TLS_GID", "API_PORT", "MCP_HTTPS_PORT")
     for key in keys:
         env.pop(key, None)
     return subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True, timeout=15)
@@ -548,6 +566,53 @@ def source_connection_check(args, directory, env_path, values, results):
     add_result(results, ok, f"{result}; correlation ID {request_id}")
 
 
+def parse_oidc_issuer_url(issuer):
+    try:
+        return urllib.parse.urlparse(issuer)
+    except ValueError:
+        # Python rejects some escaped IPv6 zone characters that Go accepts.
+        match = re.match(r"^(https://)(\[([^\]]+?)%25([^\]]+)\])([^/?#]*)", issuer, re.IGNORECASE)
+        if not match:
+            raise
+        ipaddress.IPv6Address(match.group(3))
+        safe_host = f"[{match.group(3)}%25zone]"
+        parsed = urllib.parse.urlparse(match.group(1) + safe_host + match.group(5) + issuer[match.end():])
+        return parsed._replace(netloc=match.group(2) + match.group(5))
+
+
+def issuer_url_has_valid_syntax(issuer, parsed):
+    """Reject URL syntax accepted by urllib.parse but rejected by the server's Go parser."""
+    authority = parsed.netloc
+    if any(ord(char) < 32 or ord(char) == 127 for char in issuer):
+        return False
+    if re.search(r"%(?![0-9a-fA-F]{2})", issuer):
+        return False
+    host_chars = "!$&'()*+,;=:[]<>\"-._~%"
+    if any(ord(char) < 128 and not (char.isalnum() or char in host_chars) for char in authority):
+        return False
+    # Go permits escaped non-ASCII bytes and %25 in a host. A scoped IPv6
+    # zone may also escape host-valid ASCII characters and spaces.
+    zone_start = authority.find("%25") if authority.startswith("[") else -1
+    zone_end = authority.find("]", zone_start) if zone_start >= 0 else -1
+    for match in re.finditer(r"%([0-9a-fA-F]{2})", authority):
+        value = int(match.group(1), 16)
+        if value < 128 and value != 0x25:
+            in_zone = zone_start >= 0 and zone_start < match.start() < zone_end
+            char = chr(value)
+            if not in_zone or not (char == " " or char.isalnum() or char in host_chars):
+                return False
+    if authority.startswith("["):
+        try:
+            ipaddress.IPv6Address(parsed.hostname.split("%", 1)[0])
+        except ValueError:
+            return False
+        suffix = authority.rsplit("]", 1)[-1]
+        return not suffix or re.fullmatch(r":[0-9]*", suffix) is not None
+    if authority.count(":") > 1:
+        return False
+    return ":" not in authority or re.fullmatch(r"[0-9]*", authority.rsplit(":", 1)[-1]) is not None
+
+
 def command_doctor(args):
     directory, env_path, _ = env_paths(args.directory)
     results, values = [], {}
@@ -575,12 +640,53 @@ def command_doctor(args):
         add_result(results, True, "credential keyring is valid and its active AES-256 key is present")
     except (json.JSONDecodeError, ValueError, binascii.Error, TypeError):
         add_result(results, False, "credential keyring is invalid or lacks its active 32-byte key; do not replace an existing key without a verified backup")
+
+    # Reject malformed issuer URLs and disallow embedded credentials, queries, and fragments.
     issuer = values.get("MCP_OIDC_ISSUER", "").strip()
-    parsed_issuer = urllib.parse.urlparse(issuer)
-    issuer_ok = parsed_issuer.scheme == "https" and bool(parsed_issuer.hostname)
-    add_result(results, issuer_ok, "MCP OIDC issuer uses HTTPS" if issuer_ok else "MCP_OIDC_ISSUER must be the HTTPS issuer URL from your identity provider")
+    try:
+        parsed_issuer = parse_oidc_issuer_url(issuer)
+        issuer_ok = (
+            parsed_issuer.scheme == "https"
+            and bool(parsed_issuer.hostname)
+            and parsed_issuer.username is None
+            and parsed_issuer.password is None
+            and not parsed_issuer.query
+            and not parsed_issuer.fragment
+            and issuer_url_has_valid_syntax(issuer, parsed_issuer)
+        )
+    except ValueError:
+        issuer_ok = False
+
+    add_result(
+        results,
+        issuer_ok,
+        "MCP OIDC issuer uses HTTPS"
+        if issuer_ok
+        else (
+            "MCP_OIDC_ISSUER must be a valid HTTPS issuer URL "
+            "without credentials, query parameters, or fragments"
+        ),
+    )
     audience = values.get("MCP_OIDC_AUDIENCE", "").strip()
     add_result(results, bool(audience), "MCP OIDC audience is configured" if audience else "set MCP_OIDC_AUDIENCE to the resource audience registered with your identity provider")
+    resource = values.get("DATA_FABRIC_MCP_OAUTH_RESOURCE", "")
+    if resource:
+        resource_ok = False
+        try:
+            parsed = urllib.parse.urlsplit(resource)
+            resource_ok = (
+                resource == resource.strip() and parsed.scheme == "https"
+                and bool(parsed.hostname) and parsed.username is None and parsed.password is None
+                and parsed.path == "/mcp" and not parsed.query and not parsed.fragment
+                and "?" not in resource and "#" not in resource
+                and issuer_url_has_valid_syntax(resource, parsed)
+                and parsed.geturl() == resource and resource == audience
+            )
+        except ValueError:
+            pass
+        add_result(results, resource_ok,
+                   "MCP OAuth resource URL and audience match" if resource_ok else
+                   "DATA_FABRIC_MCP_OAUTH_RESOURCE must be the exact public HTTPS /mcp URL and equal MCP_OIDC_AUDIENCE; check existing client audiences before changing it")
     scopes = (values.get("MCP_OIDC_REQUIRED_SCOPES", "data-fabric.query").strip() or "data-fabric.query").split()
     add_result(results, bool(scopes), "MCP required scopes are configured" if scopes else "configure MCP_OIDC_REQUIRED_SCOPES")
     tls_dir = directory / "tls"

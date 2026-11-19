@@ -78,7 +78,7 @@ flowchart LR
 
 ## 数据源与支持声明
 
-Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持目录。目录区分已登记实现与端到端验证、声明的版本范围与精确测试版本，也区分协议 fixture 与真实服务证据。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已登记实现仍处于实验状态。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)和[Ozone 支持状态](docs/ozone-support.md)。
+Data Fabric 通过数据库类型和兼容性 API 发布共享的数据源支持目录。目录区分已登记实现与端到端验证、声明的版本范围与精确测试版本，也区分协议 fixture 与真实服务证据。版本范围为空表示尚未建立兼容范围；连接测试成功本身不代表已完成端到端验证。部分已登记实现仍处于实验状态。选择连接器前请查看[数据源支持目录](docs/data-source-support.md)、[版本支持策略](docs/connector-version-policy-zh.md)和[Ozone 支持状态](docs/ozone-support.md)。
 
 标准构建为单可执行文件，注册驱动编译进二进制；只有实际配置并使用的数据源才会建连。
 
@@ -90,7 +90,7 @@ SQL v1 是面向常见 `SELECT` 工作负载的统一**只读**子集——不�
 
 ## 快速开始
 
-当前公开预览版为 [v2.1.0-preview.1](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)，提供 digest 固定的 `linux/amd64` 镜像。建议按 [v2.1.0-preview.1 发布镜像安装指南](docs/releases/v2.1.0-preview.1-install-zh.md)操作；完整 digest 和验收范围见 Release。源码构建仍适用于开发和本地修改。
+请从[已发布的 Preview](https://github.com/RhinoLink-Tech/data-fabric/releases)选择可用版本，并使用对应的 digest 固定 `linux/amd64` 安装指南：[v2.1.0-preview.2](docs/releases/v2.1.0-preview.2-install-zh.md) 或较早的 [v2.1.0-preview.1](docs/releases/v2.1.0-preview.1-install-zh.md)。只使用对应 Release 已记录的版本和 digest。源码构建仍适用于开发和本地修改。
 
 示例配置使用 MySQL 元数据数据库，并由 REST 与 MCP 两个独立进程共享；预置数据为合成数据。它演示已记录的路径，不证明外部团队采用、生产容量或 SLA。请同时查看[首个采用者画像](docs/product/first-adopter-profile.md)（当前仍是待验证假设）、[数据源支持目录](docs/data-source-support.md)和[当前运行边界](docs/roadmap.md#current-operating-limits)。
 

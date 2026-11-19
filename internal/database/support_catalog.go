@@ -487,6 +487,11 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeMaxCompute:
+		profile.Status = ConnectorStatusUnsupported
+		profile.VersionPolicy = "SQL execution and schema discovery are unavailable until real MaxCompute result retrieval is implemented and verified."
+		profile.Limitations = append(profile.Limitations,
+			"The registered driver rejects connections before submitting a task because MaxCompute result retrieval is not implemented; it never returns placeholder rows.")
 	case model.DatabaseTypeHDFSText:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"HDFS simple user identity"}
@@ -826,6 +831,9 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
 			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are rejected or outside the adapter boundary.")
+	case model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres:
+		profile.Limitations = append(profile.Limitations,
+			"Registry-created GaussDB drivers reject explicit TLS requests rather than silently downgrading; verified TLS mapping is not implemented.")
 	case model.DatabaseTypeTrino:
 		profile.Limitations = []string{
 			"No versioned driver-contract range or exact server version is recorded in this catalog.",
@@ -1008,6 +1016,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 	var out strings.Builder
 	out.WriteString("# Data Source Support Catalog\n\n")
 	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists mean no versioned driver-contract evidence is recorded in the runtime catalog; connector-specific integration profiles may provide narrower supplemental evidence. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
+	out.WriteString("For interpreting version evidence and proposing ranges, see the [connector version policy](connector-version-policy.md) ([中文](connector-version-policy-zh.md)).\n\n")
 	out.WriteString("| Type | Category | Registered | Status | End-to-end verified | Version range | Exact versions verified | Version policy | Compatibility mode | Version detection | Operations | Authentication methods | Authentication note | Capabilities | Version-dependent capabilities | Limitations |\n")
 	out.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, profile := range catalog {

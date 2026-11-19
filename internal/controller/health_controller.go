@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,6 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// healthProbeTimeout bounds the database ping so a stalled metadata connection
+// yields an unhealthy response instead of holding the request open.
+var healthProbeTimeout = 5 * time.Second
 
 type HealthResponse struct {
 	Status         string            `json:"status"`
@@ -35,6 +41,13 @@ func NewHealthController(db *gorm.DB) *HealthController {
 	}
 }
 
+// pingDatabase pings with the request context, bounded by healthProbeTimeout.
+func pingDatabase(parent context.Context, sqlDB *sql.DB) error {
+	ctx, cancel := context.WithTimeout(parent, healthProbeTimeout)
+	defer cancel()
+	return sqlDB.PingContext(ctx)
+}
+
 func (hc *HealthController) HealthCheck(c *gin.Context) {
 	response := HealthResponse{
 		Status:         "healthy",
@@ -53,7 +66,7 @@ func (hc *HealthController) HealthCheck(c *gin.Context) {
 			Status:  "disconnected",
 			Message: "Failed to get database instance",
 		}
-	} else if err := sqlDB.Ping(); err != nil {
+	} else if err := pingDatabase(c.Request.Context(), sqlDB); err != nil {
 		response.Status = "unhealthy"
 		response.Database = DatabaseStatus{
 			Status:  "disconnected",

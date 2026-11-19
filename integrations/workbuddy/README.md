@@ -36,7 +36,8 @@ published preview image contains them.
 
 When supported and authorized, users can discover registered source types,
 rename and enable or disable existing sources, test existing MySQL or
-PostgreSQL connections, and delete a source after explicit confirmation.
+PostgreSQL connections, and delete a source after explicit confirmation. An
+opt-in restricted MariaDB candidate also supports connection tests.
 PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;
 deletion additionally requires tenant and exact-ownership checks.
@@ -46,11 +47,13 @@ not included in the published preview image, and have not yet passed an actual
 WorkBuddy end-to-end acceptance. When deployed and advertised, they start a
 separately authenticated browser flow and report its status; credentials are
 entered only in the browser, not in chat or MCP tool arguments. The current
-candidate supports MySQL/PostgreSQL with verified TLS or plaintext on explicitly allowed IPv4 network
+candidate defaults to MySQL/PostgreSQL and has a separately enabled MariaDB
+experiment, with verified TLS or plaintext on explicitly allowed IPv4 network
 targets and ports, with a matching OIDC identity and server-side management
-grant. When explicitly enabled, the source-update browser tools support authorized updates of permitted existing MySQL/PostgreSQL connections, including credentials. Their availability depends on the deployed server; discover the update tools before offering this flow.
+grant. When explicitly enabled, the source-update browser tools support authorized updates of permitted existing MySQL/PostgreSQL connections and opt-in MariaDB candidates, including credentials. Their availability depends on the deployed server; discover the update tools before offering this flow.
 For an unavailable or unsupported workflow use an administrator or supported
 management UI. See [Quick Start](QUICKSTART-zh.md).
+The [source onboarding expansion plan](../../docs/workbuddy-source-onboarding-expansion.md) describes proposed next types and their acceptance gates; it does not change current availability.
 
 ## Before submitting
 

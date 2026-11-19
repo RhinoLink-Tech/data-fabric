@@ -582,6 +582,9 @@ jobs:
       - name: Test contract selection and required gate
         run: python -m unittest discover -s scripts/ci -p "test_*.py"
 
+      - name: Test WorkBuddy submission packages
+        run: python -m unittest discover -s integrations/workbuddy -p "test_*.py"
+
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
 
@@ -843,7 +846,7 @@ jobs:
 
       - name: Verify the image includes Go dependency license materials
         run: |
-          docker run --rm --entrypoint /usr/bin/python3 data-fabric:ci -c 'import json; d=json.load(open("/app/third-party-licenses/go/MANIFEST.json")); assert d["SchemaVersion"] == 1 and len(d["Modules"]) > 0; print("Go license materials verified")'
+          docker run --rm --entrypoint /usr/bin/python3 data-fabric:ci -c 'import json; d=json.load(open("/app/third-party-licenses/go/MANIFEST.json")); assert d["SchemaVersion"] == 1 and len(d["Modules"]) > 0; assert open("/app/NOTICE", encoding="utf-8").read().strip(); print("Go license materials and NOTICE verified")'
 
       - name: Smoke test container user and entrypoint
         shell: bash

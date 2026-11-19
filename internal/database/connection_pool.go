@@ -220,10 +220,18 @@ func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *
 	bounded := cp.boundedPoolTTL > 0
 	cp.mutex.RUnlock()
 	if bounded {
-		if dataSource.Type != model.DatabaseTypeMySQL && dataSource.Type != model.DatabaseTypePostgreSQL {
-			return nil, false, fmt.Errorf("native executor is unavailable in bounded mode")
+		// These types use the controlled database/sql path; never open a native
+		// executor in bounded mode. MariaDB is eligible only under its explicit
+		// restricted-egress opt-in and is still checked on every SQL lease.
+		switch dataSource.Type {
+		case model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL:
+			return nil, false, nil
+		case model.DatabaseTypeMariaDB:
+			if cp.egress != nil && cp.egress.AllowsSourceType(dataSource.Type) {
+				return nil, false, nil
+			}
 		}
-		return nil, false, nil
+		return nil, false, fmt.Errorf("native executor is unavailable in bounded mode")
 	}
 	if cp.egress != nil {
 		if err := cp.egress.Check(dataSource); err != nil {
@@ -369,6 +377,7 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 		db.Close()
 		return nil, fmt.Errorf("data source changed during connection setup; retry")
 	}
+	var displaced *sql.DB
 	if existing, exists := cp.pools[dataSource.ID]; exists {
 		if cp.fingerprints[dataSource.ID] == fingerprint {
 			cp.mutex.Unlock()
@@ -376,14 +385,18 @@ func (cp *ConnectionPool) createConnection(ctx context.Context, dataSource *mode
 			cp.setHealth(dataSource.ID, true)
 			return existing, nil
 		}
-		// The source changed again mid-flight; the installed pool is stale.
-		delete(cp.pools, dataSource.ID)
-		delete(cp.fingerprints, dataSource.ID)
+		// The source changed again mid-flight; the installed pool is stale and
+		// is replaced by this candidate. Close it outside the lock so it is not
+		// leaked (#518).
+		displaced = existing
 	}
 	cp.pools[dataSource.ID] = db
 	cp.fingerprints[dataSource.ID] = fingerprint
 	cp.mutex.Unlock()
 
+	if displaced != nil {
+		displaced.Close()
+	}
 	cp.setHealth(dataSource.ID, true)
 
 	return db, nil
@@ -477,7 +490,19 @@ func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model
 	if err != nil {
 		return "", err
 	}
-	return driver.BuildDSN(config), nil
+	dsn := driver.BuildDSN(config)
+	// These registry-created drivers reject TLS settings they cannot safely
+	// translate into a verified transport. Check before read-only or egress
+	// paths can transform or open the DSN.
+	switch dbType {
+	case model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES,
+		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t,
+		model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres:
+		if err := driver.ValidateDSN(dsn); err != nil {
+			return "", err
+		}
+	}
+	return dsn, nil
 }
 
 // defaultIdleTimeout is how long a pooled data-source connection may sit

@@ -46,6 +46,9 @@ func NewTDSQLDriver(config *TDSQLConfig) (*TDSQLDriver, error) {
 
 // Open opens a connection to TDSQL
 func (d *TDSQLDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TDSQL connection: %w", err)
@@ -64,6 +67,9 @@ func (d *TDSQLDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *TDSQLDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -75,23 +81,35 @@ func (d *TDSQLDriver) GetDefaultPort() int {
 	return 3306
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value TDSQLDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only tuning fields are consulted defensively.
 func (d *TDSQLDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "utf8mb4"
+	if config == nil {
+		return ""
+	}
+	if unsupportedDomesticTLS(config, "") {
+		return unsupportedDomesticTLSDSN
+	}
+
+	charset := "utf8mb4"
+	if d.config != nil && d.config.Charset != "" {
+		charset = d.config.Charset
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s",
 		config.Username, config.Password, config.Host, config.Port, config.Database, charset)
 
 	// Add read-write split parameters
-	if d.config.ReadWriteSplit {
+	if d.config != nil && d.config.ReadWriteSplit {
 		dsn += "&readWriteSplit=true"
 	}
 
 	// Add consistency level
-	if d.config.Consistency != "" {
+	if d.config != nil && d.config.Consistency != "" {
 		dsn += "&consistency=" + d.config.Consistency
 	}
 

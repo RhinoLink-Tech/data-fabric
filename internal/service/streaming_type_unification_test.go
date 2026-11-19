@@ -55,3 +55,25 @@ func TestStreamingTypeMappingKeepsGenericFallbackForUncoveredFamilies(t *testing
 		t.Fatalf("bigquery double = %q, want double via the generic fallback", got)
 	}
 }
+
+// Specific type names that contain a shorter name must match the specific type
+// first: BIGINT contains INT, DATETIME contains DATE, TIMESTAMP contains TIME.
+func TestStreamingGenericFallbackPrefersSpecificTypes(t *testing.T) {
+	service := &streamingService{}
+	cases := []struct {
+		column string
+		want   model.StandardizedType
+	}{
+		{"BIGINT", model.TypeBigInt},
+		{"TIMESTAMP", model.TypeTimestamp},
+		{"DATETIME", model.TypeDateTime},
+		{"INT", model.TypeInteger},
+		{"DATE", model.TypeDate},
+		{"TIME", model.TypeTime},
+	}
+	for _, tc := range cases {
+		if got := service.mapDatabaseTypeToStandard(tc.column, model.DatabaseTypeSnowflake, false); got != tc.want {
+			t.Fatalf("snowflake %s = %q, want %q via the generic fallback", tc.column, got, tc.want)
+		}
+	}
+}

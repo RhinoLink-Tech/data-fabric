@@ -50,7 +50,17 @@ def parse_env(path: Path) -> dict[str, str]:
             continue
         key, value = match.groups()
         value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        quoted = re.match(r'''^(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(?:#.*)?$''', value)
+        if quoted:
+            if value[0] == '"':
+                try:
+                    value = json.loads(value[: quoted.end(1) + 1])
+                except json.JSONDecodeError as exc:
+                    raise RecoveryError(f".env contains invalid quoted value for {key}") from exc
+            else:
+                value = quoted.group(2)
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            # Malformed quoting keeps the earlier behavior: a bad double-quoted value is rejected.
             if value[0] == '"':
                 try:
                     value = json.loads(value)
@@ -58,6 +68,9 @@ def parse_env(path: Path) -> dict[str, str]:
                     raise RecoveryError(f".env contains invalid quoted value for {key}") from exc
             else:
                 value = value[1:-1]
+        elif value[:1] not in ("\"", "'"):
+            # Compose recognizes an unquoted comment only when whitespace precedes the hash.
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
         if key in values:
             duplicates.add(key)
         values[key] = value
@@ -204,6 +217,49 @@ def validate_keyring(values: dict[str, str]) -> tuple[str, list[str]]:
     return active, sorted(ring)
 
 
+
+def verify_running_credential_keyrings(directory: Path, env_path: Path, project_name: str,
+                                       running: list[str], archived_values: dict[str, str]) -> dict[str, str]:
+    """Compare the complete actual container keyrings without disclosing credentials."""
+    if any(service not in running for service in APP_SERVICES):
+        raise RecoveryError("API and MCP must both be running to verify credential keys before backup")
+    try:
+        expected_active, _ = validate_keyring(archived_values)
+        expected = {key: base64.b64decode(value, validate=True) for key, value in
+                    json.loads(archived_values["DATA_FABRIC_CREDENTIAL_KEYS"]).items()}
+        containers = {}
+        for service in APP_SERVICES:
+            container = compose_result(directory, env_path, project_name, "ps", "-q", service).stdout.strip()
+            if not container or len(container.splitlines()) != 1:
+                raise RecoveryError("unable to identify exactly one API and MCP container for credential verification")
+            result = run(["docker", "inspect", "--format", "{{json .Config.Env}}", container], timeout=60)
+            if result.returncode:
+                raise RecoveryError("unable to inspect running API and MCP credential configuration")
+            env = json.loads(result.stdout)
+            if not isinstance(env, list):
+                raise ValueError
+            values = {}
+            for entry in env:
+                if not isinstance(entry, str) or "=" not in entry:
+                    raise ValueError
+                key, value = entry.split("=", 1)
+                if key in ("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "DATA_FABRIC_CREDENTIAL_KEYS"):
+                    if key in values:
+                        raise ValueError
+                    values[key] = value
+            active, _ = validate_keyring(values)
+            actual = {key: base64.b64decode(value, validate=True) for key, value in
+                      json.loads(values["DATA_FABRIC_CREDENTIAL_KEYS"]).items()}
+            if active != expected_active or actual != expected:
+                raise RecoveryError("running API/MCP credential keyring differs from .env; reconcile the protected configuration and restart both services before backup")
+            containers[service] = container
+        return containers
+    except RecoveryError as exc:
+        # Discard the underlying traceback, which may contain secret-bearing data.
+        raise RecoveryError(str(exc)) from None
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, binascii.Error):
+        raise RecoveryError("unable to verify running API/MCP credential keyrings; no backup was published") from None
+
 def candidate_image_identity(directory: Path, env_path: Path, project_name: str, running: list[str], image_ref: str,
                              source_revision: str) -> tuple[str, list[str]]:
     active_apps = [service for service in APP_SERVICES if service in running]
@@ -299,7 +355,10 @@ def backup(args: argparse.Namespace) -> int:
     require_private_file(env_path, "deployment .env")
     if not (directory / "docker-compose.yml").is_file():
         raise RecoveryError("deployment directory has no docker-compose.yml")
+    env_snapshot = env_path.read_bytes()
     values = parse_env(env_path)
+    if env_path.read_bytes() != env_snapshot:
+        raise RecoveryError("deployment .env changed during backup preflight; retry")
     active_key, key_ids = validate_keyring(values)
     source_archive = getattr(args, "release_source_archive", None)
     image_ref = values.get("DATA_FABRIC_IMAGE", "data-fabric:local").strip() or "data-fabric:local"
@@ -346,9 +405,20 @@ def backup(args: argparse.Namespace) -> int:
             raise RecoveryError("metadata database image identity could not be recorded")
         db_image_id, db_image_ref = db_image.stdout.strip().split("|", 1)
         image_id, repo_digests = candidate_image_identity(directory, env_path, args.project_name, running, image_ref, source_revision)
+        if env_path.read_bytes() != env_snapshot:
+            raise RecoveryError("deployment .env changed during backup preflight; retry")
+        verified_containers = verify_running_credential_keyrings(directory, env_path, args.project_name, running, values)
         running_to_restore = [service for service in APP_SERVICES if service in running]
         if running_to_restore:
             compose_result(directory, env_path, args.project_name, "stop", "--timeout", "30", *running_to_restore)
+
+        # Detect a container replacement during preflight or quiescing.
+        for service, expected_container in verified_containers.items():
+            current = compose_result(directory, env_path, args.project_name, "ps", "--all", "-q", service).stdout.strip()
+            if current != expected_container:
+                raise RecoveryError("API/MCP container changed during backup; retry with stable services")
+        if env_path.read_bytes() != env_snapshot:
+            raise RecoveryError("deployment .env changed during backup; no backup was published")
 
         sql_path = work / "metadata.sql"
         dump = compose_command(directory, env_path, args.project_name, "exec", "-T", "metadata-db", "sh", "-ec",
@@ -372,11 +442,11 @@ def backup(args: argparse.Namespace) -> int:
         if source_archive is not None:
             # Keep the running .env untouched, but make the protected backup
             # self-contained for either a checkout or an archive restore.
-            env_copy.write_text(replace_env_values(env_path.read_text(encoding="utf-8"), {
+            env_copy.write_text(replace_env_values(env_snapshot.decode("utf-8"), {
                 "DATA_FABRIC_SOURCE_REVISION": source_revision,
             }), encoding="utf-8")
         else:
-            shutil.copyfile(env_path, env_copy)
+            env_copy.write_bytes(env_snapshot)
         os.chmod(env_copy, 0o600)
         manifest = {
             "format": FORMAT,
@@ -671,9 +741,19 @@ def restore(args: argparse.Namespace) -> int:
         })
         # The target and payload are checked above; exclusive creation prevents a race from replacing user files.
         recovery_dir.mkdir(mode=0o700)
+        env_created = False
         try:
-            fd = os.open(env_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            try:
+                fd = os.open(env_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError as exc:
+                raise RecoveryError("restore refused: a .env appeared after preflight; the existing file was preserved unchanged") from exc
+            env_created = True
+            try:
+                stream = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+            except BaseException:
+                os.close(fd)
+                raise
+            with stream:
                 stream.write(configured)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -683,7 +763,9 @@ def restore(args: argparse.Namespace) -> int:
                 shutil.copyfileobj(source, output, length=1024 * 1024)
             os.chmod(env_path, 0o600)
         except Exception:
-            env_path.unlink(missing_ok=True)
+            # Remove only what this invocation created; a competing .env is never ours to delete.
+            if env_created:
+                env_path.unlink(missing_ok=True)
             shutil.rmtree(recovery_dir, ignore_errors=True)
             raise
         print(f"Restore payload prepared in {target}; no container was started and no database was overwritten.")

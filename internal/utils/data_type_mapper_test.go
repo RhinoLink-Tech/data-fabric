@@ -77,7 +77,7 @@ func TestMapObjectStorageQueryColumnTypes(t *testing.T) {
 		{columnType: "BOOLEAN", want: model.TypeBoolean},
 		{columnType: "VARCHAR", want: model.TypeString},
 	}
-	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeGCSCSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeAlibabaOSSAvro, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeTencentCOSDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSORC, model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneDelta} {
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeS3CSV, model.DatabaseTypeGCSCSV, model.DatabaseTypeMinIOCSV, model.DatabaseTypeS3JSON, model.DatabaseTypeAlibabaOSSJSON, model.DatabaseTypeAlibabaOSSAvro, model.DatabaseTypeAlibabaOSSORC, model.DatabaseTypeTencentCOSJSON, model.DatabaseTypeTencentCOSORC, model.DatabaseTypeTencentCOSAvro, model.DatabaseTypeS3Avro, model.DatabaseTypeS3Parquet, model.DatabaseTypeS3ORC, model.DatabaseTypeS3Delta, model.DatabaseTypeMinIOParquet, model.DatabaseTypeAlibabaOSSParquet, model.DatabaseTypeTencentCOSParquet, model.DatabaseTypeAzureBlobParquet, model.DatabaseTypeAzureParquet, model.DatabaseTypeOSSDelta, model.DatabaseTypeMinIODelta, model.DatabaseTypeAzureDelta, model.DatabaseTypeTencentCOSDelta, model.DatabaseTypeMinIOIceberg, model.DatabaseTypeTencentCOSIceberg, model.DatabaseTypeMinIOORC, model.DatabaseTypeMinIOAvro, model.DatabaseTypeMinIOJSON, model.DatabaseTypeHDFSText, model.DatabaseTypeHDFSCSV, model.DatabaseTypeHDFSParquet, model.DatabaseTypeHDFSParquetCompressed, model.DatabaseTypeHDFSAvro, model.DatabaseTypeHDFSORC, model.DatabaseTypeOzoneParquet, model.DatabaseTypeOzoneORC, model.DatabaseTypeOzoneText, model.DatabaseTypeOzoneAvro, model.DatabaseTypeOzoneDelta, model.DatabaseTypeOSSCSV, model.DatabaseTypeTencentCOSCSV, model.DatabaseTypeAzureBlobCSV, model.DatabaseTypeOzoneCSV} {
 		for _, tt := range tests {
 			t.Run(string(dbType)+"/"+tt.columnType, func(t *testing.T) {
 				if got := mapper.MapToStandardType(dbType, tt.columnType, true); got != tt.want {
@@ -85,6 +85,15 @@ func TestMapObjectStorageQueryColumnTypes(t *testing.T) {
 				}
 			})
 		}
+	}
+	// An unrelated family without mapping rules keeps its prior behavior:
+	// every common type still maps to unknown.
+	for _, tt := range tests {
+		t.Run("unsupported/"+string(model.DatabaseTypeSnowflake)+"/"+tt.columnType, func(t *testing.T) {
+			if got := mapper.MapToStandardType(model.DatabaseTypeSnowflake, tt.columnType, true); got != model.TypeUnknown {
+				t.Errorf("MapToStandardType(%s, %q) = %q, want %q", model.DatabaseTypeSnowflake, tt.columnType, got, model.TypeUnknown)
+			}
+		})
 	}
 }
 
@@ -218,9 +227,18 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 		{columnType: "xml", want: model.TypeText},
 		{columnType: "bytea", want: model.TypeBinary},
 		{columnType: "timestamp", want: model.TypeTimestamp},
+		{columnType: "timestamp without time zone", want: model.TypeTimestamp},
+		{columnType: "timestamp with time zone", want: model.TypeTimestamp},
+		{columnType: "timestamp(3) without time zone", want: model.TypeTimestamp},
+		{columnType: "TiMeStAmP(6) WiTh TiMe ZoNe", want: model.TypeTimestamp},
 		{columnType: "timestamptz", want: model.TypeTimestamp},
 		{columnType: "date", want: model.TypeDate},
 		{columnType: "time", want: model.TypeTime},
+		{columnType: "time without time zone", want: model.TypeTime},
+		{columnType: "time with time zone", want: model.TypeTime},
+		{columnType: "time(3) with time zone", want: model.TypeTime},
+		{columnType: "tImE(6) WiThOuT TiMe ZoNe", want: model.TypeTime},
+		{columnType: "timetz", want: model.TypeTime},
 		{columnType: "boolean", want: model.TypeBoolean},
 		{columnType: "uuid", want: model.TypeUUID},
 		{columnType: "json", want: model.TypeJSON},
@@ -231,6 +249,8 @@ func TestMapPostgreSQLTypes(t *testing.T) {
 		{columnType: "INTEGER", want: model.TypeInteger},
 		{columnType: "NUMERIC(10,2)", want: model.TypeDecimal},
 		{columnType: "unknown_type", want: model.TypeUnknown},
+		{columnType: "timestamp with local time zone", want: model.TypeUnknown},
+		{columnType: "timestamp without timezone", want: model.TypeUnknown},
 	}
 
 	for _, tt := range tests {

@@ -44,6 +44,7 @@ type transportSession struct {
 	cancel    context.CancelFunc
 	timer     *time.Timer
 	ready     bool
+	released  bool
 	requests  sync.WaitGroup
 }
 
@@ -126,7 +127,20 @@ func (t *OwnerTransport) end(s *transportSession) {
 	t.cancelAndRelease(s)
 }
 
+// cancelAndRelease idempotently tears down a session. The TTL expiry timer
+// (via end) and Close() can both reach this for the same session when a
+// session expires while the server is draining, so the release goroutine must
+// run at most once: double release would decrement t.used twice and call
+// open.Done() twice, panicking on a negative WaitGroup counter and firing
+// EndSession redundantly.
 func (t *OwnerTransport) cancelAndRelease(s *transportSession) {
+	t.mu.Lock()
+	if s.released {
+		t.mu.Unlock()
+		return
+	}
+	s.released = true
+	t.mu.Unlock()
 	s.timer.Stop()
 	s.cancel()
 	go func() {

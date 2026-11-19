@@ -88,7 +88,8 @@ func TestExecuteStreamQueryHonorsRequestDeadline(t *testing.T) {
 
 func TestFetchStreamChunkCancellationDeletesCoordinatorQuery(t *testing.T) {
 	fetchStarted := make(chan struct{}, 1)
-	deleteReceived := make(chan struct{}, 1)
+	deleteReceived := make(chan string, 8)
+	releaseFetch := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -103,20 +104,38 @@ func TestFetchStreamChunkCancellationDeletesCoordinatorQuery(t *testing.T) {
 				streamCoordinatorResponse(w, "stream-query", serverURL(r)+"/v1/next/stream-query", "[[1]]")
 			}
 		case http.MethodGet:
-			fetchStarted <- struct{}{}
-			<-r.Context().Done()
+			select {
+			case fetchStarted <- struct{}{}:
+			default:
+			}
+			select {
+			case <-r.Context().Done():
+			case <-releaseFetch:
+			}
 		case http.MethodDelete:
-			deleteReceived <- struct{}{}
+			if r.URL.Path == "/v1/next/stream-query" {
+				select {
+				case deleteReceived <- r.URL.Path:
+				default:
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": "stream-query", "stats": map[string]string{"state": "CANCELED"}})
 		default:
 			http.Error(w, "unexpected request", http.StatusMethodNotAllowed)
 		}
 	}))
-	defer server.Close()
+	var pool *database.ConnectionPool
+	defer func() {
+		close(releaseFetch)
+		if pool != nil {
+			_ = pool.CloseAll()
+		}
+		server.Close()
+	}()
 
-	svc, pool := newStreamingTestService(t, server)
-	defer func() { _ = pool.CloseAll() }()
+	var svc *streamingService
+	svc, pool = newStreamingTestService(t, server)
 	streamID, total, err := svc.ExecuteStreamQuery(context.Background(), nil, &model.QueryRequest{
 		DataSourceID: svc.datasourceRepo.(federationSourceRepository).source.ID,
 		SQL:          "SELECT * FROM sales.orders",
@@ -151,7 +170,10 @@ func TestFetchStreamChunkCancellationDeletesCoordinatorQuery(t *testing.T) {
 		t.Fatal("FetchStreamChunk did not stop after cancellation")
 	}
 	select {
-	case <-deleteReceived:
+	case path := <-deleteReceived:
+		if path != "/v1/next/stream-query" {
+			t.Fatalf("cancellation targeted %q, want stream query URI", path)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("coordinator did not receive query cancellation DELETE")
 	}

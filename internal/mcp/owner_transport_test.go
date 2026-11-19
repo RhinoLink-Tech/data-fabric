@@ -427,3 +427,58 @@ func TestMCPIngressKeepsSessionsOnTheirOwnerAfterReload(t *testing.T) {
 		t.Fatalf("new session tool calls reached owner B %d times, want once", len(queryB.received))
 	}
 }
+
+// end() (fired by the TTL timer) removes the session from the map and then
+// calls cancelAndRelease; Close() snapshots the map and also calls
+// cancelAndRelease for each captured session. If a session expires at the same
+// instant Close() is draining, both paths reach cancelAndRelease for the same
+// session. cancelAndRelease must therefore be idempotent: the second call must
+// be a no-op rather than running the release goroutine again (which would
+// double-decrement t.used and call open.Done() twice, panicking with a
+// negative WaitGroup counter and firing EndSession redundantly).
+func TestOwnerTransportCancelAndReleaseIsIdempotent(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	endCalls := make(chan string, 4)
+	s := &transportSession{
+		id:       "s1",
+		lifetime: ctx,
+		cancel:   cancel,
+		timer:    time.AfterFunc(time.Hour, func() {}),
+		ready:    true,
+	}
+	s.requests.Add(1) // one in-flight acquire, like reserve() leaves behind.
+
+	tr := &OwnerTransport{
+		opts:     OwnerTransportOptions{EndSession: func(id string) { endCalls <- id }},
+		sessions: map[string]*transportSession{"s1": s},
+		used:     1, // reserve() incremented this when the session was created.
+	}
+	tr.open.Add(1)
+
+	// Simulate the TTL expiry timer and Close() both deciding to release the
+	// same session.
+	tr.cancelAndRelease(s)
+	tr.cancelAndRelease(s)
+
+	s.requests.Done()
+	tr.open.Wait() // must not panic on a negative WaitGroup counter
+
+	if got := tr.used; got != 0 {
+		t.Fatalf("used = %d, want 0 (release must run exactly once)", got)
+	}
+
+	// EndSession must be called exactly once.
+	select {
+	case id := <-endCalls:
+		if id != "s1" {
+			t.Fatalf("EndSession called with id %q, want s1", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("EndSession never called")
+	}
+	select {
+	case id := <-endCalls:
+		t.Fatalf("EndSession called twice (second id %q)", id)
+	default:
+	}
+}

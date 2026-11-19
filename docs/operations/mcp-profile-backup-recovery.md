@@ -1,5 +1,7 @@
 # Self-Hosted MCP Profile Backup and Recovery
 
+> **Preview.2 limitations:** the source-archive allowlist below recognizes preview.1, not preview.2. The helper distributed with preview.2 does not verify that running API/MCP credential keyrings match the `.env` being archived ([#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)). A clean checkout alone does not resolve that risk. Do not rely on an untested backup or restore for valuable data; verify the effective key material and rehearse recovery independently.
+
 This runbook covers the current single-host profile: MySQL metadata, a pinned Data Fabric image, the credential-vault keyring and the OIDC configuration. Use it with the immutable candidate recorded in the backup manifest. It does not back up business-source databases, query results, live cursors, logs or the TLS private key.
 
 The backup contains the deployment `.env` and the complete `data_fabric` metadata database. Treat the encrypted archive as a secret. The metadata rows contain encrypted source credentials; they are useful only with every key in the recorded keyring. A syntactically valid keyring does not prove that every stored credential can be decrypted, so the restore rehearsal includes a selected-source connection check.
@@ -24,6 +26,9 @@ chmod 600 /secure/recovery/data-fabric.agekey /secure/recovery/data-fabric.recip
 The recipient is public. The identity file is private and must remain separate from the archive.
 
 ## Create an encrypted backup
+
+The updated checkout helper requires both API and MCP services to be healthy and running. Before quiescing them, it compares their container credential keyrings to the protected `.env`, rejecting mismatches without printing keys; it also rejects changing `.env` and container replacement during preflight. Reconcile the protected file and restart both services if a mismatch is reported. This check does not establish that all historical credentials can be decrypted: rehearse restore and selected-source access. These changes are not present in the already published preview.2 helper.
+
 
 Run `onboard.py doctor` first and resolve all reported failures. Then run from a clean candidate checkout. The helper requires `deploy/mcp/.env` to be a regular mode-0600 file and validates the active 32-byte key plus every retained key. It records the source SHA, the image ID/reference actually used by API and MCP, metadata MySQL image identity/version, key IDs, and payload checksums in an encrypted manifest. It also requires the image's OCI revision label to match the clean Git checkout SHA.
 

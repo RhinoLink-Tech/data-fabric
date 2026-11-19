@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""Disposable Keycloak/MCP acceptance test; requires Docker, Go, OpenSSL and requests."""
+import contextlib,email,html,json,os,pathlib,re,secrets,shutil,subprocess,sys,tempfile,time,urllib.parse
+from html.parser import HTMLParser
+import requests
+
+suffix=secrets.token_hex(4)
+network='df603-net-'+suffix
+smtp='df603-smtp-'+suffix
+kc='df603-identity-'+suffix
+proxy='df603-proxy-'+suffix
+pg='df603-pg-'+suffix
+admin='testadmin'
+password=secrets.token_urlsafe(24)
+env=os.environ.copy()
+env.update(KC_BOOTSTRAP_ADMIN_USERNAME=admin,KC_BOOTSTRAP_ADMIN_PASSWORD=password,KC_PROXY_HEADERS='xforwarded',KC_HOSTNAME_STRICT='false')
+created_network=False;created=[]
+def run(args,**kwargs):
+ return subprocess.run(args,capture_output=True,text=True,timeout=35,**kwargs)
+class Parser(HTMLParser):
+ def __init__(self):
+  super().__init__();self.links=[];self.forms={}
+ def handle_starttag(self,tag,attrs):
+  a=dict(attrs)
+  if tag=='a' and a.get('href'):self.links.append(a['href'])
+  if tag=='form' and a.get('id'):self.forms[a['id']]=a.get('action')
+try:
+ theme_dir=os.environ.get('DF_IDENTITY_THEME_DIR','').strip()
+ theme_path=None
+ if theme_dir:
+  theme_path=pathlib.Path(theme_dir).expanduser().resolve()
+  if not (theme_path/'login'/'theme.properties').is_file() or not (theme_path/'email'/'theme.properties').is_file():
+   raise RuntimeError('DF_IDENTITY_THEME_DIR must contain login and email theme.properties')
+ with tempfile.TemporaryDirectory(prefix='df603-identity-') as td:
+  spool=pathlib.Path(td)
+  smtpcode='''import pathlib,socketserver
+class Handler(socketserver.StreamRequestHandler):
+ def handle(self):
+  self.wfile.write(b"220 fake-smtp\\r\\n")
+  while True:
+   line=self.rfile.readline(8192)
+   if not line:break
+   cmd=line.upper()
+   if cmd.startswith((b"EHLO",b"HELO")):self.wfile.write(b"250-fake\\r\\n250 8BITMIME\\r\\n")
+   elif cmd.startswith((b"MAIL ",b"RCPT ",b"RSET")):self.wfile.write(b"250 OK\\r\\n")
+   elif cmd.startswith(b"DATA"):
+    self.wfile.write(b"354 End data\\r\\n")
+    chunks=[]
+    while True:
+     l=self.rfile.readline(1048576)
+     if not l or l==b".\\r\\n":break
+     chunks.append(l)
+    pathlib.Path("/work/message.eml").write_bytes(b"".join(chunks))
+    self.wfile.write(b"250 OK\\r\\n")
+   elif cmd.startswith(b"QUIT"):
+    self.wfile.write(b"221 Bye\\r\\n");break
+   else:self.wfile.write(b"250 OK\\r\\n")
+class Server(socketserver.ThreadingTCPServer):allow_reuse_address=True
+Server(("0.0.0.0",1025),Handler).serve_forever()
+'''
+  (spool/'smtp.py').write_text(smtpcode)
+  cert=spool/'cert.pem';private=spool/'key.pem'
+  openssl=run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(private),'-out',str(cert),'-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1'])
+  if openssl.returncode:raise RuntimeError('test TLS certificate')
+  private.chmod(0o644)
+  (spool/'nginx.conf').write_text('events {} http { server { listen 443 ssl; ssl_certificate /work/cert.pem; ssl_certificate_key /work/key.pem; location / { proxy_pass http://identity:8080; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-Host $http_host; } } }')
+  if run(['docker','network','create',network]).returncode:raise RuntimeError('test network creation')
+  created_network=True
+  pgenv=os.environ.copy();pgenv.update(POSTGRES_USER='source_admin',POSTGRES_PASSWORD='synthetic-admin-password',POSTGRES_DB='synthetic_orders')
+  r=run(['docker','run','-d','--name',pg,'--network',network,'-p','127.0.0.1::5432','-e','POSTGRES_USER','-e','POSTGRES_PASSWORD','-e','POSTGRES_DB','postgres@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b'],env=pgenv)
+  if r.returncode:raise RuntimeError('test PostgreSQL start')
+  created.append(pg)
+  # The temporary initdb server uses a socket; wait for the final TCP listener.
+  for attempt in range(40):
+   ready=run(['docker','exec',pg,'pg_isready','-h','127.0.0.1','-U','source_admin','-d','synthetic_orders'])
+   if ready.returncode==0:break
+   time.sleep(1)
+  else:raise RuntimeError('test PostgreSQL startup timeout')
+  sql="CREATE ROLE demo_reader LOGIN PASSWORD 'synthetic-password'; CREATE TABLE public.orders(id integer PRIMARY KEY,status text NOT NULL); INSERT INTO public.orders VALUES(1,'paid'),(2,'pending'); GRANT CONNECT ON DATABASE synthetic_orders TO demo_reader; GRANT USAGE ON SCHEMA public TO demo_reader; GRANT SELECT ON public.orders TO demo_reader;"
+  ready=run(['docker','exec','-i',pg,'psql','-v','ON_ERROR_STOP=1','-U','source_admin','-d','synthetic_orders'],input=sql)
+  if ready.returncode:raise RuntimeError('test PostgreSQL seed')
+  mapped=run(['docker','port',pg,'5432/tcp'])
+  if mapped.returncode:raise RuntimeError('test PostgreSQL port')
+  pgport=int(mapped.stdout.strip().rsplit(':',1)[1])
+  r=run(['docker','run','-d','--name',smtp,'--network',network,'--network-alias','smtp','-v',td+':/work','--entrypoint','python3','python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1','/work/smtp.py'])
+  if r.returncode:raise RuntimeError('fake SMTP start')
+  created.append(smtp)
+  cmd=['docker','run','-d','--name',kc,'--network',network,'--network-alias','identity','-e','KC_BOOTSTRAP_ADMIN_USERNAME','-e','KC_BOOTSTRAP_ADMIN_PASSWORD','-e','KC_PROXY_HEADERS','-e','KC_HOSTNAME_STRICT','quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba','start-dev','--http-relative-path=/identity']
+  if theme_path:
+   image_index=cmd.index('quay.io/keycloak/keycloak@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba')
+   cmd[image_index:image_index]=['-v',str(theme_path)+':/opt/keycloak/themes/data-fabric:ro']
+  if run(cmd,env=env).returncode:raise RuntimeError('identity container start')
+  created.append(kc)
+  r=run(['docker','run','-d','--name',proxy,'--network',network,'-p','127.0.0.1::443','-v',td+':/work:ro','-v',str(spool/'nginx.conf')+':/etc/nginx/nginx.conf:ro','nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10'])
+  if r.returncode:raise RuntimeError('test TLS proxy')
+  created.append(proxy)
+  r=run(['docker','port',proxy,'443/tcp'])
+  if r.returncode:raise RuntimeError('identity port')
+  port=int(r.stdout.strip().rsplit(':',1)[1]);base='https://127.0.0.1:'+str(port)+'/identity'
+  session=requests.Session();session.trust_env=False;session.verify=str(cert)
+  for attempt in range(65):
+   try:
+    r=session.get(base+'/realms/master/.well-known/openid-configuration',timeout=2)
+    if r.status_code==200:break
+   except requests.RequestException:pass
+   time.sleep(1)
+  else:raise RuntimeError('identity startup timeout')
+  r=session.post(base+'/realms/master/protocol/openid-connect/token',data={'grant_type':'password','client_id':'admin-cli','username':admin,'password':password},timeout=10)
+  if r.status_code!=200:raise RuntimeError('bootstrap admin '+str(r.status_code))
+  headers={'Authorization':'Bearer '+r.json()['access_token']}
+  realm={'realm':'df-selfservice-test','enabled':True,'registrationAllowed':True,'verifyEmail':True,'resetPasswordAllowed':True,'sslRequired':'none','smtpServer':{'host':'smtp','port':'1025','from':'no-reply@example.invalid','ssl':'false','starttls':'false','auth':'false'}}
+  if theme_path:realm.update(loginTheme='data-fabric',emailTheme='data-fabric')
+  r=session.post(base+'/admin/realms',json=realm,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('realm setup '+str(r.status_code))
+  if theme_path:
+   # This is a newly created disposable realm, never an existing deployment.
+   profileurl=base+'/admin/realms/df-selfservice-test/users/profile'
+   r=session.get(profileurl,headers=headers,timeout=10);r.raise_for_status();profile=r.json()
+   profile['attributes']=[a for a in profile['attributes'] if a.get('name') not in ('firstName','lastName')]
+   r=session.put(profileurl,json=profile,headers=headers,timeout=10);r.raise_for_status()
+  client={'clientId':'trial-client','enabled':True,'publicClient':True,'standardFlowEnabled':True,'redirectUris':['http://127.0.0.1/callback'],'attributes':{'pkce.code.challenge.method':'S256'}}
+  r=session.post(base+'/admin/realms/df-selfservice-test/clients',json=client,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('client setup '+str(r.status_code))
+  clientsurl=base+'/admin/realms/df-selfservice-test/clients'
+  found=session.get(clientsurl,params={'clientId':'trial-client'},headers=headers,timeout=10);found.raise_for_status()
+  clientid=found.json()[0]['id']
+  scope={'name':'data-fabric.sources.manage','protocol':'openid-connect','attributes':{'include.in.token.scope':'true'}}
+  r=session.post(base+'/admin/realms/df-selfservice-test/client-scopes',json=scope,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('management scope setup '+str(r.status_code))
+  r=session.get(base+'/admin/realms/df-selfservice-test/client-scopes',headers=headers,timeout=10);r.raise_for_status()
+  scopes=[x for x in r.json() if x['name']=='data-fabric.sources.manage']
+  if len(scopes)!=1:raise RuntimeError('management scope missing')
+  r=session.put(clientsurl+'/'+clientid+'/default-client-scopes/'+scopes[0]['id'],headers=headers,timeout=10)
+  if r.status_code!=204:raise RuntimeError('management scope assignment '+str(r.status_code))
+  mapper={'name':'data-fabric-audience','protocol':'openid-connect','protocolMapper':'oidc-audience-mapper','consentRequired':False,'config':{'included.custom.audience':'data-fabric-mcp','access.token.claim':'true','id.token.claim':'false'}}
+  r=session.post(clientsurl+'/'+clientid+'/protocol-mappers/models',json=mapper,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('audience mapper setup '+str(r.status_code))
+  import hashlib,base64
+  verifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+  browser=requests.Session();browser.trust_env=False;browser.verify=str(cert)
+  auth=base+'/realms/df-selfservice-test/protocol/openid-connect/auth'
+  params={'client_id':'trial-client','response_type':'code','scope':'openid','redirect_uri':'http://127.0.0.1/callback','state':'test-state','code_challenge':challenge,'code_challenge_method':'S256'}
+  r=browser.get(auth,params=params,timeout=15)
+  r.raise_for_status();p=Parser();p.feed(r.text)
+  links=[x for x in p.links if '/registration' in urllib.parse.urlsplit(x).path]
+  if not links: print('Login link paths:',[urllib.parse.urlsplit(x).path for x in p.links])
+  if not links:raise RuntimeError('registration link missing')
+  r=browser.get(urllib.parse.urljoin(base,links[0]),timeout=15)
+  if r.status_code!=200:
+   snippets=re.findall(r'<(?:h1|p|title)[^>]*>(.*?)</(?:h1|p|title)>',r.text,re.S|re.I)
+   print('Registration error text:',[re.sub(r'<[^>]+>',' ',x).strip()[:160] for x in snippets][:5])
+   raise RuntimeError('registration page '+str(r.status_code))
+  p=Parser();p.feed(r.text);action=p.forms.get('kc-register-form')
+  if not action:raise RuntimeError('registration form missing')
+  r=browser.post(urllib.parse.urljoin(base,action),data={**({} if theme_path else {'firstName':'Trial','lastName':'User'}),'email':'trial@example.invalid','username':'trial-user','password':'TestingPassword123!','password-confirm':'TestingPassword123!'},timeout=15)
+  if r.status_code!=200:raise RuntimeError('registration response '+str(r.status_code))
+  for _ in range(25):
+   if (spool/'message.eml').is_file():break
+   time.sleep(1)
+  else:raise RuntimeError('verification email missing')
+  userurl=base+'/admin/realms/df-selfservice-test/users'
+  r=session.get(userurl,headers=headers,params={'username':'trial-user','exact':'true'},timeout=10);r.raise_for_status()
+  users=r.json()
+  if len(users)!=1 or users[0].get('emailVerified') is not False:raise RuntimeError('unverified user state')
+  msg=email.message_from_bytes((spool/'message.eml').read_bytes())
+  chunks=[]
+  for part in msg.walk():
+   if part.get_content_type() in ('text/plain','text/html'):
+    payload=part.get_payload(decode=True)
+    if payload:chunks.append(payload.decode('utf-8','replace'))
+  txt=html.unescape('\n'.join(chunks))
+  links=re.findall(r'https?://[^\s<>"\']+',txt)
+  candidates=[x for x in links if '/login-actions/action-token?' in x]
+  if not candidates:raise RuntimeError('verification action link missing')
+  link=candidates[0].rstrip('.,)')
+  if urllib.parse.urlsplit(link).netloc!='127.0.0.1:'+str(port):raise RuntimeError('unexpected verification host')
+  r=browser.get(link,timeout=15,allow_redirects=False)
+  if r.status_code not in (200,302,303):raise RuntimeError('verification action '+str(r.status_code))
+  r=session.get(userurl+'/'+users[0]['id'],headers=headers,timeout=10);r.raise_for_status()
+  if r.json().get('emailVerified') is not True:raise RuntimeError('verification not persisted')
+  print('PASS: isolated registration, fake email and verification completed')
+  login=browser.get(auth,params=params,timeout=15,allow_redirects=False)
+  if login.status_code==200:
+   f=Parser();f.feed(login.text);login_action=f.forms.get('kc-form-login')
+   if not login_action:raise RuntimeError('login form unavailable after verification')
+   login=browser.post(urllib.parse.urljoin(base,login_action),data={'username':'trial-user','password':'TestingPassword123!'},timeout=15,allow_redirects=False)
+  location=login.headers.get('Location','')
+  parsed=urllib.parse.urlsplit(location)
+  values=urllib.parse.parse_qs(parsed.query)
+  if login.status_code not in (302,303) or parsed.scheme!='http' or parsed.netloc!='127.0.0.1' or parsed.path!='/callback' or values.get('state')!=['test-state'] or len(values.get('code',[]))!=1:
+   raise RuntimeError('verified OAuth callback missing')
+  token=session.post(base+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':values['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier},timeout=15)
+  if token.status_code!=200:raise RuntimeError('verified token exchange '+str(token.status_code))
+  tokenfile=spool/'token.txt';tokenfile.write_text(token.json()['access_token']);tokenfile.chmod(0o600)
+  # Exercise the password reset mail and form against the isolated SMTP server.
+  (spool/'message.eml').unlink()
+  resetbrowser=requests.Session();resetbrowser.trust_env=False;resetbrowser.verify=str(cert)
+  resetlogin=resetbrowser.get(auth,params=params,timeout=15)
+  f=Parser();f.feed(resetlogin.text)
+  resetlinks=[x for x in f.links if '/login-actions/reset-credentials' in urllib.parse.urlsplit(x).path]
+  if not resetlinks:raise RuntimeError('password reset link missing')
+  page=resetbrowser.get(urllib.parse.urljoin(base,resetlinks[0]),timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-reset-password-form')
+  if not form:raise RuntimeError('password reset form missing')
+  response=resetbrowser.post(urllib.parse.urljoin(base,form),data={'username':'trial-user'},timeout=15)
+  if response.status_code!=200:raise RuntimeError('password reset request failed')
+  for _ in range(25):
+   if (spool/'message.eml').is_file():break
+   time.sleep(1)
+  else:raise RuntimeError('password reset email missing')
+  msg=email.message_from_bytes((spool/'message.eml').read_bytes())
+  chunks=[]
+  for part in msg.walk():
+   if part.get_content_type() in ('text/plain','text/html'):
+    content=part.get_payload(decode=True)
+    if content:chunks.append(content.decode('utf-8','replace'))
+  resettext=html.unescape('\n'.join(chunks))
+  reseturls=re.findall(r'https?://[^\s<>"\']+',resettext)
+  reseturls=[x.rstrip('.,)') for x in reseturls if '/login-actions/action-token?' in x]
+  if not reseturls or urllib.parse.urlsplit(reseturls[0]).netloc!='127.0.0.1:'+str(port):raise RuntimeError('password reset link missing or invalid')
+  page=resetbrowser.get(reseturls[0],timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-passwd-update-form')
+  if not form:raise RuntimeError('new password form missing')
+  response=resetbrowser.post(urllib.parse.urljoin(base,form),data={'password-new':'NewTestingPassword123!','password-confirm':'NewTestingPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303):raise RuntimeError('password update failed')
+  # A fresh session must authenticate with the new password.
+  fresh=requests.Session();fresh.trust_env=False;fresh.verify=str(cert)
+  page=fresh.get(auth,params=params,timeout=15)
+  f=Parser();f.feed(page.text);form=f.forms.get('kc-form-login')
+  if not form:raise RuntimeError('new-password login form missing')
+  response=fresh.post(urllib.parse.urljoin(base,form),data={'username':'trial-user','password':'NewTestingPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or urllib.parse.urlsplit(response.headers.get('Location','')).path!='/callback':raise RuntimeError('new-password login failed')
+  print('PASS: isolated password reset and login with new password')
+  second={'username':'other-user','firstName':'Other','lastName':'User','enabled':True,'email':'other@example.invalid','emailVerified':True,'credentials':[{'type':'password','value':'OtherPassword123!','temporary':False}]}
+  r=session.post(userurl,json=second,headers=headers,timeout=10)
+  if r.status_code!=201:raise RuntimeError('second synthetic user setup '+str(r.status_code))
+  verifier2=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  challenge2=base64.urlsafe_b64encode(hashlib.sha256(verifier2.encode()).digest()).rstrip(b'=').decode()
+  browser2=requests.Session();browser2.trust_env=False;browser2.verify=str(cert)
+  params2=dict(params,state='second-state',code_challenge=challenge2)
+  login2=browser2.get(auth,params=params2,timeout=15)
+  f=Parser();f.feed(login2.text);login_action=f.forms.get('kc-form-login')
+  if not login_action:raise RuntimeError('second login form missing')
+  login2=browser2.post(urllib.parse.urljoin(base,login_action),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  parsed2=urllib.parse.urlsplit(login2.headers.get('Location',''));values2=urllib.parse.parse_qs(parsed2.query)
+  if login2.status_code not in (302,303) or parsed2.scheme!='http' or parsed2.netloc!='127.0.0.1' or parsed2.path!='/callback' or values2.get('state')!=['second-state'] or len(values2.get('code',[]))!=1:raise RuntimeError('second OAuth callback missing; status='+str(login2.status_code)+' destination='+parsed2.path+' text='+re.sub(r'<[^>]+>',' ',login2.text)[-300:])
+  token2=session.post(base+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':values2['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier2},timeout=15)
+  if token2.status_code!=200:raise RuntimeError('second token exchange '+str(token2.status_code))
+  tokenfile2=spool/'token2.txt';tokenfile2.write_text(token2.json()['access_token']);tokenfile2.chmod(0o600)
+  # Exercise the restricted proxy fixture against the disposable identity.
+  prodproxy='df603-actualproxy-'+suffix
+  actual=(pathlib.Path(__file__).resolve().parent/'fixtures'/'workbuddy-identity-proxy.conf').read_text()
+  actual=actual.replace('${DF_PUBLIC_HOST}','127.0.0.1').replace('/realms/data-fabric/','/realms/df-selfservice-test/')
+  actual=actual.replace('proxy_set_header X-Forwarded-Port 443;', 'proxy_set_header X-Forwarded-Port '+chr(34)*2+';')
+  actual=actual.replace('/etc/df-proxy/tls.crt','/work/cert.pem').replace('/etc/df-proxy/tls.key','/work/key.pem')
+  actual=actual.replace('proxy_set_header Host 127.0.0.1;', 'proxy_set_header Host $http_host;').replace('proxy_set_header X-Forwarded-Host 127.0.0.1;', 'proxy_set_header X-Forwarded-Host $http_host;')
+  marker='  location = /mcp { proxy_pass $gateway; }'
+  cookies=('add_header Set-Cookie "AUTH_SESSION_ID=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; '
+           'add_header Set-Cookie "KC_AUTH_SESSION_HASH=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; '
+           'add_header Set-Cookie "KC_RESTART=; Path=/identity/realms/df-selfservice-test/; Max-Age=0; Secure; HttpOnly; SameSite=None" always; ')
+  freshReg='  location = /register/start { '+cookies+'return 302 https://public.example/identity/realms/df-selfservice-test/protocol/openid-connect/registrations; }'
+  freshAccount='  location = /account/start { '+cookies+'return 302 https://public.example/identity/realms/df-selfservice-test/account/; }'
+  actual=actual.replace(marker,freshReg+'\n'+freshAccount+'\n'+marker)
+  (spool/'actual.conf').write_text(actual)
+  r=run(['docker','run','-d','--name',prodproxy,'--network',network,'-p','127.0.0.1::443','-v',td+':/work:ro','-v',str(spool/'actual.conf')+':/etc/nginx/conf.d/default.conf:ro','nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10'])
+  if r.returncode:raise RuntimeError('production-like proxy setup failed')
+  created.append(prodproxy)
+  r=run(['docker','port',prodproxy,'443/tcp'])
+  if r.returncode:
+   output=run(['docker','logs',prodproxy])
+   raise RuntimeError('production-like proxy port: '+output.stderr[-700:])
+  actualbase='https://127.0.0.1:'+r.stdout.strip().rsplit(':',1)[1]+'/identity'
+  actualauth=actualbase+'/realms/df-selfservice-test/protocol/openid-connect/auth'
+  prod=requests.Session();prod.trust_env=False;prod.verify=str(cert)
+  p3=dict(params2,state='proxy-test-state')
+  page=prod.get(actualauth,params=p3,timeout=15)
+  f=Parser();f.feed(page.text);login_action=f.forms.get('kc-form-login')
+  if not login_action:raise RuntimeError('actual proxy login form missing')
+  response=prod.post(urllib.parse.urljoin(actualbase,login_action),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or urllib.parse.urlsplit(response.headers.get('Location','')).path!='/callback':raise RuntimeError('actual proxy login failed')
+  callback=urllib.parse.parse_qs(urllib.parse.urlsplit(response.headers['Location']).query)
+  prodtoken=prod.post(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'trial-client','code':callback['code'][0],'redirect_uri':'http://127.0.0.1/callback','code_verifier':verifier2},timeout=15)
+  if prodtoken.status_code!=200:raise RuntimeError('proxy token exchange failed')
+  accountapi=prod.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json','Authorization':'Bearer '+prodtoken.json()['access_token']},timeout=15)
+  if accountapi.status_code!=200 or accountapi.json().get('username')!='other-user':raise RuntimeError('account profile failed or returned wrong user: '+str(accountapi.status_code))
+  anonymous=requests.Session();anonymous.trust_env=False;anonymous.verify=str(cert)
+  noauth=anonymous.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json'},timeout=15)
+  if noauth.status_code!=401:raise RuntimeError('account profile accepted unauthenticated request')
+  for path in ('login-status-iframe.html','3p-cookies/step1.html','3p-cookies/step2.html'):
+   asset=prod.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/'+path,timeout=15)
+   if asset.status_code!=200:raise RuntimeError('account console OIDC asset unavailable: '+path+' '+str(asset.status_code))
+  print('PASS: account profile returns only the authenticated synthetic user')
+  account=prod.get(actualbase+'/realms/df-selfservice-test/account/',timeout=15)
+  if account.status_code!=200 or 'keycloak' not in account.text.lower():raise RuntimeError('account console unavailable')
+  accountRedirect=actualbase+'/realms/df-selfservice-test/account/'
+  aVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  aChallenge=base64.urlsafe_b64encode(hashlib.sha256(aVerifier.encode()).digest()).rstrip(b'=').decode()
+  acParams={'client_id':'account-console','response_type':'code','scope':'openid','redirect_uri':accountRedirect,'state':'account-console-test','code_challenge':aChallenge,'code_challenge_method':'S256'}
+  ac=prod.get(actualauth,params=acParams,allow_redirects=False,timeout=15)
+  acurl=urllib.parse.urlsplit(ac.headers.get('Location',''));acvalues=urllib.parse.parse_qs(acurl.query)
+  if ac.status_code not in (302,303) or not acurl.path.endswith('/account/') or acvalues.get('state')!=['account-console-test'] or not acvalues.get('code'):raise RuntimeError('account console SSO callback failed')
+  actoken=prod.post(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/token',data={'grant_type':'authorization_code','client_id':'account-console','redirect_uri':accountRedirect,'code':acvalues['code'][0],'code_verifier':aVerifier},timeout=15)
+  if actoken.status_code!=200:raise RuntimeError('account console token exchange failed')
+  profile=prod.get(actualbase+'/realms/df-selfservice-test/account/',headers={'Accept':'application/json','Authorization':'Bearer '+actoken.json()['access_token']},timeout=15)
+  if profile.status_code!=200 or profile.json().get('username')!='other-user':raise RuntimeError('account console cannot load authenticated user')
+  print('PASS: account console OAuth identifies the signed-in user')
+  time.sleep(3)
+  logout=prod.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',timeout=15)
+  class LogoutParser(Parser):
+   def __init__(self):super().__init__();self.action=None;self.values={}
+   def handle_starttag(self,tag,attrs):
+    super().handle_starttag(tag,attrs)
+    a=dict(attrs)
+    if tag=='form' and '/logout/logout-confirm' in a.get('action',''):self.action=a['action']
+    if tag=='input' and a.get('type')=='hidden' and a.get('name'):self.values[a['name']]=a.get('value','')
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('actual proxy logout form missing')
+  f.values['confirmLogout']='yes'
+  response=prod.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303):raise RuntimeError('actual proxy logout failed '+str(response.status_code))
+  page=prod.get(actualauth,params=p3,timeout=15,allow_redirects=False)
+  f=Parser();f.feed(page.text)
+  if page.status_code!=200 or 'kc-form-login' not in f.forms:raise RuntimeError('logout did not clear SSO session')
+  print('PASS: production-like proxy account console, successful login and logout clear the SSO session')
+  # A fresh sign-up starts only after explicitly ending an existing SSO session.
+  actualhost=actualbase.removesuffix('/identity')
+  signupCallback=actualhost+'/signup/complete'
+  signoutRedirect=actualhost+'/register/start'
+  signupClient={'clientId':'standalone-signup','enabled':True,'publicClient':True,'standardFlowEnabled':True,'redirectUris':[signupCallback],'attributes':{'pkce.code.challenge.method':'S256','post.logout.redirect.uris':signoutRedirect+'##'+actualhost+'/account/start'}}
+  r=session.post(clientsurl,json=signupClient,headers=headers,timeout=15)
+  if r.status_code!=201:raise RuntimeError('signup client setup '+str(r.status_code))
+  time.sleep(3)
+  switch=requests.Session();switch.trust_env=False;switch.verify=str(cert)
+  page=switch.get(actualauth,params=dict(params2,state='switch-login'),timeout=15)
+  f=Parser();f.feed(page.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('switch login form missing')
+  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('switch old login failed')
+  logout=switch.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',params={'client_id':'standalone-signup','post_logout_redirect_uri':signoutRedirect},timeout=15)
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('signup logout confirmation missing')
+  f.values['confirmLogout']='yes'
+  response=switch.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or response.headers.get('Location')!=signoutRedirect:raise RuntimeError('signup logout redirect failed '+str(response.status_code))
+  fresh=switch.get(signoutRedirect,timeout=15,allow_redirects=False)
+  if fresh.status_code!=302 or fresh.headers.get('Location')!='https://public.example/identity/realms/df-selfservice-test/protocol/openid-connect/registrations':raise RuntimeError('signup restart HTTPS redirect failed')
+  if any(c.name in ('AUTH_SESSION_ID','KC_AUTH_SESSION_HASH','KC_RESTART') for c in switch.cookies):raise RuntimeError('stale authentication cookies not cleared')
+  signupVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  signupChallenge=base64.urlsafe_b64encode(hashlib.sha256(signupVerifier.encode()).digest()).rstrip(b'=').decode()
+  signupParams={'client_id':'standalone-signup','response_type':'code','scope':'openid','redirect_uri':signupCallback,'state':'fresh-signup','code_challenge':signupChallenge,'code_challenge_method':'S256','prompt':'login'}
+  response=switch.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/registrations',params=signupParams,timeout=15)
+  f=Parser();f.feed(response.text)
+  if response.status_code!=200 or not f.forms.get('kc-register-form'):raise RuntimeError('fresh signup form unavailable')
+  (spool/'message.eml').unlink(missing_ok=True)
+  response=switch.post(urllib.parse.urljoin(actualbase,f.forms['kc-register-form']),data={**({} if theme_path else {'firstName':'Third','lastName':'User'}),'email':'third@example.invalid','username':'third-user','password':'ThirdPassword123!','password-confirm':'ThirdPassword123!'},timeout=15)
+  if response.status_code!=200 or 'already authenticated as different user' in response.text.lower():raise RuntimeError('fresh signup conflicted with previous user')
+  for _ in range(25):
+   if (spool/'message.eml').is_file():break
+   time.sleep(1)
+  else:raise RuntimeError('signup verification mail missing')
+  msg=email.message_from_bytes((spool/'message.eml').read_bytes())
+  chunks=[]
+  for part in msg.walk():
+   if part.get_content_type() in ('text/plain','text/html'):
+    data=part.get_payload(decode=True)
+    if data:chunks.append(data.decode('utf-8','replace'))
+  links=re.findall(r'https?://[^\s<>"\']+',html.unescape('\n'.join(chunks)))
+  links=[x.rstrip('.,)') for x in links if '/login-actions/action-token?' in x]
+  if not links or urllib.parse.urlsplit(links[0]).netloc!=urllib.parse.urlsplit(actualhost).netloc:raise RuntimeError('signup verification link invalid')
+  response=switch.get(links[0],timeout=15,allow_redirects=False)
+  if response.status_code not in (200,302,303) or 'already authenticated as different user' in response.text.lower():raise RuntimeError('signup verification conflicted with previous user')
+  r=session.get(userurl,headers=headers,params={'username':'third-user','exact':'true'},timeout=15);r.raise_for_status()
+  if len(r.json())!=1 or not r.json()[0].get('emailVerified'):raise RuntimeError('new user verification not persisted')
+  print('PASS: old SSO logout, fresh registration and email verification do not conflict')
+  # Sign out again and clear the stale authentication flow before account switch.
+  switch2=requests.Session();switch2.trust_env=False;switch2.verify=str(cert)
+  oldPage=switch2.get(actualauth,params=dict(params2,state='account-switch'),timeout=15)
+  f=Parser();f.feed(oldPage.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('account switch old login missing')
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'other-user','password':'OtherPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('account switch old login failed')
+  time.sleep(2)
+  logout=switch2.get(actualbase+'/realms/df-selfservice-test/protocol/openid-connect/logout',params={'client_id':'standalone-signup','post_logout_redirect_uri':actualhost+'/account/start'},timeout=15)
+  f=LogoutParser();f.feed(logout.text)
+  if not f.action:raise RuntimeError('account switch logout form missing')
+  f.values['confirmLogout']='yes'
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.action),data=f.values,timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303) or response.headers.get('Location')!=actualhost+'/account/start':raise RuntimeError('account switch logout redirect failed')
+  fresh=switch2.get(response.headers['Location'],timeout=15,allow_redirects=False)
+  if fresh.status_code!=302 or fresh.headers.get('Location')!='https://public.example/identity/realms/df-selfservice-test/account/':raise RuntimeError('account switch HTTPS redirect failed')
+  if any(c.name in ('AUTH_SESSION_ID','KC_AUTH_SESSION_HASH','KC_RESTART') for c in switch2.cookies):raise RuntimeError('account switch stale cookies persist')
+  freshVerifier=base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()
+  freshChallenge=base64.urlsafe_b64encode(hashlib.sha256(freshVerifier.encode()).digest()).rstrip(b'=').decode()
+  freshParams=dict(acParams,state='account-new-user',code_challenge=freshChallenge)
+  response=switch2.get(actualauth,params=freshParams,timeout=15)
+  f=Parser();f.feed(response.text)
+  if not f.forms.get('kc-form-login'):raise RuntimeError('new account login form unavailable')
+  response=switch2.post(urllib.parse.urljoin(actualbase,f.forms['kc-form-login']),data={'username':'third-user','password':'ThirdPassword123!'},timeout=15,allow_redirects=False)
+  if response.status_code not in (302,303):raise RuntimeError('new account login conflicted with old session')
+  print('PASS: account switch clears stale auth cookies and signs in the new user')
+  testenv=os.environ.copy()
+  testenv.update(DF_SELF_SERVICE_TEST_ISSUER=base+'/realms/df-selfservice-test',DF_SELF_SERVICE_TEST_CA=str(cert),DF_SELF_SERVICE_TEST_TOKEN=str(tokenfile),DF_SELF_SERVICE_TEST_OTHER_TOKEN=str(tokenfile2),DF_SELF_SERVICE_TEST_SOURCE_PORT=str(pgport))
+  test=run([shutil.which('go') or 'go','test','./cmd/server','-run','^TestSelfServiceRealKeycloakMCPInitialize$','-count=1'],cwd=str(pathlib.Path(__file__).resolve().parents[1]),env=testenv)
+  if test.returncode:
+   print('Go integration test output:',test.stdout[-1500:].replace(token.json()['access_token'],'[redacted]').replace(token2.json()['access_token'],'[redacted]'))
+   raise RuntimeError('Keycloak-to-MCP integration failed')
+  print('PASS: two verified Keycloak identities initialized MCP; sample query, source management and cross-tenant isolation passed')
+except Exception as exc:
+ print('Identity integration failed:',str(exc),file=sys.stderr)
+ sys.exit(1)
+finally:
+ for name in reversed(created):
+  r=run(['docker','rm','-f',name])
+  print('Removed isolated test container:',r.returncode==0)
+ if created_network:
+  r=run(['docker','network','rm',network])
+  print('Removed isolated test network:',r.returncode==0)

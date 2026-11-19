@@ -1,6 +1,16 @@
-# Keep local configuration with real credentials out of the build context
+# Keep local configuration and generated deployment material out of the build context.
+# Example templates are intentionally included. Keep other secrets outside the source tree.
 configs/config.yaml
-.env
+**/.env
+**/.env.*
+!**/.env.example
+deploy/mcp/tls/
+deploy/mcp/recovery/
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.age
 
 .git
 

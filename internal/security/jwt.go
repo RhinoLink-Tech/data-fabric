@@ -22,6 +22,8 @@ type Claims struct {
 	Username string   `json:"username"`
 	Roles    []string `json:"roles"`
 	Scope    string   `json:"scope,omitempty"`
+	// EmailVerified is an authenticated issuer claim, not a grant.
+	EmailVerified bool `json:"email_verified,omitempty"`
 	jwt.RegisteredClaims
 }
 

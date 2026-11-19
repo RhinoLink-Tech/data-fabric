@@ -42,6 +42,9 @@ func NewGBaseDriver(config *GBaseConfig) (*GBaseDriver, error) {
 
 // Open opens a connection to GBase (MySQL-compatible)
 func (d *GBaseDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open GBase connection: %w", err)
@@ -60,6 +63,9 @@ func (d *GBaseDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *GBaseDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -71,11 +77,23 @@ func (d *GBaseDriver) GetDefaultPort() int {
 	return 9088
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value GBaseDriver (d.config == nil);
+// dereferencing d.config here panicked every registry-sourced BuildDSN call.
+// The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only charset is consulted defensively.
 func (d *GBaseDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "utf8"
+	if config == nil {
+		return ""
+	}
+	if unsupportedDomesticTLS(config, "") {
+		return unsupportedDomesticTLSDSN
+	}
+
+	charset := "utf8"
+	if d.config != nil && d.config.Charset != "" {
+		charset = d.config.Charset
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s",

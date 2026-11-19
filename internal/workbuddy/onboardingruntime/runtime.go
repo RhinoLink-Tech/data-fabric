@@ -302,7 +302,11 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 	if e != nil {
 		return nil, e
 	}
-	manager, e := web.New(o.DB, o.Vault, o.Validator, web.BrowserAuth{Handler: login, Origin: o.Origin}, flow, restrictedProbe{probe, o.Policy}, web.TransactionalAudit{FingerprintKey: o.AuditKey}, []model.DatabaseType{model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL})
+	allowedTypes := []model.DatabaseType{model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL}
+	if o.Policy.AllowsSourceType(model.DatabaseTypeMariaDB) {
+		allowedTypes = append(allowedTypes, model.DatabaseTypeMariaDB)
+	}
+	manager, e := web.New(o.DB, o.Vault, o.Validator, web.BrowserAuth{Handler: login, Origin: o.Origin}, flow, restrictedProbe{probe, o.Policy}, web.TransactionalAudit{FingerprintKey: o.AuditKey}, allowedTypes)
 	if e != nil {
 		return nil, e
 	}

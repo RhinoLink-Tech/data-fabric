@@ -5,7 +5,34 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
+- Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).
 - Reject signed or non-digit millisecond suffixes in Hudi instant times instead of silently normalizing them to a different time (#672).
+
+## [v2.1.0-preview.2] - 2026-11-16
+
+### Added
+- Add authorized MCP source-type discovery and scoped management of existing data sources, with owner/tenant checks and separate management scope (#569, #571, #573, #574, #575).
+- Add portable Data Fabric Skill and client setup materials for Codex and WorkBuddy, including package candidates and bilingual product overview videos (#505, #538, #577, #586, #600). Marketplace publication and direct WorkBuddy HTTPS acceptance remain separate work.
+- Add opt-in experimental browser-based source onboarding and updates, isolated synthetic WorkBuddy self-service provisioning, and optional OAuth resource discovery. These features require their documented identity, network and deployment restrictions and are not production-readiness claims (#580–#584, #606, #610).
+- Include the root NOTICE in source and container license materials (#623).
+
+### Changed
+- Report the application build version and source revision in `/health`; the published preview.1 image retains its earlier fixed value (#545).
+- Keep source URL diagnostics and responses free of embedded secrets, and preserve concurrent data source updates (#572, #578).
+- Add the branded optional WorkBuddy identity theme and a disposable identity integration rehearsal (#621).
+
+### Fixed
+- Exclude generated deployment configuration, private key material and recovery payloads from source-build contexts; keep other sensitive files outside the source tree.
+- Preserve exact signed integer comparisons for CSV object SQL (#526), including values beyond the precision of a floating-point number.
+- Preserve another operation's concurrently created `.env` when restore preparation fails (#521).
+- Map specific generic streaming types before their substrings and improve CSV result types for OSS, COS, Azure and Ozone (#595, #596).
+- Bound selected-source onboarding requests by encoded UTF-8 bytes and return actionable errors for non-UTF-8 deployment or source configuration (#588, #598, #605).
+- Preserve MySQL TLS server identity and handle supported scoped IPv6 and IDN host forms.
+- Close a displaced pool when an old in-flight connection build is replaced (#626).
+- Ignore stale data-source list responses in the management UI, so a slower earlier page request cannot overwrite the latest page or its page label (#514).
+- Include PostgreSQL ordinary views in table discovery and description with type `VIEW`, so an advertised view can be described by name (#531).
+- Return MySQL and MariaDB table indexes in table descriptions instead of an empty list when SHOW INDEX returns its wider result (#530).
 - Return HTTP 400 `INVALID_PARAMETERS` for malformed or out-of-range explicit `batch_size` values on the REST continuation endpoint (`GET /api/v1/fetch/...`), instead of silently using the 10,000 default (#597).
 - Reject mismatched existing MCP TLS certificates and private keys during initialization and doctor checks without replacing either file (#499).
 - Register the local acceptance runner's synthetic source with the selected `--db-host` instead of the literal `mariadb` (#532).
@@ -23,8 +50,12 @@ All notable changes to this project will be documented in this file.
 - Update automatically filled ports when switching connectors while preserving operator-entered values (#501).
 - Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
 - Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
-- Verify supported published source archives and their matching image for encrypted backup and fresh restore without a Git checkout (#489).
+- Verify the supported preview.1 source archive and matching image for encrypted backup and fresh restore without a Git checkout (#489). The preview.2 archive is not in that allowlist.
+- Refresh the source list when Enter is pressed in the management UI token field.
 - Reject invalid MCP URL ports during DeepSeek client validation (#594).
+- Retry the management UI connector catalog on Refresh and when Add is opened after a temporary `/api/v1/database/types` failure, instead of requiring a page reload (#591).
+- Reject malformed OIDC issuer URLs in MCP onboarding doctor checks (#564).
+- Allow the `X-Correlation-ID` request header in CORS preflight responses and expose the returned header to cross-origin browser clients (#593).
 
 ## [v2.1.0-preview.1] - 2026-11-11
 

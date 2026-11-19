@@ -1,5 +1,7 @@
 # Driver contract test report
 
+Read the [connector version policy](connector-version-policy.md) before interpreting exact versions or declaring a range.
+
 ## Verified baselines
 
 The PostgreSQL, openGauss, MySQL, MariaDB, TiDB, ClickHouse, SQL Server, MongoDB, Oracle, Apache Doris, StarRocks, HDFS CSV, HDFS Parquet, S3 CSV, S3 Parquet, S3 ORC, S3 Avro, S3 JSON, MinIO CSV, MinIO Parquet, MinIO JSON, MinIO Avro, MinIO ORC, and MinIO Delta drivers have repeatable versioned contract tests against exact, pinned runtime artifacts.

@@ -43,6 +43,9 @@ func NewKingbaseESDriver(config *KingbaseESConfig) (*KingbaseESDriver, error) {
 
 // Open opens a connection to KingbaseES (PostgreSQL-compatible)
 func (d *KingbaseESDriver) Open(dsn string) (*sql.DB, error) {
+	if err := d.ValidateDSN(dsn); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open KingbaseES connection: %w", err)
@@ -61,6 +64,9 @@ func (d *KingbaseESDriver) Open(dsn string) (*sql.DB, error) {
 
 // ValidateDSN validates the connection string
 func (d *KingbaseESDriver) ValidateDSN(dsn string) error {
+	if dsn == unsupportedDomesticTLSDSN {
+		return fmt.Errorf("requested TLS configuration is unsupported by this driver")
+	}
 	if dsn == "" {
 		return fmt.Errorf("DSN cannot be empty")
 	}
@@ -72,18 +78,34 @@ func (d *KingbaseESDriver) GetDefaultPort() int {
 	return 54321
 }
 
-// BuildDSN builds a connection string from configuration
+// BuildDSN builds a connection string from configuration.
+//
+// The driver registry hands back a zero-value KingbaseESDriver (d.config ==
+// nil); dereferencing d.config here panicked every registry-sourced BuildDSN
+// call. The DSN is built from the supplied *model.DataSourceConfig, and the
+// constructor-only tunings are consulted defensively.
 func (d *KingbaseESDriver) BuildDSN(config *model.DataSourceConfig) string {
-	sslMode := d.config.SSLMode
-	if sslMode == "" {
-		sslMode = "disable"
+	if config == nil {
+		return ""
+	}
+	constructorMode := ""
+	if d.config != nil {
+		constructorMode = d.config.SSLMode
+	}
+	if unsupportedDomesticTLS(config, constructorMode) {
+		return unsupportedDomesticTLSDSN
+	}
+
+	sslMode := "disable"
+	if d.config != nil && d.config.SSLMode != "" {
+		sslMode = d.config.SSLMode
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
 		config.Host, config.Port, config.Database, config.Username, config.Password, sslMode)
 
 	// Add schema if specified
-	if d.config.Schema != "" {
+	if d.config != nil && d.config.Schema != "" {
 		dsn += " search_path=" + d.config.Schema
 	}
 

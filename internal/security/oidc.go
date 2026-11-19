@@ -377,8 +377,15 @@ func (v *OIDCTokenValidator) claimsFromVerifiedPayload(payload []byte) (*Claims,
 	if issuedAt > 0 {
 		registered.IssuedAt = jwt.NewNumericDate(time.Unix(int64(issuedAt), 0))
 	}
+	verifiedEmail := false
+	if raw, present := rawClaims["email_verified"]; present {
+		if json.Unmarshal(raw, &verifiedEmail) != nil || string(raw) == "null" {
+			return nil, errors.New("access token email verification claim is invalid")
+		}
+	}
 	return &Claims{
-		UserID: subject, TenantID: tenant, Username: username,
+		EmailVerified: verifiedEmail,
+		UserID:        subject, TenantID: tenant, Username: username,
 		Roles: roles, Scope: scope, RegisteredClaims: registered,
 	}, nil
 }

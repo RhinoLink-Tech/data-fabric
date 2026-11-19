@@ -3,10 +3,48 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestCorsAllowsAndExposesCorrelationID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(CorrelationID(), Cors())
+	router.GET("/resource", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	preflight := httptest.NewRequest(http.MethodOptions, "/resource", nil)
+	preflight.Header.Set("Origin", "https://client.example")
+	preflight.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	preflight.Header.Set("Access-Control-Request-Headers", "X-Correlation-ID")
+	preflightRecorder := httptest.NewRecorder()
+	router.ServeHTTP(preflightRecorder, preflight)
+
+	if preflightRecorder.Code != http.StatusNoContent {
+		t.Errorf("preflight status = %d, want %d", preflightRecorder.Code, http.StatusNoContent)
+	}
+	if got := preflightRecorder.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "X-Correlation-ID") {
+		t.Errorf("Access-Control-Allow-Headers = %q, want it to contain X-Correlation-ID", got)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/resource", nil)
+	request.Header.Set("Origin", "https://client.example")
+	request.Header.Set("X-Correlation-ID", "client-supplied-id")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("X-Correlation-ID"); got != "client-supplied-id" {
+		t.Errorf("X-Correlation-ID = %q, want %q", got, "client-supplied-id")
+	}
+	if got := recorder.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "X-Correlation-ID") {
+		t.Errorf("Access-Control-Expose-Headers = %q, want it to contain X-Correlation-ID", got)
+	}
+}
 
 func TestCors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -49,9 +87,10 @@ func TestCors(t *testing.T) {
 				t.Errorf("body = %q, want %q", got, tt.wantBody)
 			}
 			for header, want := range map[string]string{
-				"Access-Control-Allow-Origin":  "*",
-				"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-				"Access-Control-Allow-Headers": "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
+				"Access-Control-Allow-Origin":   "*",
+				"Access-Control-Allow-Methods":  "GET, POST, PUT, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers":  "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Correlation-ID",
+				"Access-Control-Expose-Headers": "X-Correlation-ID",
 			} {
 				if got := recorder.Header().Get(header); got != want {
 					t.Errorf("%s = %q, want %q", header, got, want)

@@ -41,15 +41,18 @@ type dataSourceService struct {
 	configValidator DataSourceConfigValidator
 }
 
+// Config is excluded from REST tag validation (validate:"-"): the selected driver
+// validates it in the service, and the generic DataSourceConfig tags would reject
+// connector-valid configs such as an omitted port.
 type CreateDataSourceRequest struct {
 	Name   string                 `json:"name" validate:"required,min=1,max=255"`
 	Type   model.DatabaseType     `json:"type" validate:"required"`
-	Config model.DataSourceConfig `json:"config" validate:"required"`
+	Config model.DataSourceConfig `json:"config" validate:"-"`
 }
 
 type UpdateDataSourceRequest struct {
 	Name   *string                 `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Config *model.DataSourceConfig `json:"config,omitempty"`
+	Config *model.DataSourceConfig `json:"config,omitempty" validate:"-"` // validated by the driver in the service
 	Status *model.DataSourceStatus `json:"status,omitempty"`
 }
 

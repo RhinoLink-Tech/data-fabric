@@ -1,8 +1,10 @@
 # 自托管 MCP Profile 备份与恢复
 
+> **Preview.2 限制：**下方源码归档白名单识别 preview.1，不识别 preview.2。preview.2 随附的工具未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）；使用干净 Git checkout 不能单独消除该风险。迁移有价值的数据前，请独立核对实际密钥并演练恢复，不要依赖未经验证的备份。
+
 本文覆盖当前单机 profile：MySQL 元数据库、固定身份的 Data Fabric 镜像、credential-vault keyring 和 OIDC 配置。操作时使用备份清单记录的不可变候选版本。流程不备份业务源数据库、查询结果、活动游标、日志或 TLS 私钥。
 
-备份包含 `deploy/mcp/.env` 和完整的 `data_fabric` 元数据库。加密归档必须按秘密管理：元数据行中的来源凭据虽已加密，仍依赖清单中的全部历史密钥才能解密。工具只能验证 keyring 格式，不能证明每个已存凭据都可解密；恢复验收会包含所选来源连接检查。
+备份包含 `deploy/mcp/.env` 和完整的 `data_fabric` 元数据库。加密归档必须按秘密管理：元数据行中的来源凭据虽已加密，仍依赖清单中的全部历史密钥才能解密。工具不能证明每个已存凭据都可解密；恢复验收会包含所选来源连接检查。
 
 ## 前提与密钥保管
 
@@ -24,6 +26,9 @@ chmod 600 /secure/recovery/data-fabric.agekey /secure/recovery/data-fabric.recip
 recipient 是公开值；identity 是私钥，必须与归档分开保存。
 
 ## 创建加密备份
+
+更新后的源码工具要求 API 与 MCP 均处于运行且健康状态；停止服务前会检查两个容器的实际密钥环是否与受保护的 `.env` 一致。不一致时安全退出，不输出密钥；检查期间文件变化或容器被替换也会终止备份。请先核对受保护配置并重启两个服务，再重试。此检查不能证明全部历史凭据都可解密，仍需演练恢复并验证数据源访问。已发布的 preview.2 工具不包含此改动。
+
 
 从干净候选检出运行。先确认 `onboard.py doctor` 全部通过。工具要求 `deploy/mcp/.env` 是权限为 `0600` 的普通文件，并校验活动及保留的 32 字节密钥。加密清单记录源码 SHA、实际运行应用镜像 ID/引用、元数据库 MySQL 镜像身份/版本、key ID 和载荷校验和；工具会检查应用镜像的 OCI revision 标签与干净源码 SHA 一致。
 

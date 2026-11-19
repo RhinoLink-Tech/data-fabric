@@ -75,6 +75,175 @@ class CredentialKeyringTests(unittest.TestCase):
             self.assertFalse((deploy / "tls").exists())
 
 
+class OIDCIssuerDoctorTests(unittest.TestCase):
+    def test_doctor_validates_oidc_issuer(self):
+        cases = [
+            ("valid_path", "https://id.example.test/issuer", True),
+            ("query", "https://id.example.test/issuer?wrong=1", False),
+            ("fragment", "https://id.example.test/issuer#fragment", False),
+            ("userinfo", "https://user:synthetic-secret@id.example.test/issuer", False),
+            ("bad_ipv6", "https://[invalid", False),
+            ("bad_port", "https://id.example.test:invalid/issuer", False),
+            ("bad_ipv6_port", "https://[::1]:oops/issuer", False),
+            ("space_in_host", "https://id example.test/issuer", False),
+            ("encoded_slash_in_host", "https://id%2Fexample.test/issuer", False),
+            ("bad_path_escape", "https://id.example.test/%ZZ", False),
+            ("ipvfuture", "https://[v1.a]/issuer", False),
+            ("valid_ipv6_port", "https://[::1]:443/issuer", True),
+            ("valid_ipv6_zone", "https://[fe80::1%25eth0]/issuer", True),
+            ("valid_escaped_ipv6_zone", "https://[fe80::1%25eth%2Dtest]/issuer", True),
+            ("valid_space_in_ipv6_zone", "https://[fe80::1%25eth%20test]/issuer", True),
+            ("invalid_ipv6_zone_escape", "https://[fe80::1%25eth%2Ftest]/issuer", False),
+            ("valid_escaped_path", "https://id.example.test/issuer%20name", True),
+            ("http", "http://id.example.test/issuer", False),
+        ]
+
+        for name, issuer, expected_ok in cases:
+            with self.subTest(case=name):
+                with tempfile.TemporaryDirectory() as directory:
+                    deploy = Path(directory)
+                    env = deploy / ".env"
+                    env.write_text(
+                        f"MCP_OIDC_ISSUER={issuer}\n"
+                        "MCP_OIDC_AUDIENCE=test-audience\n",
+                        encoding="utf-8",
+                    )
+
+                    output = io.StringIO()
+                    args = SimpleNamespace(
+                        directory=deploy,
+                        probe_oidc=False,
+                    )
+
+                    with (
+                        contextlib.redirect_stdout(output),
+                        mock.patch.object(
+                            onboard, "compose_command",
+                            return_value=SimpleNamespace(returncode=1),
+                        ),
+                        mock.patch.object(onboard, "check_identity"),
+                        mock.patch.object(onboard, "source_connection_check"),
+                    ):
+                        onboard.command_doctor(args)
+
+                    result = output.getvalue()
+
+                    if expected_ok:
+                        self.assertIn(
+                            "OK  MCP OIDC issuer uses HTTPS", result
+                        )
+                    else:
+                        self.assertIn(
+                            "ERR MCP_OIDC_ISSUER must be a valid HTTPS issuer URL",
+                            result,
+                        )
+
+                    self.assertIn("Doctor completed:", result)
+                    self.assertIn("MCP OIDC audience is configured", result)
+                    self.assertNotIn("synthetic-secret", result)
+
+
+    def test_invalid_issuer_skips_oidc_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deploy = Path(directory)
+            (deploy / ".env").write_text(
+                "MCP_OIDC_ISSUER=https://id.example.test:invalid/issuer\n"
+                "MCP_OIDC_AUDIENCE=test-audience\n", encoding="utf-8"
+            )
+            output = io.StringIO()
+            args = SimpleNamespace(directory=deploy, probe_oidc=True)
+            with (
+                contextlib.redirect_stdout(output),
+                mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                mock.patch.object(onboard, "check_identity"),
+                mock.patch.object(onboard, "source_connection_check"),
+                mock.patch.object(onboard, "probe_oidc") as probe,
+            ):
+                onboard.command_doctor(args)
+            probe.assert_not_called()
+            self.assertIn("OIDC discovery was not probed because the issuer URL is invalid", output.getvalue())
+            self.assertIn("Doctor completed:", output.getvalue())
+
+
+
+
+class OAuthResourceDoctorTests(unittest.TestCase):
+    def test_opt_in_resource_and_audience(self):
+        cases = [
+            ("disabled", "", "old-audience", None),
+            ("valid", "https://fabric.example/mcp", "https://fabric.example/mcp", True),
+            ("mismatched audience", "https://fabric.example/mcp", "old-audience", False),
+            ("http", "http://fabric.example/mcp", "http://fabric.example/mcp", False),
+            ("query", "https://fabric.example/mcp?token=synthetic-secret", "https://fabric.example/mcp?token=synthetic-secret", False),
+            ("wrong path", "https://fabric.example/api", "https://fabric.example/api", False),
+            ("credentials", "https://user:synthetic-secret@fabric.example/mcp", "https://user:synthetic-secret@fabric.example/mcp", False),
+            ("bad port", "https://fabric.example:invalid/mcp", "https://fabric.example:invalid/mcp", False),
+        ]
+        for name, resource, audience, valid in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                deploy = Path(directory)
+                (deploy / ".env").write_text(
+                    f"MCP_OIDC_ISSUER=https://id.example/realm\nMCP_OIDC_AUDIENCE={audience}\n"
+                    f"DATA_FABRIC_MCP_OAUTH_RESOURCE={resource}\n", encoding="utf-8")
+                output = io.StringIO()
+                args = SimpleNamespace(directory=deploy, probe_oidc=False)
+                with (contextlib.redirect_stdout(output),
+                      mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                      mock.patch.object(onboard, "check_identity"),
+                      mock.patch.object(onboard, "source_connection_check")):
+                    onboard.command_doctor(args)
+                result = output.getvalue()
+                self.assertNotIn("synthetic-secret", result)
+                if valid is None:
+                    self.assertNotIn("MCP OAuth resource URL and audience match", result)
+                    self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE must", result)
+                elif valid:
+                    self.assertIn("OK  MCP OAuth resource URL and audience match", result)
+                else:
+                    self.assertIn("ERR DATA_FABRIC_MCP_OAUTH_RESOURCE must", result)
+
+    @unittest.skipUnless(shutil.which("docker"), "Docker Compose is required")
+    def test_compose_passes_discovery_only_to_mcp(self):
+        compose_dir = Path(__file__).resolve().parents[2] / "deploy" / "mcp"
+        env_values = {
+            "DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID": "synthetic",
+            "DATA_FABRIC_CREDENTIAL_KEYS": "synthetic",
+            "JWT_SECRET": "synthetic",
+            "MCP_OIDC_AUDIENCE": "https://fabric.example/mcp",
+            "MCP_OIDC_ISSUER": "https://identity.example/realm",
+            "METADATA_DB_PASSWORD": "synthetic",
+            "METADATA_DB_ROOT_PASSWORD": "synthetic",
+            "SAMPLE_READER_PASSWORD": "synthetic",
+            "SAMPLE_SOURCE_ROOT_PASSWORD": "synthetic",
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            env_path = Path(temp) / ".env"
+            def config(resource):
+                vals = dict(env_values)
+                if resource is not None:
+                    vals["DATA_FABRIC_MCP_OAUTH_RESOURCE"] = resource
+                env_path.write_text("".join(f"{key}={value}\n" for key, value in vals.items()))
+                proc = onboard.compose_command(compose_dir, env_path, "config", "--format", "json")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                return json.loads(proc.stdout)["services"]
+            services = config(None)
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["DATA_FABRIC_MCP_OAUTH_RESOURCE"], "")
+            services = config("https://fabric.example/mcp")
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["DATA_FABRIC_MCP_OAUTH_RESOURCE"], "https://fabric.example/mcp")
+            self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE", services["data-fabric-api"]["environment"])
+
+    def test_doctor_compose_uses_file_resource_not_shell_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            captured = {}
+            def fake_run(command, **kwargs):
+                captured.update(kwargs["env"])
+                return SimpleNamespace(returncode=0)
+            with mock.patch.dict(os.environ, {"DATA_FABRIC_MCP_OAUTH_RESOURCE": "https://shell.example/mcp"}), \
+                 mock.patch.object(onboard.subprocess, "run", side_effect=fake_run):
+                onboard.compose_command(Path(directory), Path(directory) / ".env", "config", "--quiet")
+            self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE", captured)
+
+
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for synthetic TLS fixtures")
 class TLSPairTests(unittest.TestCase):
     def setUp(self):
@@ -334,6 +503,89 @@ class SourceRequestBoundaryTests(unittest.TestCase):
                 self.assertIn("Unicode", output)
                 self.assertNotIn("synthetic-secret", output)
                 self.assertNotIn("synthetic-token", output)
+
+
+class EnvInlineCommentTests(unittest.TestCase):
+    def test_env_inline_comments_match_compose_in_both_parsers(self):
+        import recovery
+
+        content = (
+            "API_PORT=18181 # loopback port\n"
+            'AUDIENCE="api.example" # audience\n'
+            "PLAIN=a#b\n"
+            'LITERAL="a # b"\n'
+        )
+        expected = {"API_PORT": "18181", "AUDIENCE": "api.example", "PLAIN": "a#b", "LITERAL": "a # b"}
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text(content, encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), expected)
+            self.assertEqual(recovery.parse_env(env), expected)
+
+    def test_leading_hash_without_space_is_a_literal_value(self):
+        import recovery
+
+        content = (
+            "HASH=#synthetic-secret\n"
+            "SPACE_HASH= # comment\n"
+            "LITERAL=abc#suffix\n"
+            "WITH_COMMENT=abc # comment\n"
+        )
+        expected = {"HASH": "#synthetic-secret", "SPACE_HASH": "# comment", "LITERAL": "abc#suffix", "WITH_COMMENT": "abc"}
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text(content, encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), expected)
+            self.assertEqual(recovery.parse_env(env), expected)
+
+    def test_malformed_quoted_values_keep_outer_quote_stripping(self):
+        import recovery
+
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            env.write_text('KEY="a"b"\n', encoding="utf-8")
+            self.assertEqual(onboard.parse_env(env), {"KEY": 'a"b'})
+            self.assertRaises(recovery.RecoveryError, recovery.parse_env, env)
+
+
+class NonUtf8EnvTests(unittest.TestCase):
+    def make_deploy(self):
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, True)
+        env = directory / ".env"
+        env.write_bytes(b"JWT_SECRET=synthetic-secret" + bytes([0xFF]) + bytes([10]))
+        env.chmod(0o600)
+        return directory, env
+
+    def test_doctor_reports_encoding_failure_without_exposing_contents(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(onboard, "check_identity"):
+            code = onboard.command_doctor(SimpleNamespace(directory=directory, probe_oidc=False))
+        printed = output.getvalue()
+        self.assertEqual(code, 1)
+        self.assertIn("not valid UTF-8", printed)
+        self.assertNotIn("synthetic-secret", printed)
+        self.assertEqual(env.read_bytes(), before)
+
+    def test_init_fails_cleanly_and_preserves_files(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        with self.assertRaisesRegex(onboard.OnboardingError, "not valid UTF-8"):
+            onboard.command_init(SimpleNamespace(directory=directory))
+        self.assertEqual(env.read_bytes(), before)
+        self.assertFalse((directory / "tls").exists())
+
+    def test_token_fails_cleanly(self):
+        directory, env = self.make_deploy()
+        before = env.read_bytes()
+        args = SimpleNamespace(directory=directory, user="synthetic-user", tenant="quickstart",
+                               username=None, ttl_minutes=15, admin=False)
+        with mock.patch.object(onboard.stat, "S_IMODE", return_value=0o600):
+            with self.assertRaisesRegex(onboard.OnboardingError, "not valid UTF-8"):
+                onboard.command_token(args)
+        self.assertEqual(env.read_bytes(), before)
 
 
 if __name__ == "__main__":

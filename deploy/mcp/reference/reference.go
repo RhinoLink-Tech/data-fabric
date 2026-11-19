@@ -40,6 +40,7 @@ type Options struct {
 	MaxConcurrentQueriesPerTenant int
 	MultiReplica                  bool
 	TrinoIntegration              bool
+	NoPull                        bool
 	GatewayMemoryLimitBytes       int64
 }
 
@@ -68,6 +69,7 @@ type RunInfo struct {
 	TenantConcurrency        int
 	MultiReplica             bool
 	TrinoIntegration         bool
+	TrinoImage               string
 }
 
 // Environment is valid during the Run callback. It uses generated credentials
@@ -144,6 +146,9 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 		(options.GatewayMemoryLimitBytes < 64<<20 || options.GatewayMemoryLimitBytes > 64<<30) {
 		return fmt.Errorf("reference gateway memory limit must be 64 MiB to 64 GiB")
 	}
+	if options.NoPull && options.Image == "" {
+		return fmt.Errorf("no-pull requires an existing gateway image")
+	}
 	root, err := repositoryRoot(options.RepoRoot)
 	if err != nil {
 		return err
@@ -172,11 +177,16 @@ func Run(ctx context.Context, options Options, check func(context.Context, *Envi
 			TenantConcurrency:       optionDefault(options.MaxConcurrentQueriesPerTenant, 25),
 			GatewayMemoryLimitBytes: options.GatewayMemoryLimitBytes,
 			QueryResultBudgetBytes:  ReferenceMaxQueryResultBytes,
-			MultiReplica:            options.MultiReplica, TrinoIntegration: options.TrinoIntegration,
+			MultiReplica:            options.MultiReplica, TrinoIntegration: options.TrinoIntegration, TrinoImage: trinoImage,
 		},
 	}
 	for _, name := range []string{"configs", "issuer", "ca", "gateway-tls"} {
 		if err := os.Mkdir(filepath.Join(directory, name), 0o755); err != nil {
+			return err
+		}
+	}
+	if options.TrinoIntegration {
+		if err := s.writeTrinoCatalogs(); err != nil {
 			return err
 		}
 	}
@@ -426,6 +436,7 @@ func newStack(root, directory string, options Options) *composeStack {
 		root: root, directory: directory, project: project, image: image,
 		env: env, redact: strings.NewReplacer(secrets...), multiReplica: options.MultiReplica,
 		trinoIntegration:        options.TrinoIntegration,
+		noPull:                  options.NoPull,
 		gatewayMemoryLimitBytes: options.GatewayMemoryLimitBytes,
 	}
 }
