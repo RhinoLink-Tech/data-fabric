@@ -49,7 +49,8 @@ def main():
         with tarfile.open(archive) as bundle:
             bundle.extractall(source, filter="data")
         archive.unlink()
-        registry = source / REGISTRY
+        split_registry = source / "internal/database/driver_registry_full.go"
+        registry = split_registry if split_registry.exists() else source / REGISTRY
         original = registry.read_text(encoding="utf-8")
 
         def build(name):
@@ -78,7 +79,7 @@ def main():
                     raise SystemExit(f"registry import changed: {package}")
                 candidate = candidate.replace(line, "")
             start = candidate.index("func (dr *DriverRegistry) registerDrivers() {")
-            end = candidate.index("func (dr *DriverRegistry) register(", start)
+            end = len(candidate) if split_registry.exists() else candidate.index("func (dr *DriverRegistry) register(", start)
             replacement = """func (dr *DriverRegistry) registerDrivers() {
  dr.mutex.Lock()
  defer dr.mutex.Unlock()

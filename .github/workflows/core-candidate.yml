@@ -1,0 +1,54 @@
+name: Experimental lightweight candidate
+
+on:
+  pull_request:
+    paths:
+      - 'internal/database/driver_registry*.go'
+      - 'internal/mcp/core_catalog_test.go'
+      - 'Dockerfile'
+      - '.github/workflows/core-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-candidate:
+    name: Experimental core build and federation
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify candidate registry, MCP catalog and policy contracts
+        run: |
+          go test -count=1 -tags datafabric_core ./internal/database -run '^TestCoreRegistryAndCatalogExposeOnlySelectedTypes$'
+          go test -count=1 -tags datafabric_core ./internal/mcp -run '^(TestCoreMCPSourceCatalogMatchesBuild|TestRegisteredToolsMatchContractWithTranslationEnabled)$'
+          go test -count=1 -tags datafabric_core ./internal/security
+      - name: Build full and experimental candidate images
+        run: |
+          set -o pipefail
+          echo "source: $(git rev-parse HEAD)" > "$RUNNER_TEMP/core-image-sizes.txt"
+          /usr/bin/time -o "$RUNNER_TEMP/core-full-build-time.txt" -f 'full build seconds: %e' docker build -t data-fabric:core-size-full .
+          /usr/bin/time -o "$RUNNER_TEMP/core-candidate-build-time.txt" -f 'candidate build seconds: %e' docker build --build-arg DATA_FABRIC_BUILD_TAGS=datafabric_core -t data-fabric:core-size-candidate .
+          cat "$RUNNER_TEMP/core-full-build-time.txt" "$RUNNER_TEMP/core-candidate-build-time.txt" | tee -a "$RUNNER_TEMP/core-image-sizes.txt"
+          docker image inspect data-fabric:core-size-full data-fabric:core-size-candidate --format '{{.RepoTags}} {{.Id}} {{.Size}} bytes' | tee -a "$RUNNER_TEMP/core-image-sizes.txt"
+          for image in full candidate; do
+            printf '%s docker-save gzip bytes: ' "$image" | tee -a "$RUNNER_TEMP/core-image-sizes.txt"
+            docker save "data-fabric:core-size-$image" | gzip -c | wc -c | tee -a "$RUNNER_TEMP/core-image-sizes.txt"
+          done
+      - name: Exercise cross-source REST and MCP using candidate image
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/trino-acceptance -image data-fabric:core-size-candidate -federated-only | tee "$RUNNER_TEMP/core-federation.jsonl"
+      - name: Save candidate evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-core-federation
+          path: |
+            ${{ runner.temp }}/core-federation.jsonl
+            ${{ runner.temp }}/core-image-sizes.txt
