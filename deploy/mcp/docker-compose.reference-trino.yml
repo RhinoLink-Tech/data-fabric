@@ -8,6 +8,8 @@ services:
         host_ip: 127.0.0.1
         protocol: tcp
     volumes:
+      - ${DF_REFERENCE_DIRECTORY:?run the reference command}/mysql.properties:/etc/trino/catalog/mysql.properties:ro
+      - ${DF_REFERENCE_DIRECTORY:?run the reference command}/postgresql.properties:/etc/trino/catalog/postgresql.properties:ro
       - ./trino/reference/tpch.properties:/etc/trino/catalog/tpch.properties:ro
       - ./trino/reference/tpch_copy.properties:/etc/trino/catalog/tpch_copy.properties:ro
     healthcheck:

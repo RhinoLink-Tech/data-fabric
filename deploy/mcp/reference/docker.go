@@ -31,6 +31,7 @@ type composeStack struct {
 	redact                  *strings.Replacer
 	multiReplica            bool
 	trinoIntegration        bool
+	noPull                  bool
 	gatewayMemoryLimitBytes int64
 }
 
@@ -92,7 +93,11 @@ func (s *composeStack) composeWithStdin(ctx context.Context, stdin io.Reader, ar
 }
 
 func (s *composeStack) up(ctx context.Context, services ...string) error {
-	if _, err := s.compose(ctx, append([]string{"up", "-d", "--wait", "--wait-timeout", "180", "--no-build"}, services...)...); err != nil {
+	args := []string{"up", "-d", "--wait", "--wait-timeout", "180", "--no-build"}
+	if s.noPull {
+		args = append(args, "--pull", "never")
+	}
+	if _, err := s.compose(ctx, append(args, services...)...); err != nil {
 		return err
 	}
 	if s.gatewayMemoryLimitBytes == 0 {
