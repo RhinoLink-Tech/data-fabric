@@ -599,9 +599,12 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		if !ok || len(entries) != 2 || first["nextUri"] == nil || first["nextUri"] == "" {
 			t.Fatal("first MariaDB page incomplete")
 		}
-		for i, want := range []float64{1, 2} {
+		for i, want := range []struct {
+			id     float64
+			status string
+		}{{1, "shipped"}, {2, "new"}} {
 			row, ok := entries[i].([]any)
-			if !ok || len(row) != 2 || row[0] != want {
+			if !ok || len(row) != 2 || row[0] != want.id || row[1] != want.status {
 				t.Fatal("unexpected MariaDB first page")
 			}
 		}
@@ -611,8 +614,18 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal("unexpected MariaDB final page")
 		}
 		row, ok := entries[0].([]any)
-		if !ok || len(row) != 2 || row[0] != float64(3) || (second["nextUri"] != nil && second["nextUri"] != "") {
+		if !ok || len(row) != 2 || row[0] != float64(3) || row[1] != "shipped" || (second["nextUri"] != nil && second["nextUri"] != "") {
 			t.Fatal("MariaDB final page incomplete")
+		}
+		toolJSON(t, mclient, "set_data_source_status", map[string]any{"datasource_id": sourceID, "status": "inactive"})
+		inactive, err := mclient.CallTool(ctx, protocol.CallToolRequest{Params: protocol.CallToolParams{Name: "execute_sql_query", Arguments: map[string]any{"datasource_id": sourceID, "sql": "SELECT id FROM browser_orders"}}})
+		if err != nil || !inactive.IsError {
+			t.Fatal("inactive MariaDB source remained queryable")
+		}
+		toolJSON(t, mclient, "set_data_source_status", map[string]any{"datasource_id": sourceID, "status": "active"})
+		queryAgain := toolJSON(t, mclient, "execute_sql_query", map[string]any{"datasource_id": sourceID, "sql": "SELECT id FROM browser_orders ORDER BY id", "batch_size": 3})
+		if entries, ok := queryAgain["entries"].([]any); !ok || len(entries) != 3 {
+			t.Fatal("reactivated MariaDB source did not return orders")
 		}
 	}
 

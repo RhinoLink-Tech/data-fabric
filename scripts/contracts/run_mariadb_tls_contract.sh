@@ -145,7 +145,7 @@ if [ "$mariadb_expected_version" = "11.8.9" ]; then
     printf 'temporary metadata service did not become ready\n' >&2
     exit 1
   fi
-  DF_WB_E2E_UPDATE=false DF_WB_E2E_POSTGRES_PORT= \
+  DF_WB_E2E_UPDATE=true DF_WB_E2E_POSTGRES_PORT= \
     DF_WB_E2E_MYSQL_DSN="df_meta:metadata-test-only@tcp(127.0.0.1:${metadata_port})/df_metadata?parseTime=true" \
     DF_WB_E2E_MARIADB_PORT="$port" \
     DF_WB_E2E_MARIADB_CA="$work_dir/ca.crt" \
