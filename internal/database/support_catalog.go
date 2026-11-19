@@ -831,6 +831,9 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 		profile.Limitations = append(profile.Limitations,
 			"The adapter exposes one configured JSON object as one SQL table and downloads the full object into gateway memory before parsing and applying filters or pagination.",
 			"Only top-level scalar fields with stable types are supported. Nested object fields require flatten_nested=true; array-valued fields, flattened-name collisions, heterogeneous scalar fields, multiple objects, and partition scans are rejected or outside the adapter boundary.")
+	case model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres:
+		profile.Limitations = append(profile.Limitations,
+			"Registry-created GaussDB drivers reject explicit TLS requests rather than silently downgrading; verified TLS mapping is not implemented.")
 	case model.DatabaseTypeTrino:
 		profile.Limitations = []string{
 			"No versioned driver-contract range or exact server version is recorded in this catalog.",
