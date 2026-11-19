@@ -68,3 +68,5 @@ change independently of this document.
 No local image download is required to study this plan. Isolated remote CI can
 run the pinned database contracts. A developer running a local fixture should
 explicitly opt into any image download or use already cached images.
+
+See also the [Feishu Bitable read-only candidate evaluation](feishu-bitable-evaluation.md).
