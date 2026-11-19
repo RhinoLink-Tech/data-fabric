@@ -1332,6 +1332,7 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		return nil, ErrQueryRateLimitExceeded
 	}
 
+	batchSize = effectiveContinuationBatchSize(batchSize, session.BatchSize)
 	// Fetch the next chunk of data. A disconnected page request cancels the
 	// engine query and releases its cursor.
 	chunk, err := ss.FetchStreamChunk(ctx, session.StreamID, batchSize)
@@ -1396,6 +1397,8 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		return nil, ErrQueryDurationLimitExceeded
 	}
 
+	// Remember an explicit override only after the page succeeds.
+	session.BatchSize = batchSize
 	// Update session data
 	session.Entries = entries
 	session.FetchedRows += int64(len(entries))
