@@ -64,7 +64,7 @@ func New(db *gorm.DB, vault *security.CredentialVault, validator service.DataSou
 	}
 	types := map[model.DatabaseType]bool{}
 	for _, t := range allowed {
-		if t != model.DatabaseTypeMySQL && t != model.DatabaseTypePostgreSQL {
+		if t != model.DatabaseTypeMySQL && t != model.DatabaseTypePostgreSQL && t != model.DatabaseTypeMariaDB {
 			return nil, errors.New("unsupported onboarding source type")
 		}
 		types[t] = true
@@ -128,7 +128,7 @@ func (h *Handler) Types(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list := []map[string]any{}
-	for _, t := range []model.DatabaseType{model.DatabaseTypePostgreSQL, model.DatabaseTypeMySQL} {
+	for _, t := range []model.DatabaseType{model.DatabaseTypePostgreSQL, model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB} {
 		if h.AllowsSourceType(t) {
 			list = append(list, map[string]any{"type": t, "name": string(t), "enabled": true})
 		}

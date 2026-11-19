@@ -129,3 +129,35 @@ func TestRestrictedPoolAgainstSyntheticDatabases(t *testing.T) {
 		})
 	}
 }
+
+func TestMariaDBRestrictedPolicyRequiresExplicitOptIn(t *testing.T) {
+	disabled, err := NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"192.0.2.0/24"}, []int{3306}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled, err := NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"192.0.2.0/24"}, []int{3306}, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &model.DataSource{Type: model.DatabaseTypeMariaDB, Config: model.DataSourceConfig{Host: "192.0.2.1", Port: 3306, Database: "orders", Username: "reader", Password: "synthetic"}}
+	if err := disabled.Check(source); !errors.Is(err, ErrEgressDenied) {
+		t.Fatalf("default permitted MariaDB: %v", err)
+	}
+	if err := enabled.Check(source); err != nil {
+		t.Fatalf("explicit policy rejected MariaDB: %v", err)
+	}
+	source.Config.Host = "169.254.169.254"
+	if err := enabled.Check(source); !errors.Is(err, ErrEgressDenied) {
+		t.Fatalf("disallowed IP accepted: %v", err)
+	}
+	source.Config.Host = "192.0.2.1"
+	source.Config.Port = 3307
+	if err := enabled.Check(source); !errors.Is(err, ErrEgressDenied) {
+		t.Fatalf("disallowed port accepted: %v", err)
+	}
+	source.Type = model.DatabaseTypeTiDB
+	source.Config.Port = 3306
+	if err := enabled.Check(source); !errors.Is(err, ErrEgressDenied) {
+		t.Fatalf("other type accepted: %v", err)
+	}
+}

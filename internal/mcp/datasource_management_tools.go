@@ -189,7 +189,7 @@ func (m *MCPServer) SetSourceConnectivityTester(t SourceConnectivityTester) {
 	m.sourceConnectivityTester = t
 	m.sourceConnectivitySlots = make(chan struct{}, 4)
 	m.addTool("test_data_source_connection", mcp.NewTool("test_data_source_connection",
-		mcp.WithDescription("Test a stored MySQL or PostgreSQL source without exposing configuration. Requires data-fabric.sources.manage and source ownership."),
+		mcp.WithDescription("Test a stored MySQL or PostgreSQL source, or MariaDB when allowed by the instance policy, without exposing configuration. Requires data-fabric.sources.manage and source ownership."),
 		mcp.WithString("datasource_id", mcp.Required())), m.requireManagementGrant(m.handleTestDataSourceConnection, ""))
 }
 func (m *MCPServer) handleDeleteDataSource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -240,8 +240,9 @@ func (m *MCPServer) handleTestDataSourceConnection(ctx context.Context, req mcp.
 		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_access_denied")
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
 	}
-	if source.Type != model.DatabaseTypePostgreSQL && source.Type != model.DatabaseTypeMySQL {
-		return mcp.NewToolResultError("connection testing supports MySQL and PostgreSQL only"), nil
+	if source.Type != model.DatabaseTypePostgreSQL && source.Type != model.DatabaseTypeMySQL &&
+		!(source.Type == model.DatabaseTypeMariaDB && m.sourceTypePolicy != nil && m.sourceTypePolicy.AllowsSourceType(source.Type)) {
+		return mcp.NewToolResultError("connection testing is unavailable for this source type"), nil
 	}
 	// User-controlled filesystem paths are never valid probe parameters.
 	// The restricted connectivity tester verifies TLS against operator roots.

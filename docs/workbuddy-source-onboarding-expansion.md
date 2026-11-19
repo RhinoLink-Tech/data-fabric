@@ -3,7 +3,8 @@
 [中文](workbuddy-source-onboarding-expansion-zh.md)
 
 Status: planning, not a supported feature. The opt-in browser workflow is
-limited to MySQL and PostgreSQL in the current source tree. Source-type
+limited by default to MySQL and PostgreSQL. MariaDB is a separate, default-off
+source candidate and requires explicit administrator opt-in. Source-type
 registration, the management UI, and a driver contract do not by themselves
 make a type eligible for the browser workflow. See the [WorkBuddy guide](../integrations/workbuddy/README.md)
 and [connector version policy](connector-version-policy.md).
@@ -28,7 +29,7 @@ allowed type gate, and from whether an individual user is authorized.
 
 | Candidate | Existing evidence | Decision and remaining work |
 | --- | --- | --- |
-| MariaDB | The catalog records real driver and TLS contracts for specific releases, including 10.11.19, 11.4.13, 11.8.9 and 12.3.3; it uses the MySQL protocol. | First engineering candidate ([#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761)), subject to demand confirmation. Exercise the exact MariaDB type through the restricted browser/probe/query path; MySQL compatibility alone is not proof. |
+| MariaDB | The catalog records real driver and TLS contracts for specific releases, including 10.11.19, 11.4.13, 11.8.9 and 12.3.3; it uses the MySQL protocol. | The default-off source candidate ([#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761)) exercises this type separately through the restricted browser/probe/query path. Actual WorkBuddy client and full lifecycle acceptance remain open; MySQL compatibility alone is not proof. |
 | openGauss | The catalog records SQL, metadata, database-side read-only and TLS for 6.0.0 build aee4abd5. | Candidate after MariaDB if a real task warrants it; validate its actual PostgreSQL-compatible path, TLS and settings independently. |
 | TiDB | The catalog records driver and TLS contracts for 8.5.8. Its contract does not establish a distributed TiKV topology. | Defer until need and database-side least-privilege enforcement are verified: the generic read-only session initializer is disabled for this type. |
 | ClickHouse | The catalog records a native-protocol and TLS contract for 26.8.20.9. | Separate design: the restricted connector is currently MySQL/PostgreSQL-specific; native-protocol security and diagnostics need their own path. |
