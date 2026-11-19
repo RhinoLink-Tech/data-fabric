@@ -1016,6 +1016,7 @@ func RenderSupportCatalogMarkdown(catalog []ConnectorSupport) string {
 	var out strings.Builder
 	out.WriteString("# Data Source Support Catalog\n\n")
 	out.WriteString("This page is generated from the runtime connector catalog. A registered driver means implementation code is present; it does not imply end-to-end verification. Empty version ranges and version lists mean no versioned driver-contract evidence is recorded in the runtime catalog; connector-specific integration profiles may provide narrower supplemental evidence. Authentication remains connector-specific where it has not been catalogued. The legacy API field `supported` means the type is registered; use `status` and `endToEndVerified` to assess evidence.\n\n")
+	out.WriteString("For interpreting version evidence and proposing ranges, see the [connector version policy](connector-version-policy.md) ([中文](connector-version-policy-zh.md)).\n\n")
 	out.WriteString("| Type | Category | Registered | Status | End-to-end verified | Version range | Exact versions verified | Version policy | Compatibility mode | Version detection | Operations | Authentication methods | Authentication note | Capabilities | Version-dependent capabilities | Limitations |\n")
 	out.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, profile := range catalog {

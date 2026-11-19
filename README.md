@@ -78,7 +78,7 @@ flowchart LR
 
 ## Data sources and honesty about support
 
-Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. The catalog separates registered implementations from end-to-end verified support, declared version ranges from exact tested versions, and protocol fixtures from live-service evidence. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations remain experimental. Consult the [Data Source Support Catalog](docs/data-source-support.md) and [Ozone support status](docs/ozone-support.md) before choosing a connector.
+Data Fabric publishes a shared connector support catalog through the database type and compatibility APIs. The catalog separates registered implementations from end-to-end verified support, declared version ranges from exact tested versions, and protocol fixtures from live-service evidence. An empty version range means compatibility has not been established; a successful connection test alone is not an end-to-end support claim. Some registered implementations remain experimental. Consult the [Data Source Support Catalog](docs/data-source-support.md), [version policy](docs/connector-version-policy.md), and [Ozone support status](docs/ozone-support.md) before choosing a connector.
 
 The standard build ships as one executable with registered drivers compiled in; connections open only for configured sources.
 
