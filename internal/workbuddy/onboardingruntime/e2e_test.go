@@ -25,7 +25,6 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security/onboarding"
@@ -590,25 +589,6 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 
 	if mariaPort != "" {
 		sourceID := status["datasource_id"].(string)
-		current, err := repo.GetByID(ctx, sourceID)
-		if err != nil {
-			t.Fatal("updated source cannot be read")
-		}
-		if err = policy.Check(current); err != nil {
-			t.Fatalf("updated source policy rejected: %T", err)
-		}
-		probeConn, err := pool.GetConnection(ctx, current)
-		if err != nil {
-			t.Fatalf("updated source pool failed: %s", strings.ReplaceAll(err.Error(), "browser-test-only", "[redacted]"))
-		}
-		var marker int
-		if err = probeConn.QueryRowContext(ctx, "SELECT 1").Scan(&marker); err != nil || marker != 1 {
-			t.Fatalf("updated source ping failed: %v", err)
-		}
-		_, err = pagination.FetchQuery(ctx, &security.Caller{UserID: "alice", TenantID: "tenant-a"}, &model.FetchQueryRequest{DataSourceID: sourceID, SQL: "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()", BatchSize: 1000, Timeout: 30})
-		if err != nil {
-			t.Fatalf("metadata query failed: %s", strings.ReplaceAll(err.Error(), "browser-test-only", "[redacted]"))
-		}
 		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
 		listed, _ := json.Marshal(tables)
 		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {

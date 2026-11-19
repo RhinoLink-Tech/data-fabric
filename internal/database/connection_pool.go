@@ -220,10 +220,18 @@ func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *
 	bounded := cp.boundedPoolTTL > 0
 	cp.mutex.RUnlock()
 	if bounded {
-		if dataSource.Type != model.DatabaseTypeMySQL && dataSource.Type != model.DatabaseTypePostgreSQL {
-			return nil, false, fmt.Errorf("native executor is unavailable in bounded mode")
+		// These types use the controlled database/sql path; never open a native
+		// executor in bounded mode. MariaDB is eligible only under its explicit
+		// restricted-egress opt-in and is still checked on every SQL lease.
+		switch dataSource.Type {
+		case model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL:
+			return nil, false, nil
+		case model.DatabaseTypeMariaDB:
+			if cp.egress != nil && cp.egress.AllowsSourceType(dataSource.Type) {
+				return nil, false, nil
+			}
 		}
-		return nil, false, nil
+		return nil, false, fmt.Errorf("native executor is unavailable in bounded mode")
 	}
 	if cp.egress != nil {
 		if err := cp.egress.Check(dataSource); err != nil {
