@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -210,5 +211,17 @@ func TestValidateDataSourceConfigurationUsesRegisteredDriverCategory(t *testing.
 
 	if err := checker.ValidateDataSourceConfiguration(sqlServerConfig, model.DatabaseType("not_registered")); err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("unsupported type error = %v, want an unsupported type error", err)
+	}
+}
+
+func TestMaxComputeConnectivityFailsBeforeTaskSubmission(t *testing.T) {
+	checker := &HealthChecker{registry: NewDriverRegistry()}
+	config := &model.DataSourceConfig{Host: "example.invalid", Port: 80, Database: "project", Username: "user", Password: "synthetic-secret"}
+	result, err := checker.CheckDataSourceConnectivity(context.Background(), config, model.DatabaseTypeMaxCompute)
+	if err != nil || result == nil || result.Status != "unhealthy" || !strings.Contains(result.Message, "result retrieval is not implemented") {
+		t.Fatalf("expected unavailable connection, result=%+v err=%v", result, err)
+	}
+	if strings.Contains(result.Message, config.Password) {
+		t.Fatal("connection diagnostic exposed credentials")
 	}
 }
