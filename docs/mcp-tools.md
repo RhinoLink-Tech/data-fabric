@@ -12,7 +12,7 @@ client-visible contract change — update this page in the same PR.
 | Tool | Required | Optional | Purpose |
 | --- | --- | --- | --- |
 | `list_source_types` | — | `type`, `category`, `format`, `include_details` | Discover registered connector types, categories, formats and version-specific verification overview in this server build. Set include_details=true for operations, authentication disclosures and limitations. These are types, not configured data sources. |
-| `list_data_sources` | — | — | List the caller's data sources (own, tenant-shared, or everything for the local stdio identity). |
+| `list_data_sources` | — | `limit` (1–1000, default 1000), `offset` (default 0) | List a page of the caller's data sources (own, tenant-shared, or everything for the local stdio identity). If `has_more` is true, call again with `offset` set to `next_offset`. |
 | `execute_sql_query` | `datasource_id`, `sql` | `source_dialect`, `parameters` (≤ 64 items; each `null`/boolean/number/string), `batch_size` (default 10000, clamped to 1–10000), `timeout` (seconds; default 60, clamped to 1–1800), `execution_mode` (`pagination` or `streaming`) | Execute a read-only query. `pagination` re-executes bounded LIMIT/OFFSET pages and releases the source connection between batches; `streaming` holds a source cursor and source resources until completion. The default prefers streaming, but server configuration can override the requested path; inspect `executionMode` in the result. `parameters` are bound by the driver to `?` (MySQL) or `$1..$N` (PostgreSQL) placeholders — never interpolated into the SQL text. |
 | `fetch_next_batch` | `query_id`, `slug`, `token` | `batch_size` (default 10000) | Fetch the next page from a previous `execute_sql_query` result. Tokens are in-memory; they do not survive a gateway restart. |
 | `get_data_source_info` | `datasource_id` | — | One data source's non-secret connection details. |
@@ -30,6 +30,8 @@ client-visible contract change — update this page in the same PR.
 | `validate_table_policy` | `policy_json` | — | Preflight a complete enabled table/column policy without publishing it. Administrator role required. |
 | `publish_table_policy` | `expected_revision`, `policy_json` | — | Compare-and-swap publish a policy. Rollback creates a new revision. Administrator role required. |
 | `list_table_policy_publications` | — | `limit` (1–100; default 50) | List publisher, revision and outcome history. Administrator role required. |
+
+The `list_data_sources` response retains `data_sources` and page `count`, and adds the visible `total`, `limit`, `offset`, `has_more`, and (when available) `next_offset`. Every request re-applies current authorization. Pagination uses a stable created-time/ID order but is not a snapshot: concurrent source or permission changes can cause duplicates or omissions between pages.
 
 ## Conditional registration
 

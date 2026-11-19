@@ -159,7 +159,7 @@ func (r *dataSourceRepository) GetAll(ctx context.Context, scope *AccessScope, s
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := query.Limit(limit).Offset(offset).Order("created_at DESC").Find(&sources).Error; err != nil {
+	if err := query.Limit(limit).Offset(offset).Order("created_at DESC").Order("id DESC").Find(&sources).Error; err != nil {
 		return nil, 0, err
 	}
 	for _, ds := range sources {

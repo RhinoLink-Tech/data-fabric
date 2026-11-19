@@ -10,7 +10,7 @@ assume that installing this skill connects a server.
 | Capability / tool | Arguments | Successful payload |
 | --- | --- | --- |
 | `list_source_types` | Optional exact `type`, `category`, `format` and boolean `include_details` | Registered types and verification overview; set include_details=true for operations, authentication and limitations. Not configured sources. |
-| `list_data_sources` | None | `{"data_sources":[{"id":"…","name":"…","type":"…","status":"active"}],"count":1}` |
+| `list_data_sources` | `limit`, `offset` optional | `{"data_sources":[{"id":"…","name":"…","type":"…","status":"active"}],"count":1}` |
 | `get_data_source_info` | `datasource_id` | One source object, including `id`, `name`, `type`, `status`, and non-secret connection metadata. |
 | `list_tables` | `datasource_id` | A batch response: table names are values in `entries`, aligned with `columns`. |
 | `describe_table` | `datasource_id`, `table_name`; optional `schema` | `{"datasource_id":"…","table":{"name":"…","schema":"…","columns":[{"name":"…","type":"…","nullable":true}]}}` |
@@ -186,3 +186,5 @@ is needed. A restarted query is a new result set; do not merge its pages into
 the previous partial result. For timeouts or unavailable engines, report the
 failure and any partial-result limits; do not silently retry with a broader
 query, larger batch, or longer timeout.
+
+For paginated `list_data_sources` results, if `has_more` is true, call it again with `offset` set to `next_offset`. Older servers may omit these fields. Each page reflects current permissions and is not a snapshot.
