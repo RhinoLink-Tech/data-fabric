@@ -67,7 +67,7 @@ async function loadApp(existing = [], { catalogFailures = 0 } = {}) {
       { type: "file", driverName: "File", registered: true, supported: true },
       { type: "maxcompute", driverName: "MaxCompute", registered: true, supported: true, status: "unsupported" },
     ] });
-    if (route.pathname === "/api/v1/database/test-connection") {
+    if (route.pathname === "/api/v1/database/test-connection" || /^\/api\/v1\/datasources\/[^/]+\/test-connection$/.test(route.pathname)) {
       if (testGate) await testGate;
       return jsonResponse({ data: connectionResult });
     }
@@ -170,6 +170,20 @@ test("editing keeps the existing type and does not overwrite a saved password", 
   assert.equal(Object.hasOwn(call.body, "type"), false);
   assert.equal(Object.hasOwn(call.body.config, "password"), false);
   assert.equal(call.body.config.port, 3307);
+});
+
+test("editing tests via source-scoped endpoint without sending a retained password", async () => {
+  const app = await loadApp([{ id: "saved", name: "old", type: "mysql", status: "active",
+    config: { host: "db", port: 3306, database: "orders", username: "reader", additionalProps: {} } }]);
+  await app.emitElement(app.$("sourceRows").children[0].children[5].children[0].children[0], "click");
+  app.$("sourceDatabase").value = "new_orders";
+  await app.emit("testButton", "click");
+  const call = app.calls.find((item) => item.url === "/api/v1/datasources/saved/test-connection");
+  assert.ok(call);
+  assert.equal(call.body.database, "new_orders");
+  assert.equal(Object.hasOwn(call.body, "password"), false);
+  assert.match(app.$("testResult").textContent, /成功/);
+  assert.equal(app.calls.some((item) => item.method === "PUT"), false);
 });
 
 test("only healthy connection results are successful, and details are redacted", async () => {

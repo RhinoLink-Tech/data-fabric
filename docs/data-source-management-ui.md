@@ -15,7 +15,7 @@ For production, keep security.enable_auth set to true, serve the page through HT
 1. Select Add source and choose a connector shown as registered and supported by the server's support catalog.
 2. Enter the common connection fields. Connector-specific fields can be supplied as a JSON object under Additional properties.
 3. Use Test connection before saving. The connection test uses the entered configuration and does not save it.
-4. For an existing source, the server never returns its stored password or sensitive additional properties. Leave the password blank to retain it; enter a replacement value to change it. If a connection test needs the existing password, enter it again for that test.
+4. For an existing source, the server never returns its stored password or sensitive additional properties. Leave the password blank to retain it; enter a replacement value to change it. An authorized owner or administrator can test unsaved edits with the retained password; entering a replacement tests it without saving. To avoid sending saved credentials to a changed destination, this test requires the saved host, port, username, TLS, time zone and non-secret additional properties to remain unchanged. Changing the database or schema during this test is currently limited to MySQL and PostgreSQL. To test changed connection or transport settings, use Add source and enter complete credentials.
 5. Use the row actions to edit, activate or deactivate, and delete a source. Deletion requires a browser confirmation.
 
 The form is intentionally generic. Some connectors require connector-specific configuration that must be provided through Additional properties; the UI does not expose schema browsing or query editing.
