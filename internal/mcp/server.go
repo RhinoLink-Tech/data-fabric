@@ -110,7 +110,9 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to list available data sources
 	listDataSourcesTool := mcp.NewTool("list_data_sources",
-		mcp.WithDescription("List all configured data sources in Data Fabric"))
+		mcp.WithDescription("List a page of data sources visible to the caller. If has_more is true, call again with offset=next_offset; results may change when sources or permissions change."),
+		mcp.WithNumber("limit", mcp.Description("Page size, integer 1–1000; default 1000")),
+		mcp.WithNumber("offset", mcp.Description("Starting offset, nonnegative integer; default 0")))
 	m.addTool("list_data_sources", listDataSourcesTool, m.handleListDataSources)
 
 	// Tool to execute SQL queries against data sources
@@ -343,10 +345,26 @@ func mcpRowsReturned(result *mcp.CallToolResult) int64 {
 
 // handleListDataSources handles the list_data_sources tool call
 func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Restrict remote callers to their own and tenant-shared data sources.
+	const maxOffset = 2147482647 // allow adding a maximum-sized page without integer overflow
+	limit, offset := 1000, 0
+	if raw, ok := request.GetArguments()["limit"]; ok {
+		value, valid := mcpPolicyRevision(raw)
+		if !valid || value < 1 || value > 1000 {
+			return mcp.NewToolResultError("limit must be an integer between 1 and 1000"), nil
+		}
+		limit = int(value)
+	}
+	if raw, ok := request.GetArguments()["offset"]; ok {
+		value, valid := mcpPolicyRevision(raw)
+		if !valid || value < 0 || value > maxOffset {
+			return mcp.NewToolResultError("offset must be a nonnegative integer no greater than 2147482647"), nil
+		}
+		offset = int(value)
+	}
+	// Restrict every page to the caller's current source visibility.
 	caller := callerFromContext(ctx)
 	scope := repository.ScopeForCaller(caller)
-	dataSources, _, err := m.datasourceRepo.GetAll(ctx, scope, "", 1000, 0)
+	dataSources, total, err := m.datasourceRepo.GetAll(ctx, scope, "", limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list data sources: %w", err)
 	}
@@ -367,9 +385,22 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 		result = append(result, dsMap)
 	}
 
+	// Count and page are separate repository operations: concurrent changes
+	// can cause the total and page to disagree. Do not emit a looping cursor.
+	hasMore := len(result) > 0 && int64(offset)+int64(len(result)) < total
+	if hasMore && offset+len(result) > maxOffset {
+		return mcp.NewToolResultError("data source inventory exceeds the supported pagination range"), nil
+	}
 	response := map[string]interface{}{
 		"data_sources": result,
 		"count":        len(result),
+		"total":        total,
+		"offset":       offset,
+		"limit":        limit,
+		"has_more":     hasMore,
+	}
+	if hasMore {
+		response["next_offset"] = offset + len(result)
 	}
 
 	jsonResp, err := json.Marshal(response)
