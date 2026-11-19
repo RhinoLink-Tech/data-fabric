@@ -135,6 +135,17 @@ func (p *HudiMetadataParser) ParseInstantTime(instantTime string) (time.Time, er
 		return seconds, nil
 	}
 
+	// strconv.Atoi accepts a leading + or -, so a three-character signed
+	// suffix such as "-10" would otherwise normalize to a different time.
+	for _, c := range millis {
+		if c < '0' || c > '9' {
+			return time.Time{}, fmt.Errorf(
+				"invalid Hudi instant time %q: milliseconds must be %d digits",
+				instantTime, millisDigits,
+			)
+		}
+	}
+
 	value, err := strconv.Atoi(millis)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("invalid Hudi instant time %q: %w", instantTime, err)
