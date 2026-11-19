@@ -51,6 +51,7 @@ targets and ports, with a matching OIDC identity and server-side management
 grant. When explicitly enabled, the source-update browser tools support authorized updates of permitted existing MySQL/PostgreSQL connections, including credentials. Their availability depends on the deployed server; discover the update tools before offering this flow.
 For an unavailable or unsupported workflow use an administrator or supported
 management UI. See [Quick Start](QUICKSTART-zh.md).
+The [source onboarding expansion plan](../../docs/workbuddy-source-onboarding-expansion.md) describes proposed next types and their acceptance gates; it does not change current availability.
 
 ## Before submitting
 

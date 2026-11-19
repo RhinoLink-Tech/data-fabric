@@ -1,0 +1,38 @@
+name: Federated MySQL and PostgreSQL acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/mcp/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'Dockerfile'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/federated-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  federated-acceptance:
+    name: REST and MCP federated acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify MySQL–PostgreSQL join and policy denial
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/trino-acceptance -federated-only | tee "$RUNNER_TEMP/federated-evidence.jsonl"
+      - name: Save results
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: federated-acceptance-evidence
+          path: ${{ runner.temp }}/federated-evidence.jsonl

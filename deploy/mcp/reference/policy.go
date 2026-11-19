@@ -23,6 +23,8 @@ func (env *Environment) tableAuthorizationPolicy() security.TableAuthorizationCo
 		}
 		if source.Type == "trino" {
 			scopes = []security.TableScope{
+				{Catalog: "mysql", Schema: "sample", Table: "orders", Columns: []string{"id", "status"}},
+				{Catalog: "postgresql", Schema: "public", Table: "order_items", Columns: []string{"id", "order_id", "item"}},
 				{Catalog: "tpch", Schema: "tiny", Table: "nation", Columns: []string{"nationkey", "name", "regionkey"}},
 				{Catalog: "tpch_copy", Schema: "tiny", Table: "region", Columns: []string{"regionkey", "name"}},
 				{Catalog: "tpch", Schema: "sf100", Table: "lineitem", Columns: []string{"orderkey"}},

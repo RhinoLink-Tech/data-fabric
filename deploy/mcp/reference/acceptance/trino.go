@@ -19,6 +19,9 @@ const (
 		"JOIN tpch_copy.tiny.region AS r ON n.regionkey = r.regionkey " +
 		"WHERE n.nationkey < 3 " +
 		"ORDER BY n.nationkey"
+	trinoFederatedSQL = "SELECT o.id AS order_id, i.id AS item_id, i.item " +
+		"FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id " +
+		"ORDER BY o.id, i.id"
 	trinoCoordinatorFailureSQL = "SELECT nationkey FROM tpch.tiny.nation WHERE nationkey = 0"
 	trinoCancellationSQL       = "SELECT count(orderkey) FROM tpch.sf100.lineitem"
 	trinoEngineFailureSQL      = "SELECT trino_reference_missing_function(name) FROM tpch.tiny.nation LIMIT 1"
@@ -30,25 +33,45 @@ type trinoScenario struct {
 }
 
 type trinoEvidence struct {
-	Case       string  `json:"case"`
-	Transport  surface `json:"transport"`
-	Result     string  `json:"result"`
-	DurationMS int64   `json:"duration_ms"`
-	Reason     string  `json:"reason,omitempty"`
+	Case             string  `json:"case"`
+	Transport        surface `json:"transport"`
+	Result           string  `json:"result"`
+	DurationMS       int64   `json:"duration_ms"`
+	Reason           string  `json:"reason,omitempty"`
+	CandidateSHA     string  `json:"candidate_sha"`
+	WorkingTreeDirty bool    `json:"working_tree_dirty"`
+	GatewayImage     string  `json:"gateway_image"`
+	GatewayImageID   string  `json:"gateway_image_id"`
+	MySQLImage       string  `json:"mysql_image"`
+	PostgreSQLImage  string  `json:"postgresql_image"`
+	TrinoImage       string  `json:"trino_image"`
 }
 
 // CheckTrino exercises the registered Trino adapter through the public REST and
 // MCP surfaces. It runs only from the dedicated opt-in reference command.
 func CheckTrino(ctx context.Context, env *reference.Environment, out io.Writer) error {
-	source, ok := env.Sources["trino"]
-	if !ok || source.ID == "" || env.TrinoCoordinatorURL == "" {
-		return fmt.Errorf("the Trino integration environment is incomplete")
-	}
-	scenarios := []trinoScenario{
+	return runTrinoScenarios(ctx, env, out, []trinoScenario{
 		{name: "T01-cross-catalog-read", check: checkTrinoCrossCatalog},
+		{name: "T05-mysql-postgresql-join", check: checkTrinoFederatedSources},
+		{name: "T06-federated-column-denied", check: checkTrinoFederatedDenied},
 		{name: "T02-coordinator-outage", check: checkTrinoCoordinatorFailure},
 		{name: "T03-query-timeout-cancels", check: checkTrinoCancellation},
 		{name: "T04-engine-error-sanitized", check: checkTrinoEngineFailure},
+	})
+}
+
+// CheckFederated runs the real MySQL-to-PostgreSQL scenario on both surfaces.
+func CheckFederated(ctx context.Context, env *reference.Environment, out io.Writer) error {
+	return runTrinoScenarios(ctx, env, out, []trinoScenario{
+		{name: "T05-mysql-postgresql-join", check: checkTrinoFederatedSources},
+		{name: "T06-federated-column-denied", check: checkTrinoFederatedDenied},
+	})
+}
+
+func runTrinoScenarios(ctx context.Context, env *reference.Environment, out io.Writer, scenarios []trinoScenario) error {
+	source, ok := env.Sources["trino"]
+	if !ok || source.ID == "" || env.TrinoCoordinatorURL == "" {
+		return fmt.Errorf("the Trino integration environment is incomplete")
 	}
 	encoder := json.NewEncoder(out)
 	var failures []error
@@ -60,7 +83,10 @@ func CheckTrino(ctx context.Context, env *reference.Environment, out io.Writer) 
 				failures = append(failures, err)
 				break
 			}
-			record := trinoEvidence{Case: scenario.name, Transport: kind, Result: "pass"}
+			record := trinoEvidence{Case: scenario.name, Transport: kind, Result: "pass",
+				CandidateSHA: env.RunInfo.SourceRevision, WorkingTreeDirty: env.RunInfo.WorkingTreeDirty,
+				GatewayImage: env.RunInfo.GatewayImage, GatewayImageID: env.RunInfo.GatewayImageID,
+				MySQLImage: env.RunInfo.MySQLImage, PostgreSQLImage: env.RunInfo.PostgreSQLImage, TrinoImage: env.RunInfo.TrinoImage}
 			started := time.Now()
 			if err := scenario.check(ctx, w, source); err != nil {
 				record.Result, record.Reason = "fail", err.Error()
@@ -117,6 +143,45 @@ func checkTrinoCrossCatalog(ctx context.Context, w wire, source reference.Source
 		}
 	}
 	return nil
+}
+
+// checkTrinoFederatedSources follows bounded one-row pages so both transports
+// exercise continuation of one query joining two physically distinct databases.
+func checkTrinoFederatedSources(ctx context.Context, w wire, source reference.Source) error {
+	page, err := readBatch(w.query(ctx, reader, "", source, trinoFederatedSQL, nil, 1, 30))
+	if err != nil {
+		return err
+	}
+	expected := [][]string{{"1", "1", "widget"}, {"1", "2", "cable"}, {"2", "3", "widget"}}
+	queryID := page.QueryID
+	for index, want := range expected {
+		if page.QueryID == "" || page.QueryID != queryID || len(page.Entries) != 1 || len(page.Entries[0]) != len(want) {
+			return fmt.Errorf("unexpected federated page %d", index+1)
+		}
+		for col, value := range want {
+			if fmt.Sprint(page.Entries[0][col]) != value {
+				return fmt.Errorf("unexpected federated row %d column %d", index+1, col+1)
+			}
+		}
+		if index < len(expected)-1 {
+			if page.NextURI == "" {
+				return fmt.Errorf("missing federated continuation")
+			}
+			page, err = readBatch(w.next(ctx, reader, page))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if page.NextURI != "" {
+		return fmt.Errorf("unexpected extra federated page")
+	}
+	return nil
+}
+
+func checkTrinoFederatedDenied(ctx context.Context, w wire, source reference.Source) error {
+	return deniedQuery(ctx, w, reader, source,
+		"SELECT o.customer FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id")
 }
 
 func checkTrinoEngineFailure(ctx context.Context, w wire, source reference.Source) error {
