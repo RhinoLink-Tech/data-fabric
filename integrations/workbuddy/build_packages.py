@@ -53,6 +53,7 @@ def write_zip(path, files):
         for name, content in sorted(files.items()):
             entry = ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             entry.compress_type = ZIP_DEFLATED
+            entry.create_system = 3  # same host-OS marker whichever OS builds the archive
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, content)
 
