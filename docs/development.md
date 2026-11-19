@@ -21,19 +21,15 @@ data-fabric/
 │   │   └── health_controller.go
 │   ├── service/                 # Business logic layer
 │   │   ├── query_service.go
-│   │   ├── datasource_service.go
-│   │   └── driver_service.go
+│   │   └── datasource_service.go
 │   ├── repository/              # Data access layer
-│   │   ├── datasource_repository.go
-│   │   └── query_history_repository.go
+│   │   └── datasource_repository.go
 │   ├── model/                   # Data models
 │   │   ├── datasource.go
-│   │   ├── query.go
-│   │   └── result.go
+│   │   └── query.go
 │   ├── middleware/              # Middleware
-│   │   ├── auth.go
-│   │   ├── rate_limit.go
-│   │   └── logger.go
+│   │   ├── access_log.go
+│   │   └── rate_limit.go
 │   └── database/
 │       ├── connection_pool.go    # Connection pooling
 │       ├── driver_registry.go    # Driver registration system
@@ -41,7 +37,7 @@ data-fabric/
 │       └── drivers/             # Database drivers
 │           ├── common/           # Shared driver utilities
 │           │   └── types.go      # Driver interface definition
-│           ├── table_format/    # Iceberg, Delta, Hudi
+│           ├── table_formats/   # Iceberg, Delta, Hudi
 │           ├── warehouses/      # Snowflake, Databricks, etc.
 │           ├── olap/            # ClickHouse, Doris, etc.
 │           ├── object_storage/  # S3, MinIO, etc.
@@ -51,9 +47,15 @@ data-fabric/
 ├── docs/                        # Documentation
 ├── pkg/                         # Reusable packages
 ├── migrations/                  # Database migration scripts
-├── specs/                       # Specification documents
-└── test/                        # Test files
+└── specs/                       # Specification documents
 ```
+
+Tests live beside the code they cover, as `*_test.go` files in the same package
+(for example `internal/database/connection_pool_test.go` and
+`cmd/server/routes_test.go`). A package that needs fixtures keeps them in a
+`testdata/` directory beside it, such as
+`internal/database/drivers/object_storage/testdata/`. There is no top-level
+`test/` directory.
 
 ## Driver Framework Design
 
