@@ -173,7 +173,7 @@ func TestFetchQueryUsesNativeDruidExecutorForBoundedContinuation(t *testing.T) {
 	if first.TotalCount != 2 || len(first.Entries) != 1 || (*first.Entries[0])[0] != int64(2) || first.NextURI == "" {
 		t.Fatalf("unexpected first native batch: %+v", first)
 	}
-	second, err := queryService.FetchNextBatch(context.Background(), nil, first.QueryID, first.Slug, first.Token, 1)
+	second, err := queryService.FetchNextBatch(context.Background(), nil, first.QueryID, first.Slug, first.Token, 0)
 	if err != nil {
 		t.Fatalf("FetchNextBatch() error = %v", err)
 	}
