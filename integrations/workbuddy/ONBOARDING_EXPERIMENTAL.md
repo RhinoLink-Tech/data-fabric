@@ -128,7 +128,7 @@ have a single non-queued slot. A concurrent request may receive HTTP 429 while
 a check is in progress; contention does not itself invalidate the lock. Actual
 lock-check failure still stops the guarded service. Do not run unrestricted REST
 or any other writer against this dedicated metadata database. Only the
-restricted MySQL/PostgreSQL source types are supported. Existing TLS source
+restricted MySQL/PostgreSQL source types and, when separately enabled, MariaDB are supported. Existing TLS source
 settings are preserved unless explicitly changed; this flow refuses a change
 from TLS to plaintext. Trust roots remain operator-controlled. Connections
 without TLS are only appropriate when the operator's isolated network policy
