@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -263,17 +264,40 @@ func (iq *HudiIncrementalQuery) GetChangesSinceTimestamp(ctx context.Context, ba
 
 // GetLatestChanges retrieves changes since the last N commits
 func (iq *HudiIncrementalQuery) GetLatestChanges(ctx context.Context, basePath string, numCommits int) (*IncrementalQueryResult, error) {
+	if numCommits <= 0 {
+		return nil, fmt.Errorf("numCommits must be greater than zero")
+	}
+
 	commits, err := iq.driver.GetCommits(ctx, basePath)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(commits) < numCommits+1 {
-		return nil, fmt.Errorf("not enough commits (need at least %d, have %d)", numCommits+1, len(commits))
+	if numCommits >= len(commits) {
+		return nil, fmt.Errorf("not enough commits (requested %d changes, have %d commits)", numCommits, len(commits))
 	}
 
-	beginInstantTime := commits[len(commits)-numCommits-1].CommitTime
-	endInstantTime := commits[len(commits)-1].CommitTime
+	// Compare the supported instant formats chronologically, not as strings:
+	// a reader can return compact Hudi timestamps alongside RFC3339 or epoch
+	// boundaries. Reject invalid timeline entries instead of silently choosing
+	// a potentially incomplete range, and leave the reader's slice unchanged.
+	type orderedCommit struct {
+		commit  HudiCommit
+		instant time.Time
+	}
+	orderedCommits := make([]orderedCommit, 0, len(commits))
+	for _, commit := range commits {
+		instant, err := parseHudiReadBoundary(iq.driver.parser, commit.CommitTime, false)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Hudi commit instant %q: %w", commit.CommitTime, err)
+		}
+		orderedCommits = append(orderedCommits, orderedCommit{commit: commit, instant: instant})
+	}
+	sort.SliceStable(orderedCommits, func(i, j int) bool {
+		return orderedCommits[i].instant.Before(orderedCommits[j].instant)
+	})
+
+	beginInstantTime := orderedCommits[len(orderedCommits)-numCommits-1].commit.CommitTime
+	endInstantTime := orderedCommits[len(orderedCommits)-1].commit.CommitTime
 
 	return iq.GetChangesInRange(ctx, basePath, beginInstantTime, endInstantTime)
 }
