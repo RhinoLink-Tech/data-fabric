@@ -12,11 +12,11 @@ import (
 func TestPreserveRedactedHostOnEdit(t *testing.T) {
 	existing := model.DataSourceConfig{Host: "https://user:pass@example.test/objects?token=secret"}
 	redacted := model.PublicDataSourceHost(existing.Host)
-	got := preserveDataSourceSecrets(existing, model.DataSourceConfig{Host: redacted})
+	got := PreserveDataSourceSecrets(existing, model.DataSourceConfig{Host: redacted})
 	if got.Host != existing.Host {
 		t.Fatal("editing the redacted representation destroyed the stored host")
 	}
-	got = preserveDataSourceSecrets(existing, model.DataSourceConfig{Host: "https://other.example.test/data"})
+	got = PreserveDataSourceSecrets(existing, model.DataSourceConfig{Host: "https://other.example.test/data"})
 	if got.Host != "https://other.example.test/data" {
 		t.Fatal("explicit replacement host was not saved")
 	}
