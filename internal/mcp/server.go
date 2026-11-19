@@ -388,6 +388,9 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 	// Count and page are separate repository operations: concurrent changes
 	// can cause the total and page to disagree. Do not emit a looping cursor.
 	hasMore := len(result) > 0 && int64(offset)+int64(len(result)) < total
+	if hasMore && offset+len(result) > maxOffset {
+		return mcp.NewToolResultError("data source inventory exceeds the supported pagination range"), nil
+	}
 	response := map[string]interface{}{
 		"data_sources": result,
 		"count":        len(result),

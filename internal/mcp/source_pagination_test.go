@@ -95,3 +95,19 @@ func TestListDataSourcesRejectsInvalidPageArguments(t *testing.T) {
 		}
 	}
 }
+
+// A continuation must never point beyond the largest supported offset.
+type extremeSourcePageRepo struct {
+	repository.DataSourceRepository
+}
+
+func (extremeSourcePageRepo) GetAll(context.Context, *repository.AccessScope, model.DataSourceStatus, int, int) ([]*model.DataSource, int64, error) {
+	return []*model.DataSource{{ID: "last"}}, 2147483000, nil
+}
+func TestListDataSourcesRejectsUnusableContinuation(t *testing.T) {
+	srv := NewMCPServer(nil, extremeSourcePageRepo{}, &stubTableDescriber{})
+	result, err := srv.handleListDataSources(context.Background(), callToolRequest("list_data_sources", map[string]any{"offset": 2147482647}))
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("expected bounded-range tool error, got %+v %v", result, err)
+	}
+}
