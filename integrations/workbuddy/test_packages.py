@@ -1,4 +1,7 @@
+import contextlib
 import hashlib
+import importlib.util
+import io
 import json
 import re
 import subprocess
@@ -6,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from zipfile import ZipFile
 
 HERE = Path(__file__).resolve().parent
@@ -29,6 +33,27 @@ class PackageTest(unittest.TestCase):
                 subprocess.run([sys.executable, str(HERE / "build_packages.py"), target, "--connector-source", "data-fabric-access"], check=True)
             for name in ("data-fabric-workbuddy-connector.zip", "data-fabric-workbuddy-skill.zip"):
                 self.assertEqual(hashlib.sha256((Path(one) / name).read_bytes()).digest(), hashlib.sha256((Path(two) / name).read_bytes()).digest())
+
+    def test_build_is_independent_of_build_time(self):
+        spec = importlib.util.spec_from_file_location("build_packages", HERE / "build_packages.py")
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        names = ("data-fabric-workbuddy-connector.zip", "data-fabric-workbuddy-skill.zip")
+        builds = []
+        for now in (1_700_000_000, 1_800_000_000):
+            with tempfile.TemporaryDirectory() as tmp,                  mock.patch("time.time", return_value=now),                  mock.patch.object(sys, "argv", ["build_packages.py", tmp]),                  contextlib.redirect_stdout(io.StringIO()):
+                builder.main()
+                built = {}
+                for name in names:
+                    data = (Path(tmp) / name).read_bytes()
+                    with ZipFile(io.BytesIO(data)) as archive:
+                        members = archive.infolist()
+                        self.assertTrue(members)
+                        for member in members:
+                            self.assertEqual(member.date_time, (1980, 1, 1, 0, 0, 0), member.filename)
+                    built[name] = hashlib.sha256(data).hexdigest()
+                builds.append(built)
+        self.assertEqual(builds[0], builds[1])
 
     def test_optional_base_url_mode_uses_complete_https_origin(self):
         with tempfile.TemporaryDirectory() as tmp:
