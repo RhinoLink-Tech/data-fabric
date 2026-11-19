@@ -1,6 +1,7 @@
 """Regression coverage for the documented SQL v1 translation matrix."""
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
@@ -20,6 +21,16 @@ class SQLTranslationRegressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.contract = (REPO_ROOT / "SQL_TRANSLATION_FEATURES.md").read_text(encoding="utf-8")
+
+    def test_skill_conversion_examples_match_pinned_translator(self):
+        text = (REPO_ROOT / "skills/data-fabric-query/references/sql-and-examples.md").read_text(encoding="utf-8")
+        section = text.split("## Convert SQL text only", 1)[1].split("## Choose the source's supported SQL", 1)[0]
+        examples = re.findall(r"```json\s*\n(.*?)\n```\s*\n\s*```sql\s*\n(.*?)\n```", section, re.S)
+        self.assertGreaterEqual(len(examples), 2)
+        for raw, expected in examples:
+            request = json.loads(raw)
+            with self.subTest(source=request["source_dialect"], target=request["target_dialect"]):
+                self.assertEqual(translate_sql(request["sql"], request["source_dialect"], request["target_dialect"]), expected)
 
     def test_matrix_translations_to_trino(self):
         quote = chr(39)

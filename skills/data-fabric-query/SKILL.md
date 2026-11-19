@@ -1,16 +1,40 @@
 ---
 name: data-fabric-query
-description: Discover supported connector types and formats, manage configured Data Fabric sources and answer data questions with schema-aware, read-only SQL. Use for finding sources and tables, changing supported source settings, validating queries, and retrieving bounded results through a connected Data Fabric MCP server or equivalent tool adapter.
+description: Convert SQL between dialects without executing it, discover supported data sources and formats, manage connections, and answer data questions with schema-aware, read-only SQL through a connected Data Fabric MCP server or equivalent tool adapter.
 license: Apache-2.0
 ---
 
-# Discover, query, and manage Data Fabric
+# Convert SQL, discover, query, and manage Data Fabric
 
-Use the user's connected Data Fabric tools to query configured sources. This
+Use the user's connected Data Fabric tools to convert SQL text, query configured sources, and manage connections. This
 skill supplies a workflow, not a connection: it contains no source credentials
 and requires a Data Fabric MCP server or an equivalent tool adapter.
 For WorkBuddy installation, service requirements, and examples, see
 [WorkBuddy setup](references/workbuddy-setup-zh.md).
+
+## Convert SQL without querying a source
+
+For a request to convert SQL from one dialect to another, use this branch
+before source selection. No data source, database credentials, table discovery,
+or query execution is needed; a connected translation-capable service is enough.
+Discover the actual tools and call `list_supported_dialects` with no arguments.
+Resolve familiar product names to the advertised dialect identifiers; if the
+source or target dialect is unclear, ask which database dialect the user means.
+Do not guess the source dialect solely from ambiguous SQL syntax.
+
+Call `translate_sql` with `sql`, `source_dialect`, and `target_dialect`.
+Read [SQL conversion examples](references/sql-and-examples.md#convert-sql-text-only)
+for canonical names and examples. Check the tool error flag and returned payload.
+On success, show the returned `translated_sql` unchanged, explain useful syntax
+changes, and state that it was converted without execution. Do not silently
+rewrite its identifiers, expressions, or NULL ordering. Conversion alone does
+not verify tables or establish equivalent results on a target database.
+
+If either tool is unavailable or a conversion is rejected, explain the actual
+limitation. Do not invent a successful tool result, substitute a model-generated
+rewrite as a successful conversion, or silently change dialects. Stop after
+conversion unless the user also requests a query; only then use the source,
+metadata, authorization, and read-only execution workflow below.
 
 ## Discover supported connector types and formats
 
