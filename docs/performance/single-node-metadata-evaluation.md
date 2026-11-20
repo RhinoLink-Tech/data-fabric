@@ -2,7 +2,7 @@
 
 [中文](single-node-metadata-evaluation-zh.md) · Tracking: [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444)
 
-Status: **assessment, not an implemented backend**. The maintainer wants simple installation and cannot download large images locally. The current reference deployment starts a separate MySQL metadata service for the REST and MCP processes. Its source databases and optional Trino federation engine are separate again; the gateway-only size comparison in [#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448) does not measure their resources.
+Status: **an experimental source-only prototype is available**; it is not a supported release backend. See the [prototype notes](sqlite-metadata-prototype.md). The maintainer wants simple installation and cannot download large images locally. The current reference deployment starts a separate MySQL metadata service for the REST and MCP processes. Its source databases and optional Trino federation engine are separate again; the gateway-only size comparison in [#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448) does not measure their resources.
 
 On the maintainer's Docker host, the already-cached `mysql:8.4.13` image reported `Size=1,102,620,445` bytes and image ID `sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902` on 2026-11-19. This is one local Docker-reported value, not a registry transfer size, memory measurement, production estimate or cross-host comparison. No image was pulled for this observation. It establishes a concrete installation concern, not a measured adoption conversion or expected SQLite saving.
 
@@ -20,7 +20,7 @@ On the maintainer's Docker host, the already-cached `mysql:8.4.13` image reporte
 | Optional SQLite, one host | Could remove the metadata server/image for a small self-hosted installation while retaining a durable file. | Choose and verify either a CGO-enabled SQLite build or a reviewed pure-Go driver/dialector. Confirm licensing, cross-builds, image and runtime cost. Design transaction serialization and busy/error handling for the actual REST/MCP topology. |
 | Combined REST/MCP process [#443](https://github.com/RhinoLink-Tech/data-fabric/issues/443) | Might reduce processes and setup steps. | Independent evaluation; it does not itself remove MySQL and cannot replace the SQLite correctness work. |
 
-Proceed with a **single-host opt-in prototype** only after its transaction contract and driver/build choice are reviewed. Keep MySQL as default and preserve existing data. An embedded file is not a distributed database, multi-host shared store, HA service or transparent upgrade from MySQL. Mount it on one supported local durable filesystem; do not silently use container ephemeral storage or a network filesystem.
+Continue the **single-host opt-in prototype** and review its transaction contract and driver/build choice before release. Keep MySQL as default and preserve existing data. An embedded file is not a distributed database, multi-host shared store, HA service or transparent upgrade from MySQL. Mount it on one supported local durable filesystem; do not silently use container ephemeral storage or a network filesystem.
 
 ## Small, useful proof
 

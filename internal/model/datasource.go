@@ -10,9 +10,32 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 type DatabaseType string
+
+// SQLite does not support MySQL ENUM syntax. Preserve the allowed values as a
+// CHECK constraint for the opt-in SQLite metadata backend; other dialects keep
+// the original GORM field type unchanged.
+func (DatabaseType) GormDBDataType(db *gorm.DB, field *schema.Field) string {
+	return sqliteEnumDataType(db, field)
+}
+
+func (DataSourceStatus) GormDBDataType(db *gorm.DB, field *schema.Field) string {
+	return sqliteEnumDataType(db, field)
+}
+
+func sqliteEnumDataType(db *gorm.DB, field *schema.Field) string {
+	if db == nil || db.Dialector == nil || db.Dialector.Name() != "sqlite" {
+		return ""
+	}
+	enum := field.TagSettings["TYPE"]
+	if !strings.HasPrefix(strings.ToLower(enum), "enum(") || !strings.HasSuffix(enum, ")") {
+		return ""
+	}
+	return "TEXT CHECK (`" + field.DBName + "` IN " + enum[len("enum"):] + ")"
+}
 
 const (
 	// Existing types (Phase 0)

@@ -57,12 +57,14 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     string `mapstructure:"port"`
-	Database string `mapstructure:"database"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	SSL      string `mapstructure:"ssl"`
+	Driver     string `mapstructure:"driver"`
+	SQLitePath string `mapstructure:"sqlite_path"`
+	Host       string `mapstructure:"host"`
+	Port       string `mapstructure:"port"`
+	Database   string `mapstructure:"database"`
+	Username   string `mapstructure:"username"`
+	Password   string `mapstructure:"password"`
+	SSL        string `mapstructure:"ssl"`
 }
 
 type SecurityConfig struct {
@@ -102,6 +104,8 @@ func Load() (*Config, error) {
 	_ = viper.BindEnv("query.max_concurrent_streams_per_tenant", "QUERY_MAX_CONCURRENT_STREAMS_PER_TENANT")
 	_ = viper.BindEnv("query.rate_limit_per_minute_per_tenant", "QUERY_RATE_LIMIT_PER_MINUTE_PER_TENANT")
 	_ = viper.BindEnv("query.rate_limit_burst_per_tenant", "QUERY_RATE_LIMIT_BURST_PER_TENANT")
+	_ = viper.BindEnv("database.driver", "DATABASE_DRIVER")
+	_ = viper.BindEnv("database.sqlite_path", "DATABASE_SQLITE_PATH")
 	_ = viper.BindEnv("database.database", "DATABASE_DATABASE", "DATABASE_NAME")
 	_ = viper.BindEnv("database.username", "DATABASE_USERNAME")
 	_ = viper.BindEnv("database.password", "DATABASE_PASSWORD")

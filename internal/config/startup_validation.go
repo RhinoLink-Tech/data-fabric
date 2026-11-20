@@ -14,6 +14,14 @@ func (c Config) ValidateStartup() error {
 	if err := c.Database.Validate(); err != nil {
 		return err
 	}
+	if strings.EqualFold(strings.TrimSpace(c.Database.Driver), "sqlite") {
+		if c.Server.Mode == "release" {
+			return fmt.Errorf("experimental SQLite metadata is not available in release mode")
+		}
+		if c.Routing.Enabled {
+			return fmt.Errorf("experimental SQLite metadata does not support replica routing")
+		}
+	}
 	if err := c.Query.Validate(); err != nil {
 		return err
 	}
@@ -85,6 +93,13 @@ func (c Config) validateAuditSettings() error {
 }
 
 func (c DatabaseConfig) Validate() error {
+	switch strings.ToLower(strings.TrimSpace(c.Driver)) {
+	case "sqlite":
+		return validateSQLiteMetadataPath(c.SQLitePath)
+	case "", "mysql":
+	default:
+		return fmt.Errorf("database.driver must be mysql or sqlite")
+	}
 	required := []struct {
 		name  string
 		value string
