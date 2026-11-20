@@ -14,7 +14,7 @@ Fetch 响应包含 columns、entries、totalCount、可选的 nextUri 和实际�
 
 ## 可选的未知总数
 
-仅对 MySQL/PostgreSQL，REST 或 MCP 首次请求可指定 `count_mode: "none"`，跳过辅助计数。每一成功页返回 `countMode: "none"`、`totalCount: null` 和布尔值 `hasMore`；`hasMore` 与 `nextUri` 一致。即使最后一页总数仍未知，不能把 null 当作零或估计值。其他数据源会明确拒绝该选项。旧服务可能忽略未知字段，因此客户端须核对响应模式。SQL 自带的 LIMIT 仍生效。
+对 MySQL、PostgreSQL 和 Trino，REST 或 MCP 首次请求可指定 `count_mode: "none"`，跳过辅助计数。每一成功页返回 `countMode: "none"`、`totalCount: null` 和布尔值 `hasMore`；`hasMore` 与 `nextUri` 一致。即使最后一页总数仍未知，不能把 null 当作零或估计值。其他数据源会明确拒绝该选项。旧服务可能忽略未知字段，因此客户端须核对响应模式。SQL 自带的 LIMIT 仍生效。 Trino 分页支持数字形式的 `OFFSET`/`LIMIT` 和 `LIMIT ALL`；参数化限制或 `FETCH` 在无计数分页中会明确拒绝，流式执行保留原 SQL。Trino 语法见[官方 SELECT 文档](https://trino.io/docs/current/sql/select.html)。
 
 网关最多额外读取一行确认续页，并将其检查在查询预算内；分页可能在下次重新读取该行，流式会保留一行。预算超限、取消或数据源失败不能当作完整结果。默认精确计数和整数 `totalCount` 保持不变。
 

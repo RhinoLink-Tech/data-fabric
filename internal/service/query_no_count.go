@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/execution"
@@ -15,7 +19,7 @@ import (
 // pagination semantics have dedicated contract coverage. Other drivers must
 // fail explicitly until their own lookahead semantics are established.
 func noCountSQLSource(kind model.DatabaseType) bool {
-	return kind == model.DatabaseTypeMySQL || kind == model.DatabaseTypePostgreSQL
+	return kind == model.DatabaseTypeMySQL || kind == model.DatabaseTypePostgreSQL || kind == model.DatabaseTypeTrino
 }
 
 // noCountSQLBatch returns at most size rows and at most one lookahead row.
@@ -29,7 +33,13 @@ func (qs *queryService) noCountSQLBatch(ctx context.Context, kind model.Database
 	if !ok || size < 1 || size > 10000 || offset < 0 {
 		return nil, nil, nil, fmt.Errorf("invalid bounded no-count request")
 	}
-	statement, err := qs.connPool.ApplyBatchPagination(kind, query, size+1, offset)
+	var statement string
+	var err error
+	if kind == model.DatabaseTypeTrino {
+		statement, err = noCountTrinoPagination(query, size+1, offset)
+	} else {
+		statement, err = qs.connPool.ApplyBatchPagination(kind, query, size+1, offset)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -53,6 +63,67 @@ func (qs *queryService) noCountSQLBatch(ctx context.Context, kind model.Database
 		return columns, rows, nil, nil
 	}
 	return columns, rows[:size], rows[size:], nil
+}
+
+// noCountTrinoPagination preserves the original top-level ORDER BY while
+// applying the page window within an optional literal LIMIT/OFFSET. Complex
+// or parameterized top-level limit forms fail closed rather than being
+// appended twice or wrapped in a subquery that can discard output ordering.
+var trinoLiteralWindow = regexp.MustCompile(`(?i)^(?:OFFSET\s+([0-9]+)(?:\s+ROWS?)?(?:\s+|$))?(?:LIMIT\s+([0-9]+|ALL))?\s*$`)
+
+func noCountTrinoPagination(query string, size, offset int64) (string, error) {
+	if size < 1 || size > 10001 || offset < 0 {
+		return "", ErrNoCountUnsupported
+	}
+	sql := strings.TrimSpace(query)
+	if strings.HasSuffix(sql, ";") {
+		sql = strings.TrimSpace(strings.TrimSuffix(sql, ";"))
+	}
+	if sql == "" || topLevelKeywordIndex(sql, "FETCH") >= 0 {
+		return "", ErrNoCountUnsupported
+	}
+	limitAt, offsetAt := topLevelKeywordIndex(sql, "LIMIT"), topLevelKeywordIndex(sql, "OFFSET")
+	if offsetAt >= 0 && limitAt >= 0 && offsetAt > limitAt {
+		return "", ErrNoCountUnsupported
+	}
+	windowAt := limitAt
+	if offsetAt >= 0 && (windowAt < 0 || offsetAt < windowAt) {
+		windowAt = offsetAt
+	}
+	if windowAt < 0 {
+		return fmt.Sprintf("%s\nOFFSET %d LIMIT %d", sql, offset, size), nil
+	}
+	match := trinoLiteralWindow.FindStringSubmatch(sql[windowAt:])
+	if match == nil || (match[1] == "" && match[2] == "") {
+		return "", ErrNoCountUnsupported
+	}
+	var originalOffset int64
+	var err error
+	if match[1] != "" {
+		originalOffset, err = strconv.ParseInt(match[1], 10, 64)
+		if err != nil {
+			return "", ErrNoCountUnsupported
+		}
+	}
+	if offset > math.MaxInt64-originalOffset {
+		return "", ErrNoCountUnsupported
+	}
+	if match[2] != "" && !strings.EqualFold(match[2], "ALL") {
+		originalLimit, err := strconv.ParseInt(match[2], 10, 64)
+		if err != nil {
+			return "", ErrNoCountUnsupported
+		}
+		if offset >= originalLimit {
+			size = 0
+		} else if remaining := originalLimit - offset; remaining < size {
+			size = remaining
+		}
+	}
+	prefix := strings.TrimSpace(sql[:windowAt])
+	if prefix == "" {
+		return "", ErrNoCountUnsupported
+	}
+	return fmt.Sprintf("%s\nOFFSET %d LIMIT %d", prefix, originalOffset+offset, size), nil
 }
 
 // accountNoCountPage enforces limits against the extra row while keeping the

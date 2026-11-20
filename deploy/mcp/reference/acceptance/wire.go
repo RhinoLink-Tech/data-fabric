@@ -345,6 +345,19 @@ func (w wire) queryWithMode(ctx context.Context, actor, correlation string, sour
 	})
 }
 
+func (w wire) queryNoCountWithMode(ctx context.Context, actor string, source reference.Source, sql string, parameters []any, size int, mode string) (reply, error) {
+	queryType := 1
+	if mode == "streaming" {
+		queryType = 2
+	} else if mode != "pagination" {
+		return reply{}, fmt.Errorf("unsupported acceptance execution mode")
+	}
+	if w.kind == rest {
+		return w.restCall(ctx, actor, "", http.MethodPost, "/api/v1/fetch", map[string]any{"dataSourceId": source.ID, "sql": sql, "parameters": parameters, "type": queryType, "batch_size": size, "timeout": 30, "count_mode": "none"})
+	}
+	return w.tool(ctx, actor, "", "execute_sql_query", map[string]any{"datasource_id": source.ID, "sql": sql, "parameters": parameters, "batch_size": size, "timeout": 30, "execution_mode": mode, "count_mode": "none"})
+}
+
 func (w wire) query(ctx context.Context, actor, correlation string, source reference.Source, sql string, parameters []any, size, timeout int) (reply, error) {
 	if w.kind == rest {
 		return w.restCall(ctx, actor, correlation, http.MethodPost, "/api/v1/fetch", map[string]any{
