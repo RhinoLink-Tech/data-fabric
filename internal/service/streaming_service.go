@@ -58,6 +58,7 @@ type StreamingSession struct {
 	Tables           []sqlanalysis.TableReference
 	Type             int
 	BatchSize        int
+	CountMode        model.QueryCountMode
 	Cursor           interface{} // Cursor for pagination
 	TotalRows        int64
 	FetchedRows      int64
@@ -217,6 +218,7 @@ type ActiveStream struct {
 	Deadline         time.Time
 	LastActivityAt   time.Time
 	RowsSent         int64
+	pending          []interface{} // one row of no-count lookahead, protected by mutex
 	BytesSent        int64
 	CancelFunc       context.CancelFunc
 	releaseAdmission func()
@@ -243,6 +245,8 @@ type StreamChunk struct {
 	Columns  []model.ColumnInfo `json:"columns,omitempty"` // Only in first chunk
 	Rows     [][]interface{}    `json:"rows"`
 	Metadata StreamMetadata     `json:"metadata"`
+	more     bool
+	probe    []interface{}
 }
 
 // StreamMetadata contains metadata about the stream
@@ -337,10 +341,10 @@ func newStreamingService(datasourceRepo repository.DataSourceRepository, connPoo
 
 // ExecuteStreamQuery executes a query and returns a stream ID
 func (ss *streamingService) ExecuteStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest) (string, int64, error) {
-	return ss.executeStreamQuery(ctx, caller, req, time.Time{})
+	return ss.executeStreamQuery(ctx, caller, req, time.Time{}, model.QueryCountExact)
 }
 
-func (ss *streamingService) executeStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest, budgetDeadline time.Time) (string, int64, error) {
+func (ss *streamingService) executeStreamQuery(ctx context.Context, caller *security.Caller, req *model.QueryRequest, budgetDeadline time.Time, countMode model.QueryCountMode) (string, int64, error) {
 	requestCtx, requestCancel := withQueryTimeout(ctx, req.Timeout)
 	defer requestCancel()
 
@@ -387,6 +391,10 @@ func (ss *streamingService) executeStreamQuery(ctx context.Context, caller *secu
 		if err := ss.sqlValidator.ValidateStatementForDataSourceContext(requestCtx, querySQL, dataSource.Type); err != nil {
 			return "", 0, fmt.Errorf("SQL validation failed: %w", err)
 		}
+	}
+
+	if countMode == model.QueryCountNone && !noCountSQLSource(dataSource.Type) {
+		return "", 0, ErrNoCountUnsupported
 	}
 
 	// Reserve capacity atomically before opening a source connection. The
@@ -489,13 +497,16 @@ func (ss *streamingService) executeStreamQuery(ctx context.Context, caller *secu
 	ss.streamsMutex.Unlock()
 	admissionTransferred = true
 
-	totalCount, err := ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
-	if err != nil {
-		_ = ss.CloseStream(streamID)
-		if requestCtx.Err() != nil {
-			return "", 0, requestCtx.Err()
+	var totalCount int64
+	if countMode != model.QueryCountNone {
+		totalCount, err = ss.getRowCount(requestCtx, db, querySQL, req.Parameters...)
+		if err != nil {
+			_ = ss.CloseStream(streamID)
+			if requestCtx.Err() != nil {
+				return "", 0, requestCtx.Err()
+			}
+			return "", 0, fmt.Errorf("failed to get row count: %w", err)
 		}
-		return "", 0, fmt.Errorf("failed to get row count: %w", err)
 	}
 	if err := requestCtx.Err(); err != nil {
 		_ = ss.CloseStream(streamID)
@@ -531,6 +542,11 @@ func (ss *streamingService) allowQueryRequest(caller *security.Caller) bool {
 
 // FetchStreamChunk fetches the next chunk of data from a stream
 func (ss *streamingService) FetchStreamChunk(ctx context.Context, streamID string, batchSize int) (*StreamChunk, error) {
+	return ss.fetchStreamChunk(ctx, streamID, batchSize, false)
+}
+
+// fetchStreamChunk retains one lookahead row only for no-count sessions.
+func (ss *streamingService) fetchStreamChunk(ctx context.Context, streamID string, batchSize int, lookahead bool) (*StreamChunk, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -587,6 +603,10 @@ func (ss *streamingService) FetchStreamChunk(ctx context.Context, streamID strin
 		return nil, err
 	}
 	var rows [][]interface{}
+	if lookahead && stream.pending != nil {
+		rows = append(rows, stream.pending)
+		stream.pending = nil
+	}
 	for len(rows) < batchSize {
 		if err := ctx.Err(); err != nil {
 			_ = ss.closeStreamLocked(streamID, stream)
@@ -615,6 +635,28 @@ func (ss *streamingService) FetchStreamChunk(ctx context.Context, streamID strin
 		rows = append(rows, row)
 	}
 
+	more := false
+	if lookahead && len(rows) == batchSize {
+		if err := ctx.Err(); err != nil {
+			_ = ss.closeStreamLocked(streamID, stream)
+			return nil, err
+		}
+		if stream.Rows.Next() {
+			pending := make([]interface{}, len(stream.Columns))
+			pointers := make([]interface{}, len(pending))
+			for i := range pending {
+				pointers[i] = &pending[i]
+			}
+			if err := stream.Rows.Scan(pointers...); err != nil {
+				_ = ss.closeStreamLocked(streamID, stream)
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, fmt.Errorf("error scanning lookahead row: %w", err)
+			}
+			stream.pending, more = pending, true
+		}
+	}
 	if err := stream.Rows.Err(); err != nil {
 		_ = ss.closeStreamLocked(streamID, stream)
 		if ctx.Err() != nil {
@@ -634,6 +676,8 @@ func (ss *streamingService) FetchStreamChunk(ctx context.Context, streamID strin
 		ChunkID:  stream.RowsSent,
 		Columns:  stream.Columns,
 		Rows:     rows,
+		more:     more,
+		probe:    stream.pending,
 		Metadata: StreamMetadata{
 			RowCount:      stream.RowsSent,
 			ChunkSize:     batchSize,
@@ -1090,6 +1134,9 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	if req == nil {
 		return nil, fmt.Errorf("query request is required")
 	}
+	if err := req.CountMode.Validate(); err != nil {
+		return nil, err
+	}
 	budget := newQueryBudgetState(started, ss.budgetLimits)
 	defer func() {
 		if err != nil && budget.expired(time.Now()) && errors.Is(err, context.DeadlineExceeded) {
@@ -1141,6 +1188,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		SQL:          req.SQL,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
+		CountMode:    req.CountMode,
 		CreatedAt:    createdAt,
 		ExpiresAt:    expiresAt,
 		budget:       budget,
@@ -1156,7 +1204,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		Offset:        0,
 		Timeout:       req.Timeout,
 	}
-	streamID, totalCount, err := ss.executeStreamQuery(ctx, caller, streamReq, budget.deadline)
+	streamID, totalCount, err := ss.executeStreamQuery(ctx, caller, streamReq, budget.deadline, req.CountMode)
 	if err != nil {
 		if budget.expired(time.Now()) {
 			ss.stats.RecordBudgetExceeded()
@@ -1172,7 +1220,7 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 	ss.streamsMutex.RUnlock()
 
 	// Fetch the first batch of data
-	chunk, err := ss.FetchStreamChunk(ctx, streamID, req.BatchSize)
+	chunk, err := ss.fetchStreamChunk(ctx, streamID, req.BatchSize, req.CountMode == model.QueryCountNone)
 	if err != nil {
 		// Try to close the stream even if there was an error
 		ss.CloseStream(streamID)
@@ -1208,7 +1256,13 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		ss.stats.RecordBudgetExceeded()
 		return nil, ErrQueryDurationLimitExceeded
 	}
-	if err := budget.accountPage(columns, entries); err != nil {
+	account := budget.accountPage
+	if req.CountMode == model.QueryCountNone {
+		account = func(columns []model.ColumnInfo, rows []*[]interface{}) error {
+			return accountNoCountPage(&budget, columns, rows, encodedNoCountProbe(chunk.probe, columns))
+		}
+	}
+	if err := account(columns, entries); err != nil {
 		ss.CloseStream(streamID)
 		if err == ErrQueryResultLimitExceeded {
 			ss.stats.RecordBudgetExceeded()
@@ -1233,7 +1287,12 @@ func (ss *streamingService) FetchWithStreaming(ctx context.Context, caller *secu
 		TotalCount: int(totalCount),
 	}
 
-	if len(entries) < int(totalCount) {
+	more := len(entries) < int(totalCount)
+	if req.CountMode == model.QueryCountNone {
+		more = chunk.more
+		response.CountMode, response.HasMore = model.QueryCountNone, &more
+	}
+	if more {
 		// Add NextURI if there are more results
 		response.NextURI = ss.buildNextURI(session.QueryID, session.Slug, session.Token, req.BatchSize)
 
@@ -1335,7 +1394,7 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	batchSize = effectiveContinuationBatchSize(batchSize, session.BatchSize)
 	// Fetch the next chunk of data. A disconnected page request cancels the
 	// engine query and releases its cursor.
-	chunk, err := ss.FetchStreamChunk(ctx, session.StreamID, batchSize)
+	chunk, err := ss.fetchStreamChunk(ctx, session.StreamID, batchSize, session.CountMode == model.QueryCountNone)
 	if err != nil {
 		if session.budget.expired(time.Now()) {
 			ss.discardBudgetSession(session)
@@ -1384,7 +1443,13 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 		entries = append(entries, &entry)
 	}
 
-	if err := session.budget.accountPage(columns, entries); err != nil {
+	account := session.budget.accountPage
+	if session.CountMode == model.QueryCountNone {
+		account = func(columns []model.ColumnInfo, rows []*[]interface{}) error {
+			return accountNoCountPage(&session.budget, columns, rows, encodedNoCountProbe(chunk.probe, columns))
+		}
+	}
+	if err := account(columns, entries); err != nil {
 		if err == ErrQueryResultLimitExceeded {
 			ss.discardBudgetSession(session)
 		} else {
@@ -1415,7 +1480,12 @@ func (ss *streamingService) FetchNextBatchWithStreaming(ctx context.Context, cal
 	}
 
 	// Add NextURI if there are more results
-	if session.FetchedRows < session.TotalRows {
+	more := session.FetchedRows < session.TotalRows
+	if session.CountMode == model.QueryCountNone {
+		more = chunk.more
+		response.CountMode, response.HasMore = model.QueryCountNone, &more
+	}
+	if more {
 		response.NextURI = ss.buildNextURI(session.QueryID, session.Slug, session.Token, batchSize)
 	} else {
 		// Close the stream if no more results

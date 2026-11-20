@@ -432,6 +432,10 @@ func queryFailureStatusAndCode(err error) (int, string) {
 		return http.StatusRequestEntityTooLarge, "QUERY_RESULT_LIMIT_EXCEEDED"
 	case errors.Is(err, queryservice.ErrQueryDurationLimitExceeded):
 		return http.StatusGatewayTimeout, "QUERY_BUDGET_TIMEOUT"
+	case errors.Is(err, queryservice.ErrNoCountUnsupported):
+		return http.StatusUnprocessableEntity, "NO_COUNT_UNSUPPORTED"
+	case errors.Is(err, model.ErrInvalidQueryCountMode):
+		return http.StatusBadRequest, "INVALID_COUNT_MODE"
 	case errors.Is(err, queryservice.ErrExactCountUnavailable):
 		// The statement is valid but its shape cannot be counted exactly (#23)
 		return http.StatusUnprocessableEntity, "COUNT_UNSUPPORTED"

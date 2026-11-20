@@ -2,7 +2,7 @@
 
 [中文](query-no-count-mode-zh.md) · [Issue #450](https://github.com/RhinoLink-Tech/data-fabric/issues/450) · [Current result contract](../query-result-semantics.md)
 
-**Design only: this option is not implemented or released.** The existing REST and MCP behavior remains the exact-count contract. This proposal makes an unknown total explicit, without silently changing existing clients.
+This is the pre-implementation design and measurement record. See the [current result contract](../query-result-semantics.md) for the implemented source scope and semantics; availability in a released image depends on its version. The default remains exact counting.
 
 ## Why
 

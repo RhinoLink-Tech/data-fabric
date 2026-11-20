@@ -48,6 +48,7 @@ type QuerySession struct {
 	Parameters       []interface{}
 	Type             int
 	BatchSize        int
+	CountMode        model.QueryCountMode
 	Cursor           interface{} // Cursor for pagination
 	TotalRows        int64
 	FetchedRows      int64
@@ -481,6 +482,9 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 	if req == nil {
 		return nil, fmt.Errorf("query request is required")
 	}
+	if err := req.CountMode.Validate(); err != nil {
+		return nil, err
+	}
 	budget := newQueryBudgetState(started, qs.budgetLimits)
 	defer func() {
 		if err != nil && budget.expired(time.Now()) && errors.Is(err, context.DeadlineExceeded) {
@@ -548,6 +552,10 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		return nil, ErrQueryDurationLimitExceeded
 	}
 
+	if req.CountMode == model.QueryCountNone && !noCountSQLSource(datasource.Type) {
+		return nil, ErrNoCountUnsupported
+	}
+
 	// Drivers with a native protocol can execute through a typed executor
 	// without manufacturing a database/sql connection.
 	nativeExecutor, supported, err := qs.connPool.GetNativeSQLAPIExecutor(ctx, datasource)
@@ -594,9 +602,14 @@ func (qs *queryService) FetchQuery(ctx context.Context, caller *security.Caller,
 		Parameters:   parameters,
 		Type:         req.Type,
 		BatchSize:    req.BatchSize,
+		CountMode:    req.CountMode,
 		CreatedAt:    createdAt,
 		ExpiresAt:    expiresAt,
 		budget:       budget,
+	}
+
+	if req.CountMode == model.QueryCountNone {
+		return qs.fetchNoCountSQLInitial(ctx, datasource.Type, conn, session, budget)
 	}
 
 	// Execute query and get first batch
@@ -720,7 +733,7 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 
 	// Check if all data has been fetched only after current access policy has
 	// been rechecked, since the empty response still exposes result columns.
-	if session.FetchedRows >= session.TotalRows {
+	if session.CountMode != model.QueryCountNone && session.FetchedRows >= session.TotalRows {
 		entries := []*[]interface{}{}
 		if err := session.budget.accountPage(session.Columns, entries); err != nil {
 			if err == ErrQueryResultLimitExceeded {
@@ -755,6 +768,9 @@ func (qs *queryService) FetchNextBatch(ctx context.Context, caller *security.Cal
 	}
 
 	batchSize = effectiveContinuationBatchSize(batchSize, session.BatchSize)
+	if session.CountMode == model.QueryCountNone {
+		return qs.fetchNoCountSQLNext(ctx, datasource, session, batchSize)
+	}
 	if cursor, ok := session.Cursor.(*nativeAPIQueryCursor); ok {
 		batch, sourceColumns, totalRows, err := cursor.NextBatch(ctx, batchSize)
 		if err != nil {
