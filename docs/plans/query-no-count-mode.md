@@ -43,7 +43,7 @@ Illustrative proposed response (fields abbreviated, not yet available):
 {"countMode":"none","totalCount":null,"hasMore":true,"entries":[[1],[2]],"queryId":"...","slug":"...","token":"...","nextUri":"..."}
 ```
 
-A successful terminal page would use `"hasMore":false`, keep `"totalCount":null`, and omit `nextUri`. Existing client models that require an integer total must keep `exact`; `none` requires clients that understand nullable totals. Older servers must reject or not advertise the new field rather than be assumed to implement this proposal.
+A successful terminal page would use `"hasMore":false`, keep `"totalCount":null`, and omit `nextUri`. Existing client models that require an integer total must keep `exact`; `none` requires clients that understand nullable totals. Older servers may ignore unknown fields and still perform an exact count. Clients must verify `countMode: "none"` and a null total in the response before treating no-count as active; absence means the feature is not established, not a successful no-count result.
 
 ## Implementation constraints
 
