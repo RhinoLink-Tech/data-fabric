@@ -42,7 +42,7 @@ jobs:
           --event "$CI_EVENT_NAME" --base "$CI_BASE_SHA" --head "$CI_HEAD_SHA"
 
   reference-contracts:
-    name: Reference PostgreSQL and MySQL contracts
+    name: Reference PostgreSQL, MySQL and MariaDB contracts
     needs: contract-selection
     if: ${{ contains(fromJSON(needs.contract-selection.outputs.selected_jobs || '[]'), 'reference-contracts') }}
     runs-on: ubuntu-latest
@@ -56,6 +56,11 @@ jobs:
       DATA_FABRIC_MYSQL_CONTRACT_PASSWORD: contract-test-only
       DATA_FABRIC_MYSQL_CONTRACT_DATABASE: data_fabric_contract
       DATA_FABRIC_MYSQL_EXPECTED_VERSION: "8.4.13"
+      DATA_FABRIC_MARIADB_CONTRACT_HOST: 127.0.0.1
+      DATA_FABRIC_MARIADB_CONTRACT_PORT: "3307"
+      DATA_FABRIC_MARIADB_CONTRACT_USERNAME: data_fabric_contract
+      DATA_FABRIC_MARIADB_CONTRACT_PASSWORD: contract-test-only
+      DATA_FABRIC_MARIADB_CONTRACT_DATABASE: data_fabric_contract
     services:
       postgres:
         image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
@@ -81,6 +86,20 @@ jobs:
           - 3306:3306
         options: >-
           --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot-contract-only --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      mariadb:
+        image: mariadb:10.11.19@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae
+        env:
+          MARIADB_ROOT_PASSWORD: root-contract-only
+          MARIADB_USER: data_fabric_contract
+          MARIADB_PASSWORD: contract-test-only
+          MARIADB_DATABASE: data_fabric_contract
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20
@@ -114,7 +133,7 @@ jobs:
           grep -q '^--- PASS: TestNoCountSourceDeactivationClosesSessions ' "$RUNNER_TEMP/no-count-unit.log"
           grep -q '^--- PASS: TestNoCountConcurrentReplayAndBudget ' "$RUNNER_TEMP/no-count-unit.log"
 
-      - name: Verify no-count REST and MCP against both databases
+      - name: Verify no-count REST and MCP against PostgreSQL, MySQL and MariaDB
         env:
           DF_NOCOUNT_ACCEPTANCE: github-ci
         run: |
@@ -123,6 +142,7 @@ jobs:
           grep -q '^--- PASS: TestLiveNoCountRESTAndMCP ' "$RUNNER_TEMP/no-count-contract.log"
           grep -q '^    --- PASS: TestLiveNoCountRESTAndMCP/postgresql ' "$RUNNER_TEMP/no-count-contract.log"
           grep -q '^    --- PASS: TestLiveNoCountRESTAndMCP/mysql ' "$RUNNER_TEMP/no-count-contract.log"
+          grep -q '^    --- PASS: TestLiveNoCountRESTAndMCP/mariadb ' "$RUNNER_TEMP/no-count-contract.log"
 
       - name: Require both reference contracts to run and pass
         if: always()

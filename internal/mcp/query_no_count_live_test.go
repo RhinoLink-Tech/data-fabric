@@ -35,12 +35,12 @@ func TestLiveNoCountRESTAndMCP(t *testing.T) {
 	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("DF_NOCOUNT_ACCEPTANCE") != "github-ci" {
 		t.Skip("isolated GitHub CI acceptance required")
 	}
-	pgDSN, mysqlHost := os.Getenv("DATA_FABRIC_POSTGRES_CONTRACT_DSN"), os.Getenv("DATA_FABRIC_MYSQL_CONTRACT_HOST")
-	if pgDSN == "" && mysqlHost == "" {
-		t.Skip("isolated PostgreSQL and MySQL contract fixtures required")
+	pgDSN, mysqlHost, mariaHost := os.Getenv("DATA_FABRIC_POSTGRES_CONTRACT_DSN"), os.Getenv("DATA_FABRIC_MYSQL_CONTRACT_HOST"), os.Getenv("DATA_FABRIC_MARIADB_CONTRACT_HOST")
+	if pgDSN == "" && mysqlHost == "" && mariaHost == "" {
+		t.Skip("isolated PostgreSQL, MySQL and MariaDB contract fixtures required")
 	}
-	if pgDSN == "" || mysqlHost == "" {
-		t.Fatal("both isolated contract fixtures are required")
+	if pgDSN == "" || mysqlHost == "" || mariaHost == "" {
+		t.Fatal("isolated PostgreSQL, MySQL and MariaDB contract fixtures are required")
 	}
 	pg, err := url.Parse(pgDSN)
 	if err != nil || pg.User == nil || pg.Hostname() != "localhost" || strings.TrimPrefix(pg.Path, "/") != "data_fabric_contract" || pg.User.Username() != "data_fabric_contract" {
@@ -68,6 +68,17 @@ func TestLiveNoCountRESTAndMCP(t *testing.T) {
 	mysqlConfig.Net = "tcp"
 	mysqlConfig.Addr = net.JoinHostPort(mysqlHost, strconv.Itoa(myPort))
 	mysqlConfig.DBName = myDB
+	mariaPort, err := strconv.Atoi(os.Getenv("DATA_FABRIC_MARIADB_CONTRACT_PORT"))
+	if err != nil {
+		t.Fatal("invalid MariaDB port")
+	}
+	mariaUser, mariaPass, mariaDB := os.Getenv("DATA_FABRIC_MARIADB_CONTRACT_USERNAME"), os.Getenv("DATA_FABRIC_MARIADB_CONTRACT_PASSWORD"), os.Getenv("DATA_FABRIC_MARIADB_CONTRACT_DATABASE")
+	if mariaHost != "127.0.0.1" || mariaUser != "data_fabric_contract" || mariaPass == "" || mariaDB != "data_fabric_contract" {
+		t.Fatal("invalid isolated MariaDB fixture")
+	}
+	mariaConfig := mysql.NewConfig()
+	mariaConfig.User, mariaConfig.Passwd, mariaConfig.Net = mariaUser, mariaPass, "tcp"
+	mariaConfig.Addr, mariaConfig.DBName = net.JoinHostPort(mariaHost, strconv.Itoa(mariaPort)), mariaDB
 	fixtures := []struct {
 		name, driver, dsn string
 		kind              model.DatabaseType
@@ -75,6 +86,7 @@ func TestLiveNoCountRESTAndMCP(t *testing.T) {
 	}{
 		{"postgresql", "postgres", pgDSN, model.DatabaseTypePostgreSQL, model.DataSourceConfig{Host: pg.Hostname(), Port: pgPort, Database: strings.TrimPrefix(pg.Path, "/"), Username: pg.User.Username(), Password: pgPass, SSLMode: "disable"}},
 		{"mysql", "mysql", mysqlConfig.FormatDSN(), model.DatabaseTypeMySQL, model.DataSourceConfig{Host: mysqlHost, Port: myPort, Database: myDB, Username: myUser, Password: myPass}},
+		{"mariadb", "mysql", mariaConfig.FormatDSN(), model.DatabaseTypeMariaDB, model.DataSourceConfig{Host: mariaHost, Port: mariaPort, Database: mariaDB, Username: mariaUser, Password: mariaPass}},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

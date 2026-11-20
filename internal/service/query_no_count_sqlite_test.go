@@ -146,8 +146,8 @@ func TestNoCountPaginationAndStreamingSynthetic(t *testing.T) {
 }
 
 func TestNoCountRejectsUnverifiedSourcesAndBudgetOverflow(t *testing.T) {
-	if noCountSQLSource(model.DatabaseTypeMariaDB) {
-		t.Fatal("unverified source accepted")
+	if !noCountSQLSource(model.DatabaseTypeMariaDB) {
+		t.Fatal("verified MariaDB source rejected")
 	}
 	budget := newQueryBudgetState(time.Now(), QueryBudgetLimits{MaxRows: 2, MaxBytes: 100000, MaxDuration: time.Minute})
 	row := []interface{}{int64(1)}
@@ -224,6 +224,7 @@ func TestNoCountUnsupportedSourceFailsBeforeExecution(t *testing.T) {
 	repo := federationSourceRepository{source: source}
 	pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
 	defer pool.CloseAll()
+	source.Type = model.DatabaseTypeMongoDB
 	req := &model.FetchQueryRequest{DataSourceID: source.ID, SQL: "SELECT id FROM orders", BatchSize: 2, CountMode: model.QueryCountNone}
 	paging := NewQueryService(repo, pool, false, newTestSQLTranslationManager())
 	defer paging.Shutdown()
