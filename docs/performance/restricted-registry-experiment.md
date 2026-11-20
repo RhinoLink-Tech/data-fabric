@@ -24,7 +24,7 @@ Limiting registration alone does not necessarily remove all nonselected SDKs: th
 
 ## Decision and next gate
 
-The measured saving justifies investigating an **optional** smaller distribution. It does not justify replacing the full default, claiming a smaller published image, or advertising reduced runtime memory. Before a supported profile: select exact connector contents including how federation is enabled; isolate all relevant imports and report actual catalog availability; build both images in isolated remote CI; measure compressed transfer, uncompressed image, build time, startup and whole-stack idle resources; then run the same REST/MCP, SQL translation, authorization, audit, continuation and selected live-source contracts against both artifacts. Document migration and support cost for excluded sources. No existing release is changed by this experiment.
+The measured saving justifies investigating an **optional** smaller distribution. See the [experimental build candidate](core-candidate.md). It does not justify replacing the full default, claiming a smaller published image, or advertising reduced runtime memory. Before a supported profile: select exact connector contents including how federation is enabled; isolate all relevant imports and report actual catalog availability; build both images in isolated remote CI; measure compressed transfer, uncompressed image, build time, startup and whole-stack idle resources; then run the same REST/MCP, SQL translation, authorization, audit, continuation and selected live-source contracts against both artifacts. Document migration and support cost for excluded sources. No existing release is changed by this experiment.
 
 ## Repeat offline
 
