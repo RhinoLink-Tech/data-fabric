@@ -18,6 +18,7 @@ func TestSQLInjectionResistantColumnQuery(t *testing.T) {
 	// raw payload never appears verbatim.
 	literalTypes := []model.DatabaseType{
 		model.DatabaseTypePostgreSQL,
+		model.DatabaseTypeOpenGauss,
 		model.DatabaseTypeOracle,
 		model.DatabaseTypeTrino, // default branch
 	}
@@ -107,5 +108,13 @@ func TestMySQLShowColumnsQuotesIdentifier(t *testing.T) {
 	want = "SHOW INDEX FROM `orders`"
 	if got := e.getIndexQuery(model.DatabaseTypeMySQL, "orders", ""); got != want {
 		t.Errorf("getIndexQuery(MySQL): got %q, want %q", got, want)
+	}
+}
+
+func TestOpenGaussColumnQueryScopesSchema(t *testing.T) {
+	e := &MetadataExtractor{}
+	query := e.getColumnQuery(model.DatabaseTypeOpenGauss, "orders", "tenant_a")
+	if !strings.Contains(query, "table_name = 'orders'") || !strings.Contains(query, "table_schema = 'tenant_a'") {
+		t.Fatalf("openGauss column query did not constrain schema: %s", query)
 	}
 }
