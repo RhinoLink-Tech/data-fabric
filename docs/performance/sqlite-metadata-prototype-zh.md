@@ -26,6 +26,10 @@ CGO_ENABLED=1 go build -tags datafabric_sqlite,datafabric_core -o data-fabric ./
 
 若文件发布后同步失败，命令会报错并保留已创建的文件；重试前请检查并移除该新文件，命令不会覆盖它。输出文件仅属主可访问，但仍含敏感元数据，需妥善保护。凭证加密密钥不会包含在快照中，必须按现有密钥备份流程单独保存；恢复后必须使用正确的密钥环。先在隔离环境验证恢复，再将服务配置切换到新路径。该命令不会覆盖现有数据库，也不负责从 MySQL 迁移。运行中不能只复制数据库主文件作为备份。
 
+## 本机首次使用配置
+
+[实验性 Compose 使用说明](sqlite-first-use-zh.md)提供仅监听本机的 REST、TLS MCP 和持久化 SQLite 卷，使用本机测试 JWT。它用于开发评估，不是 WorkBuddy 公共平台的 OAuth 接入。
+
 ## 实验镜像
 
 `Dockerfile.sqlite` 构建独立的 SQLite/Core 实验候选镜像，启用 CGO 并静态链接 SQLite；它尚未发布。该构建保留 MySQL、MariaDB、PostgreSQL 和 Trino 连接器，不包含完整连接器目录。镜像使用 UID/GID 10001、专用的 `/var/lib/data-fabric` 元数据目录和 debug 模式，仍需配置正常的认证及凭证加密密钥。Docker 命名卷必须持久化且允许 UID 10001 访问；不要把数据库放在共享或网络文件系统。

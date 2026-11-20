@@ -41,3 +41,6 @@ deploy/mcp/tls/
 # Python bytecode and cache directories
 __pycache__/
 *.py[cod]
+
+# Local SQLite experimental TLS material
+deploy/sqlite/tls/
