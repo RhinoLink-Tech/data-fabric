@@ -39,8 +39,9 @@ func TestSQLiteRuntimeHelper(t *testing.T) {
 }
 
 type sqliteRuntimeProcess struct {
-	cmd *exec.Cmd
-	log *os.File
+	cmd       *exec.Cmd
+	log       *os.File
+	container string
 }
 
 func startSQLiteRuntime(t *testing.T, dbPath, address, jwtSecret, keyJSON, parserPath string, mcpMode bool) *sqliteRuntimeProcess {
@@ -72,11 +73,34 @@ func startSQLiteRuntime(t *testing.T, dbPath, address, jwtSecret, keyJSON, parse
 		}
 		cmd.Env = append(cmd.Env, "SERVER_PORT="+port)
 	}
+	containerName := ""
+	if image := os.Getenv("DF_SQLITE_RUNTIME_IMAGE"); image != "" {
+		// CI-only: use the runner's unprivileged UID for a private bind mount.
+		// Both containers share one SQLite directory on the same host.
+		containerName = fmt.Sprintf("df-sqlite-ci-%d-%t", time.Now().UnixNano(), mcpMode)
+		args := []string{"run", "--rm", "--name", containerName, "--network", "host",
+			"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+			"--mount", "type=bind,source=" + filepath.Dir(dbPath) + ",target=" + filepath.Dir(dbPath)}
+		for _, value := range cmd.Env {
+			if strings.HasPrefix(value, "DF_SQLITE_RUNTIME_HELPER=") || strings.HasPrefix(value, "HOME=") || strings.HasPrefix(value, "PATH=") {
+				continue
+			}
+			if strings.HasPrefix(value, "SQL_TRANSLATION_SCRIPT_PATH=") {
+				value = "SQL_TRANSLATION_SCRIPT_PATH=/app/scripts/sql_translate.py"
+			}
+			if strings.HasPrefix(value, "SQL_TRANSLATION_PYTHON_MODULE_PATH=") {
+				value = "SQL_TRANSLATION_PYTHON_MODULE_PATH=/opt/data-fabric/python"
+			}
+			args = append(args, "-e", value)
+		}
+		args = append(args, image)
+		cmd = exec.Command("docker", args...)
+	}
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	if err = cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p := &sqliteRuntimeProcess{cmd: cmd, log: logFile}
+	p := &sqliteRuntimeProcess{cmd: cmd, log: logFile, container: containerName}
 	t.Cleanup(func() { p.stop() })
 	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
@@ -97,7 +121,11 @@ func (p *sqliteRuntimeProcess) stop() {
 	if p == nil || p.cmd == nil {
 		return
 	}
-	_ = p.cmd.Process.Signal(syscall.SIGTERM)
+	if p.container != "" {
+		_ = exec.Command("docker", "stop", "--time", "10", p.container).Run()
+	} else {
+		_ = p.cmd.Process.Signal(syscall.SIGTERM)
+	}
 	done := make(chan struct{})
 	go func() { _ = p.cmd.Wait(); close(done) }()
 	select {
@@ -206,6 +234,28 @@ func sqliteMCPCall(t *testing.T, client *sdk.Client, name string, args map[strin
 		t.Fatalf("invalid MCP %s result", name)
 	}
 	return output, false
+}
+
+func sqliteRuntimeSnapshot(t *testing.T, source, destination string, restore bool) {
+	t.Helper()
+	image := os.Getenv("DF_SQLITE_RUNTIME_IMAGE")
+	if image == "" {
+		if err := config.SnapshotSQLiteMetadata(context.Background(), source, destination); err != nil {
+			t.Fatalf("SQLite snapshot failed: %v", err)
+		}
+		return
+	}
+	action := "backup"
+	if restore {
+		action = "restore"
+	}
+	cmd := exec.Command("docker", "run", "--rm",
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		"--mount", "type=bind,source="+filepath.Dir(source)+",target="+filepath.Dir(source),
+		image, "sqlite-metadata", action, "--source", source, "--output", destination)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("image SQLite %s failed: %s", action, output)
+	}
 }
 
 func setupSQLiteRuntimeSource(t *testing.T) int {
@@ -344,14 +394,10 @@ func TestSQLiteRuntimeRESTMCPRestartAndRestore(t *testing.T) {
 	}
 	bobMCP.Close()
 	aliceMCP.Close()
-	if err = config.SnapshotSQLiteMetadata(context.Background(), dbPath, snapshot); err != nil {
-		t.Fatalf("online snapshot: %v", err)
-	}
+	sqliteRuntimeSnapshot(t, dbPath, snapshot, false)
 	mcpProcess.stop()
 	rest.stop()
-	if err = config.SnapshotSQLiteMetadata(context.Background(), snapshot, restored); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
+	sqliteRuntimeSnapshot(t, snapshot, restored, true)
 	rest = startSQLiteRuntime(t, restored, restAddress, jwtSecret, keyJSON, parserPath, false)
 	mcpProcess = startSQLiteRuntime(t, restored, mcpAddress, jwtSecret, keyJSON, parserPath, true)
 	code, got := sqliteREST(t, "GET", "http://"+restAddress+"/api/v1/datasources/"+sourceID, alice, nil)

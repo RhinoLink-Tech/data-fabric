@@ -2,7 +2,7 @@
 
 [English](sqlite-metadata-prototype.md) · [方案评估](single-node-metadata-evaluation-zh.md) · [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444)
 
-这是探索单机部署减少独立 MySQL 元数据服务的源码实验，**不是生产部署、发布镜像或 WorkBuddy 对外服务**。默认仍为 MySQL，不会自动迁移现有数据；release 模式和副本路由会拒绝 SQLite。
+这是探索单机部署减少独立 MySQL 元数据服务的实验，**不是生产部署、发布镜像或 WorkBuddy 对外服务**。默认仍为 MySQL，不会自动迁移现有数据；release 模式和副本路由会拒绝 SQLite。
 
 在具有 C 编译器及已固定 Go 依赖的环境中构建：
 
@@ -25,5 +25,11 @@ CGO_ENABLED=1 go build -tags datafabric_sqlite,datafabric_core -o data-fabric ./
 ```
 
 若文件发布后同步失败，命令会报错并保留已创建的文件；重试前请检查并移除该新文件，命令不会覆盖它。输出文件仅属主可访问，但仍含敏感元数据，需妥善保护。凭证加密密钥不会包含在快照中，必须按现有密钥备份流程单独保存；恢复后必须使用正确的密钥环。先在隔离环境验证恢复，再将服务配置切换到新路径。该命令不会覆盖现有数据库，也不负责从 MySQL 迁移。运行中不能只复制数据库主文件作为备份。
+
+## 实验镜像
+
+`Dockerfile.sqlite` 构建独立的 SQLite/Core 实验候选镜像，启用 CGO 并静态链接 SQLite；它尚未发布。该构建保留 MySQL、MariaDB、PostgreSQL 和 Trino 连接器，不包含完整连接器目录。镜像使用 UID/GID 10001、专用的 `/var/lib/data-fabric` 元数据目录和 debug 模式，仍需配置正常的认证及凭证加密密钥。Docker 命名卷必须持久化且允许 UID 10001 访问；不要把数据库放在共享或网络文件系统。
+
+远端 CI 会在单台 Linux 主机上运行独立的 REST、MCP 容器和合成 PostgreSQL 服务，共享 SQLite 目录，并验证镜像内的备份恢复命令。测试绑定目录使用运行器的非特权 UID，另有检查验证镜像默认 UID 与命名卷写入。CI 记录 Docker 镜像大小和压缩的 `docker save` 大小；这不等于仓库传输量、未压缩层大小、内存或整套部署资源。自行构建需要下载基础镜像及依赖。
 
 现有发布 Dockerfile 禁用 CGO，不能使用本原型。缺少实验编译标签或 CGO 时会明确拒绝 SQLite，不会静默更换存储。后续验收、运维设计及测量见 #444。

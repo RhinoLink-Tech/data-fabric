@@ -1,0 +1,36 @@
+# Experimental single-host SQLite/Core candidate. This is not a release image.
+FROM golang:1.26.1 AS builder
+ARG DATA_FABRIC_VERSION=experimental
+ARG DATA_FABRIC_SOURCE_REVISION=unknown
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Statically link the SQLite build for Alpine, use Go DNS/user lookup, and
+# exclude SQLite's dynamic extension loader.
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath     -tags=datafabric_sqlite,datafabric_core,netgo,osusergo,sqlite_omit_load_extension     -ldflags="-s -w -linkmode external -extldflags=-static -X github.com/RhinoLink-Tech/data-fabric/internal/buildinfo.Version=${DATA_FABRIC_VERSION} -X github.com/RhinoLink-Tech/data-fabric/internal/buildinfo.SourceRevision=${DATA_FABRIC_SOURCE_REVISION}"     -o /app/main ./cmd/server     && go build -trimpath -o /app/license-bundle-generator ./cmd/license-bundle     && /app/license-bundle-generator --output /app/go-third-party-licenses
+
+FROM python:3.12-alpine3.22 AS sql-runtime
+COPY requirements-sql-translation.txt /tmp/requirements-sql-translation.txt
+RUN python -m pip install --no-cache-dir --target=/opt/data-fabric/python --requirement /tmp/requirements-sql-translation.txt
+
+FROM alpine:3.22
+ARG DATA_FABRIC_VERSION=experimental
+ARG DATA_FABRIC_SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.title="Data Fabric SQLite experimental"       org.opencontainers.image.version="${DATA_FABRIC_VERSION}"       org.opencontainers.image.revision="${DATA_FABRIC_SOURCE_REVISION}"       tech.rhinolink.data-fabric.profile="experimental-sqlite-core"
+RUN apk --no-cache add ca-certificates tzdata python3     && addgroup -S -g 10001 app     && adduser -S -D -H -u 10001 -G app appuser     && mkdir -p /var/lib/data-fabric     && chown 10001:10001 /var/lib/data-fabric     && chmod 700 /var/lib/data-fabric
+
+WORKDIR /app
+ENV DATABASE_DRIVER=sqlite     DATABASE_SQLITE_PATH=/var/lib/data-fabric/metadata.sqlite     SERVER_MODE=debug     SQL_TRANSLATION_PYTHON_PATH=/usr/bin/python3     SQL_TRANSLATION_SCRIPT_PATH=/app/scripts/sql_translate.py     SQL_TRANSLATION_PYTHON_MODULE_PATH=/opt/data-fabric/python
+COPY --from=builder --chown=10001:10001 /app/main /app/main
+COPY --from=builder --chown=10001:10001 /app/LICENSE /app/LICENSE
+COPY --from=builder --chown=10001:10001 /app/NOTICE /app/NOTICE
+COPY --from=builder --chown=10001:10001 /app/THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
+COPY --from=builder --chown=10001:10001 /app/go-third-party-licenses /app/third-party-licenses/go
+COPY --from=builder --chown=10001:10001 /app/requirements-sql-translation.txt /app/requirements-sql-translation.txt
+COPY --from=builder --chown=10001:10001 /app/scripts/sql_translate.py /app/scripts/sql_translate.py
+COPY --from=sql-runtime --chown=10001:10001 /opt/data-fabric/python /opt/data-fabric/python
+
+USER 10001:10001
+EXPOSE 8080
+ENTRYPOINT ["/app/main"]

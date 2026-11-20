@@ -2,7 +2,7 @@
 
 [中文](sqlite-metadata-prototype-zh.md) · [Assessment](single-node-metadata-evaluation.md) · [#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444)
 
-This source-only developer prototype explores removing the separate metadata MySQL service for a small, single-host installation. It is **not a production deployment, release image or WorkBuddy offering**. MySQL remains the default, existing installations are not migrated, and release mode and replica routing reject SQLite.
+This experimental developer prototype explores removing the separate metadata MySQL service for a small, single-host installation. It is **not a production deployment, release image or WorkBuddy offering**. MySQL remains the default, existing installations are not migrated, and release mode and replica routing reject SQLite.
 
 Build on a system with a working C compiler and the pinned Go dependencies:
 
@@ -25,5 +25,11 @@ Use the same CGO-enabled experimental binary. The destination's parent must alre
 ```
 
 If the command reports a failure after publishing the file, inspect and remove that new file before retrying; it never overwrites it. The output is owner-only but still contains sensitive metadata. Protect it and store credential vault keys separately using your normal key-backup procedures: keys are not included in the snapshot, and the restored deployment must have the correct keyring. Validate the restore in an isolated environment and configure the service to use the new path only after verification. These commands do not replace an existing database or implement MySQL migration. Never copy only the main SQLite file as a live backup.
+
+## Experimental image
+
+`Dockerfile.sqlite` builds a separate, unpublished SQLite/Core candidate with CGO and a statically linked SQLite driver. It retains MySQL, MariaDB, PostgreSQL and Trino connectors; the full connector catalog is not included. It uses UID/GID 10001, a private `/var/lib/data-fabric` metadata directory, and debug mode. It still requires the normal authentication and credential-vault keys. A Docker named volume must be persistent and accessible by UID 10001; do not place the database on a shared or network filesystem.
+
+The dedicated remote CI builds this image and runs two separate REST/MCP containers against a synthetic PostgreSQL service, with the SQLite directory shared on one Linux host. The CI process uses the runner's unprivileged UID for the bind mount; a separate check verifies the image's default UID and writable named volume. It exercises the image's backup/restore command and records Docker image size and compressed `docker save` size, not registry transfer, uncompressed layers, memory or whole-stack resources. It does not publish an image. Building this candidate yourself requires downloading its base images and dependencies.
 
 The release Dockerfile currently disables CGO; it cannot use this prototype. A build without the opt-in tag and CGO rejects SQLite instead of silently switching storage. Further acceptance, operational design and measurements are tracked in #444 before any release claim.
