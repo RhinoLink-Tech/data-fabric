@@ -2,8 +2,16 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
+
+func TestNoCountTrinoUnsupportedWindowHasActionableError(t *testing.T) {
+	_, err := noCountTrinoPagination("SELECT id FROM orders LIMIT ?", 2, 0)
+	if !errors.Is(err, ErrNoCountUnsupported) || !strings.Contains(SafeQueryErrorMessage(err), "request streaming") {
+		t.Fatalf("unsupported window error=%v message=%q", err, SafeQueryErrorMessage(err))
+	}
+}
 
 func TestNoCountTrinoPaginationRespectsUserLimitAndOrder(t *testing.T) {
 	for _, tc := range []struct {

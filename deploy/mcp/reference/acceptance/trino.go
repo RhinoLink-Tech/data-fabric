@@ -258,6 +258,16 @@ func checkTrinoFederatedNoCount(ctx context.Context, w wire, source reference.So
 				return fmt.Errorf("%s %s returned %d rows, want %d", mode, tc.name, seen, len(tc.expected))
 			}
 		}
+		if mode == "pagination" {
+			result, err := w.queryNoCountWithMode(ctx, reader, source, trinoFederatedSQL+" FETCH FIRST 2 ROWS ONLY", nil, 1, mode)
+			if err != nil {
+				return err
+			}
+			message := "Trino no-count pagination supports literal OFFSET/LIMIT or LIMIT ALL. Simplify the window or request streaming if the server permits it."
+			if err := result.expectError(w.kind, http.StatusUnprocessableEntity, "NO_COUNT_UNSUPPORTED", message); err != nil {
+				return fmt.Errorf("unsupported window: %w", err)
+			}
+		}
 		denied := "SELECT o.customer FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id"
 		result, err := w.queryNoCountWithMode(ctx, reader, source, denied, nil, 1, mode)
 		if err != nil {

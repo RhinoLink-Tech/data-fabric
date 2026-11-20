@@ -73,18 +73,18 @@ var trinoLiteralWindow = regexp.MustCompile(`(?i)^(?:OFFSET\s+([0-9]+)(?:\s+ROWS
 
 func noCountTrinoPagination(query string, size, offset int64) (string, error) {
 	if size < 1 || size > 10001 || offset < 0 {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	sql := strings.TrimSpace(query)
 	if strings.HasSuffix(sql, ";") {
 		sql = strings.TrimSpace(strings.TrimSuffix(sql, ";"))
 	}
 	if sql == "" || topLevelKeywordIndex(sql, "FETCH") >= 0 {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	limitAt, offsetAt := topLevelKeywordIndex(sql, "LIMIT"), topLevelKeywordIndex(sql, "OFFSET")
 	if offsetAt >= 0 && limitAt >= 0 && offsetAt > limitAt {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	windowAt := limitAt
 	if offsetAt >= 0 && (windowAt < 0 || offsetAt < windowAt) {
@@ -95,23 +95,23 @@ func noCountTrinoPagination(query string, size, offset int64) (string, error) {
 	}
 	match := trinoLiteralWindow.FindStringSubmatch(sql[windowAt:])
 	if match == nil || (match[1] == "" && match[2] == "") {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	var originalOffset int64
 	var err error
 	if match[1] != "" {
 		originalOffset, err = strconv.ParseInt(match[1], 10, 64)
 		if err != nil {
-			return "", ErrNoCountUnsupported
+			return "", ErrNoCountTrinoWindowUnsupported
 		}
 	}
 	if offset > math.MaxInt64-originalOffset {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	if match[2] != "" && !strings.EqualFold(match[2], "ALL") {
 		originalLimit, err := strconv.ParseInt(match[2], 10, 64)
 		if err != nil {
-			return "", ErrNoCountUnsupported
+			return "", ErrNoCountTrinoWindowUnsupported
 		}
 		if offset >= originalLimit {
 			size = 0
@@ -121,7 +121,7 @@ func noCountTrinoPagination(query string, size, offset int64) (string, error) {
 	}
 	prefix := strings.TrimSpace(sql[:windowAt])
 	if prefix == "" {
-		return "", ErrNoCountUnsupported
+		return "", ErrNoCountTrinoWindowUnsupported
 	}
 	return fmt.Sprintf("%s\nOFFSET %d LIMIT %d", prefix, originalOffset+offset, size), nil
 }
