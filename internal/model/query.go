@@ -26,19 +26,35 @@ type FetchQueryRequest struct {
 	Timeout       int           `json:"timeout,omitempty"`       // 初始请求超时（秒），范围：1-1800
 }
 
+// NormalizeInitialFetchLimits preserves the public initial-query defaults and
+// upper bounds shared by REST and MCP. Non-positive values use the defaults.
+func NormalizeInitialFetchLimits(batchSize, timeoutSeconds int) (int, int) {
+	if batchSize <= 0 || batchSize > 10000 {
+		batchSize = 10000
+	}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 60
+	} else if timeoutSeconds > 1800 {
+		timeoutSeconds = 1800
+	}
+	return batchSize, timeoutSeconds
+}
+
 // FetchQueryResponse represents the response for a fetch query
 // A non-empty `NextURI` identifies a continuation batch. Follow the newest
 // URI/token until a successful response omits it; execution mode and batch length
 // alone do not establish completion.
 type FetchQueryResponse struct {
-	QueryID       string           `json:"queryId"`
-	Slug          string           `json:"slug"`
-	Token         string           `json:"token"`
-	NextURI       string           `json:"nextUri,omitempty"`
-	ExecutionMode string           `json:"executionMode,omitempty"`
-	Columns       []ColumnInfo     `json:"columns"`
-	Entries       []*[]interface{} `json:"entries"`
-	TotalCount    int              `json:"totalCount"`
+	QueryID             string           `json:"queryId"`
+	Slug                string           `json:"slug"`
+	Token               string           `json:"token"`
+	NextURI             string           `json:"nextUri,omitempty"`
+	ExecutionMode       string           `json:"executionMode,omitempty"`
+	AppliedBatchSize    int              `json:"appliedBatchSize,omitempty"`
+	TimeoutLimitSeconds int              `json:"timeoutLimitSeconds,omitempty"`
+	Columns             []ColumnInfo     `json:"columns"`
+	Entries             []*[]interface{} `json:"entries"`
+	TotalCount          int              `json:"totalCount"`
 }
 
 // QueryResponse represents the response for a query execution

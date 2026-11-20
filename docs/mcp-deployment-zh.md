@@ -138,6 +138,8 @@ python3 ../../scripts/mcp/onboard.py doctor \
 
 连接示例 MCP server 后，按顺序执行 `list_data_sources`、`list_tables`、`describe_table` 和只读 `execute_sql_query`。示例来源只包含合成 `orders` 数据。查询分页、排序和跨页数据变化边界见[查询结果语义](query-result-semantics-zh.md)。
 
+首次查询结果中的 `appliedBatchSize` 是规范化后的目标批次大小，`timeoutLimitSeconds` 是首次请求的超时上限：批次大小未填写或不大于 0 时使用 10000，超过 10000 时按 10000；超时未填写或不大于 0 时使用 60 秒，超过 1800 秒时按 1800 秒。实际结果可能少于目标批次，调用取消、上游更短的期限或服务端预算也可能让查询更早结束。续页结果不重复这两个首次请求字段；MCP 续页未指定大小时沿用上一页的有效大小。
+
 `doctor` 发现初始化、keyring、OIDC、TLS、Compose 或 parser 问题时，按错误项中的配置名修复，再运行一次。不要通过重置元数据库或替换 keyring 来“修复”已有安装：换 key 可能使已保存来源凭据无法解密。当前 profile 的加密备份、校验和新项目恢复步骤见[备份与恢复操作手册](operations/mcp-profile-backup-recovery-zh.md)（[English](operations/mcp-profile-backup-recovery.md)）；版本升级边界见[升级指南](upgrading-v1.2.0.md)与 [MySQL 升级演练](operations/mysql-upgrade-rehearsal.md)。
 
 该 profile 当前是单机、MySQL 元数据库和 MySQL sample source。它不证明外部团队采用、生产可用性或商业购买意愿；这些仍须分别验证。

@@ -1003,16 +1003,12 @@ components:
           description: Omit for configured execution mode; 1 requests pagination and 2 requests streaming
         batch_size:
           type: integer
-          minimum: 1
-          maximum: 10000
           default: 10000
-          description: Maximum rows requested in the first result batch
+          description: Initial batch size; non-positive or greater than 10000 uses 10000
         timeout:
           type: integer
-          minimum: 1
-          maximum: 1800
           default: 60
-          description: Timeout in seconds for the initial request
+          description: Initial timeout in seconds; non-positive uses 60, greater than 1800 uses 1800
 
     FetchQueryData:
       type: object
@@ -1039,6 +1035,12 @@ components:
           type: string
           enum: [streaming, pagination]
           description: Execution path that handled this query
+        appliedBatchSize:
+          type: integer
+          description: Normalized first-batch size passed to execution; omitted on continuation responses
+        timeoutLimitSeconds:
+          type: integer
+          description: Normalized initial timeout upper bound; upstream deadlines, cancellation, or server budgets can end the request sooner; omitted on continuation responses
         nextUri:
           type: string
           description: Relative URI for the next batch; omitted when no continuation is available

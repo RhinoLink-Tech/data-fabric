@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -30,6 +31,10 @@ func TestMCPContinuationForwardsOptionalSize(t *testing.T) {
 			result, err := server.handleFetchNextBatch(context.Background(), callToolRequest("fetch_next_batch", tc.args))
 			if err != nil || result.IsError || q.size != tc.want {
 				t.Fatalf("size=%d want=%d result=%+v err=%v", q.size, tc.want, result, err)
+			}
+			text := describeTableText(t, result)
+			if strings.Contains(text, "appliedBatchSize") || strings.Contains(text, "timeoutLimitSeconds") {
+				t.Fatalf("continuation must not report initial-request limits: %s", text)
 			}
 		})
 	}
