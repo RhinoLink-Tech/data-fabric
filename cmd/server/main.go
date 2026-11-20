@@ -37,6 +37,15 @@ import (
 )
 
 func main() {
+	// Offline administrative snapshots do not require a running server or its
+	// identity secrets. They are available only in the experimental build.
+	if len(os.Args) > 1 && os.Args[1] == "sqlite-metadata" {
+		if err := runSQLiteSnapshot(os.Args[2:]); err != nil {
+			log.Fatal("SQLite metadata snapshot: ", err)
+		}
+		fmt.Println("SQLite metadata snapshot created")
+		return
+	}
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
