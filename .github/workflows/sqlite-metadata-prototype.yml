@@ -6,6 +6,7 @@ on:
       - 'internal/config/**'
       - 'internal/model/datasource.go'
       - 'cmd/server/sqlite_snapshot*.go'
+      - 'cmd/server/sqlite_runtime*.go'
       - 'cmd/server/main.go'
       - '.github/workflows/sqlite-metadata-prototype.yml'
   workflow_dispatch:
@@ -33,3 +34,43 @@ jobs:
         run: CGO_ENABLED=0 go test -tags datafabric_sqlite ./internal/config -run '^TestSQLiteMetadataRequiresOptInBuild$' -count=1
       - name: Compile experimental source candidate
         run: CGO_ENABLED=1 go build -tags datafabric_sqlite,datafabric_core -o "$RUNNER_TEMP/data-fabric" ./cmd/server
+
+  sqlite-runtime-acceptance:
+    name: Experimental SQLite REST and MCP runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: df_fixture
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: df_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U df_fixture -d df_fixture"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned SQL parser in the isolated runner
+        run: python -m pip install --requirement requirements-sql-translation.txt --target "$RUNNER_TEMP/sqlglot"
+      - name: Exercise REST and MCP across SQLite backup and restore
+        env:
+          DF_SQLITE_RUNTIME_ACCEPTANCE: github-ci
+          DF_SQLITE_RUNTIME_PG_PORT: '5432'
+          DF_SQLITE_RUNTIME_SQLGLOT: ${{ runner.temp }}/sqlglot
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteRuntimeRESTMCPRestartAndRestore$' -count=1 -v | tee "$RUNNER_TEMP/sqlite-runtime-acceptance.log"
+          grep -q '^--- PASS: TestSQLiteRuntimeRESTMCPRestartAndRestore ' "$RUNNER_TEMP/sqlite-runtime-acceptance.log"
