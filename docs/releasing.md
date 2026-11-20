@@ -59,6 +59,8 @@ For a future container release, verify public visibility, source SHA, digest, SB
 
 ## Current candidate documents
 
+- [Next Preview preparation (unreleased)](releases/next-preview-preparation.md) · [中文准备记录](releases/next-preview-preparation-zh.md)
+
 - [v2.1.0-preview.2 candidate and risk record](releases/v2.1.0-preview.2-candidate.md) · [English installation](releases/v2.1.0-preview.2-install.md) · [中文安装指南](releases/v2.1.0-preview.2-install-zh.md)
 
 - [Maintainer-approved v2.1.0-preview.1 Preview candidate review](releases/v2.1.0-preview.1-candidate.md)

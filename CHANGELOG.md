@@ -4,11 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Add a standalone SQL dialect conversion workflow to the repository Skill: discover supported dialects, translate without executing, and return the tool result (#758). This does not update the WorkBuddy marketplace asset.
+- Add explicit `count_mode: none` for MySQL, PostgreSQL and Trino queries in REST and MCP. Unknown totals are returned as `null`; `hasMore` and continuation describe completion. Exact counting remains the default. Trino pagination accepts literal OFFSET/LIMIT windows; unsupported complex windows fail explicitly (#787–#789).
+- Add bounded paging to MCP source discovery and a caller-bound continuation for schema searches over authorized tables (#769, #770).
+- Add a default-off restricted browser onboarding candidate for MariaDB and openGauss, with verified TLS and configured network restrictions. These paths require the appropriate driver and separate real-client acceptance (#763–#765, #782).
+- Add experimental Core and single-host SQLite metadata candidates, including an opt-in loopback Compose profile and backup/restore tooling. Neither is a published or production-supported profile (#775, #778–#785).
+- Add opt-in OAuth discovery forwarding and an experimental PKCE helper for explicitly configured deployments. This does not establish automatic OAuth for every client (#587, #635, #639).
+
+### Changed
+- Default the initial MCP query page to 100 rows instead of 10,000. Clients needing a larger page can request up to 10,000 explicitly; REST defaults are unchanged (#786).
+- Retain the last effective MCP page size across continuations and return normalized initial batch and timeout limits in REST and MCP responses (#771, #780).
+- Allow testing an edited data source with its retained server-side credentials, subject to the existing authorization checks (#768).
+- Verify running gateway credential keyrings against the protected configuration before profile backup; remaining historical-key and release recovery checks are tracked separately (#636, #522).
 ### Fixed
 - Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
 - Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).
 - Reject signed or non-digit millisecond suffixes in Hudi instant times instead of silently normalizing them to a different time (#672).
 - Reject nonzero offsets and invalid batch sizes in MaxCompute batch pagination instead of widening the limit, which repeated earlier rows in later batches (#718).
+- Reject unimplemented MaxCompute query execution and Delta vacuum operations instead of returning misleading success (#756, #774).
 
 ## [v2.1.0-preview.2] - 2026-11-16
 
