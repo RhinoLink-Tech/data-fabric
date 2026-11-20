@@ -44,11 +44,11 @@ func (s *captureContinuationSize) FetchQuery(_ context.Context, _ *security.Call
 	s.size = req.BatchSize
 	return &model.FetchQueryResponse{}, nil
 }
-func TestMCPInitialQueryKeepsDefaultBatchSize(t *testing.T) {
+func TestMCPInitialQueryUsesPreviewBatchSize(t *testing.T) {
 	q := &captureContinuationSize{}
 	server := NewMCPServer(q, nil, nil)
 	result, err := server.handleExecuteSQLQuery(context.Background(), callToolRequest("execute_sql_query", map[string]any{"datasource_id": "source", "sql": "SELECT 1"}))
-	if err != nil || result.IsError || q.size != 10000 {
+	if err != nil || result.IsError || q.size != 100 {
 		t.Fatalf("size=%d result=%+v err=%v", q.size, result, err)
 	}
 }

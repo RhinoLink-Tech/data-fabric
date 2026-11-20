@@ -27,6 +27,10 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
 )
 
+// defaultMCPInitialBatchSize bounds the first response for AI clients.
+// REST and continuation defaults intentionally follow their own contracts.
+const defaultMCPInitialBatchSize = 100
+
 // TableDescriber reads table metadata from a data source. The metadata
 // extractor implements it; tests substitute a fake (#184).
 type TableDescriber interface {
@@ -135,7 +139,7 @@ func (m *MCPServer) registerTools() {
 			mcp.Items(map[string]interface{}{
 				"type": []string{"null", "boolean", "number", "string"},
 			})),
-		mcp.WithNumber("batch_size", mcp.Description("Initial page size; non-positive defaults to 10000, values above 10000 are capped at 10000")),
+		mcp.WithNumber("batch_size", mcp.Description("Initial page size; omitted or non-positive defaults to 100, values above 10000 are capped at 10000. Follow nextUri to retrieve all results; request 10000 explicitly for the former default.")),
 		mcp.WithNumber("timeout", mcp.Description("Initial request timeout in seconds; non-positive defaults to 60, values above 1800 are capped at 1800")),
 		mcp.WithString("execution_mode", mcp.Description("Optional execution path: pagination re-executes bounded pages; streaming holds a source cursor. Default prefers streaming, subject to server configuration.")))
 	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
@@ -446,7 +450,10 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	batchSize := int(mcp.ParseInt(request, "batch_size", 10000))
+	batchSize := int(mcp.ParseInt(request, "batch_size", defaultMCPInitialBatchSize))
+	if batchSize <= 0 {
+		batchSize = defaultMCPInitialBatchSize
+	}
 	timeout := int(mcp.ParseInt(request, "timeout", 60))
 	queryType, err := queryTypeForExecutionMode(mcp.ParseString(request, "execution_mode", ""))
 	if err != nil {

@@ -191,4 +191,6 @@ For paginated `list_data_sources` results, if `has_more` is true, call it again 
 
 For `search_schema`, when `next_cursor` is present, repeat the same source, query, schema and limit with `cursor` set to that value. Cursors are short-lived and process-bound; restart if invalid. A `truncated` response without a cursor can also mean a per-table column cap, so do not claim a unique complete result. Combine all pages before concluding a match is unique. Older servers may not support cursors.
 
+For `execute_sql_query`, newer servers default an omitted or non-positive initial `batch_size` to 100; older servers default to 10000. Check `appliedBatchSize` when present. To request a larger first page, explicitly specify up to 10000. A short initial page is not proof of completeness: follow `nextUri` using the latest query ID, slug and token until no continuation remains, subject to the user’s requested limit.
+
 For `fetch_next_batch`, omit `batch_size` to retain the previous effective page size on servers that support it; explicitly set a size from 1 to 10000 to change it. Older servers may default an omitted size to 10000.
