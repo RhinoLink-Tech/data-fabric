@@ -31,6 +31,7 @@ var (
 	// count for this statement shape (#23). The fetch API reports it instead
 	// of guessing a count with different semantics.
 	ErrExactCountUnavailable = errors.New("exact row count unavailable for this statement")
+	ErrNoCountUnsupported    = errors.New("no-count mode is not supported for this source or execution mode")
 )
 
 // requireActiveDataSource gates query execution on the data source being
@@ -85,6 +86,10 @@ func SafeQueryErrorMessage(err error) string {
 		return "This replica is draining and cannot accept new queries. Try again through the gateway."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):
 		return "The query session is invalid or has expired. Submit the query again."
+	case errors.Is(err, ErrNoCountUnsupported):
+		return "No-count mode is not available for this data source or execution mode. Use exact count or a supported source."
+	case errors.Is(err, model.ErrInvalidQueryCountMode):
+		return "Count mode must be exact or none."
 	case errors.Is(err, ErrExactCountUnavailable):
 		return "The database cannot compute an exact row count for this statement. Give output columns unique names or simplify the statement, then retry."
 	case errors.Is(err, security.ErrNotSelectQuery):

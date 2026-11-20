@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -15,15 +17,49 @@ type QueryRequest struct {
 	Timeout       int           `json:"timeout" validate:"omitempty,min=1,max=300"` // timeout in seconds
 }
 
+// QueryCountMode controls whether a fetch request requires an exact total.
+// The empty value retains the existing exact-count behavior.
+type QueryCountMode string
+
+const (
+	QueryCountExact QueryCountMode = "exact"
+	QueryCountNone  QueryCountMode = "none"
+)
+
+var ErrInvalidQueryCountMode = errors.New("count_mode must be exact or none")
+
+func (mode QueryCountMode) Validate() error {
+	if mode == "" || mode == QueryCountExact || mode == QueryCountNone {
+		return nil
+	}
+	return ErrInvalidQueryCountMode
+}
+
+// UnmarshalJSON refuses null and non-string values, avoiding a silent fallback
+// when a caller explicitly requests a count mode with the wrong type.
+func (mode *QueryCountMode) UnmarshalJSON(data []byte) error {
+	var value *string
+	if err := json.Unmarshal(data, &value); err != nil || value == nil {
+		return ErrInvalidQueryCountMode
+	}
+	candidate := QueryCountMode(*value)
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*mode = candidate
+	return nil
+}
+
 // FetchQueryRequest represents a fetch query request for batch data retrieval
 type FetchQueryRequest struct {
-	DataSourceID  string        `json:"dataSourceId" validate:"required,uuid4"`
-	SQL           string        `json:"sql" validate:"required"`
-	SourceDialect string        `json:"sourceDialect,omitempty"` // Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)
-	Parameters    []interface{} `json:"parameters,omitempty"`    // Ordered values bound by the driver, never interpolated into the SQL text (#21)
-	Type          int           `json:"type"`                    // 1 = paginated batches; 2 = prefer streaming (configuration may override)
-	BatchSize     int           `json:"batch_size,omitempty"`    // 当前批次数据的预期条数，范围：1-10000，默认10000
-	Timeout       int           `json:"timeout,omitempty"`       // 初始请求超时（秒），范围：1-1800
+	DataSourceID  string         `json:"dataSourceId" validate:"required,uuid4"`
+	SQL           string         `json:"sql" validate:"required"`
+	SourceDialect string         `json:"sourceDialect,omitempty"` // Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)
+	Parameters    []interface{}  `json:"parameters,omitempty"`    // Ordered values bound by the driver, never interpolated into the SQL text (#21)
+	CountMode     QueryCountMode `json:"count_mode,omitempty"`    // Empty preserves the exact-count default
+	Type          int            `json:"type"`                    // 1 = paginated batches; 2 = prefer streaming (configuration may override)
+	BatchSize     int            `json:"batch_size,omitempty"`    // 当前批次数据的预期条数，范围：1-10000，默认10000
+	Timeout       int            `json:"timeout,omitempty"`       // 初始请求超时（秒），范围：1-1800
 }
 
 // NormalizeInitialFetchLimits preserves the public initial-query defaults and
@@ -55,6 +91,28 @@ type FetchQueryResponse struct {
 	Columns             []ColumnInfo     `json:"columns"`
 	Entries             []*[]interface{} `json:"entries"`
 	TotalCount          int              `json:"totalCount"`
+	CountMode           QueryCountMode   `json:"countMode,omitempty"`
+	HasMore             *bool            `json:"hasMore,omitempty"`
+}
+
+// MarshalJSON preserves the legacy integer total for existing requests. An
+// explicit no-count response encodes unknown as null and must carry a
+// definitive continuation indicator, including when it is false.
+func (response FetchQueryResponse) MarshalJSON() ([]byte, error) {
+	type alias FetchQueryResponse
+	if response.CountMode != QueryCountNone {
+		return json.Marshal(alias(response))
+	}
+	if response.HasMore == nil {
+		return nil, errors.New("no-count response requires hasMore")
+	}
+	if *response.HasMore != (response.NextURI != "") {
+		return nil, errors.New("no-count continuation indicator mismatch")
+	}
+	return json.Marshal(struct {
+		alias
+		TotalCount *int `json:"totalCount"`
+	}{alias: alias(response)})
 }
 
 // QueryResponse represents the response for a query execution

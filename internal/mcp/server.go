@@ -139,6 +139,7 @@ func (m *MCPServer) registerTools() {
 			mcp.Items(map[string]interface{}{
 				"type": []string{"null", "boolean", "number", "string"},
 			})),
+		mcp.WithString("count_mode", mcp.Description("Optional exact (default) or none. none omits the helper count for supported sources and returns totalCount null with explicit hasMore; follow nextUri until absent.")),
 		mcp.WithNumber("batch_size", mcp.Description("Initial page size; omitted or non-positive defaults to 100, values above 10000 are capped at 10000. Follow nextUri to retrieve all results; request 10000 explicitly for the former default.")),
 		mcp.WithNumber("timeout", mcp.Description("Initial request timeout in seconds; non-positive defaults to 60, values above 1800 are capped at 1800")),
 		mcp.WithString("execution_mode", mcp.Description("Optional execution path: pagination re-executes bounded pages; streaming holds a source cursor. Default prefers streaming, subject to server configuration.")))
@@ -450,6 +451,17 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	var countMode model.QueryCountMode
+	if raw, supplied := request.GetArguments()["count_mode"]; supplied {
+		value, ok := raw.(string)
+		if !ok {
+			return mcp.NewToolResultError(model.ErrInvalidQueryCountMode.Error()), nil
+		}
+		countMode = model.QueryCountMode(value)
+		if err := countMode.Validate(); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+	}
 	batchSize := int(mcp.ParseInt(request, "batch_size", defaultMCPInitialBatchSize))
 	if batchSize <= 0 {
 		batchSize = defaultMCPInitialBatchSize
@@ -470,6 +482,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		DataSourceID:  datasourceID,
 		SQL:           sql,
 		SourceDialect: sourceDialect,
+		CountMode:     countMode,
 		Type:          queryType,
 		BatchSize:     batchSize,
 		Timeout:       timeout,

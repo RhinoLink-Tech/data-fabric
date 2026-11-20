@@ -10,7 +10,13 @@ A fetch response contains columns, entries, totalCount, an optional nextUri, and
 
 If nextUri is present, request that exact continuation and use the newest session token returned by each successful batch. A successful response that omits nextUri is the API's completion indicator: the selected path has no further batch according to the count/cursor state it observed. This does not promise a cross-page snapshot when source rows change. Batch length is not a completion signal: a short page can still have a continuation, and a full page can be final. Follow nextUri for type 1, type 2, automatic mode, and a fallback to pagination alike.
 
-totalCount is calculated separately from the returned page. For the PostgreSQL/MySQL profile it describes the SQL result count observed by that count operation, with the request's bound parameters and SQL limit scope preserved. It is not a cross-page snapshot count and may disagree with rows traversed if the source changes while the query is starting or pages are being fetched. A count that cannot be computed safely may fail the request rather than report a fabricated value. For example, some databases reject derived counts when a DISTINCT query has repeated output labels; give the columns unique aliases and retry.
+In the default exact mode, a full first page can trigger a separate count; a short first pagination page can derive its total directly. For the PostgreSQL/MySQL profile it describes the SQL result count observed by that count operation, with the request's bound parameters and SQL limit scope preserved. It is not a cross-page snapshot count and may disagree with rows traversed if the source changes while the query is starting or pages are being fetched. A count that cannot be computed safely may fail the request rather than report a fabricated value. For example, some databases reject derived counts when a DISTINCT query has repeated output labels; give the columns unique aliases and retry.
+
+## Optional unknown total
+
+For MySQL/PostgreSQL only, an initial REST or MCP request can set `count_mode: "none"` to skip the helper count. Every successful page then includes `countMode: "none"`, `totalCount: null`, and a boolean `hasMore` consistent with `nextUri`. The total remains unknown on the final page; clients must not interpret null as zero or as an estimate. Other source types reject this mode. Clients need to check the returned mode because older servers may ignore an unknown request field. An explicit SQL limit still constrains the result.
+
+The gateway uses one bounded lookahead row to determine continuation and checks it against the query result budget. On pagination the extra row may be fetched again; streaming retains at most one pending row. A budget error, cancellation or source failure is not an exhaustive result. The default exact behavior and its integer `totalCount` stay unchanged.
 
 ## Execution modes
 
@@ -26,7 +32,7 @@ For a fixed source state, specify ORDER BY with a unique, stable tie-breaker whe
 
 Pagination is not a snapshot. Inserts, deletes, or updates to selected, filtered, or ordered values between page requests can shift offsets and produce duplicate or missing rows relative to one imagined point-in-time result. A unique order makes a fixed result deterministic but does not prevent this mutation effect. The current public profile does not claim snapshot-stable pagination. Use a read-only, quiescent reference fixture for repeatable adoption tasks; a production task requiring a cross-page snapshot needs a separately supported consistency mechanism.
 
-Streaming holds a cursor instead of re-running the query, but its snapshot/isolation guarantee depends on the source driver and transaction behavior. totalCount is issued separately from the cursor query, so it is not a proof of cursor snapshot size.
+Streaming holds a cursor instead of re-running the query, but its snapshot/isolation guarantee depends on the source driver and transaction behavior. In exact mode totalCount is issued separately from the cursor query, so it is not a proof of cursor snapshot size.
 
 ## Values and current evidence boundary
 

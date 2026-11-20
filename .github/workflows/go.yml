@@ -104,6 +104,26 @@ jobs:
           DATA_FABRIC_POSTGRES_SCHEMA_TEST_DSN: ${{ env.DATA_FABRIC_POSTGRES_CONTRACT_DSN }}
         run: go test -count=1 -v ./internal/mcp -run '^TestPostgresListAndDescribeConfiguredSchemaContract$'
 
+      - name: Verify no-count SQL lookahead and stream lifecycle
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          set -o pipefail
+          go test -tags datafabric_sqlite -count=1 -v ./internal/service -run '^TestNoCount' 2>&1 | tee "$RUNNER_TEMP/no-count-unit.log"
+          grep -q '^--- PASS: TestNoCountPaginationAndStreamingSynthetic ' "$RUNNER_TEMP/no-count-unit.log"
+          grep -q '^--- PASS: TestNoCountSourceDeactivationClosesSessions ' "$RUNNER_TEMP/no-count-unit.log"
+          grep -q '^--- PASS: TestNoCountConcurrentReplayAndBudget ' "$RUNNER_TEMP/no-count-unit.log"
+
+      - name: Verify no-count REST and MCP against both databases
+        env:
+          DF_NOCOUNT_ACCEPTANCE: github-ci
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/mcp -run '^TestLiveNoCountRESTAndMCP$' 2>&1 | tee "$RUNNER_TEMP/no-count-contract.log"
+          grep -q '^--- PASS: TestLiveNoCountRESTAndMCP ' "$RUNNER_TEMP/no-count-contract.log"
+          grep -q '^    --- PASS: TestLiveNoCountRESTAndMCP/postgresql ' "$RUNNER_TEMP/no-count-contract.log"
+          grep -q '^    --- PASS: TestLiveNoCountRESTAndMCP/mysql ' "$RUNNER_TEMP/no-count-contract.log"
+
       - name: Require both reference contracts to run and pass
         if: always()
         run: python3 scripts/ci/contract_checks.py require --job reference-contracts --log "$RUNNER_TEMP/live-contract.log"
