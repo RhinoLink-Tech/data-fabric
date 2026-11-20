@@ -3,6 +3,7 @@ name: Experimental SQLite metadata
 on:
   pull_request:
     paths:
+      - 'Dockerfile.sqlite'
       - 'internal/config/**'
       - 'internal/model/datasource.go'
       - 'cmd/server/sqlite_snapshot*.go'
@@ -74,3 +75,69 @@ jobs:
           set -o pipefail
           go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteRuntimeRESTMCPRestartAndRestore$' -count=1 -v | tee "$RUNNER_TEMP/sqlite-runtime-acceptance.log"
           grep -q '^--- PASS: TestSQLiteRuntimeRESTMCPRestartAndRestore ' "$RUNNER_TEMP/sqlite-runtime-acceptance.log"
+
+  sqlite-image-acceptance:
+    name: Experimental SQLite image and runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: df_fixture
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: df_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U df_fixture -d df_fixture"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build SQLite and existing full gateway images
+        run: |
+          set -o pipefail
+          docker build -f Dockerfile.sqlite --build-arg DATA_FABRIC_SOURCE_REVISION="$GITHUB_SHA" -t data-fabric:sqlite-ci .
+          docker build --build-arg DATA_FABRIC_SOURCE_REVISION="$GITHUB_SHA" -t data-fabric:full-ci .
+      - name: Verify default non-root user and named volume
+        run: |
+          set -euo pipefail
+          volume="df-sqlite-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() { docker volume rm "$volume" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker volume create "$volume" >/dev/null
+          docker run --rm -v "$volume:/var/lib/data-fabric" --entrypoint /bin/sh data-fabric:sqlite-ci -c             'test "$(id -u)" = 10001 && test "$(id -g)" = 10001 && touch /var/lib/data-fabric/probe'
+      - name: Run real image REST, MCP and recovery acceptance
+        env:
+          DF_SQLITE_RUNTIME_ACCEPTANCE: github-ci
+          DF_SQLITE_RUNTIME_PG_PORT: '5432'
+          DF_SQLITE_RUNTIME_SQLGLOT: /opt/data-fabric/python
+          DF_SQLITE_RUNTIME_IMAGE: data-fabric:sqlite-ci
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteRuntimeRESTMCPRestartAndRestore$' -count=1 -v | tee "$RUNNER_TEMP/sqlite-image-acceptance.log"
+          grep -q '^--- PASS: TestSQLiteRuntimeRESTMCPRestartAndRestore ' "$RUNNER_TEMP/sqlite-image-acceptance.log"
+      - name: Record image sizes
+        run: |
+          set -o pipefail
+          echo "source: $GITHUB_SHA" > "$RUNNER_TEMP/sqlite-image-sizes.txt"
+          echo "architecture: $(uname -m)" >> "$RUNNER_TEMP/sqlite-image-sizes.txt"
+          docker image inspect data-fabric:full-ci data-fabric:sqlite-ci --format '{{.RepoTags}} {{.Id}} {{.Size}} bytes' | tee -a "$RUNNER_TEMP/sqlite-image-sizes.txt"
+          for image in full sqlite; do
+            printf '%s docker-save gzip bytes: ' "$image" | tee -a "$RUNNER_TEMP/sqlite-image-sizes.txt"
+            docker save "data-fabric:$image-ci" | gzip -c | wc -c | tee -a "$RUNNER_TEMP/sqlite-image-sizes.txt"
+          done
+      - name: Save image evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-sqlite-image
+          path: |
+            ${{ runner.temp }}/sqlite-image-acceptance.log
+            ${{ runner.temp }}/sqlite-image-sizes.txt
