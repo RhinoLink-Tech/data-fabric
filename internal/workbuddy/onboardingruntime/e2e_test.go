@@ -24,6 +24,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
+	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
@@ -168,8 +169,20 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	gaussPort := os.Getenv("DF_WB_E2E_OPENGAUSS_PORT")
+	if gaussPort != "" {
+		if mariaPort != "" || os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			t.Fatal("choose only one source fixture")
+		}
+		port, e = strconv.Atoi(gaussPort)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 	var policy *database.FixedIPEgressPolicy
-	if mariaPort != "" {
+	if gaussPort != "" {
+		policy, e = database.NewFixedIPEgressPolicyWithSourceOptions([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_OPENGAUSS_CA"), false, true)
+	} else if mariaPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_MARIADB_CA"), true)
 	} else {
 		policy, e = database.NewFixedIPEgressPolicy([]string{"127.0.0.1/32"}, []int{port})
@@ -188,6 +201,9 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Query.ExecutionMode = "pagination"
 	server := mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, nil)
+	if gaussPort != "" {
+		server = mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, metadata.NewMetadataExtractor(pool, repo))
+	}
 	verifier, e := security.NewOIDCIDTokenVerifier(ctx, provider.URL, "browser-client", provider.Client())
 	if e != nil {
 		t.Fatal(e)
@@ -330,7 +346,14 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
-	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" {
+	if gaussPort != "" {
+		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "opengauss", "config": map[string]any{"host": "localhost", "port": port, "database": "postgres", "schema": "public", "username": "browser_reader", "password": "Browser_2026!", "ssl": true, "tlsCA": "custom"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = string(encoded)
+	}
+	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" {
 		probe := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+flow+"/test", bytes.NewBufferString(payload))
 		probe.AddCookie(cookie)
 		probe.Header.Set("Origin", origin)
@@ -529,7 +552,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		req.Header.Set("X-CSRF-Token", sessionBody.CSRF)
 		w := httptest.NewRecorder()
 		exchangeBrowser(t, browserClient, origin, w, req)
-		if w.Code != 200 || strings.Contains(w.Body.String(), "synthetic-password") {
+		if w.Code != 200 || (strings.Contains(w.Body.String(), "synthetic-password") || strings.Contains(w.Body.String(), "Browser_2026!")) {
 			t.Fatalf("browser update failed or leaked: %d %s", w.Code, w.Body.String())
 		}
 		st := toolJSON(t, mclient, "get_data_source_update_status", map[string]any{"flow_id": updateFlow, "datasource_id": sourceID})
@@ -542,7 +565,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		t.Fatalf("list: %v %+v", e, list)
 	}
 	encoded, _ := json.Marshal(list)
-	if !bytes.Contains(encoded, []byte("synthetic-orders")) || bytes.Contains(encoded, []byte("synthetic-password")) || bytes.Contains(encoded, []byte("browser-test-only")) {
+	if !bytes.Contains(encoded, []byte("synthetic-orders")) || bytes.Contains(encoded, []byte("synthetic-password")) || bytes.Contains(encoded, []byte("browser-test-only")) || bytes.Contains(encoded, []byte("Browser_2026!")) {
 		t.Fatal("list failed or credential leaked")
 	}
 	foreign := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": provider.URL, "sub": "alice", "aud": "fabric-api", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "tenant": "tenant-b", "scope": "data-fabric.sources.manage data-fabric.query"})
@@ -587,12 +610,19 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 	}
 
-	if mariaPort != "" {
+	if mariaPort != "" || gaussPort != "" {
 		sourceID := status["datasource_id"].(string)
 		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
 		listed, _ := json.Marshal(tables)
 		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {
 			t.Fatal("MariaDB table discovery failed or leaked")
+		}
+		if gaussPort != "" {
+			schema := toolJSON(t, mclient, "describe_table", map[string]any{"datasource_id": sourceID, "table_name": "browser_orders", "schema": "public"})
+			described, _ := json.Marshal(schema)
+			if !bytes.Contains(described, []byte("id")) || !bytes.Contains(described, []byte("status")) || bytes.Contains(described, []byte("Browser_2026!")) {
+				t.Fatal("openGauss metadata missing or credential leaked")
+			}
 		}
 		first := toolJSON(t, mclient, "execute_sql_query", map[string]any{"datasource_id": sourceID, "sql": "SELECT id, status FROM browser_orders ORDER BY id", "batch_size": 2, "execution_mode": "pagination"})
 		entries, ok := first["entries"].([]any)

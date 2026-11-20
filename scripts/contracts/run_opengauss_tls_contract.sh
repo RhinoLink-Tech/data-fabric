@@ -4,11 +4,12 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-opengauss-tls-$RANDOM-$RANDOM"
+metadata_name="data-fabric-opengauss-metadata-$RANDOM-$RANDOM"
 opengauss_image="enmotech/opengauss:6.0.0@sha256:9bd81380273944e5a02a2139c90954d4f46813b71810f7b23fe8f738014d03b5"
 password="DataFabric_2026!"
 
 cleanup() {
-  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  docker rm -f "$container_name" "$metadata_name" >/dev/null 2>&1 || true
   rm -rf "$work_dir"
 }
 trap cleanup EXIT
@@ -114,6 +115,14 @@ if [ "$ready" != true ]; then
   exit 1
 fi
 
+# A dedicated least-privilege identity can only read the synthetic orders.
+exec_gauss gsql -h 127.0.0.1 -p 5432 -U gaussdb -d postgres -W "$password" -v ON_ERROR_STOP=1 -c "
+  CREATE TABLE public.browser_orders (id BIGINT PRIMARY KEY, status VARCHAR(16) NOT NULL);
+  INSERT INTO public.browser_orders VALUES (1, 'shipped'), (2, 'new'), (3, 'shipped');
+  CREATE USER browser_reader IDENTIFIED BY 'Browser_2026!';
+  GRANT USAGE ON SCHEMA public TO browser_reader;
+  GRANT SELECT ON public.browser_orders TO browser_reader;"
+
 cd "$repo_root"
 DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_HOST=localhost \
   DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_PORT="$port" \
@@ -138,3 +147,46 @@ DATA_FABRIC_OPENGAUSS_CONTRACT_HOST=127.0.0.1 \
     docker logs "$container_name" 2>&1 | grep -iE 'error|ssl|ready for connections' | tail -60 || true
     exit 1
   }
+
+# Exercise the restricted pool and browser with the real pinned openGauss
+# server. All credentials and records are isolated synthetic fixtures.
+DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_USERNAME=gaussdb \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_PASSWORD="$password" \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_DATABASE=postgres \
+  DATA_FABRIC_OPENGAUSS_TLS_ROOT_CA="$work_dir/ca.crt" \
+  DATA_FABRIC_OPENGAUSS_TLS_BAD_CA="$work_dir/bad-ca.crt" \
+  go test ./internal/database -run '^TestOpenGaussRestrictedOnboardingTLSContract$' -count=1 -v
+
+DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_USERNAME=browser_reader \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_PASSWORD='Browser_2026!' \
+  DATA_FABRIC_OPENGAUSS_TLS_CONTRACT_DATABASE=postgres \
+  DATA_FABRIC_OPENGAUSS_TLS_ROOT_CA="$work_dir/ca.crt" \
+  go test ./internal/workbuddy/onboardinghttp -run '^TestOpenGaussBrowserRestrictedTLSContract$' -count=1 -v
+
+docker run --detach --name "$metadata_name" \
+  --env MYSQL_ROOT_PASSWORD=metadata-root-test-only \
+  --env MYSQL_DATABASE=df_metadata \
+  --env MYSQL_USER=df_meta \
+  --env MYSQL_PASSWORD=metadata-test-only \
+  --publish 127.0.0.1::3306 \
+  mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7 >/dev/null
+metadata_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3306/tcp") 0).HostPort}}' "$metadata_name")"
+metadata_ready=false
+for _ in $(seq 1 120); do
+  if docker exec "$metadata_name" mysqladmin ping --protocol=tcp --host=127.0.0.1 \
+    --user=root --password=metadata-root-test-only --silent >/dev/null 2>&1; then
+    metadata_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$metadata_ready" != true ]; then
+  printf 'temporary metadata service did not become ready\n' >&2
+  exit 1
+fi
+DF_WB_E2E_UPDATE=true DF_WB_E2E_POSTGRES_PORT= \
+  DF_WB_E2E_MYSQL_DSN="df_meta:metadata-test-only@tcp(127.0.0.1:${metadata_port})/df_metadata?parseTime=true" \
+  DF_WB_E2E_OPENGAUSS_PORT="$port" DF_WB_E2E_OPENGAUSS_CA="$work_dir/ca.crt" \
+  go test -count=1 ./internal/workbuddy/onboardingruntime -run '^TestSignedOIDCAndMCPBrowserLifecycle$' -v

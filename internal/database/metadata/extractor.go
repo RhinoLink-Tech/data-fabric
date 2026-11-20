@@ -817,7 +817,7 @@ func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName,
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeApacheDoris, model.DatabaseTypeStarRocks:
 		return fmt.Sprintf("SHOW COLUMNS FROM %s", mysqlIdentifier(tableName))
-	case model.DatabaseTypePostgreSQL:
+	case model.DatabaseTypePostgreSQL, model.DatabaseTypeOpenGauss:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	case model.DatabaseTypeOracle:
 		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))

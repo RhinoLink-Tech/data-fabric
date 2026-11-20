@@ -51,8 +51,11 @@ func NewAllowedProbe(cidrs []string, ports []int, concurrency int) (*AllowedProb
 
 // Pin independently resolves each create attempt and preserves the certificate name.
 func (p *AllowedProbe) Pin(ctx context.Context, t model.DatabaseType, c model.DataSourceConfig) (model.DataSourceConfig, error) {
-	if p == nil || len(p.prefixes) == 0 || (t != model.DatabaseTypeMySQL && t != model.DatabaseTypePostgreSQL && t != model.DatabaseTypeMariaDB) {
+	if p == nil || len(p.prefixes) == 0 || (t != model.DatabaseTypeMySQL && t != model.DatabaseTypePostgreSQL && t != model.DatabaseTypeMariaDB && t != model.DatabaseTypeOpenGauss) {
 		return model.DataSourceConfig{}, errors.New("network policy unavailable")
+	}
+	if t == model.DatabaseTypeOpenGauss && !c.SSL {
+		return model.DataSourceConfig{}, errors.New("openGauss requires verified TLS")
 	}
 	if _, ok := p.ports[c.Port]; !ok {
 		return model.DataSourceConfig{}, errors.New("port not permitted")

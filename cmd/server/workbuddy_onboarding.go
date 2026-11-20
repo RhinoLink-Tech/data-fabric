@@ -13,6 +13,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/config"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/workbuddy/onboardingruntime"
 	"golang.org/x/oauth2"
@@ -36,6 +37,10 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if mariadb != "" && mariadb != "false" && mariadb != "true" {
 		return nil, errors.New("invalid WorkBuddy MariaDB toggle")
 	}
+	openGauss := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_OPENGAUSS"))
+	if openGauss != "" && openGauss != "false" && openGauss != "true" {
+		return nil, errors.New("invalid WorkBuddy openGauss toggle")
+	}
 	updates := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES"))
 	if updates != "" && updates != "false" && updates != "true" {
 		return nil, errors.New("invalid WorkBuddy source updates toggle")
@@ -51,6 +56,9 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 		}
 		if mariadb == "true" {
 			return nil, errors.New("WorkBuddy MariaDB requires onboarding")
+		}
+		if openGauss == "true" {
+			return nil, errors.New("WorkBuddy openGauss requires onboarding")
 		}
 		if updates == "true" {
 			return nil, errors.New("WorkBuddy source updates require onboarding")
@@ -87,7 +95,10 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 		}
 		c.ports = append(c.ports, n)
 	}
-	c.policy, err = database.NewFixedIPEgressPolicyWithCAAndMariaDB(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true")
+	if openGauss == "true" && !database.GetDriverRegistry().IsSupported(model.DatabaseTypeOpenGauss) {
+		return nil, errors.New("WorkBuddy openGauss requires a build with the openGauss driver")
+	}
+	c.policy, err = database.NewFixedIPEgressPolicyWithSourceOptions(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true", openGauss == "true")
 	if err != nil {
 		return nil, errors.New("invalid WorkBuddy egress policy")
 	}

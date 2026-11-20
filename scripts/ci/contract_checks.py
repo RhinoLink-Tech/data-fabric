@@ -32,7 +32,7 @@ JOBS = {
     "mariadb-114-tls-contract": ("TestMariaDBTLSVerification",),
     "mariadb-123-tls-contract": ("TestMariaDBTLSVerification",),
     "tidb-tls-contract": ("TestTiDBTLSVerification",),
-    "opengauss-tls-contract": ("TestOpenGaussTLSVerification", "TestOpenGaussDriverContract"),
+    "opengauss-tls-contract": ("TestOpenGaussTLSVerification", "TestOpenGaussDriverContract", "TestOpenGaussRestrictedOnboardingTLSContract", "TestOpenGaussBrowserRestrictedTLSContract", "TestSignedOIDCAndMCPBrowserLifecycle"),
     "clickhouse-tls-contract": ("TestClickHouseTLSVerification",),
     "sqlserver-contract": ("TestSQLServerDriverContract", "TestSQLServerTLSCertificateVerification"),
     "mongodb-contract": ("TestMongoDriverContract",),

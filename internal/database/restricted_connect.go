@@ -30,7 +30,7 @@ func (p *FixedIPEgressPolicy) openRestrictedDatabase(source *model.DataSource, e
 		return nil, err
 	}
 	c := source.Config
-	if source.Type == model.DatabaseTypePostgreSQL {
+	if source.Type == model.DatabaseTypePostgreSQL || source.Type == model.DatabaseTypeOpenGauss {
 		if postgresProbeDebugAtInit || os.Getenv("PQGO_DEBUG") == "1" {
 			return nil, fmt.Errorf("postgres debug not permitted")
 		}
