@@ -285,3 +285,32 @@ func TestValidateStartupRESTDrainConfiguration(t *testing.T) {
 		t.Fatalf("stdio routing enabled: error = %v", err)
 	}
 }
+
+func TestSQLiteMetadataStartupBoundaries(t *testing.T) {
+	cfg := validStartupConfig()
+	cfg.Server.Mode = "debug"
+	cfg.Database = DatabaseConfig{Driver: "sqlite", SQLitePath: "/tmp/data-fabric-metadata.sqlite"}
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("valid SQLite config rejected: %v", err)
+	}
+	invalid := cfg
+	invalid.Database.SQLitePath = "relative.sqlite"
+	if err := invalid.ValidateStartup(); err == nil {
+		t.Fatal("accepted relative path")
+	}
+	invalid = cfg
+	invalid.Server.Mode = "release"
+	if err := invalid.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "not available in release mode") {
+		t.Fatalf("release mode error: %v", err)
+	}
+	invalid = cfg
+	invalid.Routing.Enabled = true
+	if err := invalid.ValidateStartup(); err == nil || !strings.Contains(err.Error(), "does not support replica routing") {
+		t.Fatalf("routing error: %v", err)
+	}
+	invalid = cfg
+	invalid.Database.Driver = "unknown"
+	if err := invalid.ValidateStartup(); err == nil {
+		t.Fatal("accepted unknown database driver")
+	}
+}

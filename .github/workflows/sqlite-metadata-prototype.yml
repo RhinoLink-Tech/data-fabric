@@ -1,0 +1,31 @@
+name: Experimental SQLite metadata
+
+on:
+  pull_request:
+    paths:
+      - 'internal/config/**'
+      - 'internal/model/datasource.go'
+      - '.github/workflows/sqlite-metadata-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Exercise persistence and cross-process policy contracts
+        run: CGO_ENABLED=1 go test -tags datafabric_sqlite ./internal/config -run '^TestSQLiteMetadata' -count=1
+      - name: Verify standard metadata and authorization contracts
+        run: go test ./internal/model ./internal/repository ./internal/security ./internal/mcp ./cmd/server
+      - name: Verify disabled CGO fails closed
+        run: CGO_ENABLED=0 go test -tags datafabric_sqlite ./internal/config -run '^TestSQLiteMetadataRequiresOptInBuild$' -count=1
+      - name: Compile experimental source candidate
+        run: CGO_ENABLED=1 go build -tags datafabric_sqlite,datafabric_core -o "$RUNNER_TEMP/data-fabric" ./cmd/server

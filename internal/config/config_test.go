@@ -306,3 +306,16 @@ func TestHTTPServerSettingsCanBeOverridden(t *testing.T) {
 		t.Errorf("max_request_body_bytes = %d, want 2048", server.MaxRequestBodyBytes)
 	}
 }
+
+func TestSQLiteMetadataConfigurationFromEnvironment(t *testing.T) {
+	resetViper(t)
+	t.Setenv("DATABASE_DRIVER", "sqlite")
+	t.Setenv("DATABASE_SQLITE_PATH", "/tmp/data-fabric-metadata.sqlite")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.Driver != "sqlite" || cfg.Database.SQLitePath != "/tmp/data-fabric-metadata.sqlite" {
+		t.Fatalf("unexpected SQLite settings: %+v", cfg.Database)
+	}
+}

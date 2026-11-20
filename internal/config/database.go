@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,11 +16,9 @@ import (
 
 // InitDatabase initializes the database connection with GORM
 func InitDatabase(cfg *Config) (*gorm.DB, error) {
-	driverConfig, err := metadataDBConfig(cfg)
-	if err != nil {
-		return nil, err
+	if cfg == nil {
+		return nil, fmt.Errorf("database configuration is required")
 	}
-
 	// Configure GORM logger
 	var gormLogger logger.Interface
 	switch cfg.Logging.Level {
@@ -35,6 +34,18 @@ func InitDatabase(cfg *Config) (*gorm.DB, error) {
 		gormLogger = logger.Default.LogMode(logger.Warn)
 	}
 
+	switch strings.ToLower(strings.TrimSpace(cfg.Database.Driver)) {
+	case "sqlite":
+		return initSQLiteMetadataDB(cfg, gormLogger)
+	case "", "mysql":
+		// Existing deployments retain MySQL as the default.
+	default:
+		return nil, fmt.Errorf("database.driver must be mysql or sqlite")
+	}
+	driverConfig, err := metadataDBConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	db, err := gorm.Open(mysql.New(mysql.Config{DSNConfig: driverConfig}), &gorm.Config{
 		Logger: gormLogger,
 	})
@@ -102,4 +113,13 @@ func metadataTLSConfig(ssl string) (string, error) {
 	default:
 		return "", fmt.Errorf("database.ssl must be false, true, or skip-verify (got %q)", ssl)
 	}
+}
+
+// validateSQLiteMetadataPath checks configuration only; opening and file
+// permission checks happen later in the opt-in SQLite build.
+func validateSQLiteMetadataPath(path string) error {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return fmt.Errorf("database.sqlite_path must be a clean absolute path to a local persistent file")
+	}
+	return nil
 }
