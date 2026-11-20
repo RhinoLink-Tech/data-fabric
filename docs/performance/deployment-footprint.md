@@ -53,6 +53,8 @@ The image size is Docker's uncompressed local image size, not the compressed reg
 
 For an offline executable-only comparison of the full registry with a three-type experimental registry, see the [restricted registry experiment](restricted-registry-experiment.md). It is not an image or runtime-memory measurement.
 
+For the separately deployed metadata database and a possible single-host alternative, see the [single-node metadata assessment](single-node-metadata-evaluation.md) ([中文](single-node-metadata-evaluation-zh.md)).
+
 ## Related end-to-end baseline
 
 For repeated first-page and complete-result measurements over the public REST and MCP HTTP boundaries, see the [REST and MCP task baseline](rest-mcp-task-baseline.md). This complements the footprint runner; it records serial query-task latency on the current synthetic reference profile.
