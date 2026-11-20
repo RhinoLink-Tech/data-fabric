@@ -112,6 +112,7 @@ jobs:
           go test -tags datafabric_sqlite -count=1 -v ./internal/service -run '^TestNoCount' 2>&1 | tee "$RUNNER_TEMP/no-count-unit.log"
           grep -q '^--- PASS: TestNoCountPaginationAndStreamingSynthetic ' "$RUNNER_TEMP/no-count-unit.log"
           grep -q '^--- PASS: TestNoCountSourceDeactivationClosesSessions ' "$RUNNER_TEMP/no-count-unit.log"
+          grep -q '^--- PASS: TestNoCountConcurrentReplayAndBudget ' "$RUNNER_TEMP/no-count-unit.log"
 
       - name: Verify no-count REST and MCP against both databases
         env:

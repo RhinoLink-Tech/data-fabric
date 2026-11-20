@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -233,5 +234,89 @@ func TestNoCountUnsupportedSourceFailsBeforeExecution(t *testing.T) {
 	defer streaming.Shutdown()
 	if _, err := streaming.FetchWithStreaming(context.Background(), nil, req); !errors.Is(err, ErrNoCountUnsupported) {
 		t.Fatalf("streaming err=%v", err)
+	}
+}
+
+func TestNoCountConcurrentReplayAndBudget(t *testing.T) {
+	for _, mode := range []string{"pagination", "streaming"} {
+		for _, scenario := range []string{"replay", "budget"} {
+			t.Run(mode+"/"+scenario, func(t *testing.T) {
+				db := sql.OpenDB(countBenchmarkConnector{queries: &atomic.Int64{}})
+				if _, err := db.Exec("CREATE TABLE orders (id INTEGER NOT NULL)"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec("INSERT INTO orders VALUES (1),(2),(3),(4),(5)"); err != nil {
+					t.Fatal(err)
+				}
+				registry := database.NewDriverRegistry()
+				registry.RegisterDriver(model.DatabaseTypeMySQL, &sqliteMySQLFixture{MySQLDriver: &traditional.MySQLDriver{}, db: db})
+				pool := database.NewConnectionPool(registry, nil, nil, false)
+				defer pool.CloseAll()
+				source := &model.DataSource{ID: "no-count-replay", Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive, Config: model.DataSourceConfig{MaxPoolSize: 1}}
+				repo := federationSourceRepository{source: source}
+				ctx := context.Background()
+				req := &model.FetchQueryRequest{DataSourceID: source.ID, SQL: "SELECT id FROM orders ORDER BY id", BatchSize: 2, CountMode: model.QueryCountNone}
+				limits := QueryBudgetLimits{MaxRows: 2, MaxBytes: 100000, MaxDuration: time.Minute}
+				var page *model.FetchQueryResponse
+				var err error
+				var next func(*model.FetchQueryResponse) error
+				var live func() int
+				if mode == "pagination" {
+					q := NewQueryService(repo, pool, false, newTestSQLTranslationManager()).(*queryService)
+					defer q.Shutdown()
+					if scenario == "budget" {
+						q.budgetLimits = limits
+					}
+					page, err = q.FetchQuery(ctx, nil, req)
+					next = func(p *model.FetchQueryResponse) error {
+						_, e := q.FetchNextBatch(ctx, nil, p.QueryID, p.Slug, p.Token, 0)
+						return e
+					}
+					live = func() int { return q.LiveSessionCount(time.Now()) }
+				} else {
+					q := NewStreamingService(repo, pool, newTestSQLTranslationManager()).(*streamingService)
+					defer q.Shutdown()
+					if scenario == "budget" {
+						q.budgetLimits = limits
+					}
+					page, err = q.FetchWithStreaming(ctx, nil, req)
+					next = func(p *model.FetchQueryResponse) error {
+						_, e := q.FetchNextBatchWithStreaming(ctx, nil, p.QueryID, p.Slug, p.Token, 0)
+						return e
+					}
+					live = func() int { return q.LiveSessionCount(time.Now()) }
+				}
+				if scenario == "budget" {
+					if !errors.Is(err, ErrQueryResultLimitExceeded) || page != nil || live() != 0 {
+						t.Fatalf("page=%+v err=%v sessions=%d", page, err, live())
+					}
+					return
+				}
+				if err != nil || page.NextURI == "" {
+					t.Fatalf("initial page=%+v err=%v", page, err)
+				}
+				results := make(chan error, 2)
+				var wg sync.WaitGroup
+				for i := 0; i < 2; i++ {
+					wg.Add(1)
+					go func() { defer wg.Done(); results <- next(page) }()
+				}
+				wg.Wait()
+				close(results)
+				successes, failures := 0, 0
+				for result := range results {
+					if result == nil {
+						successes++
+					} else if errors.Is(result, ErrInvalidQuerySession) || errors.Is(result, ErrQuerySessionUnavailable) {
+						failures++
+					} else {
+						t.Fatalf("unexpected replay error: %v", result)
+					}
+				}
+				if successes != 1 || failures != 1 {
+					t.Fatalf("successes=%d failures=%d", successes, failures)
+				}
+			})
+		}
 	}
 }
