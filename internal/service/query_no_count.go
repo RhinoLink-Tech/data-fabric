@@ -19,7 +19,7 @@ import (
 // pagination semantics have dedicated contract coverage. Other drivers must
 // fail explicitly until their own lookahead semantics are established.
 func noCountSQLSource(kind model.DatabaseType) bool {
-	return kind == model.DatabaseTypeMySQL || kind == model.DatabaseTypePostgreSQL || kind == model.DatabaseTypeTrino
+	return kind == model.DatabaseTypeMySQL || kind == model.DatabaseTypeMariaDB || kind == model.DatabaseTypePostgreSQL || kind == model.DatabaseTypeTrino
 }
 
 // noCountSQLBatch returns at most size rows and at most one lookahead row.

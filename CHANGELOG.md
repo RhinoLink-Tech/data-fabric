@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Add a standalone SQL dialect conversion workflow to the repository Skill: discover supported dialects, translate without executing, and return the tool result (#758). This does not update the WorkBuddy marketplace asset.
-- Add explicit `count_mode: none` for MySQL, PostgreSQL and Trino queries in REST and MCP. Unknown totals are returned as `null`; `hasMore` and continuation describe completion. Exact counting remains the default. Trino pagination accepts literal OFFSET/LIMIT windows; unsupported complex windows fail explicitly (#787–#789).
+- Extend explicit `count_mode: none` REST and MCP queries to the pinned MariaDB source profile, alongside MySQL, PostgreSQL and Trino. Unknown totals are returned as `null`; `hasMore` and continuation describe completion. Exact counting remains the default. Trino pagination accepts literal OFFSET/LIMIT windows; unsupported complex windows fail explicitly (#787–#789).
 - Add bounded paging to MCP source discovery and a caller-bound continuation for schema searches over authorized tables (#769, #770).
 - Add a default-off restricted browser onboarding candidate for MariaDB and openGauss, with verified TLS and configured network restrictions. These paths require the appropriate driver and separate real-client acceptance (#763–#765, #782).
 - Add experimental Core and single-host SQLite metadata candidates, including an opt-in loopback Compose profile and backup/restore tooling. Neither is a published or production-supported profile (#775, #778–#785).
