@@ -126,7 +126,7 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to execute SQL queries against data sources
 	executeSQLQueryTool := mcp.NewTool("execute_sql_query",
-		mcp.WithDescription("Execute a read-only SQL query and return its first bounded batch. Continue with fetch_next_batch using the returned queryId, slug and token whenever nextUri is present; do not treat the first batch as complete based on its length."),
+		mcp.WithDescription("Execute a read-only SQL query and return its first bounded batch. The result reports appliedBatchSize and timeoutLimitSeconds; an upstream deadline or server budget may stop it sooner. Continue with fetch_next_batch using the returned queryId, slug and token whenever nextUri is present; do not treat the first batch as complete based on its length."),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to query")),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("The SQL query to execute")),
 		mcp.WithString("source_dialect", mcp.Description("Source SQL dialect for translation (e.g., mysql, trino, presto, openlookeng, postgres)")),
@@ -135,8 +135,8 @@ func (m *MCPServer) registerTools() {
 			mcp.Items(map[string]interface{}{
 				"type": []string{"null", "boolean", "number", "string"},
 			})),
-		mcp.WithNumber("batch_size", mcp.Description("Number of records to return per batch, default 10000")),
-		mcp.WithNumber("timeout", mcp.Description("Query timeout in seconds, default 60")),
+		mcp.WithNumber("batch_size", mcp.Description("Initial page size; non-positive defaults to 10000, values above 10000 are capped at 10000")),
+		mcp.WithNumber("timeout", mcp.Description("Initial request timeout in seconds; non-positive defaults to 60, values above 1800 are capped at 1800")),
 		mcp.WithString("execution_mode", mcp.Description("Optional execution path: pagination re-executes bounded pages; streaming holds a source cursor. Default prefers streaming, subject to server configuration.")))
 	m.addTool("execute_sql_query", executeSQLQueryTool, m.handleExecuteSQLQuery)
 
@@ -452,16 +452,7 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if batchSize <= 0 {
-		batchSize = 10000
-	} else if batchSize > 10000 {
-		batchSize = 10000
-	}
-	if timeout <= 0 {
-		timeout = 60
-	} else if timeout > 1800 {
-		timeout = 1800
-	}
+	batchSize, timeout = model.NormalizeInitialFetchLimits(batchSize, timeout)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
@@ -486,6 +477,11 @@ func (m *MCPServer) handleExecuteSQLQuery(ctx context.Context, request mcp.CallT
 		markMCPAuthorizationError(ctx, err)
 		return mcp.NewToolResultError(queryservice.SafeQueryErrorMessage(err)), nil
 	}
+
+	// Report the normalized initial request limits without claiming that an
+	// upstream deadline or server-wide budget cannot end the query sooner.
+	result.AppliedBatchSize = batchSize
+	result.TimeoutLimitSeconds = timeout
 
 	// Convert result to JSON for response
 	jsonResp, err := json.Marshal(result)

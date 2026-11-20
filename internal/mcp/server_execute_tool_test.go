@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -104,6 +105,12 @@ func TestExecuteSQLQueryAppliesDefaultsAndBounds(t *testing.T) {
 			wantTimeout: 60,
 		},
 		{
+			name:        "negative timeout falls back to default",
+			overrides:   map[string]any{"timeout": -1},
+			wantBatch:   10000,
+			wantTimeout: 60,
+		},
+		{
 			name:        "timeout is clamped to 1800",
 			overrides:   map[string]any{"timeout": 9999},
 			wantBatch:   10000,
@@ -152,6 +159,16 @@ func TestExecuteSQLQueryAppliesDefaultsAndBounds(t *testing.T) {
 			}
 			if service.captured == nil {
 				t.Fatal("query service was never called")
+			}
+			var limits struct {
+				AppliedBatchSize    int `json:"appliedBatchSize"`
+				TimeoutLimitSeconds int `json:"timeoutLimitSeconds"`
+			}
+			if err := json.Unmarshal([]byte(describeTableText(t, result)), &limits); err != nil {
+				t.Fatal(err)
+			}
+			if limits.AppliedBatchSize != tt.wantBatch || limits.TimeoutLimitSeconds != tt.wantTimeout {
+				t.Fatalf("reported limits = %d/%d, want %d/%d", limits.AppliedBatchSize, limits.TimeoutLimitSeconds, tt.wantBatch, tt.wantTimeout)
 			}
 			got := service.captured
 			if got.BatchSize != tt.wantBatch {

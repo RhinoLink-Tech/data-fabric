@@ -36,7 +36,7 @@ func NewQueryController(unifiedQueryService unifiedservice.UnifiedQueryService) 
 
 // FetchQuery godoc
 // @Summary Execute a batch SQL query
-// @Description Executes SQL and returns the first bounded batch. When more rows remain, the response includes a `nextUri` for offset pagination or a streaming cursor, depending on the selected execution mode. Follow each returned URI until a successful response omits it.
+// @Description Executes SQL and returns the first bounded batch. The result includes appliedBatchSize and timeoutLimitSeconds after normalization; a shorter upstream deadline or server budget may apply. When more rows remain, the response includes a `nextUri` for offset pagination or a streaming cursor, depending on the selected execution mode. Follow each returned URI until a successful response omits it.
 // @Tags queries
 // @Accept json
 // @Produce json
@@ -65,19 +65,8 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 		return
 	}
 
-	// Apply defaults
-	if req.BatchSize <= 0 {
-		req.BatchSize = 10000
-	}
-	if req.BatchSize > 10000 {
-		req.BatchSize = 10000
-	}
-	if req.Timeout <= 0 {
-		req.Timeout = 60
-	}
-	if req.Timeout > 1800 {
-		req.Timeout = 1800
-	}
+	// Preserve the existing public defaults while making them observable.
+	req.BatchSize, req.Timeout = model.NormalizeInitialFetchLimits(req.BatchSize, req.Timeout)
 
 	// Validate request
 	if err := qc.validator.Struct(&req); err != nil {
@@ -109,6 +98,8 @@ func (qc *QueryController) FetchQuery(c *gin.Context) {
 		return
 	}
 	c.Set(auditlog.RowCountContextKey, len(result.Entries))
+	result.AppliedBatchSize = req.BatchSize
+	result.TimeoutLimitSeconds = req.Timeout
 
 	// Return response
 	c.JSON(http.StatusOK, response.SuccessResponse(result, correlationID))

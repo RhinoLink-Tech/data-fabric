@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -62,6 +63,9 @@ func TestFetchNextBatchBatchSizeValidation(t *testing.T) {
 			}
 			if stub.calls != tc.wantCalls {
 				t.Fatalf("service calls = %d, want %d (invalid batch_size must not reach the service)", stub.calls, tc.wantCalls)
+			}
+			if tc.wantCalls == 1 && (strings.Contains(recorder.Body.String(), "appliedBatchSize") || strings.Contains(recorder.Body.String(), "timeoutLimitSeconds")) {
+				t.Fatalf("continuation must not report initial-request limits: %s", recorder.Body.String())
 			}
 			if tc.wantCalls == 1 && stub.batchSize != tc.wantSize {
 				t.Fatalf("forwarded batch size = %d, want %d", stub.batchSize, tc.wantSize)

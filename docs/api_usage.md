@@ -144,7 +144,7 @@ Request fields:
 | `sourceDialect` | string | No | Source SQL dialect for supported translation into the selected data source dialect |
 | `type` | integer | No | `1` selects paginated batches; `2` prefers streaming. Explicit `query.execution_mode` configuration can override the hint; if omitted, auto policy decides |
 | `batch_size` | integer | No | Requested batch size, 1–10,000; default 10,000. Values outside this range are replaced with the default |
-| `timeout` | integer | No | Seconds allowed for the initial request; default 60, maximum 1,800 |
+| `timeout` | integer | No | Initial request timeout in seconds; omitted or non-positive uses 60, values above 1,800 use 1,800 |
 
 A successful response has this shape:
 
@@ -156,6 +156,8 @@ A successful response has this shape:
     "slug": "a1b2c3d4",
     "token": "session-token",
     "executionMode": "streaming",
+    "appliedBatchSize": 1000,
+    "timeoutLimitSeconds": 120,
     "nextUri": "/api/v1/fetch/550e8400-e29b-41d4-a716-446655440000/a1b2c3d4/session-token?batch_size=1000",
     "columns": [
       {"name": "order_id", "type": "integer", "nullable": false},
@@ -172,7 +174,9 @@ A successful response has this shape:
 }
 ```
 
-The sample shows two rows for readability; a real response may contain up to the requested batch size.
+The initial response reports the normalized `appliedBatchSize` and `timeoutLimitSeconds` that the gateway passed to execution. For example, a non-positive batch size becomes 10,000; a timeout above 1,800 becomes 1,800 seconds. The timeout is an upper bound for the initial request, not a guarantee: an upstream deadline, cancellation or server query budget may stop it sooner. The batch size is a requested page bound, not a promise that the page contains that many rows. Continuation responses do not repeat these initial-request fields.
+
+The sample shows two rows for readability; a real response may contain up to the applied batch size.
 
 `executionMode` is `streaming` or `pagination`. Whenever additional rows remain, the response includes `nextUri` regardless of the request hint or automatic fallback. Follow the newest URI/token until a successful response omits `nextUri`. Do not infer completion from a short batch or from `totalCount` alone. See [query result semantics](query-result-semantics.md) for ordering, mutation and partial-result limits.
 
