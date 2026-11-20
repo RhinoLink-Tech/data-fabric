@@ -54,6 +54,7 @@ func CheckTrino(ctx context.Context, env *reference.Environment, out io.Writer) 
 		{name: "T01-cross-catalog-read", check: checkTrinoCrossCatalog},
 		{name: "T05-mysql-postgresql-join", check: checkTrinoFederatedSources},
 		{name: "T06-federated-column-denied", check: checkTrinoFederatedDenied},
+		{name: "T07-federated-no-count", check: checkTrinoFederatedNoCount},
 		{name: "T02-coordinator-outage", check: checkTrinoCoordinatorFailure},
 		{name: "T03-query-timeout-cancels", check: checkTrinoCancellation},
 		{name: "T04-engine-error-sanitized", check: checkTrinoEngineFailure},
@@ -65,6 +66,7 @@ func CheckFederated(ctx context.Context, env *reference.Environment, out io.Writ
 	return runTrinoScenarios(ctx, env, out, []trinoScenario{
 		{name: "T05-mysql-postgresql-join", check: checkTrinoFederatedSources},
 		{name: "T06-federated-column-denied", check: checkTrinoFederatedDenied},
+		{name: "T07-federated-no-count", check: checkTrinoFederatedNoCount},
 	})
 }
 
@@ -175,6 +177,105 @@ func checkTrinoFederatedSources(ctx context.Context, w wire, source reference.So
 	}
 	if page.NextURI != "" {
 		return fmt.Errorf("unexpected extra federated page")
+	}
+	return nil
+}
+
+// The raw total field is captured separately: decoding null into an int would
+// otherwise incorrectly turn an unknown count into zero.
+type trinoNoCountBatch struct {
+	batch
+	CountMode string          `json:"countMode"`
+	HasMore   *bool           `json:"hasMore"`
+	Total     json.RawMessage `json:"totalCount"`
+}
+
+func readTrinoNoCount(result reply, err error) (trinoNoCountBatch, error) {
+	var page trinoNoCountBatch
+	if err != nil {
+		return page, err
+	}
+	if err := result.decode(&page); err != nil {
+		return page, err
+	}
+	if page.CountMode != "none" || page.HasMore == nil || string(page.Total) != "null" || *page.HasMore != (page.NextURI != "") {
+		return page, fmt.Errorf("invalid no-count completion or total")
+	}
+	return page, nil
+}
+
+// Test true MySQL-to-PostgreSQL joins across both REST/MCP transports and
+// pagination/streaming. Cover empty, exact-full, multi-page and SQL LIMIT.
+func checkTrinoFederatedNoCount(ctx context.Context, w wire, source reference.Source) error {
+	expected := [][]string{{"1", "1", "widget"}, {"1", "2", "cable"}, {"2", "3", "widget"}}
+	for _, mode := range []string{"pagination", "streaming"} {
+		for _, tc := range []struct {
+			name, sql  string
+			size       int
+			expected   [][]string
+			parameters []any
+		}{
+			{"multi_page", trinoFederatedSQL, 1, expected, nil},
+			{"exact_full", trinoFederatedSQL, 3, expected, nil},
+			{"sql_limit", trinoFederatedSQL + " LIMIT 2", 1, expected[:2], nil},
+			{"sql_limit_offset", trinoFederatedSQL + " OFFSET 1 LIMIT 2", 1, expected[1:], nil},
+			{"empty", "SELECT o.id AS order_id, i.id AS item_id, i.item FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id WHERE o.id < 0 ORDER BY o.id, i.id", 1, nil, nil},
+			{"bound_parameter", "SELECT o.id AS order_id, i.id AS item_id, i.item FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id WHERE o.id >= ? ORDER BY o.id, i.id", 1, expected[2:], []any{2}},
+		} {
+			page, err := readTrinoNoCount(w.queryNoCountWithMode(ctx, reader, source, tc.sql, tc.parameters, tc.size, mode))
+			if err != nil {
+				return fmt.Errorf("%s %s initial: %w", mode, tc.name, err)
+			}
+			if page.ExecutionMode != mode {
+				return fmt.Errorf("%s %s used %s", mode, tc.name, page.ExecutionMode)
+			}
+			seen, pages := 0, 0
+			for {
+				pages++
+				for _, row := range page.Entries {
+					if seen >= len(tc.expected) || len(row) != len(tc.expected[seen]) {
+						return fmt.Errorf("%s %s unexpected row %d", mode, tc.name, seen)
+					}
+					for col, value := range tc.expected[seen] {
+						if fmt.Sprint(row[col]) != value {
+							return fmt.Errorf("%s %s row %d column %d mismatch", mode, tc.name, seen, col)
+						}
+					}
+					seen++
+				}
+				if !*page.HasMore {
+					break
+				}
+				if pages > len(tc.expected)+1 {
+					return fmt.Errorf("%s %s continuation did not end", mode, tc.name)
+				}
+				page, err = readTrinoNoCount(w.next(ctx, reader, page.batch))
+				if err != nil {
+					return fmt.Errorf("%s %s continuation: %w", mode, tc.name, err)
+				}
+			}
+			if seen != len(tc.expected) {
+				return fmt.Errorf("%s %s returned %d rows, want %d", mode, tc.name, seen, len(tc.expected))
+			}
+		}
+		if mode == "pagination" {
+			result, err := w.queryNoCountWithMode(ctx, reader, source, trinoFederatedSQL+" FETCH FIRST 2 ROWS ONLY", nil, 1, mode)
+			if err != nil {
+				return err
+			}
+			message := "Trino no-count pagination supports literal OFFSET/LIMIT or LIMIT ALL. Simplify the window or request streaming if the server permits it."
+			if err := result.expectError(w.kind, http.StatusUnprocessableEntity, "NO_COUNT_UNSUPPORTED", message); err != nil {
+				return fmt.Errorf("unsupported window: %w", err)
+			}
+		}
+		denied := "SELECT o.customer FROM mysql.sample.orders AS o JOIN postgresql.public.order_items AS i ON o.id = i.order_id"
+		result, err := w.queryNoCountWithMode(ctx, reader, source, denied, nil, 1, mode)
+		if err != nil {
+			return err
+		}
+		if err := result.expectError(w.kind, http.StatusForbidden, "TABLE_ACCESS_DENIED", tableDenied); err != nil {
+			return fmt.Errorf("%s restricted column: %w", mode, err)
+		}
 	}
 	return nil
 }

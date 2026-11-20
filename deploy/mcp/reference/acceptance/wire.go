@@ -134,7 +134,7 @@ func (r reply) failureKind() string {
 		case "TABLE_ACCESS_DENIED", "DATASOURCE_ACCESS_DENIED", "DATASOURCE_NOT_FOUND",
 			"QUERY_SESSION_UNAVAILABLE", "QUERY_ENGINE_ERROR", "QUERY_OVERLOADED", "QUERY_TIMEOUT",
 			"VALIDATION_ERROR", "INVALID_REQUEST", "RATE_LIMIT_EXCEEDED",
-			"QUERY_CANCELLED", "INVALID_QUERY", "COUNT_UNSUPPORTED",
+			"QUERY_CANCELLED", "INVALID_QUERY", "COUNT_UNSUPPORTED", "NO_COUNT_UNSUPPORTED",
 			"QUERY_ADMISSION_LIMIT", "QUERY_RATE_LIMIT_EXCEEDED", "QUERY_RESULT_LIMIT_EXCEEDED", "DATASOURCE_INACTIVE",
 			"SQL_INJECTION_DETECTED", "SQL_SYNTAX_ERROR":
 			return fmt.Sprintf("HTTP %d %s", r.status, r.code)
@@ -343,6 +343,19 @@ func (w wire) queryWithMode(ctx context.Context, actor, correlation string, sour
 		"datasource_id": source.ID, "sql": sql, "parameters": parameters,
 		"batch_size": size, "timeout": timeout, "execution_mode": mode,
 	})
+}
+
+func (w wire) queryNoCountWithMode(ctx context.Context, actor string, source reference.Source, sql string, parameters []any, size int, mode string) (reply, error) {
+	queryType := 1
+	if mode == "streaming" {
+		queryType = 2
+	} else if mode != "pagination" {
+		return reply{}, fmt.Errorf("unsupported acceptance execution mode")
+	}
+	if w.kind == rest {
+		return w.restCall(ctx, actor, "", http.MethodPost, "/api/v1/fetch", map[string]any{"dataSourceId": source.ID, "sql": sql, "parameters": parameters, "type": queryType, "batch_size": size, "timeout": 30, "count_mode": "none"})
+	}
+	return w.tool(ctx, actor, "", "execute_sql_query", map[string]any{"datasource_id": source.ID, "sql": sql, "parameters": parameters, "batch_size": size, "timeout": 30, "execution_mode": mode, "count_mode": "none"})
 }
 
 func (w wire) query(ctx context.Context, actor, correlation string, source reference.Source, sql string, parameters []any, size, timeout int) (reply, error) {

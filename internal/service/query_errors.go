@@ -30,8 +30,9 @@ var (
 	// ErrExactCountUnavailable means the engine cannot compute an exact row
 	// count for this statement shape (#23). The fetch API reports it instead
 	// of guessing a count with different semantics.
-	ErrExactCountUnavailable = errors.New("exact row count unavailable for this statement")
-	ErrNoCountUnsupported    = errors.New("no-count mode is not supported for this source or execution mode")
+	ErrExactCountUnavailable         = errors.New("exact row count unavailable for this statement")
+	ErrNoCountUnsupported            = errors.New("no-count mode is not supported for this source or execution mode")
+	ErrNoCountTrinoWindowUnsupported = fmt.Errorf("%w: Trino pagination window unsupported", ErrNoCountUnsupported)
 )
 
 // requireActiveDataSource gates query execution on the data source being
@@ -86,6 +87,8 @@ func SafeQueryErrorMessage(err error) string {
 		return "This replica is draining and cannot accept new queries. Try again through the gateway."
 	case errors.Is(err, ErrQuerySessionUnavailable), errors.Is(err, ErrInvalidQuerySession):
 		return "The query session is invalid or has expired. Submit the query again."
+	case errors.Is(err, ErrNoCountTrinoWindowUnsupported):
+		return "Trino no-count pagination supports literal OFFSET/LIMIT or LIMIT ALL. Simplify the window or request streaming if the server permits it."
 	case errors.Is(err, ErrNoCountUnsupported):
 		return "No-count mode is not available for this data source or execution mode. Use exact count or a supported source."
 	case errors.Is(err, model.ErrInvalidQueryCountMode):
