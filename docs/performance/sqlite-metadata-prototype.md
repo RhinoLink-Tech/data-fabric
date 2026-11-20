@@ -26,6 +26,10 @@ Use the same CGO-enabled experimental binary. The destination's parent must alre
 
 If the command reports a failure after publishing the file, inspect and remove that new file before retrying; it never overwrites it. The output is owner-only but still contains sensitive metadata. Protect it and store credential vault keys separately using your normal key-backup procedures: keys are not included in the snapshot, and the restored deployment must have the correct keyring. Validate the restore in an isolated environment and configure the service to use the new path only after verification. These commands do not replace an existing database or implement MySQL migration. Never copy only the main SQLite file as a live backup.
 
+## Local first-use profile
+
+The [experimental Compose profile](sqlite-first-use.md) provides a loopback-only REST endpoint and a TLS MCP endpoint with local test JWTs, plus a persistent SQLite volume. It is a developer evaluation path, not the public WorkBuddy/OAuth integration.
+
 ## Experimental image
 
 `Dockerfile.sqlite` builds a separate, unpublished SQLite/Core candidate with CGO and a statically linked SQLite driver. It retains MySQL, MariaDB, PostgreSQL and Trino connectors; the full connector catalog is not included. It uses UID/GID 10001, a private `/var/lib/data-fabric` metadata directory, and debug mode. It still requires the normal authentication and credential-vault keys. A Docker named volume must be persistent and accessible by UID 10001; do not place the database on a shared or network filesystem.

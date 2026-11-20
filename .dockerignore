@@ -5,6 +5,7 @@ configs/config.yaml
 **/.env.*
 !**/.env.example
 deploy/mcp/tls/
+deploy/sqlite/tls/
 deploy/mcp/recovery/
 **/*.key
 **/*.pem

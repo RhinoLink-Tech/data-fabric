@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - 'Dockerfile.sqlite'
+      - '.dockerignore'
+      - 'deploy/sqlite/**'
+      - 'scripts/sqlite/**'
+      - 'scripts/mcp/onboard.py'
+      - 'cmd/server/sqlite_compose*.go'
       - 'internal/config/**'
       - 'internal/model/datasource.go'
       - 'cmd/server/sqlite_snapshot*.go'
@@ -124,6 +129,18 @@ jobs:
           set -o pipefail
           go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteRuntimeRESTMCPRestartAndRestore$' -count=1 -v | tee "$RUNNER_TEMP/sqlite-image-acceptance.log"
           grep -q '^--- PASS: TestSQLiteRuntimeRESTMCPRestartAndRestore ' "$RUNNER_TEMP/sqlite-image-acceptance.log"
+      - name: Test safe local initialization
+        run: python3 -m unittest discover -s scripts/sqlite -p 'test_*.py'
+      - name: Run Compose first-use and recovery acceptance
+        env:
+          DF_SQLITE_RUNTIME_ACCEPTANCE: github-ci
+          DF_SQLITE_RUNTIME_PG_PORT: '5432'
+          DF_SQLITE_RUNTIME_IMAGE: data-fabric:sqlite-ci
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteComposeFirstUse$' -count=1 -v | tee "$RUNNER_TEMP/sqlite-compose-acceptance.log"
+          grep -q '^--- PASS: TestSQLiteComposeFirstUse ' "$RUNNER_TEMP/sqlite-compose-acceptance.log"
       - name: Record image sizes
         run: |
           set -o pipefail
@@ -140,4 +157,5 @@ jobs:
           name: experimental-sqlite-image
           path: |
             ${{ runner.temp }}/sqlite-image-acceptance.log
+            ${{ runner.temp }}/sqlite-compose-acceptance.log
             ${{ runner.temp }}/sqlite-image-sizes.txt

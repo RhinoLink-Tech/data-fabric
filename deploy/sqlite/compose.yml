@@ -1,0 +1,63 @@
+# Experimental local-only SQLite/Core profile. Not a production deployment.
+name: data-fabric-sqlite
+
+x-gateway: &gateway
+  image: ${DATA_FABRIC_SQLITE_IMAGE:-data-fabric:sqlite-local}
+  build:
+    context: ../..
+    dockerfile: Dockerfile.sqlite
+  environment: &gateway-env
+    SERVER_MODE: debug
+    DATABASE_DRIVER: sqlite
+    DATABASE_SQLITE_PATH: ${DATA_FABRIC_SQLITE_PATH:-/var/lib/data-fabric/metadata.sqlite}
+    SECURITY_ENABLE_AUTH: "true"
+    SECURITY_ENFORCE_READ_ONLY: "true"
+    SECURITY_JWT_SECRET: ${JWT_SECRET:?initialize the SQLite profile first}
+    DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID: ${DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID:?initialize the SQLite profile first}
+    DATA_FABRIC_CREDENTIAL_KEYS: ${DATA_FABRIC_CREDENTIAL_KEYS:?initialize the SQLite profile first}
+  volumes:
+    - metadata:/var/lib/data-fabric
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  api:
+    <<: *gateway
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  mcp:
+    <<: *gateway
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *gateway-env
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: streamable-http
+      MCP_AUTH_MODE: local-jwt
+      MCP_ADDRESS: 0.0.0.0:8081
+      MCP_TLS_CERT_FILE: /etc/data-fabric/tls/tls.crt
+      MCP_TLS_KEY_FILE: /etc/data-fabric/tls/tls.key
+    group_add:
+      - "${DATA_FABRIC_TLS_GID:?initialize the SQLite profile first}"
+    volumes:
+      - metadata:/var/lib/data-fabric
+      - "${DATA_FABRIC_SQLITE_TLS_DIR:-./tls}:/etc/data-fabric/tls:ro"
+    ports:
+      - "127.0.0.1:${MCP_HTTPS_PORT:-8443}:8081"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+volumes:
+  metadata:
