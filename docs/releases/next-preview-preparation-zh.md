@@ -7,7 +7,7 @@
 ## 需要验证的用户能力
 
 - **发现与管理数据源：** MCP 数据源列表支持分页，表结构搜索支持在授权范围内续查，编辑数据源时可以使用服务端保留的凭据测试连接。MariaDB 和 openGauss 浏览器接入是默认关闭的候选功能，需要相应驱动、校验证书的 TLS 与网络限制；尚未完成真实 WorkBuddy 客户端和发布镜像验收（[#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761)、[#781](https://github.com/RhinoLink-Tech/data-fabric/issues/781)）。
-- **查询与 SQL 转换：** 仓库中的 Skill 可独立调用 SQL 方言转换而不执行查询。MCP 首次查询默认每页 100 行，可明确请求最多 10,000 行，续页保留有效页大小。无总数模式需显式选择，目前限 MySQL、PostgreSQL 和 Trino；未知总数以 `null` 表示，默认仍为精确计数。复杂 Trino 分页语法可能被明确拒绝。联邦验收使用 Trino 484 连接合成 MySQL/PostgreSQL，不代表所有数据源或客户端均已验证（[#450](https://github.com/RhinoLink-Tech/data-fabric/issues/450)）。
+- **查询与 SQL 转换：** 仓库中的 Skill 可独立调用 SQL 方言转换而不执行查询。MCP 首次查询默认每页 100 行，可明确请求最多 10,000 行，续页保留有效页大小。无总数模式需显式选择，目前限 MySQL、MariaDB、PostgreSQL 和 Trino；未知总数以 `null` 表示，默认仍为精确计数。复杂 Trino 分页语法可能被明确拒绝。联邦验收使用 Trino 484 连接合成 MySQL/PostgreSQL，不代表所有数据源或客户端均已验证（[#450](https://github.com/RhinoLink-Tech/data-fabric/issues/450)）。
 - **本地部署：** Core 和 SQLite 元数据是可选实验候选，尚未作为支持的配置发布。SQLite Compose 候选只监听本机，不能据此认定公网 WorkBuddy OAuth、生产可用或升级路径已经完成（[#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444)、[#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448)）。
 
 仓库 Skill 变化不会自动更新已发布的 WorkBuddy 市场条目。真实 WorkBuddy 授权、数据源生命周期、独立使用者首次使用和外部团队价值仍需分别验收（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)、[#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541)、[#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603)、[#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446)、[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)）。
