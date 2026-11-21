@@ -6,7 +6,7 @@
 
 | 后续候选 | 当前依据 | 下一步 |
 | --- | --- | --- |
-| MariaDB | 指定版本已有驱动与 TLS 合约验证，采用 MySQL 协议。 | [#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761) 的默认关闭候选已加入，真实 WorkBuddy 客户端和完整生命周期仍需验收，也需要确认实际用户需求。 |
+| MariaDB | 指定版本已有驱动与 TLS 合约验证，采用 MySQL 协议。 | [#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761) 的默认关闭候选已加入，合成环境的协议级完整生命周期已验证；真实 WorkBuddy 客户端和发布镜像仍需验收，也需要确认实际用户需求。 |
 | openGauss | 指定版本已有查询、元数据、只读会话及 TLS 验证。 | [#781](https://github.com/RhinoLink-Tech/data-fabric/issues/781) 增加默认关闭且强制 TLS 的独立候选；真实客户端验收和正式发布仍未完成。实验 Core 构建不包含此驱动。 |
 | TiDB | 指定版本已有驱动与 TLS 验证。 | 当前通用只读会话初始化不适用，必须先验证数据库账号的最小权限及目标部署。 |
 | ClickHouse | 指定版本已有原生协议与 TLS 验证。 | 需要单独设计受限网络连接路径，不能直接复用现有协议假设。 |
