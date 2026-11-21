@@ -12,6 +12,14 @@ The reviewed source baseline is master `418b9848c4f03edf846f04af302d55c156e52970
 
 Repository Skill changes do not automatically update an existing WorkBuddy marketplace listing. Actual WorkBuddy OAuth, source lifecycle, independently operated first use and external-team value remain separate acceptance items ([#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504), [#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541), [#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603), [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446), [#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)).
 
+Since the reviewed baseline, #797 added an opt-in legacy-audience transition
+for MCP resource discovery, #799 aligned the identity-alignment advisory, and
+#800 added a credential-free public discovery diagnostic. They are source-level
+changes and are not in preview.2. Signed synthetic-token and diagnostic tests
+do not establish real identity-provider audience mapping, client authorization
+or refresh. The existing public gateway has not been migrated; see
+[#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608).
+
 ## Candidate evidence and remaining gates
 
 - Baseline exact-master [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743), [Core candidate](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049) and [SQLite candidate](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094) are tied to the baseline SHA above. Consult each run's conclusion and artifact before relying on it; a skipped or unfinished check is not a pass. The candidate-specific federated HTTP acceptance for the preceding PR is [here](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621).
