@@ -12,6 +12,8 @@
 
 仓库 Skill 变化不会自动更新已发布的 WorkBuddy 市场条目。真实 WorkBuddy 授权、数据源生命周期、独立使用者首次使用和外部团队价值仍需分别验收（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)、[#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541)、[#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603)、[#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446)、[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)）。
 
+在上述源码基线之后，#797 增加了默认关闭的 MCP OAuth 旧受众过渡配置，#799 修正了身份一致性诊断，#800 增加了无需凭据的公网发现诊断。这些是源码层面的新增能力，尚不包含在 preview.2 中。合成令牌和诊断测试不能证明真实身份服务的受众配置、客户端授权或令牌续期已经完成；现有公网网关也尚未切换。进展见 [#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608)。
+
 ## 候选证据和剩余步骤
 
 - 基线的 [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743)、[Core 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049)和 [SQLite 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094)对应上述主线 SHA。使用证据前应查看每项运行的最终结论和产物，跳过或未完成不等于通过。前一个 PR 的联邦 HTTP 验收见[运行记录](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621)。
