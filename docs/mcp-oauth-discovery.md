@@ -37,6 +37,28 @@ audience. Coordinate the identity-provider audience mapping and compatibility
 checks before rollout; preserve the existing default when not explicitly enabled.
 Discovery alone does not create clients, register callbacks, or issue tokens.
 
+### Optional legacy-audience transition
+
+For an explicitly planned transition, set `MCP_OIDC_AUDIENCE` and
+`DATA_FABRIC_MCP_OAUTH_RESOURCE` to the same canonical HTTPS `/mcp` resource,
+and set `MCP_OIDC_LEGACY_AUDIENCE` to one distinct existing audience. The
+gateway accepts an access token containing either exact audience, while still
+requiring the configured issuer, signature, expiry, scopes and source/tenant
+authorization. The legacy setting is empty by default and requires OIDC with
+resource discovery. It is a compatibility exception, not a resource-bound
+token: any trusted issuer token for the legacy audience that meets the same
+scope and authorization checks is accepted. Choose a legacy audience dedicated
+to this gateway; do not enable this when that audience is shared with other
+services or its token issuance and scopes are not understood.
+
+Configure the identity provider to issue tokens with the resource audience for
+new clients, verify both clients' issuance and refresh behavior in isolation,
+and inventory existing clients before changing a live service. Discovery and
+the dual-audience setting do not add an authorization server, client
+registration, audience mapping, or refresh support. Remove the legacy setting
+after clients migrate and verify revocation and denied access again. Existing
+installations remain unchanged unless the operator explicitly configures it.
+
 ## Standard Compose profile
 
 In `deploy/mcp/.env`, optionally set `DATA_FABRIC_MCP_OAUTH_RESOURCE` to the
