@@ -186,9 +186,23 @@ func TestSQLiteComposeFirstUse(t *testing.T) {
 		t.Fatal("foreign tenant MCP query accepted")
 	}
 	foreignMCP.Close()
-	run(metadataPath, "run", "--rm", "--no-deps", "api", "sqlite-metadata", "backup", "--source", metadataPath, "--output", "/var/lib/data-fabric/backup.sqlite")
+	snapshotPath := filepath.Join(t.TempDir(), "backup.sqlite")
+	snapshot := func(wantSuccess bool, args ...string) {
+		t.Helper()
+		base := []string{filepath.Join(root, "scripts/sqlite/volume_snapshot.py"), "--project-name", project, "--env-file", envFile}
+		cmd := exec.Command("python3", append(base, args...)...)
+		cmd.Env = env
+		output, err := cmd.CombinedOutput()
+		if (err == nil) != wantSuccess {
+			t.Fatalf("snapshot %v: error=%v output=%s", args, err, output)
+		}
+	}
+	snapshot(true, "backup", snapshotPath)
+	snapshot(false, "backup", snapshotPath)
+	snapshot(false, "restore", snapshotPath, "--output-name", "restored.sqlite")
 	run(metadataPath, "down")
-	run(metadataPath, "run", "--rm", "--no-deps", "api", "sqlite-metadata", "restore", "--source", "/var/lib/data-fabric/backup.sqlite", "--output", "/var/lib/data-fabric/restored.sqlite")
+	snapshot(true, "restore", snapshotPath, "--output-name", "restored.sqlite")
+	snapshot(false, "restore", snapshotPath, "--output-name", "restored.sqlite")
 	run("/var/lib/data-fabric/restored.sqlite", "up", "--detach", "--wait", "--wait-timeout", "120")
 	code, after := sqliteREST(t, "GET", api+"/api/v1/datasources/"+sourceID, alice, nil)
 	if code != 200 || after["data"] == nil {
