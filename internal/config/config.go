@@ -203,6 +203,7 @@ func setDefaults() {
 	viper.SetDefault("mcp.auth_mode", MCPAuthModeLocalJWT)
 	viper.SetDefault("mcp.oidc_issuer", "")
 	viper.SetDefault("mcp.oidc_audience", "")
+	viper.SetDefault("mcp.oidc_legacy_audience", "")
 	viper.SetDefault("mcp.oidc_required_scopes", "data-fabric.query")
 	viper.SetDefault("mcp.oidc_scope_claim", "scope")
 	viper.SetDefault("mcp.oidc_tenant_claim", "tenant")
@@ -244,6 +245,7 @@ type MCPConfig struct {
 	AuthMode                string        `mapstructure:"auth_mode"`
 	OIDCIssuer              string        `mapstructure:"oidc_issuer"`
 	OIDCAudience            string        `mapstructure:"oidc_audience"`
+	OIDCLegacyAudience      string        `mapstructure:"oidc_legacy_audience"`
 	OIDCRequiredScopes      string        `mapstructure:"oidc_required_scopes"`
 	OIDCScopeClaim          string        `mapstructure:"oidc_scope_claim"`
 	OIDCTenantClaim         string        `mapstructure:"oidc_tenant_claim"`
