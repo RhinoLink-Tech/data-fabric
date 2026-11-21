@@ -41,7 +41,7 @@ source and operation with the user before making changes.
 | --- | --- | --- |
 | `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
 | `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
-| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL only. Ordinary deployments reject TLS connection tests; a service with the restricted onboarding policy supports verified TLS. PostgreSQL connection testing is disabled when protocol debugging is enabled. |
+| `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL and opt-in restricted MariaDB only. Ordinary deployments reject TLS connection tests; a service with the restricted onboarding policy supports verified TLS. PostgreSQL connection testing is disabled when protocol debugging is enabled. |
 | `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
 
 These existing-source tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed.
@@ -66,8 +66,11 @@ reports completion, not by repeated polling. Pending means creation is not
 complete. On expiration start a fresh flow if requested; on unavailable or
 permission errors ask the administrator to check configuration and grants.
 
-The secure setup workflow supports MySQL/PostgreSQL, verified TLS, and server-approved IPv4
-network destinations and ports. Other source types are not supported by this creation workflow.
+The opt-in secure setup workflow defaults to MySQL/PostgreSQL and restricts
+IPv4 destinations and ports. Newer source builds can separately enable
+experimental MariaDB and openGauss candidates; openGauss requires verified TLS
+and is not in the experimental Core build. The actual wizard policy, available
+driver, permissions and deployed version determine which types can be used.
 If either tool is unavailable, direct the user to an administrator or supported
 management UI; do not invent an operation or claim completion.
 
