@@ -1,6 +1,7 @@
 package traditional
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -8,10 +9,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // PostgreSQLDriver implements Driver for PostgreSQL
@@ -35,6 +37,40 @@ func (d *PostgreSQLDriver) ApplyBatchPagination(sql string, batchSize, offset in
 }
 func (d *PostgreSQLDriver) Open(dsn string) (*sql.DB, error) {
 	return sql.Open("postgres", dsn)
+}
+
+// pq uses context for dialing but does not interrupt a stalled startup
+// handshake. This dialer closes the probe connection when its request ends.
+type healthDialer struct{ net.Dialer }
+type healthConn struct {
+	net.Conn
+	stop func() bool
+}
+
+func (c *healthConn) Close() error {
+	c.stop()
+	return c.Conn.Close()
+}
+
+func (d *healthDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	return &healthConn{Conn: conn, stop: context.AfterFunc(ctx, func() { _ = conn.Close() })}, nil
+}
+
+func (d *healthDialer) DialTimeout(network, address string, timeout time.Duration) (net.Conn, error) {
+	return net.DialTimeout(network, address, timeout)
+}
+
+func (d *PostgreSQLDriver) OpenForHealthCheck(dsn string) (*sql.DB, error) {
+	connector, err := pq.NewConnector(dsn)
+	if err != nil {
+		return nil, err
+	}
+	connector.Dialer(&healthDialer{})
+	return sql.OpenDB(connector), nil
 }
 
 func (d *PostgreSQLDriver) ValidateDSN(dsn string) error {

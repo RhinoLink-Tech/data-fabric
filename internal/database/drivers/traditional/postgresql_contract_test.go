@@ -60,6 +60,9 @@ func TestPostgreSQLDriverContract(t *testing.T) {
 	if serverVersion != expectedVersion {
 		t.Fatalf("server version = %q, want exact contract version %q", serverVersion, expectedVersion)
 	}
+	t.Run("cancel stalled health handshake", func(t *testing.T) {
+		verifyPostgresHealthCancellation(t, driver, config)
+	})
 
 	t.Run("query schema and standard SQL values", func(t *testing.T) {
 		var schema string

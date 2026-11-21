@@ -78,6 +78,12 @@ type SQLDatabaseOpener interface {
 	Open(dsn string) (*sql.DB, error)
 }
 
+// SQLHealthOpener provides a database/sql handle whose PingContext can stop
+// connection establishment when the caller cancels the health check.
+type SQLHealthOpener interface {
+	OpenForHealthCheck(dsn string) (*sql.DB, error)
+}
+
 // SQLConnectionTester validates a database/sql connection.
 type SQLConnectionTester interface {
 	TestConnection(db *sql.DB) error

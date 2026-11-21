@@ -321,6 +321,9 @@ func (hc *HealthChecker) CheckDataSourceConnectivity(ctx context.Context, config
 	}); ok {
 		configured = true
 		db, err = opener.OpenWithConfig(ctx, config)
+	} else if opener, ok := driver.(drivers.SQLHealthOpener); ok {
+		configured = true
+		db, err = opener.OpenForHealthCheck(dsn)
 	} else if opener, ok := driver.(drivers.SQLDatabaseOpener); ok {
 		db, err = opener.Open(dsn)
 	} else {

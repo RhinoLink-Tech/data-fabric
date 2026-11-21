@@ -47,6 +47,30 @@ func TestPostgreSQLTLSVerification(t *testing.T) {
 	}
 	assertPostgreSQLTLSState(t, ctx, db, true)
 
+	t.Run("context-aware health probe verifies certificates", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			config   model.DataSourceConfig
+			succeeds bool
+		}{
+			{"trusted", *trusted, true},
+			{"untrusted", func() model.DataSourceConfig { c := *trusted; c.SSLRootCert = badCA; return c }(), false},
+			{"wrong hostname", func() model.DataSourceConfig { c := *trusted; c.Host = "127.0.0.1"; return c }(), false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				probe, err := driver.OpenForHealthCheck(driver.BuildDSN(&tc.config))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer probe.Close()
+				err = probe.PingContext(ctx)
+				if (err == nil) != tc.succeeds {
+					t.Fatalf("health TLS outcome: %v", err)
+				}
+			})
+		}
+	})
+
 	t.Run("untrusted CA is rejected", func(t *testing.T) {
 		config := *trusted
 		config.SSLRootCert = badCA
