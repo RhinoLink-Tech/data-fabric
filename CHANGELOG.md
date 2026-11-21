@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Add an opt-in MCP OAuth legacy-audience transition and a credential-free public discovery diagnostic. Identity-provider compatibility and client login and refresh remain separate acceptance steps (#797, #799, #800).
 - Add a standalone SQL dialect conversion workflow to the repository Skill: discover supported dialects, translate without executing, and return the tool result (#758). This does not update the WorkBuddy marketplace asset.
 - Extend explicit `count_mode: none` REST and MCP queries to the pinned MariaDB source profile, alongside MySQL, PostgreSQL and Trino. Unknown totals are returned as `null`; `hasMore` and continuation describe completion. Exact counting remains the default. Trino pagination accepts literal OFFSET/LIMIT windows; unsupported complex windows fail explicitly (#787–#789).
 - Add bounded paging to MCP source discovery and a caller-bound continuation for schema searches over authorized tables (#769, #770).
