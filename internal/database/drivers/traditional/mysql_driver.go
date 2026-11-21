@@ -123,6 +123,10 @@ func (d *MySQLDriver) TestConnection(db *sql.DB) error {
 	return db.Ping()
 }
 
+func (d *MySQLDriver) OpenForHealthCheck(dsn string) (*sql.DB, error) {
+	return d.Open(dsn)
+}
+
 func (d *MySQLDriver) GetDriverName() string {
 	return "mysql"
 }
