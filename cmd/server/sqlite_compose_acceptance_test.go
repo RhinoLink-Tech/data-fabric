@@ -186,7 +186,11 @@ func TestSQLiteComposeFirstUse(t *testing.T) {
 		t.Fatal("foreign tenant MCP query accepted")
 	}
 	foreignMCP.Close()
-	snapshotPath := filepath.Join(t.TempDir(), "backup.sqlite")
+	snapshotDir := t.TempDir()
+	if err := os.Chmod(snapshotDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	snapshotPath := filepath.Join(snapshotDir, "backup.sqlite")
 	snapshot := func(wantSuccess bool, args ...string) {
 		t.Helper()
 		base := []string{filepath.Join(root, "scripts/sqlite/volume_snapshot.py"), "--project-name", project, "--env-file", envFile}
