@@ -42,15 +42,17 @@ PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;
 deletion additionally requires tenant and exact-ownership checks.
 
-The separate browser onboarding tools in this source candidate are opt-in,
-not included in the published preview image, and have not yet passed an actual
-WorkBuddy end-to-end acceptance. When deployed and advertised, they start a
+The separate browser onboarding tools are experimental and opt-in in
+v2.1.0-preview.2; actual WorkBuddy end-to-end acceptance remains outstanding. When deployed and advertised, they start a
 separately authenticated browser flow and report its status; credentials are
 entered only in the browser, not in chat or MCP tool arguments. The current
-candidate defaults to MySQL/PostgreSQL and has a separately enabled MariaDB
-experiment, with verified TLS or plaintext on explicitly allowed IPv4 network
-targets and ports, with a matching OIDC identity and server-side management
-grant. When explicitly enabled, the source-update browser tools support authorized updates of permitted existing MySQL/PostgreSQL connections and opt-in MariaDB candidates, including credentials. Their availability depends on the deployed server; discover the update tools before offering this flow.
+workflow defaults to MySQL/PostgreSQL on explicitly allowed IPv4 targets and
+ports, with a matching OIDC identity and server-side management grant. Newer
+source builds add separate, default-off MariaDB and openGauss candidates;
+openGauss requires verified TLS and its driver is not included in the
+experimental Core build. The source-update browser tools are separately enabled
+and subject to the same actual source-type policy. Discover the update tools
+and check the deployed server's policy before offering this flow.
 For an unavailable or unsupported workflow use an administrator or supported
 management UI. See [Quick Start](QUICKSTART-zh.md).
 The [source onboarding expansion plan](../../docs/workbuddy-source-onboarding-expansion.md) describes proposed next types and their acceptance gates; it does not change current availability.
