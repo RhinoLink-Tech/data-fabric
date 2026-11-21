@@ -45,7 +45,7 @@ mkdir -m 700 -p "$HOME/data-fabric-backups"
 python3 ../../scripts/sqlite/volume_snapshot.py backup "$HOME/data-fabric-backups/metadata.sqlite"
 ```
 
-输出文件已存在时命令会拒绝覆盖。如果快照操作在卷内创建文件后失败，请先检查卷再重试。非默认项目可在 `backup` 前添加 `--project-name NAME`；元数据文件名不是默认值时添加 `--database NAME.sqlite`。脚本仅支持元数据卷根目录下的文件。
+输出文件已存在时命令会拒绝覆盖。脚本读取当前 Compose 配置的元数据路径，并核对运行中的 API/MCP 实例路径和卷；如果配置在服务启动后发生变化，请先核对并统一。服务停止时以当前 Compose 配置选择文件。备份期间不要同时修改配置或重启服务。非默认项目可在 `backup` 前添加 `--project-name NAME`；可选的 `--database NAME.sqlite` 用来确认预期文件名，不能选择其他文件。脚本仅支持元数据卷根目录下的文件。如果快照操作在卷内创建文件后失败，请先检查卷再重试。
 
 恢复前停止两个服务和其他所有可能访问该卷的进程。使用原 `.env` 和密钥环，将快照恢复为新文件名；脚本不会替换原数据库。使用前请在隔离环境验证恢复结果。以下示例恢复到原卷，因此宿主机快照仍需单独保留：
 

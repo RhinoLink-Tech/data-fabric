@@ -191,16 +191,17 @@ func TestSQLiteComposeFirstUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshotPath := filepath.Join(snapshotDir, "backup.sqlite")
-	snapshot := func(wantSuccess bool, args ...string) {
+	snapshotForPath := func(path string, wantSuccess bool, args ...string) {
 		t.Helper()
 		base := []string{filepath.Join(root, "scripts/sqlite/volume_snapshot.py"), "--project-name", project, "--env-file", envFile}
 		cmd := exec.Command("python3", append(base, args...)...)
-		cmd.Env = env
+		cmd.Env = append(env, "DATA_FABRIC_SQLITE_PATH="+path)
 		output, err := cmd.CombinedOutput()
 		if (err == nil) != wantSuccess {
 			t.Fatalf("snapshot %v: error=%v output=%s", args, err, output)
 		}
 	}
+	snapshot := func(wantSuccess bool, args ...string) { snapshotForPath(metadataPath, wantSuccess, args...) }
 	snapshot(true, "backup", snapshotPath)
 	snapshot(false, "backup", snapshotPath)
 	snapshot(false, "restore", snapshotPath, "--output-name", "restored.sqlite")
@@ -218,4 +219,21 @@ func TestSQLiteComposeFirstUse(t *testing.T) {
 		t.Fatal("MCP query failed after restore")
 	}
 	mcpClient.Close()
+	// After a path change, back up the running file automatically; reject stale configuration.
+	code, _ = sqliteREST(t, "PUT", api+"/api/v1/datasources/"+sourceID, alice, map[string]any{"name": "restored-orders"})
+	if code != http.StatusOK {
+		t.Fatalf("rename restored source: status %d", code)
+	}
+	snapshotForPath(metadataPath, false, "backup", filepath.Join(snapshotDir, "stale.sqlite"))
+	snapshotForPath("/var/lib/data-fabric/restored.sqlite", false, "--database", "metadata.sqlite", "backup", filepath.Join(snapshotDir, "mismatch.sqlite"))
+	roundtrip := filepath.Join(snapshotDir, "restored-backup.sqlite")
+	snapshotForPath("/var/lib/data-fabric/restored.sqlite", true, "backup", roundtrip)
+	run("/var/lib/data-fabric/restored.sqlite", "down")
+	snapshotForPath("/var/lib/data-fabric/restored.sqlite", true, "restore", roundtrip, "--output-name", "roundtrip.sqlite")
+	run("/var/lib/data-fabric/roundtrip.sqlite", "up", "--detach", "--wait", "--wait-timeout", "120")
+	code, after = sqliteREST(t, "GET", api+"/api/v1/datasources/"+sourceID, alice, nil)
+	restored, ok := after["data"].(map[string]any)
+	if code != http.StatusOK || !ok || restored["name"] != "restored-orders" {
+		t.Fatal("second backup did not preserve the changed restored source")
+	}
 }

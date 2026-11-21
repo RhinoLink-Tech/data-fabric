@@ -45,7 +45,7 @@ mkdir -m 700 -p "$HOME/data-fabric-backups"
 python3 ../../scripts/sqlite/volume_snapshot.py backup "$HOME/data-fabric-backups/metadata.sqlite"
 ```
 
-The command refuses an existing output. If a snapshot operation fails after creating a volume file, inspect the volume before retrying. For a non-default project add `--project-name NAME` before `backup`; for a non-default metadata filename add `--database NAME.sqlite`. Only files directly inside the metadata volume are supported.
+The command refuses an existing output. It selects the current Compose metadata path and checks running API/MCP instances for matching paths and volumes; if configuration changed since they started, reconcile it before backup. When services are stopped, the current Compose configuration selects the file. Stop concurrent configuration and service changes during backup. For a non-default project add `--project-name NAME` before `backup`. An optional `--database NAME.sqlite` asserts the expected configured filename; it cannot select a different file. Only files directly inside the metadata volume are supported. If a snapshot operation fails after creating a volume file, inspect the volume before retrying.
 
 To restore, stop both services and every other process that can access the volume. Use the same original `.env` and keyring, and restore to a new filename; the command does not replace the live database. Verify the restored file in an isolated profile before using it. This example restores within the existing volume, so separately retain the host snapshot:
 
