@@ -167,6 +167,52 @@ class OIDCIssuerDoctorTests(unittest.TestCase):
 
 
 
+class IdentityAlignmentTransitionTests(unittest.TestCase):
+    def test_primary_and_configured_legacy_audience(self):
+        resource = "https://fabric.example/mcp"
+        issuer = "https://identity.example/realm"
+        values = {
+            "MCP_OIDC_ISSUER": issuer,
+            "MCP_OIDC_AUDIENCE": resource,
+            "DATA_FABRIC_MCP_OAUTH_RESOURCE": resource,
+            "MCP_OIDC_LEGACY_AUDIENCE": "legacy-gateway",
+            "MCP_OIDC_REQUIRED_SCOPES": "data-fabric.query",
+            "MCP_OIDC_TENANT_CLAIM": "tenant",
+        }
+        claims = {"sub": "alice", "tenant": "team-a", "iss": issuer,
+                  "scope": "data-fabric.query", "exp": 2000}
+        cases = [
+            ("primary", {"aud": resource}, {}, True),
+            ("legacy", {"aud": "legacy-gateway"}, {}, True),
+            ("legacy array", {"aud": ["other", "legacy-gateway"]}, {}, True),
+            ("unknown", {"aud": "other"}, {}, False),
+            ("disabled", {"aud": "legacy-gateway"}, {"MCP_OIDC_LEGACY_AUDIENCE": ""}, False),
+            ("missing resource", {"aud": "legacy-gateway"}, {"DATA_FABRIC_MCP_OAUTH_RESOURCE": ""}, False),
+            ("mismatched resource", {"aud": "legacy-gateway"}, {"DATA_FABRIC_MCP_OAUTH_RESOURCE": "https://elsewhere.example/mcp"}, False),
+            ("invalid resource", {"aud": "legacy-gateway"}, {"DATA_FABRIC_MCP_OAUTH_RESOURCE": "http://fabric.example/mcp", "MCP_OIDC_AUDIENCE": "http://fabric.example/mcp"}, False),
+            ("wildcard", {"aud": "*"}, {"MCP_OIDC_LEGACY_AUDIENCE": "*"}, False),
+            ("wrong tenant", {"aud": "legacy-gateway", "tenant": "team-b"}, {}, False),
+            ("wrong scope", {"aud": "legacy-gateway", "scope": "other"}, {}, False),
+            ("expired", {"aud": "legacy-gateway", "exp": 999}, {}, False),
+            ("wrong issuer", {"aud": "legacy-gateway", "iss": "https://other.example"}, {}, False),
+        ]
+        args = SimpleNamespace(api_user="alice", tenant="team-a", token_env="DF_ALIGNMENT_TEST_TOKEN")
+        for name, claim_changes, config_changes, expected in cases:
+            with self.subTest(name=name):
+                payload = base64.urlsafe_b64encode(json.dumps({**claims, **claim_changes}).encode()).decode().rstrip("=")
+                token = "header." + payload + ".signature"
+                results, output = [], io.StringIO()
+                with (mock.patch.dict(os.environ, {args.token_env: token}),
+                      mock.patch.object(onboard.time, "time", return_value=1000),
+                      contextlib.redirect_stdout(output)):
+                    onboard.check_identity(args, {**values, **config_changes}, results)
+                self.assertEqual(results[0][0], expected)
+                self.assertIn("Advisory only", output.getvalue())
+                if name in ("legacy", "legacy array"):
+                    self.assertIn("temporary legacy audience", output.getvalue())
+                self.assertNotIn(token, output.getvalue())
+
+
 class OAuthResourceDoctorTests(unittest.TestCase):
     def test_legacy_audience_requires_matching_discovery(self):
         for resource, audience, legacy, valid in [

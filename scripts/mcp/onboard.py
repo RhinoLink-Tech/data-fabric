@@ -351,6 +351,29 @@ def claim_path(payload, path):
     return current
 
 
+def oauth_resource_matches_audience(resource, audience):
+    if not resource:
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(resource)
+        return (
+            resource == resource.strip() and parsed.scheme == "https"
+            and bool(parsed.hostname) and parsed.username is None and parsed.password is None
+            and parsed.path == "/mcp" and not parsed.query and not parsed.fragment
+            and "?" not in resource and "#" not in resource
+            and issuer_url_has_valid_syntax(resource, parsed)
+            and parsed.geturl() == resource and resource == audience
+        )
+    except ValueError:
+        return False
+
+
+def legacy_audience_is_valid(legacy, audience, resource):
+    return bool(legacy and oauth_resource_matches_audience(resource, audience)
+                and legacy == legacy.strip() and legacy != audience
+                and not any(ch.isspace() or ch in ",*" for ch in legacy))
+
+
 def check_identity(args, values, results):
     if not args.api_user:
         return
@@ -372,16 +395,25 @@ def check_identity(args, values, results):
     scopes = set(scope_value.split()) if isinstance(scope_value, str) else {item for item in scope_value if isinstance(item, str)} if isinstance(scope_value, list) else set()
     required = set((values.get("MCP_OIDC_REQUIRED_SCOPES", "data-fabric.query").strip() or "data-fabric.query").split())
     now = int(time.time())
+    primary = values.get("MCP_OIDC_AUDIENCE", "")
+    legacy = values.get("MCP_OIDC_LEGACY_AUDIENCE", "")
+    resource = values.get("DATA_FABRIC_MCP_OAUTH_RESOURCE", "")
+    audience_matches = primary in audiences or (
+        legacy_audience_is_valid(legacy, primary, resource) and legacy in audiences
+    )
     ok = (
         claims.get("sub") == args.api_user
         and (args.tenant is None or claim_path(claims, tenant_name) == args.tenant)
         and claims.get("iss") == values.get("MCP_OIDC_ISSUER", "")
-        and values.get("MCP_OIDC_AUDIENCE", "") in audiences
+        and audience_matches
         and required.issubset(scopes)
         and isinstance(claims.get("exp"), (int, float)) and claims["exp"] > now
         and (not isinstance(claims.get("nbf"), (int, float)) or claims["nbf"] <= now)
     )
-    add_result(results, ok, "unverified token principal/tenant/issuer/audience/scope claims " + ("match the selected profile" if ok else "do not match the selected profile"))
+    outcome = "match the selected profile" if ok else "do not match the selected profile"
+    if ok and primary not in audiences:
+        outcome += " (temporary legacy audience)"
+    add_result(results, ok, "unverified token principal/tenant/issuer/audience/scope claims " + outcome)
     print("    Advisory only: the MCP gateway validates the signed token on every request.")
 
 
@@ -670,27 +702,14 @@ def command_doctor(args):
     audience = values.get("MCP_OIDC_AUDIENCE", "").strip()
     add_result(results, bool(audience), "MCP OIDC audience is configured" if audience else "set MCP_OIDC_AUDIENCE to the resource audience registered with your identity provider")
     resource = values.get("DATA_FABRIC_MCP_OAUTH_RESOURCE", "")
-    resource_ok = False
+    resource_ok = oauth_resource_matches_audience(resource, audience)
     if resource:
-        try:
-            parsed = urllib.parse.urlsplit(resource)
-            resource_ok = (
-                resource == resource.strip() and parsed.scheme == "https"
-                and bool(parsed.hostname) and parsed.username is None and parsed.password is None
-                and parsed.path == "/mcp" and not parsed.query and not parsed.fragment
-                and "?" not in resource and "#" not in resource
-                and issuer_url_has_valid_syntax(resource, parsed)
-                and parsed.geturl() == resource and resource == audience
-            )
-        except ValueError:
-            pass
         add_result(results, resource_ok,
                    "MCP OAuth resource URL and audience match" if resource_ok else
                    "DATA_FABRIC_MCP_OAUTH_RESOURCE must be the exact public HTTPS /mcp URL and equal MCP_OIDC_AUDIENCE; check existing client audiences before changing it")
     legacy = values.get("MCP_OIDC_LEGACY_AUDIENCE", "")
     if legacy:
-        legacy_ok = (resource_ok and legacy == legacy.strip() and legacy != audience
-                     and not any(ch.isspace() or ch in ",*" for ch in legacy))
+        legacy_ok = legacy_audience_is_valid(legacy, audience, resource)
         add_result(results, legacy_ok,
                    "temporary legacy audience is configured" if legacy_ok else
                    "MCP_OIDC_LEGACY_AUDIENCE requires matching resource discovery and one distinct non-wildcard audience")
