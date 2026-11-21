@@ -75,9 +75,10 @@ A source-management scope and ownership or administrator access are required;
 query permission alone is insufficient. Report the tool result and refresh
 the source listing. Do not claim a change succeeded on an error.
 
-When asked to test an existing MySQL or PostgreSQL source, use
-`test_data_source_connection` if advertised. Report its success or failure;
-do not infer that a failure reveals the password or source configuration.
+When asked to test an existing source, use `test_data_source_connection` if
+advertised: it supports MySQL and PostgreSQL, plus MariaDB when the server's
+restricted policy enables it. Other types may not support this tool. Report its
+actual success or failure without inferring credentials or configuration.
 
 For deletion, obtain an explicit confirmation from the user after presenting
 the source name and ID and explaining that removal is permanent. Only after
@@ -104,11 +105,15 @@ user reports completing it, call `get_data_source_onboarding_status` with the
 returned `flow_id` and report only its actual status; if completed, use the
 returned `datasource_id` for any requested follow-up.
 
-When enabled, the secure setup workflow accepts MySQL and PostgreSQL connections to server-allowed
-IPv4 addresses and ports, including TLS with verified server identity and system
-or operator-provisioned trust; it requires a matching
-management grant, audited OIDC deployment and browser access. Other source
-types are not provided by this creation workflow. If either tool is absent, access is denied, the flow expires
+The opt-in secure setup workflow defaults to MySQL and PostgreSQL on
+server-allowed IPv4 addresses and ports, including TLS with verified server identity.
+Newer source builds can separately
+enable experimental MariaDB and openGauss candidates; openGauss requires
+verified TLS and its driver is absent from the experimental Core build. Check
+the connected service's actual wizard policy, type inventory and permissions
+instead of assuming that an installed Skill enables a type. The workflow
+requires a matching management grant, audited OIDC deployment and browser
+access. If either tool is absent, access is denied, the flow expires
 or the browser cannot connect, explain the result and ask an administrator to
 check the deployment, identity, grants and network policy. Restart an expired
 flow only when the user requests it. Never fall back to collecting secrets in
