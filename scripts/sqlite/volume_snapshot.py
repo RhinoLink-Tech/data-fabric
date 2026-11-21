@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Back up and restore the experimental SQLite Compose metadata volume."""
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -49,12 +50,47 @@ def validate_local_parent(path):
         raise SnapshotError("backup directory must be owned by the current user and mode 0700 or stricter")
 
 
+def current_database(project):
+    """Resolve the configured path and reject drift from running Compose services."""
+    try:
+        config = json.loads(compose(project, ["config", "--format", "json"]))
+        configured = config["services"]["api"]["environment"]["DATABASE_SQLITE_PATH"]
+        if config["services"]["mcp"]["environment"]["DATABASE_SQLITE_PATH"] != configured:
+            raise SnapshotError("API and MCP metadata paths differ")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SnapshotError("cannot resolve the Compose metadata path") from exc
+    if not isinstance(configured, str) or not configured.startswith(VOLUME + "/"):
+        raise SnapshotError("configured metadata must be a file directly in the metadata volume")
+    name = configured[len(VOLUME) + 1:]
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*\.sqlite", name):
+        raise SnapshotError("configured metadata must be a simple .sqlite filename")
+    for service in ("api", "mcp"):
+        ids = compose(project, ["ps", "--status", "running", "-q", service]).decode().split()
+        if len(ids) > 1:
+            raise SnapshotError("multiple service instances are not supported by this single-host profile")
+        if not ids:
+            continue
+        try:
+            inspected = subprocess.run(["docker", "inspect", ids[0]], stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, check=True)
+            container = json.loads(inspected.stdout)[0]
+            values = dict(item.split("=", 1) for item in container["Config"]["Env"] if "=" in item)
+            mounts = [mount for mount in container["Mounts"] if mount.get("Destination") == VOLUME]
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError, IndexError) as exc:
+            raise SnapshotError("cannot inspect the running Compose service") from exc
+        if values.get("DATABASE_SQLITE_PATH") != configured:
+            raise SnapshotError("running service metadata path differs from current Compose configuration; reconcile before backup")
+        if len(mounts) != 1 or mounts[0].get("Type") != "volume" or mounts[0].get("Name") != project + "_metadata":
+            raise SnapshotError("running service metadata volume differs from the selected project")
+    return name
+
+
 def main():
     global ENV_FILE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-name", default="data-fabric-sqlite")
     parser.add_argument("--env-file", type=Path, default=ENV_FILE, help="original private profile configuration")
-    parser.add_argument("--database", default="metadata.sqlite", help="database filename in the metadata volume")
+    parser.add_argument("--database", help="expected current database filename in the metadata volume")
     sub = parser.add_subparsers(dest="action", required=True)
     backup = sub.add_parser("backup")
     backup.add_argument("output", type=Path)
@@ -69,9 +105,11 @@ def main():
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*\.sqlite", value):
             raise SnapshotError("database names must be simple .sqlite filenames")
         return value
-    source_name = filename(args.database)
     temporary = ".snapshot-" + secrets.token_hex(16) + ".sqlite"
     if args.action == "backup":
+        source_name = current_database(args.project_name)
+        if args.database is not None and filename(args.database) != source_name:
+            raise SnapshotError("requested database differs from the current Compose configuration")
         validate_local_parent(args.output)
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         created = False
