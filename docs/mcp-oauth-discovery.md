@@ -75,3 +75,22 @@ and refresh using an authorized client before claiming a working connection.
 The authorization server must support the chosen client onboarding method.
 Changing the audience can invalidate existing WorkBuddy tokens; do not change a
 live deployment until the identity provider and all affected clients are ready.
+
+## Check the public proxy
+
+From a host that should reach the deployment, use the exact public resource and
+configured issuer (replace the example values):
+
+```sh
+python3 scripts/mcp/oauth_probe.py \
+  --resource https://fabric.example.com/mcp \
+  --issuer https://identity.example.com/realms/team
+```
+
+This optional, unauthenticated HTTPS check compares both public metadata paths
+with the resource and issuer, and checks that `/mcp` returns a 401 Bearer
+challenge pointing to the path-specific metadata. A 404 may indicate a missing
+gateway or reverse-proxy route; network or TLS errors require a reachable host
+and a trusted certificate. Redirects are not followed. The check sends no
+token or source credentials and does not test login, token issuance, refresh,
+permissions or actual client use. Use the configured issuer exactly.
