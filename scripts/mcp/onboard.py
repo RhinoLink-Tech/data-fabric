@@ -413,7 +413,7 @@ def probe_oidc(issuer, timeout=5):
 def compose_command(directory, env_path, *args):
     command = ["docker", "compose", "--env-file", str(env_path), "-f", "docker-compose.yml", *args]
     env = os.environ.copy()
-    keys = SECRET_KEYS + ("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "DATA_FABRIC_CREDENTIAL_KEYS", "MCP_OIDC_ISSUER", "MCP_OIDC_AUDIENCE", "DATA_FABRIC_MCP_OAUTH_RESOURCE", "MCP_OIDC_REQUIRED_SCOPES", "MCP_OIDC_SCOPE_CLAIM", "MCP_OIDC_TENANT_CLAIM", "DATA_FABRIC_TLS_GID", "API_PORT", "MCP_HTTPS_PORT")
+    keys = SECRET_KEYS + ("DATA_FABRIC_CREDENTIAL_ACTIVE_KEY_ID", "DATA_FABRIC_CREDENTIAL_KEYS", "MCP_OIDC_ISSUER", "MCP_OIDC_AUDIENCE", "MCP_OIDC_LEGACY_AUDIENCE", "DATA_FABRIC_MCP_OAUTH_RESOURCE", "MCP_OIDC_REQUIRED_SCOPES", "MCP_OIDC_SCOPE_CLAIM", "MCP_OIDC_TENANT_CLAIM", "DATA_FABRIC_TLS_GID", "API_PORT", "MCP_HTTPS_PORT")
     for key in keys:
         env.pop(key, None)
     return subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True, timeout=15)
@@ -670,8 +670,8 @@ def command_doctor(args):
     audience = values.get("MCP_OIDC_AUDIENCE", "").strip()
     add_result(results, bool(audience), "MCP OIDC audience is configured" if audience else "set MCP_OIDC_AUDIENCE to the resource audience registered with your identity provider")
     resource = values.get("DATA_FABRIC_MCP_OAUTH_RESOURCE", "")
+    resource_ok = False
     if resource:
-        resource_ok = False
         try:
             parsed = urllib.parse.urlsplit(resource)
             resource_ok = (
@@ -687,6 +687,13 @@ def command_doctor(args):
         add_result(results, resource_ok,
                    "MCP OAuth resource URL and audience match" if resource_ok else
                    "DATA_FABRIC_MCP_OAUTH_RESOURCE must be the exact public HTTPS /mcp URL and equal MCP_OIDC_AUDIENCE; check existing client audiences before changing it")
+    legacy = values.get("MCP_OIDC_LEGACY_AUDIENCE", "")
+    if legacy:
+        legacy_ok = (resource_ok and legacy == legacy.strip() and legacy != audience
+                     and not any(ch.isspace() or ch in ",*" for ch in legacy))
+        add_result(results, legacy_ok,
+                   "temporary legacy audience is configured" if legacy_ok else
+                   "MCP_OIDC_LEGACY_AUDIENCE requires matching resource discovery and one distinct non-wildcard audience")
     scopes = (values.get("MCP_OIDC_REQUIRED_SCOPES", "data-fabric.query").strip() or "data-fabric.query").split()
     add_result(results, bool(scopes), "MCP required scopes are configured" if scopes else "configure MCP_OIDC_REQUIRED_SCOPES")
     tls_dir = directory / "tls"

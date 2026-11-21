@@ -692,10 +692,17 @@ func newMCPTokenValidator(ctx context.Context, cfg *config.Config) (mcp.MCPToken
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration is required")
 	}
+	if cfg.MCP.OIDCLegacyAudience != "" && !strings.EqualFold(strings.TrimSpace(cfg.MCP.AuthMode), config.MCPAuthModeOIDC) {
+		return nil, errors.New("legacy MCP audience requires OIDC authentication")
+	}
 	if strings.EqualFold(strings.TrimSpace(cfg.MCP.AuthMode), config.MCPAuthModeOIDC) {
+		if cfg.MCP.OIDCLegacyAudience != "" && (os.Getenv("DATA_FABRIC_MCP_OAUTH_RESOURCE") == "" || os.Getenv("DATA_FABRIC_MCP_OAUTH_RESOURCE") != cfg.MCP.OIDCAudience) {
+			return nil, errors.New("legacy MCP audience requires discovery with the primary audience equal to the resource URI")
+		}
 		oidcConfig := security.OIDCTokenConfig{
 			Issuer:              cfg.MCP.OIDCIssuer,
 			Audience:            cfg.MCP.OIDCAudience,
+			LegacyAudience:      cfg.MCP.OIDCLegacyAudience,
 			RequiredScopes:      strings.Fields(cfg.MCP.OIDCRequiredScopes),
 			ScopeClaim:          cfg.MCP.OIDCScopeClaim,
 			TenantClaim:         cfg.MCP.OIDCTenantClaim,

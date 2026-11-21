@@ -36,6 +36,7 @@ var allowedOIDCSignatureAlgorithms = []jose.SignatureAlgorithm{
 type OIDCTokenConfig struct {
 	Issuer              string
 	Audience            string
+	LegacyAudience      string
 	RequiredScopes      []string
 	ScopeClaim          string
 	TenantClaim         string
@@ -49,6 +50,7 @@ type OIDCTokenConfig struct {
 type OIDCTokenValidator struct {
 	issuer          string
 	audience        string
+	legacyAudience  string
 	requiredScopes  []string
 	scopeClaim      string
 	tenantClaim     string
@@ -78,6 +80,9 @@ func NewOIDCTokenValidatorWithHTTPClient(ctx context.Context, cfg OIDCTokenConfi
 	}
 	if cfg.Audience == "" {
 		return nil, errors.New("OIDC audience is required")
+	}
+	if cfg.LegacyAudience != "" && (cfg.LegacyAudience != strings.TrimSpace(cfg.LegacyAudience) || strings.ContainsAny(cfg.LegacyAudience, " \t\r\n,*") || cfg.LegacyAudience == cfg.Audience) {
+		return nil, errors.New("legacy OIDC audience must be one distinct non-wildcard audience without whitespace")
 	}
 	if len(cfg.RequiredScopes) == 0 {
 		return nil, errors.New("at least one OIDC scope is required")
@@ -148,6 +153,7 @@ func NewOIDCTokenValidatorWithHTTPClient(ctx context.Context, cfg OIDCTokenConfi
 	validator := &OIDCTokenValidator{
 		issuer:          cfg.Issuer,
 		audience:        cfg.Audience,
+		legacyAudience:  cfg.LegacyAudience,
 		requiredScopes:  uniqueNonEmpty(cfg.RequiredScopes),
 		scopeClaim:      strings.TrimSpace(cfg.ScopeClaim),
 		tenantClaim:     strings.TrimSpace(cfg.TenantClaim),
@@ -329,7 +335,7 @@ func (v *OIDCTokenValidator) claimsFromVerifiedPayload(payload []byte) (*Claims,
 		return nil, errors.New("access token subject is required")
 	}
 	audiences, err := audienceClaim(rawClaims["aud"])
-	if err != nil || !containsString(audiences, v.audience) {
+	if err != nil || (!containsString(audiences, v.audience) && (v.legacyAudience == "" || !containsString(audiences, v.legacyAudience))) {
 		return nil, errors.New("access token audience is invalid")
 	}
 	expiry, err := numericDateClaim(rawClaims["exp"], true)

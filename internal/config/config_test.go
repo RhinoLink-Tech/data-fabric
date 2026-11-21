@@ -69,6 +69,18 @@ func TestSecretsFromEnv(t *testing.T) {
 	}
 }
 
+func TestLegacyAudienceFromEnvironment(t *testing.T) {
+	resetViper(t)
+	t.Setenv("MCP_OIDC_LEGACY_AUDIENCE", "data-fabric-mcp")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MCP.OIDCLegacyAudience != "data-fabric-mcp" {
+		t.Fatalf("legacy audience = %q", cfg.MCP.OIDCLegacyAudience)
+	}
+}
+
 func TestSecretsFromEnvOverrideConfigFile(t *testing.T) {
 	resetViper(t)
 

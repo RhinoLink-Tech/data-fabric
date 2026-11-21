@@ -168,6 +168,27 @@ class OIDCIssuerDoctorTests(unittest.TestCase):
 
 
 class OAuthResourceDoctorTests(unittest.TestCase):
+    def test_legacy_audience_requires_matching_discovery(self):
+        for resource, audience, legacy, valid in [
+            ("https://fabric.example/mcp", "https://fabric.example/mcp", "old-client", True),
+            ("", "old-client", "old-client", False),
+            ("https://fabric.example/mcp", "https://fabric.example/mcp", "*", False),
+            ("https://fabric.example/mcp", "https://fabric.example/mcp", "two values", False),
+            ("https://fabric.example/mcp", "https://fabric.example/mcp", "https://fabric.example/mcp", False),
+        ]:
+            with self.subTest(resource=resource, legacy=legacy), tempfile.TemporaryDirectory() as directory:
+                deploy = Path(directory)
+                (deploy / ".env").write_text(
+                    f"MCP_OIDC_ISSUER=https://id.example/realm\nMCP_OIDC_AUDIENCE={audience}\n"
+                    f"DATA_FABRIC_MCP_OAUTH_RESOURCE={resource}\nMCP_OIDC_LEGACY_AUDIENCE={legacy}\n", encoding="utf-8")
+                output = io.StringIO()
+                with (contextlib.redirect_stdout(output),
+                      mock.patch.object(onboard, "compose_command", return_value=SimpleNamespace(returncode=1)),
+                      mock.patch.object(onboard, "check_identity"),
+                      mock.patch.object(onboard, "source_connection_check")):
+                    onboard.command_doctor(SimpleNamespace(directory=deploy, probe_oidc=False))
+                self.assertIn("OK  temporary legacy audience is configured" if valid else "ERR MCP_OIDC_LEGACY_AUDIENCE requires", output.getvalue())
+
     def test_opt_in_resource_and_audience(self):
         cases = [
             ("disabled", "", "old-audience", None),
@@ -218,10 +239,12 @@ class OAuthResourceDoctorTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temp:
             env_path = Path(temp) / ".env"
-            def config(resource):
+            def config(resource, legacy=None):
                 vals = dict(env_values)
                 if resource is not None:
                     vals["DATA_FABRIC_MCP_OAUTH_RESOURCE"] = resource
+                if legacy is not None:
+                    vals["MCP_OIDC_LEGACY_AUDIENCE"] = legacy
                 env_path.write_text("".join(f"{key}={value}\n" for key, value in vals.items()))
                 proc = onboard.compose_command(compose_dir, env_path, "config", "--format", "json")
                 self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -231,6 +254,10 @@ class OAuthResourceDoctorTests(unittest.TestCase):
             services = config("https://fabric.example/mcp")
             self.assertEqual(services["data-fabric-mcp"]["environment"]["DATA_FABRIC_MCP_OAUTH_RESOURCE"], "https://fabric.example/mcp")
             self.assertNotIn("DATA_FABRIC_MCP_OAUTH_RESOURCE", services["data-fabric-api"]["environment"])
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["MCP_OIDC_LEGACY_AUDIENCE"], "")
+            self.assertNotIn("MCP_OIDC_LEGACY_AUDIENCE", services["data-fabric-api"]["environment"])
+            services = config("https://fabric.example/mcp", "old-client")
+            self.assertEqual(services["data-fabric-mcp"]["environment"]["MCP_OIDC_LEGACY_AUDIENCE"], "old-client")
 
     def test_doctor_compose_uses_file_resource_not_shell_override(self):
         with tempfile.TemporaryDirectory() as directory:

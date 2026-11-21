@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -133,6 +134,48 @@ func TestOIDCTokenValidatorMapsIdentityAndSupportsKeyRotation(t *testing.T) {
 	}
 	if claims.UserID != "user-123" {
 		t.Fatalf("rotated token subject = %q, want user-123", claims.UserID)
+	}
+}
+
+func TestOIDCLegacyAudienceTransition(t *testing.T) {
+	key := newOIDCTestKey(t, "transition")
+	provider := newOIDCTestProvider(t, key)
+	base := OIDCTokenConfig{Issuer: provider.server.URL, Audience: "https://fabric.example/mcp", RequiredScopes: []string{"data-fabric.query"}, TenantClaim: "tenant_id", RolesClaim: "realm_access.roles", UsernameClaim: "preferred_username", JWKSRefreshInterval: time.Hour}
+	for _, enabled := range []bool{false, true} {
+		cfg := base
+		if enabled {
+			cfg.LegacyAudience = "data-fabric-mcp"
+		}
+		validator, err := NewOIDCTokenValidatorWithHTTPClient(context.Background(), cfg, provider.server.Client())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			name     string
+			audience any
+			scope    string
+			issuer   string
+			accepted bool
+		}{
+			{"resource", cfg.Audience, "data-fabric.query", cfg.Issuer, true},
+			{"legacy", "data-fabric-mcp", "data-fabric.query", cfg.Issuer, enabled},
+			{"other", "unrelated", "data-fabric.query", cfg.Issuer, false},
+			{"legacy without scope", "data-fabric-mcp", "openid", cfg.Issuer, false},
+			{"legacy wrong issuer", "data-fabric-mcp", "data-fabric.query", "https://attacker.example", false},
+			{"resource in audience list", []string{"other", cfg.Audience}, "data-fabric.query", cfg.Issuer, true},
+		} {
+			t.Run(fmt.Sprintf("enabled=%t/%s", enabled, tc.name), func(t *testing.T) {
+				claims := validOIDCClaims(provider.server.URL)
+				claims["aud"], claims["scope"], claims["iss"] = tc.audience, tc.scope, tc.issuer
+				got, err := validator.ValidateMCPToken(context.Background(), provider.token(t, key, claims))
+				if (err == nil) != tc.accepted {
+					t.Fatalf("validation error = %v", err)
+				}
+				if err == nil && (got.TenantID != "tenant-a" || got.UserID != "user-123") {
+					t.Fatal("incorrect identity")
+				}
+			})
+		}
 	}
 }
 

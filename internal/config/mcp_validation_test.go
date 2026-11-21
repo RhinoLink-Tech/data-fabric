@@ -20,6 +20,10 @@ func TestMCPConfigValidate(t *testing.T) {
 			OIDCRolesClaim: "roles", OIDCUsernameClaim: "preferred_username",
 			OIDCJWKSRefreshInterval: time.Minute,
 		}},
+		{name: "legacy audience without OIDC rejected", config: MCPConfig{Transport: "streamable-http", Address: "127.0.0.1:8081", OIDCLegacyAudience: "legacy"}, wantErr: true},
+		{name: "legacy audience with stdio rejected", config: MCPConfig{Transport: "stdio", AuthMode: MCPAuthModeOIDC, OIDCLegacyAudience: "legacy"}, wantErr: true},
+		{name: "legacy audience wildcard rejected", config: MCPConfig{Transport: MCPTransportStreamableHTTP, Address: "127.0.0.1:8081", AuthMode: MCPAuthModeOIDC, OIDCIssuer: "https://identity.example", OIDCAudience: "https://fabric.example/mcp", OIDCLegacyAudience: "*", OIDCRequiredScopes: "data-fabric.query", OIDCTenantClaim: "tenant", OIDCRolesClaim: "roles", OIDCUsernameClaim: "name", OIDCJWKSRefreshInterval: time.Minute}, wantErr: true},
+		{name: "legacy audience transition", config: MCPConfig{Transport: MCPTransportStreamableHTTP, Address: "127.0.0.1:8081", AuthMode: MCPAuthModeOIDC, OIDCIssuer: "https://identity.example", OIDCAudience: "https://fabric.example/mcp", OIDCLegacyAudience: "data-fabric-mcp", OIDCRequiredScopes: "data-fabric.query", OIDCTenantClaim: "tenant", OIDCRolesClaim: "roles", OIDCUsernameClaim: "name", OIDCJWKSRefreshInterval: time.Minute}},
 		{name: "OIDC issuer must use HTTPS", config: MCPConfig{
 			Transport: MCPTransportStreamableHTTP, Address: "127.0.0.1:8081", AuthMode: MCPAuthModeOIDC,
 			OIDCIssuer: "http://identity.example", OIDCAudience: "data-fabric-mcp", OIDCRequiredScopes: "data-fabric.query",

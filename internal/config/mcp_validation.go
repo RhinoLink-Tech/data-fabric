@@ -24,6 +24,9 @@ const (
 // remote listener from being exposed. Plain HTTP is limited to loopback so a
 // TLS reverse proxy can terminate HTTPS in front of the process.
 func (c MCPConfig) Validate() error {
+	if c.OIDCLegacyAudience != "" && (!strings.EqualFold(strings.TrimSpace(c.AuthMode), MCPAuthModeOIDC) || strings.TrimSpace(c.Transport) != MCPTransportStreamableHTTP) {
+		return fmt.Errorf("mcp.oidc_legacy_audience requires OIDC and streamable-http")
+	}
 	transport := strings.TrimSpace(c.Transport)
 	if transport == "" {
 		transport = MCPTransportStdio
@@ -92,6 +95,9 @@ func validateMCPOIDCConfig(c MCPConfig) error {
 	}
 	if strings.TrimSpace(c.OIDCAudience) == "" {
 		return fmt.Errorf("mcp.oidc_audience is required when mcp.auth_mode is oidc")
+	}
+	if legacy := c.OIDCLegacyAudience; legacy != "" && (legacy != strings.TrimSpace(legacy) || strings.ContainsAny(legacy, " \t\r\n,*") || legacy == c.OIDCAudience) {
+		return fmt.Errorf("mcp.oidc_legacy_audience must be one distinct non-wildcard audience without whitespace")
 	}
 	if strings.TrimSpace(c.OIDCRequiredScopes) == "" {
 		return fmt.Errorf("mcp.oidc_required_scopes must contain at least one required scope")
