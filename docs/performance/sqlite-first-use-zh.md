@@ -35,3 +35,24 @@ docker compose --project-name data-fabric-sqlite down
 ```
 
 除非明确要丢弃元数据，否则不要加 `--volumes`。备份恢复参见[原型说明](sqlite-metadata-prototype-zh.md#实验性备份与恢复)，并将快照和密钥备份与运行卷分开保存。远端 CI 验证合成 PostgreSQL、TLS MCP、跨租户拒绝、快照恢复和重启；它不代表所有数据库、客户端、平台或灾难恢复场景均已验证。
+
+## 备份与恢复 Compose 元数据卷
+
+在 `deploy/sqlite` 目录中创建仅自己可访问的宿主机目录，将运行中数据库的一致性快照保存到新文件。镜像必须已存在于本机，命令不会拉取镜像。快照包含敏感元数据，请妥善保护；原 `.env` 和凭证密钥环需要另行备份，快照不包含解密数据源凭证所需的密钥。
+
+```sh
+mkdir -m 700 -p "$HOME/data-fabric-backups"
+python3 ../../scripts/sqlite/volume_snapshot.py backup "$HOME/data-fabric-backups/metadata.sqlite"
+```
+
+输出文件已存在时命令会拒绝覆盖。如果快照操作在卷内创建文件后失败，请先检查卷再重试。非默认项目可在 `backup` 前添加 `--project-name NAME`；元数据文件名不是默认值时添加 `--database NAME.sqlite`。脚本仅支持元数据卷根目录下的文件。
+
+恢复前停止两个服务和其他所有可能访问该卷的进程。使用原 `.env` 和密钥环，将快照恢复为新文件名；脚本不会替换原数据库。使用前请在隔离环境验证恢复结果。以下示例恢复到原卷，因此宿主机快照仍需单独保留：
+
+```sh
+docker compose --project-name data-fabric-sqlite down
+python3 ../../scripts/sqlite/volume_snapshot.py restore "$HOME/data-fabric-backups/metadata.sqlite" --output-name restored.sqlite
+# 后续隔离启动时设置 DATA_FABRIC_SQLITE_PATH=/var/lib/data-fabric/restored.sqlite。
+```
+
+脚本会检查所选 Compose 项目的运行中服务，无法发现其他项目或进程对该卷的访问。完成恢复不代表密钥环、数据源连接或灾难恢复已经验证；隔离验证之前请保留原元数据和密钥。

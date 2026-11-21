@@ -35,3 +35,24 @@ docker compose --project-name data-fabric-sqlite down
 ```
 
 Do not add `--volumes` unless intentionally discarding the metadata. See the [prototype backup and restore procedure](sqlite-metadata-prototype.md#experimental-backup-and-restore); store snapshots and key backups separately from the live volume. The remote CI acceptance exercises a synthetic PostgreSQL source, TLS MCP, cross-tenant denial, snapshot restore and restart; it does not establish all database, client, platform or disaster-recovery behavior.
+
+## Back up and restore the Compose volume
+
+From `deploy/sqlite`, create a private host directory and save a consistent online snapshot to a new file. The image must already exist locally; this command does not pull it. Protect the snapshot and separately back up the original `.env` and credential keyring: the snapshot does not contain the keys needed to decrypt source credentials.
+
+```sh
+mkdir -m 700 -p "$HOME/data-fabric-backups"
+python3 ../../scripts/sqlite/volume_snapshot.py backup "$HOME/data-fabric-backups/metadata.sqlite"
+```
+
+The command refuses an existing output. If a snapshot operation fails after creating a volume file, inspect the volume before retrying. For a non-default project add `--project-name NAME` before `backup`; for a non-default metadata filename add `--database NAME.sqlite`. Only files directly inside the metadata volume are supported.
+
+To restore, stop both services and every other process that can access the volume. Use the same original `.env` and keyring, and restore to a new filename; the command does not replace the live database. Verify the restored file in an isolated profile before using it. This example restores within the existing volume, so separately retain the host snapshot:
+
+```sh
+docker compose --project-name data-fabric-sqlite down
+python3 ../../scripts/sqlite/volume_snapshot.py restore "$HOME/data-fabric-backups/metadata.sqlite" --output-name restored.sqlite
+# For a subsequent isolated start, set DATA_FABRIC_SQLITE_PATH=/var/lib/data-fabric/restored.sqlite.
+```
+
+The script checks the selected Compose project's running services; it cannot detect other projects or processes using the same volume. A restore alone does not verify the keyring, source connectivity, or disaster recovery. Never delete the original metadata or keys until an isolated restore has been checked.
