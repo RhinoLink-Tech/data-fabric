@@ -94,6 +94,17 @@ docker compose -f docker-compose.yml -f docker-compose.release.yml up -d
 
 `doctor` 检查 `.env` 和 keyring、Compose 配置、四个服务状态、管理 API health、MCP TLS/未认证 `401` 以及镜像中的 SQLGlot parser；不遍历或连接所有已注册数据源。它不会启动、重建或停止服务。
 
+如需检查公网反向代理是否正确转发 MCP OAuth 发现地址，可在仓库根目录运行以下命令，将示例地址替换为部署的公网 MCP 地址和身份服务 issuer：
+
+```sh
+python3 scripts/mcp/oauth_probe.py \
+  --resource https://fabric.example.com/mcp \
+  --issuer https://identity.example.com/realms/team
+```
+
+该检查不携带令牌或数据库凭据，验证两个发现地址和未认证 401 的 Bearer 挑战；404 可提示检查代理路由。它不验证登录、令牌签发与续期、权限或客户端查询。详见 [OAuth 发现说明](mcp-oauth-discovery.md#check-the-public-proxy)。
+
+
 下面的可选命令会向 OIDC discovery URL 和 JWKS endpoint 分别发送 HTTPS GET；受限网络环境下不要添加 `--probe-oidc`。执行前先设置身份与租户变量：
 
 ```bash
