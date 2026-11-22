@@ -79,18 +79,10 @@ func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	}
 
 	// Validate dialects
-	supportedDialects := stc.translator.GetSupportedDialects()
-	sourceSupported := false
-	targetSupported := false
-
-	for _, dialect := range supportedDialects {
-		if dialect == req.SourceDialect {
-			sourceSupported = true
-		}
-		if dialect == req.TargetDialect {
-			targetSupported = true
-		}
-	}
+	sourceDialect := sql_translator.NormalizeDialect(req.SourceDialect)
+	targetDialect := sql_translator.NormalizeDialect(req.TargetDialect)
+	sourceSupported := stc.translator.SupportsPublicDialect(sourceDialect)
+	targetSupported := stc.translator.SupportsPublicDialect(targetDialect)
 
 	if !sourceSupported {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
@@ -113,7 +105,7 @@ func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	}
 
 	// Translate the SQL
-	translatedSQL, err := stc.translator.TranslateQueryContext(c.Request.Context(), req.SQL, req.SourceDialect, req.TargetDialect)
+	translatedSQL, err := stc.translator.TranslateQueryContext(c.Request.Context(), req.SQL, sourceDialect, targetDialect)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"TRANSLATION_ERROR",
@@ -185,15 +177,8 @@ func (stc *SQLTranslationController) ValidateSQL(c *gin.Context) {
 	}
 
 	// Validate dialect
-	supportedDialects := stc.translator.GetSupportedDialects()
-	dialectSupported := false
-
-	for _, dialect := range supportedDialects {
-		if dialect == req.Dialect {
-			dialectSupported = true
-			break
-		}
-	}
+	dialect := sql_translator.NormalizeDialect(req.Dialect)
+	dialectSupported := stc.translator.SupportsPublicDialect(dialect)
 
 	if !dialectSupported {
 		c.JSON(http.StatusBadRequest, response.ErrorResponse(
@@ -206,7 +191,7 @@ func (stc *SQLTranslationController) ValidateSQL(c *gin.Context) {
 	}
 
 	// Validate the SQL
-	isValid, err := stc.translator.ValidateSQLContext(c.Request.Context(), req.SQL, req.Dialect)
+	isValid, err := stc.translator.ValidateSQLContext(c.Request.Context(), req.SQL, dialect)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
 			"VALIDATION_ERROR",

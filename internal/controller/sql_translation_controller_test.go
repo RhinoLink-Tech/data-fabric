@@ -60,6 +60,8 @@ func TestSameDialectEndpointWithSQLGlot(t *testing.T) {
 		valid      bool
 	}{
 		{"valid", `{"sql":"SELECT 1","sourceDialect":"mysql","targetDialect":"mysql"}`, true},
+		{"aliases", `{"sql":"SELECT 1","sourceDialect":" MySQL ","targetDialect":"PostgreSQL"}`, true},
+		{"tsql alias", `{"sql":"SELECT 1","sourceDialect":"mysql","targetDialect":" TSQL "}`, true},
 		{"malformed", `{"sql":"SELECT FROM","sourceDialect":"mysql","targetDialect":"mysql"}`, false},
 		{"multiple", `{"sql":"SELECT 1; SELECT 2","sourceDialect":"mysql","targetDialect":"mysql"}`, false},
 		{"unknown", `{"sql":"SELECT 1","sourceDialect":"unknown646","targetDialect":"unknown646"}`, false},
