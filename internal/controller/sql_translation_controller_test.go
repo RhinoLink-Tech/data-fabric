@@ -87,7 +87,7 @@ func TestSameDialectTranslationEndpointHonorsInputLimit(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/sql/translate", strings.NewReader(`{"sql":"SELECT 1","sourceDialect":"mysql","targetDialect":"mysql"}`))
 	controller.TranslateSQL(ctx)
-	if recorder.Code == http.StatusOK || !strings.Contains(recorder.Body.String(), "input exceeds") {
+	if recorder.Code != http.StatusRequestEntityTooLarge || !strings.Contains(recorder.Body.String(), "SQL_INPUT_TOO_LARGE") {
 		t.Fatalf("same-dialect request bypassed the limit: status %d, body %s", recorder.Code, recorder.Body.String())
 	}
 }

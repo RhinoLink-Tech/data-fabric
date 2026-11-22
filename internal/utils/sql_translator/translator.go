@@ -63,7 +63,10 @@ type TranslationError struct {
 	SourceDialect string
 	TargetDialect string
 	Message       string
+	Cause         error
 }
+
+func (e *TranslationError) Unwrap() error { return e.Cause }
 
 func (e *TranslationError) Error() string {
 	return "translation error from " + e.SourceDialect + " to " + e.TargetDialect + ": " + e.Message

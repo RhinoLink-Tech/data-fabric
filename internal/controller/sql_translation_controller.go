@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/utils/sql_translator"
@@ -59,7 +61,10 @@ func (stc *SQLTranslationController) translationEnabled(c *gin.Context) bool {
 // @Param request body SQLTranslationRequest true "SQL translation request"
 // @Success 200 {object} response.StandardResponse{data=SQLTranslationResponse}
 // @Failure 400 {object} response.StandardResponse
+// @Failure 413 {object} response.StandardResponse
+// @Failure 503 {object} response.StandardResponse
 // @Failure 500 {object} response.StandardResponse
+// @Failure 504 {object} response.StandardResponse
 // @Router /api/v1/sql/translate [post]
 func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	correlationID := getCorrelationID(c)
@@ -107,12 +112,16 @@ func (stc *SQLTranslationController) TranslateSQL(c *gin.Context) {
 	// Translate the SQL
 	translatedSQL, err := stc.translator.TranslateQueryContext(c.Request.Context(), req.SQL, sourceDialect, targetDialect)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.ErrorResponse(
-			"TRANSLATION_ERROR",
-			"Failed to translate SQL: "+err.Error(),
-			"",
-			correlationID,
-		))
+		status, code, message := http.StatusInternalServerError, "TRANSLATION_ERROR", "SQL translation service failed"
+		switch {
+		case errors.Is(err, sql_translator.ErrSQLTranslationInvalidInput):
+			status, code, message = http.StatusBadRequest, "INVALID_SQL_TRANSLATION", "Check the SQL syntax and requested dialects"
+		case errors.Is(err, sql_translator.ErrSQLTranslationInputLimit):
+			status, code, message = http.StatusRequestEntityTooLarge, "SQL_INPUT_TOO_LARGE", "SQL exceeds the configured input size limit"
+		case errors.Is(err, context.DeadlineExceeded):
+			status, code, message = http.StatusGatewayTimeout, "SQL_TRANSLATION_TIMEOUT", "SQL translation timed out"
+		}
+		c.JSON(status, response.ErrorResponse(code, message, "", correlationID))
 		return
 	}
 

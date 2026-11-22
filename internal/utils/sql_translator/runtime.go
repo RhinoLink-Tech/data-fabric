@@ -15,8 +15,10 @@ import (
 )
 
 var (
-	ErrSQLTranslationDisabled    = errors.New("SQL translation is disabled")
-	ErrSQLTranslationOutputLimit = errors.New("SQL translation output exceeded the configured limit")
+	ErrSQLTranslationDisabled     = errors.New("SQL translation is disabled")
+	ErrSQLTranslationOutputLimit  = errors.New("SQL translation output exceeded the configured limit")
+	ErrSQLTranslationInvalidInput = errors.New("SQL syntax or conversion is not supported")
+	ErrSQLTranslationInputLimit   = errors.New("SQL input exceeds the configured limit")
 )
 
 const maxTranslatorStderrBytes = 16 << 10
@@ -97,15 +99,23 @@ func (e *ExternalSQLTranslator) TranslateContext(ctx context.Context, sql, sourc
 	var response struct {
 		TranslatedSQL string `json:"translated_sql"`
 		Error         string `json:"error"`
+		ErrorKind     string `json:"error_kind"`
 	}
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
 		return "", fmt.Errorf("SQL translation process returned invalid JSON")
 	}
 	if response.Error != "" {
+		message := "SQL translation runtime failed"
+		var cause error
+		if response.ErrorKind == "invalid_input" {
+			message = "SQL syntax or conversion is not supported; check the input and dialects"
+			cause = ErrSQLTranslationInvalidInput
+		}
 		return "", &TranslationError{
 			SourceDialect: sourceDialect,
 			TargetDialect: targetDialect,
-			Message:       response.Error,
+			Message:       message,
+			Cause:         cause,
 		}
 	}
 	if strings.TrimSpace(response.TranslatedSQL) == "" {
@@ -144,7 +154,7 @@ func (e *ExternalSQLTranslator) AnalyzeContext(ctx context.Context, sql, dialect
 
 func (e *ExternalSQLTranslator) runSQLGlot(ctx context.Context, sql string, request any) ([]byte, error) {
 	if int64(len(sql)) > e.runtimeOptions.MaxSQLBytes {
-		return nil, fmt.Errorf("SQL input exceeds the configured limit of %d bytes", e.runtimeOptions.MaxSQLBytes)
+		return nil, fmt.Errorf("%w of %d bytes", ErrSQLTranslationInputLimit, e.runtimeOptions.MaxSQLBytes)
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
