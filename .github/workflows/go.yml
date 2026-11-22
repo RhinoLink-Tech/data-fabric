@@ -118,6 +118,16 @@ jobs:
           set -o pipefail
           go test -count=1 -v ./internal/database/drivers/traditional -run '^(TestPostgreSQLDriverContract|TestMySQLDriverContract)$' 2>&1 | tee "$RUNNER_TEMP/live-contract.log"
 
+      - name: Verify GaussDB MySQL adapter using an isolated MySQL wire fixture
+        env:
+          DF_GAUSSDB_MYSQL_FIXTURE_DSN: fixture_ro:fixture_pw_679@tcp(127.0.0.1:3306)/fixture_orders
+          MYSQL_SERVICE_ID: ${{ job.services.mysql.id }}
+        run: |
+          set -o pipefail
+          docker exec "$MYSQL_SERVICE_ID" mysql -uroot -proot-contract-only -e "CREATE DATABASE fixture_orders; CREATE TABLE fixture_orders.orders (id INT PRIMARY KEY); INSERT INTO fixture_orders.orders VALUES (1),(2),(3); CREATE USER 'fixture_ro'@'%' IDENTIFIED BY 'fixture_pw_679'; GRANT SELECT ON fixture_orders.* TO 'fixture_ro'@'%';"
+          go test -count=1 -v ./internal/database -run '^TestGaussDBMySQLWireAgainstFixture$' 2>&1 | tee "$RUNNER_TEMP/gaussdb-mysql-wire.log"
+          grep -q '^--- PASS: TestGaussDBMySQLWireAgainstFixture ' "$RUNNER_TEMP/gaussdb-mysql-wire.log"
+
       - name: Verify PostgreSQL MCP schema discovery
         env:
           DATA_FABRIC_POSTGRES_SCHEMA_TEST_DSN: ${{ env.DATA_FABRIC_POSTGRES_CONTRACT_DSN }}
