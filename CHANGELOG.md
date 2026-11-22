@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Expose authorized table identities alongside the existing MCP table-list entries on metadata-backed paths, allowing clients to distinguish same-named tables by schema (#525). Legacy paths may omit the identities.
 - Add an opt-in MCP OAuth legacy-audience transition and a credential-free public discovery diagnostic. Identity-provider compatibility and client login and refresh remain separate acceptance steps (#797, #799, #800).
 - Add a standalone SQL dialect conversion workflow to the repository Skill: discover supported dialects, translate without executing, and return the tool result (#758). This does not update the WorkBuddy marketplace asset.
 - Extend explicit `count_mode: none` REST and MCP queries to the pinned MariaDB source profile, alongside MySQL, PostgreSQL and Trino. Unknown totals are returned as `null`; `hasMore` and continuation describe completion. Exact counting remains the default. Trino pagination accepts literal OFFSET/LIMIT windows; unsupported complex windows fail explicitly (#787–#789).
@@ -19,7 +20,7 @@ All notable changes to this project will be documented in this file.
 - Default the initial MCP query page to 100 rows instead of 10,000. Clients needing a larger page can request up to 10,000 explicitly; REST defaults are unchanged (#786).
 - Retain the last effective MCP page size across continuations and return normalized initial batch and timeout limits in REST and MCP responses (#771, #780).
 - Allow testing an edited data source with its retained server-side credentials, subject to the existing authorization checks (#768).
-- Verify running gateway credential keyrings against the protected configuration before profile backup; remaining historical-key and release recovery checks are tracked separately (#636, #522).
+- Verify running gateway credential keyrings against protected configuration and check stored credentials against historical keys before profile backup; release recovery remains a separate gate (#636, #522).
 ### Fixed
 - Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
 - Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).

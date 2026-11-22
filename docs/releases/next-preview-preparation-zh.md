@@ -10,6 +10,8 @@
 - **查询与 SQL 转换：** 仓库中的 Skill 可独立调用 SQL 方言转换而不执行查询。MCP 首次查询默认每页 100 行，可明确请求最多 10,000 行，续页保留有效页大小。无总数模式需显式选择，目前限 MySQL、MariaDB、PostgreSQL 和 Trino；未知总数以 `null` 表示，默认仍为精确计数。复杂 Trino 分页语法可能被明确拒绝。联邦验收使用 Trino 484 连接合成 MySQL/PostgreSQL，不代表所有数据源或客户端均已验证（[#450](https://github.com/RhinoLink-Tech/data-fabric/issues/450)）。
 - **本地部署：** Core 和 SQLite 元数据是可选实验候选，尚未作为支持的配置发布。SQLite Compose 候选只监听本机，不能据此认定公网 WorkBuddy OAuth、生产可用或升级路径已经完成（[#444](https://github.com/RhinoLink-Tech/data-fabric/issues/444)、[#448](https://github.com/RhinoLink-Tech/data-fabric/issues/448)）。
 
+上述基线之后，部分基于元数据的 MCP 表发现可返回与原列表对应、经过授权过滤的表身份信息，包含可用的 schema（#525）。独立 SQL 转换增加已公布方言别名规范化（#645）、同方言输入校验（#644）以及输入错误与运行故障区分（#647）。这些尚未发布；新的 HTTP 状态码和 MCP 方言校验需要客户端兼容性核对。
+
 仓库 Skill 变化不会自动更新已发布的 WorkBuddy 市场条目。真实 WorkBuddy 授权、数据源生命周期、独立使用者首次使用和外部团队价值仍需分别验收（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)、[#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541)、[#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603)、[#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446)、[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)）。
 
 在上述源码基线之后，#797 增加了默认关闭的 MCP OAuth 旧受众过渡配置，#799 修正了身份一致性诊断，#800 增加了无需凭据的公网发现诊断。这些是源码层面的新增能力，尚不包含在 preview.2 中。合成令牌和诊断测试不能证明真实身份服务的受众配置、客户端授权或令牌续期已经完成；现有公网网关也尚未切换。进展见 [#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608)。
@@ -18,7 +20,7 @@
 
 - 基线的 [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743)、[Core 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049)和 [SQLite 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094)对应上述主线 SHA。使用证据前应查看每项运行的最终结论和产物，跳过或未完成不等于通过。前一个 PR 的联邦 HTTP 验收见[运行记录](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621)。
 - 确定发布版本和支持的部署拓扑；解决安全与兼容阻塞，复核 issue 状态并记录延期 P1 的风险决定。现有完整 MySQL 元数据配置与实验 Core/SQLite 候选的证据不同，不能混同其支持范围。
-- 冻结最终源码，更新日志和安装指南，并验证精确 SHA 对应的构建、许可材料、所选数据源、REST/MCP 和恢复路径。针对拟发布制品验证升级和恢复；#522 的密钥环预检已有改进但 issue 仍未关闭。不能假定旧预览版源码归档的恢复结论适用于新归档。
+- 冻结最终源码，更新日志和安装指南，并验证精确 SHA 对应的构建、许可材料、所选数据源、REST/MCP 和恢复路径。针对拟发布制品验证升级和恢复；#522 的历史密钥凭据预检已合入，但仍须单独验证与发布制品匹配的恢复流程。不能假定旧预览版源码归档的恢复结论适用于新归档。
 - 按[发布流程](../releasing.md)对审定提交打标签，验证公开镜像来源与摘要，使用该精确摘要完成无 Go 安装及 REST/MCP 验收，校验下载的源码包和校验文件并记录实际结果。公开制品、独立用户验收和市场更新需要各自的证据。
 
 本记录不代表已完成性能基准、广泛版本兼容、托管服务自助开通或 WorkBuddy 市场更新。
