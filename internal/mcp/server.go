@@ -169,7 +169,7 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to list tables in a specific data source
 	listTablesTool := mcp.NewTool("list_tables",
-		mcp.WithDescription("List all tables in a specific data source"),
+		mcp.WithDescription("List visible tables in a data source. When table_identities is present, use its name and schema with describe_table to distinguish same-named tables."),
 		mcp.WithString("datasource_id", mcp.Required(), mcp.Description("The ID of the data source to list tables from")))
 	m.addTool("list_tables", listTablesTool, m.handleListTables)
 
@@ -755,6 +755,7 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 					}
 				}
 				if _, ok := allowedKeys[identity.Catalog+"\x00"+schemaName+"\x00"+identity.Name]; ok {
+					identity.Schema = schemaName
 					visible = append(visible, identity)
 				}
 			}
@@ -769,7 +770,18 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 			Entries:    entries,
 			TotalCount: len(visible),
 		}
-		jsonResp, err := json.Marshal(response)
+		// Preserve the original columns and entries for existing clients. The
+		// identities are filtered by the same policy and are positional peers of
+		// those entries, including for schema-less object tables.
+		filteredIdentities := make([]metadata.TableIdentity, len(visible))
+		copy(filteredIdentities, visible)
+		// FetchQueryResponse has a custom MarshalJSON method; embedding the
+		// original type would swallow the added identity field.
+		type tableFetchResponse model.FetchQueryResponse
+		jsonResp, err := json.Marshal(struct {
+			*tableFetchResponse
+			TableIdentities []metadata.TableIdentity `json:"table_identities"`
+		}{tableFetchResponse: (*tableFetchResponse)(response), TableIdentities: filteredIdentities})
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal response: %w", err)
 		}

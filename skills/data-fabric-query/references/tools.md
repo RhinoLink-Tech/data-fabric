@@ -12,7 +12,7 @@ assume that installing this skill connects a server.
 | `list_source_types` | Optional exact `type`, `category`, `format` and boolean `include_details` | Registered types and verification overview; set include_details=true for operations, authentication and limitations. Not configured sources. |
 | `list_data_sources` | `limit`, `offset` optional | `{"data_sources":[{"id":"…","name":"…","type":"…","status":"active"}],"count":1}` |
 | `get_data_source_info` | `datasource_id` | One source object, including `id`, `name`, `type`, `status`, and non-secret connection metadata. |
-| `list_tables` | `datasource_id` | A batch response: table names are values in `entries`, aligned with `columns`. |
+| `list_tables` | `datasource_id` | Table names are in `entries`, aligned with `columns`. When present, `table_identities` aligns with `entries` and supplies each visible name and available schema, catalog and type. |
 | `describe_table` | `datasource_id`, `table_name`; optional `schema` | `{"datasource_id":"…","table":{"name":"…","schema":"…","columns":[{"name":"…","type":"…","nullable":true}]}}` |
 
 Use source IDs returned by discovery. `data_sources` can be `null` when
@@ -160,6 +160,8 @@ Return the tool's SQL unchanged and report conversion errors. Conversion does
 not prove syntax acceptance or semantic equivalence on a target database.
 
 ## Capability gaps and failures
+
+When `table_identities` includes a schema, pass it to `describe_table` to select a same-named table. Catalog is informational and is not an argument to `describe_table`. Some responses have only legacy `entries`; do not guess a missing schema.
 
 `describe_table` depends on the server's metadata support. `translate_sql`
 and `list_supported_dialects` are optional and only registered when translation

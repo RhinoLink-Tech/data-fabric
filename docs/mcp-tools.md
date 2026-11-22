@@ -23,6 +23,8 @@ client-visible contract change — update this page in the same PR.
 | `validate_sql_query` | `datasource_id`, `sql` | `source_dialect` | Validate a query (read-only rules, dialect) without executing it. |
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
+
+When returned, `list_tables.table_identities` is aligned with `entries` and provides each visible table’s `name` and available `schema`, `catalog`, and `type`. Use the returned schema with `describe_table` to distinguish names across schemas. `catalog` is informational: `describe_table` does not accept a catalog argument. Some server paths return only the legacy entries; do not infer a missing schema. Authorization filtering applies before identities are returned.
 | `search_schema` | `datasource_id`, `query` | `schema`, `limit` (default 10, max 20), `cursor` | Case-insensitive 2–128 character substring search over permitted catalog/schema/table names and visible column names/comments. Continue with the returned `next_cursor` and identical search inputs; comments themselves are not returned. |
 | `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects in the advertised catalog. Names ignore surrounding whitespace and case; `postgresql` aliases `postgres`, and `tsql` aliases `sqlserver`. Other connector-specific names are not implied to be public translation dialects. |
 | `list_supported_dialects` | — | — | Enumerate the dialects `translate_sql` accepts. |
