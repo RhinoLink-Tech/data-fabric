@@ -61,6 +61,17 @@ Use the actual Compose project name from installation. If the archive's initiali
 
 The helper stops only the selected Compose project's running API and MCP services while it snapshots metadata, then restarts the services that were running before the backup. The metadata database stays online and uses a single-transaction dump. Do not rotate keys, migrate schemas, or run a second writer against the metadata database during the snapshot. If the machine stops abruptly, check and restart the two application services manually.
 
+On a candidate built from source containing the credential-audit helper, backup
+checks the running API container's verified keyring against every stored data
+source credential before stopping either gateway. A missing historical key,
+corrupt ciphertext, plaintext secret or unavailable audit fails before the
+snapshot and no archive is published. The check reads without changing
+credentials and does not print their contents. Preview.1 and other older images
+do not have this helper; their existing backup path remains available with an
+explicit warning. The audit covers source credentials processed by the vault,
+not temporary browser sessions. It relies on the documented prohibition on
+other metadata writers and does not replace an isolated restore and query.
+
 The command prints the encrypted archive checksum, candidate and database identities, and key IDs. It never prints the `.env`, key bytes, SQL dump, database password, or source credentials. Store the checksum with the archive through a separate channel. Keep the private age identity elsewhere.
 
 ## Verify before transfer or restore
