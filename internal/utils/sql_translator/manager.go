@@ -52,15 +52,15 @@ func (stm *SQLTranslationManager) TranslateQueryContext(ctx context.Context, sql
 		return "", ErrSQLTranslationDisabled
 	}
 	if strings.TrimSpace(sql) == "" {
-		return "", fmt.Errorf("empty SQL query")
+		return "", fmt.Errorf("%w: empty SQL query", ErrSQLTranslationInvalidInput)
 	}
 	sourceDialect = NormalizeDialect(sourceDialect)
 	targetDialect = NormalizeDialect(targetDialect)
 	if sourceDialect == "" {
-		return "", fmt.Errorf("empty source dialect")
+		return "", fmt.Errorf("%w: empty source dialect", ErrSQLTranslationInvalidInput)
 	}
 	if targetDialect == "" {
-		return "", fmt.Errorf("empty target dialect")
+		return "", fmt.Errorf("%w: empty target dialect", ErrSQLTranslationInvalidInput)
 	}
 
 	if translator, ok := stm.translator.(contextSQLTranslator); ok {

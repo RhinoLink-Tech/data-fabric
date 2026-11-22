@@ -34,6 +34,21 @@ func TestTranslateContextHonorsSQLInputLimit(t *testing.T) {
 	}
 }
 
+func TestTranslateContextClassifiesAndRedactsParserErrors(t *testing.T) {
+	for _, tc := range []struct {
+		kind    string
+		invalid bool
+	}{{"invalid_input", true}, {"runtime_failure", false}, {"unrecognized", false}} {
+		t.Run(tc.kind, func(t *testing.T) {
+			translator := newShellTranslator(t, `printf '{"error":"private-parser-marker","error_kind":"`+tc.kind+`"}'`, time.Second, 1, 1024, 512)
+			_, err := translator.TranslateContext(context.Background(), "SELECT 1", "mysql", "postgres")
+			if err == nil || errors.Is(err, ErrSQLTranslationInvalidInput) != tc.invalid || strings.Contains(err.Error(), "private-parser-marker") {
+				t.Fatalf("unexpected parser error: %v", err)
+			}
+		})
+	}
+}
+
 func TestAnalyzeContextHonorsSQLInputLimit(t *testing.T) {
 	translator := newShellTranslator(t, "printf '{}'", time.Second, 1, 3, 128)
 	if _, err := translator.AnalyzeContext(context.Background(), "SELECT 1", "postgres"); err == nil || !strings.Contains(err.Error(), "input exceeds") {

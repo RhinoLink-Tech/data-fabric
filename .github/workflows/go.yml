@@ -616,7 +616,7 @@ jobs:
       - name: Verify same-dialect translation through SQLGlot, REST and MCP
         run: |
           export DF_SQLGLOT_TEST_DIR="$(python -c 'import pathlib, sqlglot; print(pathlib.Path(sqlglot.__file__).parent.parent)')"
-          go test -count=1 ./internal/utils/sql_translator ./internal/controller ./internal/mcp -run '^(TestManagerSameDialectWithSQLGlot|TestSameDialectEndpointWithSQLGlot|TestSameDialectToolWithSQLGlot)$'
+          go test -count=1 ./internal/utils/sql_translator ./internal/controller ./internal/mcp -run '^(TestManagerSameDialectWithSQLGlot|TestSameDialectEndpointWithSQLGlot|TestSameDialectToolWithSQLGlot|TestTranslationInvalidInputRESTWithSQLGlot|TestTranslationInvalidInputMCPWithSQLGlot)$'
 
       - name: Test source archive checksum portability
         run: python -m unittest discover -s scripts/release -p "test_*.py"

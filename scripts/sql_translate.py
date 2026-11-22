@@ -3,34 +3,47 @@
 
 import sys
 import json
+import logging
 import sqlglot
-from sqlglot import exp, transpile
+from sqlglot import Dialect, exp, transpile
+from sqlglot.errors import ParseError, TokenError, UnsupportedError
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
-def translate_sql(sql, source_dialect, target_dialect):
-    """
-    Translate SQL from source dialect to target dialect using sqlglot
-    """
+class InvalidTranslationInput(ValueError):
+    """An invalid dialect or SQL input, as opposed to a runtime failure."""
+
+
+def translate_sql_checked(sql, source_dialect, target_dialect):
+    sqlglot_source = map_dialect(source_dialect)
+    sqlglot_target = map_dialect(target_dialect)
     try:
-        # Map our dialect names to sqlglot dialects if needed
-        sqlglot_source = map_dialect(source_dialect)
-        sqlglot_target = map_dialect(target_dialect)
+        Dialect.get_or_raise(sqlglot_source)
+        Dialect.get_or_raise(sqlglot_target)
+    except ValueError as exc:
+        raise InvalidTranslationInput("unknown SQL dialect") from exc
+    result = transpile(
+        sql, read=sqlglot_source, write=sqlglot_target, pretty=True,
+        unsupported_level=sqlglot.ErrorLevel.RAISE,
+    )
+    if len(result) != 1:
+        raise InvalidTranslationInput("expected exactly one SQL statement, got " + str(len(result)))
+    if not result[0] or not result[0].strip():
+        raise InvalidTranslationInput("expected one non-empty SQL statement")
+    return result[0]
 
-        # Parse and transpile the SQL
-        result = transpile(
-            sql,
-            read=sqlglot_source,
-            write=sqlglot_target,
-            pretty=True,
-            unsupported_level=sqlglot.ErrorLevel.RAISE,
-        )
 
-        if len(result) != 1:
-            raise ValueError("expected exactly one SQL statement, got " + str(len(result)))
-        return result[0]
-    except Exception as e:
-        # Return error as part of JSON response
-        return f"ERROR: {str(e)}"
+def translate_sql(sql, source_dialect, target_dialect):
+    """Retain the legacy in-process helper's string return contract."""
+    try:
+        return translate_sql_checked(sql, source_dialect, target_dialect)
+    except InvalidTranslationInput as exc:
+        return f"ERROR: {str(exc)}"
+    except (ParseError, TokenError):
+        return "ERROR: invalid SQL syntax"
+    except UnsupportedError:
+        return "ERROR: conversion not supported for expression"
+    except Exception:
+        return "ERROR: SQL translation runtime failed"
 
 
 def analyze_sql(sql, dialect):
@@ -209,6 +222,9 @@ def map_dialect(dialect):
     return dialect_mapping.get(dialect.lower(), dialect.lower())
 
 def main():
+    # SQLGlot fallback warnings may echo the submitted SQL, including literals.
+    # The gateway captures stderr, but the standalone CLI must not log them either.
+    logging.getLogger("sqlglot").disabled = True
     # Read JSON input from stdin
     input_data = sys.stdin.read().strip()
 
@@ -233,12 +249,13 @@ def main():
             elif not target_dialect:
                 response = {'error': 'Missing target dialect in request'}
             else:
-                translated_sql = translate_sql(sql, source_dialect, target_dialect)
-
-                if translated_sql.startswith('ERROR:'):
-                    response = {'error': translated_sql}
-                else:
+                try:
+                    translated_sql = translate_sql_checked(sql, source_dialect, target_dialect)
                     response = {'translated_sql': translated_sql}
+                except (InvalidTranslationInput, ParseError, TokenError, UnsupportedError):
+                    response = {'error': 'SQL syntax or conversion is not supported; check the input and dialects', 'error_kind': 'invalid_input'}
+                except Exception:
+                    response = {'error': 'SQL translation runtime failed', 'error_kind': 'runtime_failure'}
 
         # Output JSON response
         print(json.dumps(response))
@@ -246,8 +263,8 @@ def main():
     except json.JSONDecodeError:
         error_response = {'error': 'Invalid JSON input'}
         print(json.dumps(error_response))
-    except Exception as e:
-        error_response = {'error': f'Unexpected error: {str(e)}'}
+    except Exception:
+        error_response = {'error': 'SQL translation runtime failed', 'error_kind': 'runtime_failure'}
         print(json.dumps(error_response))
 
 if __name__ == "__main__":

@@ -1,15 +1,18 @@
 """Regression coverage for the documented SQL v1 translation matrix."""
 import json
+import io
 import pathlib
 import re
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import sql_translate
 from sql_translate import analyze_sql, map_dialect, translate_sql
 
 
@@ -319,7 +322,7 @@ class SQLTranslationRegressionTests(unittest.TestCase):
 
     def test_cli_reports_translation_failures_as_json_errors(self):
         request = {
-            "sql": "SELECT FROM",
+            "sql": "SELECT 'private-sql-marker' FROM",
             "source_dialect": "mysql",
             "target_dialect": "trino",
         }
@@ -334,7 +337,30 @@ class SQLTranslationRegressionTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         response = json.loads(result.stdout)
         self.assertIn("error", response)
+        self.assertEqual("invalid_input", response.get("error_kind"))
+        self.assertNotIn("private-sql-marker", result.stdout + result.stderr)
         self.assertNotIn("translated_sql", response)
+
+    def test_cli_categorizes_unsupported_conversion(self):
+        request = {"sql": "SELECT APPROX_DISTINCT(a, 0.1) FROM foo", "source_dialect": "trino", "target_dialect": "hive"}
+        result = subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "sql_translate.py")],
+                                input=json.dumps(request), text=True, capture_output=True, check=True)
+        self.assertEqual("invalid_input", json.loads(result.stdout).get("error_kind"))
+
+    def test_cli_redacts_unexpected_runtime_failures(self):
+        request = {"sql": "SELECT 1", "source_dialect": "mysql", "target_dialect": "postgres"}
+        output = io.StringIO()
+        with patch.object(sys, "stdin", io.StringIO(json.dumps(request))), patch.object(sys, "stdout", output), \
+             patch.object(sql_translate, "transpile", side_effect=RuntimeError("private-runtime-marker")):
+            sql_translate.main()
+        self.assertEqual("runtime_failure", json.loads(output.getvalue()).get("error_kind"))
+        self.assertNotIn("private-runtime-marker", output.getvalue())
+
+    def test_cli_does_not_log_sqlglot_fallback_sql(self):
+        request = {"sql": "REPLACE INTO private_sql_marker (id) VALUES (1)", "source_dialect": "mysql", "target_dialect": "mysql"}
+        result = subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "sql_translate.py")],
+                                input=json.dumps(request), text=True, capture_output=True, check=True)
+        self.assertNotIn("private_sql_marker", result.stderr)
 
     def test_cli_returns_ast_facts_without_returning_sql(self):
         request = {

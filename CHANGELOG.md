@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Add opt-in OAuth discovery forwarding and an experimental PKCE helper for explicitly configured deployments. This does not establish automatic OAuth for every client (#587, #635, #639).
 
 ### Changed
+- Classify standalone SQL translation input errors as HTTP 400 (or 413 for oversized SQL), keep runtime failures as server errors, and redact parser details from REST/MCP errors. Clients previously treating all conversion failures as HTTP 500 should handle the new 4xx statuses (#647).
 - Standalone REST and MCP SQL translation now share the advertised dialect catalog and accept case-insensitive names plus `postgresql`/`tsql` aliases. MCP no longer accepts unadvertised dialect names merely because SQLGlot recognizes them; connector-internal query mappings are unchanged (#645).
 - Default the initial MCP query page to 100 rows instead of 10,000. Clients needing a larger page can request up to 10,000 explicitly; REST defaults are unchanged (#786).
 - Retain the last effective MCP page size across continuations and return normalized initial batch and timeout limits in REST and MCP responses (#771, #780).
