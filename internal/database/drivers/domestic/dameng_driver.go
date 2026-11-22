@@ -252,7 +252,10 @@ func (a *DaMengDBAdapter) GetCapabilities() drivers.DriverCapabilities {
 	}
 }
 func (a *DaMengDBAdapter) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	sql = strings.TrimSpace(sql)
+	sql, err := trimStatementTerminator(sql)
+	if err != nil {
+		return "", err
+	}
 
 	// Check if query already has pagination clauses
 	sqlUpper := strings.ToUpper(sql)
