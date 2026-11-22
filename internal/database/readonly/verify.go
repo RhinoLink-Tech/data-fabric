@@ -107,9 +107,11 @@ func mysqlPrivilegeWarnings(ctx context.Context, db *sql.DB) []string {
 	defer rows.Close()
 
 	seen := make(map[string]struct{})
+	incomplete := false
 	for rows.Next() {
 		var grant string
 		if err := rows.Scan(&grant); err != nil {
+			incomplete = true
 			continue
 		}
 		for _, match := range mysqlWritePrivileges.FindAllString(strings.ToUpper(grant), -1) {
@@ -119,9 +121,15 @@ func mysqlPrivilegeWarnings(ctx context.Context, db *sql.DB) []string {
 			seen[match] = struct{}{}
 		}
 	}
+	if rows.Err() != nil {
+		incomplete = true
+	}
 	warnings := make([]string, 0, len(seen))
 	for privilege := range seen {
 		warnings = append(warnings, fmt.Sprintf("account holds write or administrative privilege %q; use a least-privilege read-only account (docs/readonly-access.md)", privilege))
+	}
+	if incomplete {
+		warnings = append(warnings, "could not inspect account privileges: privilege inspection incomplete")
 	}
 	return warnings
 }
