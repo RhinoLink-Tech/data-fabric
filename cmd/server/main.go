@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -72,6 +73,20 @@ func main() {
 	vault, err := security.LoadCredentialVaultFromEnv()
 	if err != nil {
 		log.Fatal("Failed to load credential encryption keys: ", err)
+	}
+
+	auditLink := filepath.Base(os.Args[0]) == "credential-audit"
+	if auditLink || (len(os.Args) > 1 && os.Args[1] == "audit-source-credentials") {
+		auditArgs := os.Args[1:]
+		if !auditLink {
+			auditArgs = os.Args[2:]
+		}
+		count, err := auditSourceCredentials(cfg, vault, auditArgs)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Verified credentials for %d stored data sources\n", count)
+		return
 	}
 
 	// Check if MCP server mode is enabled

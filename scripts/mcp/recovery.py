@@ -260,6 +260,27 @@ def verify_running_credential_keyrings(directory: Path, env_path: Path, project_
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, binascii.Error):
         raise RecoveryError("unable to verify running API/MCP credential keyrings; no backup was published") from None
 
+def source_audit_supported(project_root: Path) -> bool:
+    # Git checkouts or supported release archives have already been matched to
+    # the candidate image revision before this capability check is used.
+    marker = project_root / "cmd" / "server" / "credential_audit.go"
+    return marker.is_file() and not marker.is_symlink()
+
+
+def audit_running_source_credentials(container: str) -> None:
+    # Run the dedicated executable in the already verified API container.
+    # It inherits the verified keyring, not shell/Compose overrides. Older
+    # images have no executable and are never invoked through /app/main.
+    try:
+        result = run(["docker", "exec", container, "/app/credential-audit"], timeout=150)
+    except RecoveryError:
+        raise RecoveryError("source credential audit could not run; no backup was published") from None
+    expected = re.compile(r"Verified credentials for [0-9]+ stored data sources")
+    if result.returncode or not any(expected.fullmatch(line) for line in result.stdout.splitlines()):
+        raise RecoveryError("source credential audit failed; check retained keys and source settings; no backup was published")
+    print("Stored data source credentials passed the running-keyring audit.")
+
+
 def candidate_image_identity(directory: Path, env_path: Path, project_name: str, running: list[str], image_ref: str,
                              source_revision: str) -> tuple[str, list[str]]:
     active_apps = [service for service in APP_SERVICES if service in running]
@@ -408,6 +429,10 @@ def backup(args: argparse.Namespace) -> int:
         if env_path.read_bytes() != env_snapshot:
             raise RecoveryError("deployment .env changed during backup preflight; retry")
         verified_containers = verify_running_credential_keyrings(directory, env_path, args.project_name, running, values)
+        if source_audit_supported(directory.parent.parent):
+            audit_running_source_credentials(verified_containers["data-fabric-api"])
+        else:
+            print("Legacy image does not support source credential audit; verify decryption in an isolated restore.")
         running_to_restore = [service for service in APP_SERVICES if service in running]
         if running_to_restore:
             compose_result(directory, env_path, args.project_name, "stop", "--timeout", "30", *running_to_restore)
