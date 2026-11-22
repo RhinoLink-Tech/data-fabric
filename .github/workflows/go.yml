@@ -613,6 +613,11 @@ jobs:
       - name: Run SQL translation regression tests
         run: python -m unittest discover -s scripts -p "test_sql_translate.py"
 
+      - name: Verify same-dialect translation through SQLGlot, REST and MCP
+        run: |
+          export DF_SQLGLOT_TEST_DIR="$(python -c 'import pathlib, sqlglot; print(pathlib.Path(sqlglot.__file__).parent.parent)')"
+          go test -count=1 ./internal/utils/sql_translator ./internal/controller ./internal/mcp -run '^(TestManagerSameDialectWithSQLGlot|TestSameDialectEndpointWithSQLGlot|TestSameDialectToolWithSQLGlot)$'
+
       - name: Test source archive checksum portability
         run: python -m unittest discover -s scripts/release -p "test_*.py"
 
