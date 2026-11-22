@@ -51,7 +51,7 @@ release 模式还要求管理认证、数据库只读会话和审计保持开启
 - validate_sql_query：对查询请求进行校验；可选 source_dialect。
 - list_tables：按数据源类型查询表名。关闭表策略时，PostgreSQL 使用数据源配置的 schema；未配置时使用 `public`。开启表策略时按已有元数据授权规则过滤。若不同 schema 有同名表，在 describe_table 中显式指定 `schema`。
 - describe_table：返回指定表的列名、数据库类型、可空性、主键和索引（#184）。先用 list_tables 枚举表，再用 describe_table 检查单表结构后再编写 SQL；驱动不支持元数据发现时明确报错，不会猜测表结构。
-- translate_sql：在支持的 SQL 方言之间转换 SQL。
+- translate_sql：在公开方言列表范围内转换 SQL；方言名忽略大小写和前后空格，`postgresql` 等同 `postgres`，`tsql` 等同 `sqlserver`。数据源类型的内部映射不代表它也是公开转换方言。
 - list_supported_dialects：列出转换器声明支持的方言。
 
 方言转换目前覆盖 MySQL、PostgreSQL、Trino、Spark、Oracle、SQL Server、Snowflake、SQLite、DuckDB 和 Redshift，并将部分兼容数据库名称映射到相应方言。实际转换能力取决于语句和目标数据库的语法；转换成功不等同于语义等价。

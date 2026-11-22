@@ -45,6 +45,12 @@ func TestSameDialectToolWithSQLGlot(t *testing.T) {
 			t.Fatalf("unexpected translation outcome for %q: %v", tc.sql, err)
 		}
 	}
+	for _, target := range []string{"PostgreSQL", " TSQL "} {
+		request := callToolRequest("translate_sql", map[string]any{"sql": "SELECT 1", "source_dialect": " MySQL ", "target_dialect": target})
+		if result, err := srv.handleTranslateSQL(context.Background(), request); err != nil || result == nil {
+			t.Fatalf("alias translation to %q failed: %v", target, err)
+		}
+	}
 }
 
 func TestSameDialectTranslationToolRejectsDisabledManager(t *testing.T) {

@@ -57,6 +57,8 @@ Errors use `success: false` and an `error` object containing `code`, `message`, 
 
 ## SQL and result contract
 
+Standalone `POST /api/v1/sql/translate` and `POST /api/v1/sql/validate` use the advertised translation dialect catalog. Names are case-insensitive and ignore surrounding whitespace; `postgresql` aliases `postgres`, and `tsql` aliases `sqlserver`. The equivalent MCP translation tool follows the same rules. These aliases do not imply support for every connector type as a standalone dialect.
+
 - `sql` must be one read-only `SELECT` statement accepted by the selected data source. Data Fabric validates queries before execution.
 - SQL uses the target data source dialect by default. Optional `sourceDialect` names the input dialect to translate into the target data source dialect for the supported syntax subset. This is not a promise of full SQL:2023 or identical support for every engine-specific function.
 - `parameters` optionally carries ordered bind values — null, boolean, number, or string — that the SQL driver binds to `?` (MySQL-family) or `$1..$N` (PostgreSQL-family) placeholders. Values are never interpolated into the SQL text, and the same bound values are reused for every continuation batch and for the row count. At most 64 values are accepted; composite values such as objects or arrays are rejected with a message naming the parameter index and type but never the value. Never concatenate untrusted values into `sql` — pass them in `parameters`.

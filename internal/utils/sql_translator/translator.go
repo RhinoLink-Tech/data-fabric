@@ -1,6 +1,9 @@
 package sql_translator
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // SQLTranslator defines the interface for SQL dialect translation
 type SQLTranslator interface {
@@ -31,6 +34,19 @@ const (
 	DuckDB      Dialect = "duckdb"
 	Redshift    Dialect = "redshift"
 )
+
+// NormalizeDialect canonicalizes the documented public spellings. Connector
+// type mappings are a separate concern and do not expand the public catalog.
+func NormalizeDialect(dialect string) string {
+	switch name := strings.ToLower(strings.TrimSpace(dialect)); name {
+	case "postgresql":
+		return string(PostgreSQL)
+	case "tsql":
+		return string(SQLServer)
+	default:
+		return name
+	}
+}
 
 // ValidationError represents an error when SQL validation fails
 type ValidationError struct {

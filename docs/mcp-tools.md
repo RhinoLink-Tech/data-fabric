@@ -24,7 +24,7 @@ client-visible contract change — update this page in the same PR.
 | `list_tables` | `datasource_id` | — | Enumerate tables in a data source. |
 | `describe_table` | `datasource_id`, `table_name` | `schema` | One table's columns, types, nullability, primary key, and indexes. Use `list_tables` first; pass `schema` when table names repeat across schemas. |
 | `search_schema` | `datasource_id`, `query` | `schema`, `limit` (default 10, max 20), `cursor` | Case-insensitive 2–128 character substring search over permitted catalog/schema/table names and visible column names/comments. Continue with the returned `next_cursor` and identical search inputs; comments themselves are not returned. |
-| `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects. |
+| `translate_sql` | `sql`, `source_dialect`, `target_dialect` | — | Translate SQL between dialects in the advertised catalog. Names ignore surrounding whitespace and case; `postgresql` aliases `postgres`, and `tsql` aliases `sqlserver`. Other connector-specific names are not implied to be public translation dialects. |
 | `list_supported_dialects` | — | — | Enumerate the dialects `translate_sql` accepts. |
 | `get_table_policy` | — | `revision` | Read the active policy, version and freshness, or inspect an immutable historical revision. Administrator role required. |
 | `validate_table_policy` | `policy_json` | — | Preflight a complete enabled table/column policy without publishing it. Administrator role required. |

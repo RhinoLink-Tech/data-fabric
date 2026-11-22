@@ -54,8 +54,8 @@ func (stm *SQLTranslationManager) TranslateQueryContext(ctx context.Context, sql
 	if strings.TrimSpace(sql) == "" {
 		return "", fmt.Errorf("empty SQL query")
 	}
-	sourceDialect = strings.ToLower(strings.TrimSpace(sourceDialect))
-	targetDialect = strings.ToLower(strings.TrimSpace(targetDialect))
+	sourceDialect = NormalizeDialect(sourceDialect)
+	targetDialect = NormalizeDialect(targetDialect)
 	if sourceDialect == "" {
 		return "", fmt.Errorf("empty source dialect")
 	}
@@ -67,6 +67,18 @@ func (stm *SQLTranslationManager) TranslateQueryContext(ctx context.Context, sql
 		return translator.TranslateContext(ctx, sql, sourceDialect, targetDialect)
 	}
 	return stm.translator.Translate(sql, sourceDialect, targetDialect)
+}
+
+// SupportsPublicDialect checks the advertised translation catalog after
+// normalization; connector-internal dialect mappings are intentionally separate.
+func (stm *SQLTranslationManager) SupportsPublicDialect(dialect string) bool {
+	dialect = NormalizeDialect(dialect)
+	for _, supported := range stm.GetSupportedDialects() {
+		if dialect == supported {
+			return true
+		}
+	}
+	return false
 }
 
 func (stm *SQLTranslationManager) GetSupportedDialects() []string {
@@ -84,6 +96,7 @@ func (stm *SQLTranslationManager) ValidateSQLContext(ctx context.Context, sql, d
 	if !stm.Enabled() {
 		return false, ErrSQLTranslationDisabled
 	}
+	dialect = NormalizeDialect(dialect)
 	if translator, ok := stm.translator.(contextSQLTranslator); ok {
 		return translator.ValidateContext(ctx, sql, dialect)
 	}

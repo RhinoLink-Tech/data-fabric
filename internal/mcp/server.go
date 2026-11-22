@@ -1000,6 +1000,15 @@ func (m *MCPServer) handleTranslateSQL(ctx context.Context, request mcp.CallTool
 	if targetDialect == "" {
 		return nil, fmt.Errorf("target_dialect parameter is required")
 	}
+	if !m.sqlTranslator.Enabled() {
+		return nil, sql_translator.ErrSQLTranslationDisabled
+	}
+	if !m.sqlTranslator.SupportsPublicDialect(sourceDialect) {
+		return nil, fmt.Errorf("unsupported source dialect")
+	}
+	if !m.sqlTranslator.SupportsPublicDialect(targetDialect) {
+		return nil, fmt.Errorf("unsupported target dialect")
+	}
 
 	// Translate the SQL
 	translatedSQL, err := m.sqlTranslator.TranslateQueryContext(ctx, sql, sourceDialect, targetDialect)
