@@ -39,7 +39,8 @@ of what the application sends.
 | TiDB (tested v8.5.8; other versions unverified) | No — verified server reports the generic read-only statement as unimplemented/no-op | SQL validation + least-privilege TiDB account; do not treat the shared MySQL protocol as proof of session enforcement |
 | PostgreSQL | Yes — standard behavior | `default_transaction_read_only=on` connection parameter |
 | openGauss 6.0.0 | Yes — verified for this pinned release; other versions unverified | `default_transaction_read_only=on` connection parameter |
-| GaussDB, KingbaseES, Oscar | Enabled; verify on your engine version | Same PostgreSQL-protocol parameter |
+| GaussDB (PostgreSQL mode), KingbaseES, Oscar | Enabled; verify on your engine version | Same PostgreSQL-protocol parameter |
+| GaussDB (MySQL mode) | No — pending live verification | MySQL wire adapter with SQL validation and least-privilege database account; session read-only behavior is unverified |
 | Doris, StarRocks, Hologres, Redshift | No — excluded pending live verification | Same wire protocol, but read-only behavior is not documented for these engines; SQL validation + least-privilege account only |
 | Oracle, SQL Server, Snowflake, Hive, MongoDB | No — no session-level read-only mode | SQL validation + least-privilege account only |
 | ClickHouse | No — the native protocol has no gateway read-only session initializer | SQL validation + least-privilege ClickHouse account |
@@ -120,7 +121,7 @@ The same response carries least-privilege warnings (see below).
 Use an account that can only read. Enforcement is defense-in-depth, not a
 substitute for a restricted account.
 
-**MySQL / MariaDB / TiDB / OceanBase (MySQL mode)**
+**MySQL / MariaDB / TiDB / OceanBase (MySQL mode) / GaussDB (MySQL mode)**
 
 ```sql
 CREATE USER 'fabric_ro'@'%' IDENTIFIED BY '<random>';
@@ -128,7 +129,7 @@ GRANT SELECT ON analytics.* TO 'fabric_ro'@'%';
 -- do not grant PROCESS, FILE, SUPER, or CREATE USER
 ```
 
-**PostgreSQL / GaussDB / KingbaseES / openGauss / Oscar**
+**PostgreSQL / GaussDB (PostgreSQL mode) / KingbaseES / openGauss / Oscar**
 
 ```sql
 CREATE ROLE fabric_ro LOGIN PASSWORD '<random>';

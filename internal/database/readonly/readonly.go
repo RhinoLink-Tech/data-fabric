@@ -82,11 +82,8 @@ var sessionModes = map[model.DatabaseType]Mode{
 	model.DatabaseTypeGBase8s:        ModeConnectorInit,
 	model.DatabaseTypeGBase8t:        ModeConnectorInit,
 
-	// PostgreSQL protocol (lib/pq): DSN session parameter. gaussdb_mysql is
-	// registered with the lib/pq driver in this repository, so it shares the
-	// PostgreSQL mechanism.
+	// PostgreSQL protocol (lib/pq): DSN session parameter.
 	model.DatabaseTypePostgreSQL:      ModeDSNParam,
-	model.DatabaseTypeGaussDBMySQL:    ModeDSNParam,
 	model.DatabaseTypeGaussDBPostgres: ModeDSNParam,
 	model.DatabaseTypeKingbaseES:      ModeDSNParam,
 	model.DatabaseTypeOpenGauss:       ModeDSNParam,

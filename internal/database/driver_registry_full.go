@@ -98,7 +98,7 @@ func (dr *DriverRegistry) registerDrivers() {
 		return &domestic.TDSQLDriver{}
 	})
 	dr.register(model.DatabaseTypeGaussDBMySQL, func() drivers.Driver {
-		return &domestic.GaussDBDriver{}
+		return &domestic.GaussDBMySQLDriver{}
 	})
 	dr.register(model.DatabaseTypeGaussDBPostgres, func() drivers.Driver {
 		return &domestic.GaussDBDriver{}

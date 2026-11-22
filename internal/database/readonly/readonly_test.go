@@ -125,7 +125,7 @@ func TestModeFor(t *testing.T) {
 		{"gbase_8s", model.DatabaseTypeGBase8s, ModeConnectorInit},
 		{"gbase_8t", model.DatabaseTypeGBase8t, ModeConnectorInit},
 		{"postgresql", model.DatabaseTypePostgreSQL, ModeDSNParam},
-		{"gaussdb_mysql", model.DatabaseTypeGaussDBMySQL, ModeDSNParam},
+		{"gaussdb_mysql", model.DatabaseTypeGaussDBMySQL, ModeUnsupported},
 		{"gaussdb_postgres", model.DatabaseTypeGaussDBPostgres, ModeDSNParam},
 		{"kingbasees", model.DatabaseTypeKingbaseES, ModeDSNParam},
 		{"opengauss", model.DatabaseTypeOpenGauss, ModeDSNParam},
