@@ -51,20 +51,16 @@ func (stm *SQLTranslationManager) TranslateQueryContext(ctx context.Context, sql
 	if !stm.Enabled() {
 		return "", ErrSQLTranslationDisabled
 	}
-	if sql == "" {
+	if strings.TrimSpace(sql) == "" {
 		return "", fmt.Errorf("empty SQL query")
 	}
+	sourceDialect = strings.ToLower(strings.TrimSpace(sourceDialect))
+	targetDialect = strings.ToLower(strings.TrimSpace(targetDialect))
 	if sourceDialect == "" {
 		return "", fmt.Errorf("empty source dialect")
 	}
 	if targetDialect == "" {
 		return "", fmt.Errorf("empty target dialect")
-	}
-
-	sourceDialect = strings.ToLower(strings.TrimSpace(sourceDialect))
-	targetDialect = strings.ToLower(strings.TrimSpace(targetDialect))
-	if sourceDialect == targetDialect {
-		return sql, nil
 	}
 
 	if translator, ok := stm.translator.(contextSQLTranslator); ok {
