@@ -495,7 +495,7 @@ func (cp *ConnectionPool) getConnectUrl(dbType model.DatabaseType, config *model
 	// translate into a verified transport. Check before read-only or egress
 	// paths can transform or open the DSN.
 	switch dbType {
-	case model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES,
+	case model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES, model.DatabaseTypeOceanBaseOracle,
 		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t,
 		model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres:
 		if err := driver.ValidateDSN(dsn); err != nil {

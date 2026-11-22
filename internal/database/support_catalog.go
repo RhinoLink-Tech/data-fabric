@@ -658,6 +658,10 @@ func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 			"The adapter reads one configured JSON object, array of records, or JSON Lines object from one bucket; directory scans, multiple objects, and streaming are not supported.",
 			"Objects are capped at 64 MiB and 100,000 records, downloaded into gateway memory, and exposed through a restricted read-only SQL subset. Only top-level scalar fields are supported by default; flatten_nested=true enables supported nested scalar fields.",
 			"The deterministic local protocol fixture does not establish compatibility with a live Alibaba OSS service release.")
+	case model.DatabaseTypeOceanBaseOracle:
+		profile.Limitations = append(profile.Limitations,
+			"Oracle-wire and session schema behavior requires validation against an actual OceanBase Oracle-mode release; an Oracle fixture does not establish OceanBase compatibility.",
+			"Explicit TLS settings are rejected until verified TLS mapping is implemented; use a suitably protected network.")
 	case model.DatabaseTypeAlibabaOSSParquet:
 		profile.Status = ConnectorStatusExperimental
 		profile.AuthenticationMethods = []string{"Alibaba Cloud access key and optional STS session token"}

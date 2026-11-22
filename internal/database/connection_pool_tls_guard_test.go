@@ -11,7 +11,7 @@ import (
 func TestDomesticConnectionPoolRejectsUnsupportedTLSBeforeOpening(t *testing.T) {
 	pool := NewConnectionPool(nil, nil, nil, true)
 	for _, dbType := range []model.DatabaseType{
-		model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES,
+		model.DatabaseTypeTDSQL, model.DatabaseTypeOscar, model.DatabaseTypeKingbaseES, model.DatabaseTypeOceanBaseOracle,
 		model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t,
 		model.DatabaseTypeGaussDBMySQL, model.DatabaseTypeGaussDBPostgres,
 	} {

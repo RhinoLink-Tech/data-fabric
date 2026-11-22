@@ -1254,6 +1254,12 @@ jobs:
           set -o pipefail
           go test ./internal/database/drivers/traditional -run '^TestOracleDriverContract$' -count=1 -v 2>&1 | tee -a "$RUNNER_TEMP/live-contract.log"
 
+      - name: Verify OceanBase Oracle adapter using an Oracle wire fixture
+        run: |
+          set -o pipefail
+          go test ./internal/database -run '^TestOceanBaseOracleWireAgainstOracleFixture$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/oceanbase-oracle-wire.log"
+          grep -q '^--- PASS: TestOceanBaseOracleWireAgainstOracleFixture ' "$RUNNER_TEMP/oceanbase-oracle-wire.log"
+
       - name: Require actual live contract results
         if: always()
         run: python3 scripts/ci/contract_checks.py require --job oracle-contract --log "$RUNNER_TEMP/live-contract.log"
