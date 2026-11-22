@@ -39,6 +39,9 @@ class BackupSnapshotTests(unittest.TestCase):
         self.manifest = None
         self.stop_action = None
         self.dump_action = None
+        self.audit_supported = True
+        self.audit_failure = False
+        self.audit_invalid_output = False
         self.healthy = {name: {"State": "running", "Health": "healthy"}
                         for name in (*recovery.APP_SERVICES, "metadata-db")}
 
@@ -58,6 +61,11 @@ class BackupSnapshotTests(unittest.TestCase):
         raise AssertionError(f"Unexpected compose operation: {args}")
 
     def fake_run(self, command, **kwargs):
+        if command[:2] == ["docker", "exec"] and command[-1] == "/app/credential-audit":
+            self.calls.append(("audit", command[2]))
+            return SimpleNamespace(returncode=1 if self.audit_failure else 0,
+                                   stdout="" if self.audit_failure or self.audit_invalid_output else "Verified credentials for 2 stored data sources\n",
+                                   stderr="synthetic-secret should not appear")
         if command[:2] == ["docker", "inspect"]:
             return SimpleNamespace(returncode=0, stdout="sha256:db|mysql:fixture", stderr="")
         if "start" in command:
@@ -91,6 +99,7 @@ class BackupSnapshotTests(unittest.TestCase):
                 (recovery, "compose_services", {"return_value": self.healthy}),
                 (recovery, "candidate_image_identity", {"return_value": ("sha256:image", [])}),
                 (recovery, "verify_running_credential_keyrings", {"return_value": dict(self.ids)}),
+                (recovery, "source_audit_supported", {"return_value": self.audit_supported}),
                 (recovery, "compose_result", {"side_effect": self.compose}),
                 (recovery, "run", {"side_effect": self.fake_run}),
                 (recovery.subprocess, "run", {"side_effect": self.subprocess_run}),
@@ -105,6 +114,33 @@ class BackupSnapshotTests(unittest.TestCase):
                             for call in self.calls))
         self.assertFalse(self.args.output.exists())
         self.assertIsNone(self.archived_env)
+
+    def test_failed_credential_audit_aborts_before_stopping(self):
+        self.audit_failure = True
+        with self.assertRaisesRegex(recovery.RecoveryError, "source credential audit failed") as caught:
+            self.execute()
+        self.assertNotIn("synthetic-secret", str(caught.exception))
+        self.assertIn(("audit", "api-id"), self.calls)
+        self.assertFalse(any(call[0] in ("stop", "start") for call in self.calls))
+        self.assertFalse(self.args.output.exists())
+
+    def test_audit_without_success_marker_aborts_before_stopping(self):
+        self.audit_invalid_output = True
+        with self.assertRaisesRegex(recovery.RecoveryError, "source credential audit failed"):
+            self.execute()
+        self.assertFalse(any(call[0] in ("stop", "start") for call in self.calls))
+        self.assertFalse(self.args.output.exists())
+
+    def test_successful_audit_runs_before_stopping(self):
+        self.assertEqual(self.execute(), 0)
+        audit = self.calls.index(("audit", "api-id"))
+        stop = next(i for i, call in enumerate(self.calls) if call[0] == "stop")
+        self.assertLess(audit, stop)
+
+    def test_legacy_profile_keeps_existing_backup_path(self):
+        self.audit_supported = False
+        self.assertEqual(self.execute(), 0)
+        self.assertFalse(any(call[0] == "audit" for call in self.calls))
 
     def test_container_replaced_after_stop_aborts_and_attempts_restart(self):
         def replace():
