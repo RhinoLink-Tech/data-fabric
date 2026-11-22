@@ -7,10 +7,6 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"strings"
 	"time"
-
-	"github.com/RhinoLink-Tech/data-fabric/internal/model"
-
-	_ "github.com/sijms/go-ora/v2"
 )
 
 // OceanBaseOracleDriver implements Driver interface for OceanBase in Oracle mode
@@ -34,7 +30,7 @@ type OceanBaseOracleConfig struct {
 
 // NewOceanBaseOracleDriver creates a new OceanBase Oracle mode driver
 func NewOceanBaseOracleDriver(config *OceanBaseOracleConfig) (*OceanBaseOracleDriver, error) {
-	if config.Host == "" {
+	if config == nil || config.Host == "" {
 		return nil, fmt.Errorf("host is required")
 	}
 
@@ -43,58 +39,8 @@ func NewOceanBaseOracleDriver(config *OceanBaseOracleConfig) (*OceanBaseOracleDr
 	}, nil
 }
 
-// Open opens a connection to OceanBase in Oracle mode
-func (d *OceanBaseOracleDriver) Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("oracle", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open OceanBase Oracle connection: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping OceanBase Oracle: %w", err)
-	}
-
-	return db, nil
-}
-
-// ValidateDSN validates the connection string
-func (d *OceanBaseOracleDriver) ValidateDSN(dsn string) error {
-	if dsn == "" {
-		return fmt.Errorf("DSN cannot be empty")
-	}
-	return nil
-}
-
-// GetDefaultPort returns the default OceanBase Oracle port
-func (d *OceanBaseOracleDriver) GetDefaultPort() int {
-	return 2883
-}
-
-// BuildDSN builds a connection string from configuration
-func (d *OceanBaseOracleDriver) BuildDSN(config *model.DataSourceConfig) string {
-	charset := d.config.Charset
-	if charset == "" {
-		charset = "AL32UTF8"
-	}
-
-	// Build Oracle-style connection string
-	dsn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s",
-		config.Username, config.Password, config.Host, config.Port, config.Database)
-
-	// Add schema if specified
-	if d.config.Schema != "" {
-		dsn += "?schema=" + d.config.Schema
-	}
-
-	// Add charset
-	dsn += "&charset=" + charset
-
-	return dsn
-}
+// GetDefaultPort returns the default OceanBase Oracle port.
+func (d *OceanBaseOracleDriver) GetDefaultPort() int { return 2883 }
 
 // GetDatabaseTypeName returns the database type name
 func (d *OceanBaseOracleDriver) GetDatabaseTypeName() string {

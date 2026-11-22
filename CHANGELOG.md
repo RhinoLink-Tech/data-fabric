@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Allow testing an edited data source with its retained server-side credentials, subject to the existing authorization checks (#768).
 - Verify running gateway credential keyrings against protected configuration and check stored credentials against historical keys before profile backup; release recovery remains a separate gate (#636, #522).
 ### Fixed
+- Build OceanBase Oracle connection URLs safely for registry-created drivers, apply an optional schema to each physical connection, and reject unsupported TLS requests instead of silently opening plaintext (#681, #682). Existing TLS-requesting configurations now fail explicitly.
 - Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
 - Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).
 - Reject signed or non-digit millisecond suffixes in Hudi instant times instead of silently normalizing them to a different time (#672).
