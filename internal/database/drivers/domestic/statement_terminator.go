@@ -3,6 +3,7 @@ package domestic
 import (
 	"errors"
 	"strings"
+	"unicode"
 )
 
 // errMultipleStatements is returned when a query handed to batch pagination
@@ -19,47 +20,68 @@ var errMultipleStatements = errors.New("batch pagination accepts a single statem
 func trimStatementTerminator(query string) (string, error) {
 	query = strings.TrimSpace(query)
 	terminator := -1
+	lastLineStart, lastLineEnd := -1, -1
 	for i := 0; i < len(query); i++ {
-		switch c := query[i]; {
+		c := query[i]
+		lineComment := c == '-' && i+1 < len(query) && query[i+1] == '-'
+		blockComment := c == '/' && i+1 < len(query) && query[i+1] == '*'
+		// After the terminator, only whitespace and comments may follow.
+		// Check before skipping quotes so trailing quoted tokens are rejected.
+		if terminator >= 0 && !isSQLSpace(c) && !lineComment && !blockComment {
+			return "", errMultipleStatements
+		}
+		switch {
 		case c == '\'' || c == '"':
-			// Skip a quoted literal or identifier; a doubled quote is an
-			// escaped quote and keeps the literal open.
+			closed := false
 			for i++; i < len(query); i++ {
 				if query[i] == c {
 					if i+1 < len(query) && query[i+1] == c {
 						i++
 						continue
 					}
+					closed = true
 					break
 				}
 			}
-		case c == '-' && i+1 < len(query) && query[i+1] == '-':
-			end := strings.IndexByte(query[i:], '\n')
+			if !closed {
+				return "", errors.New("unterminated SQL quote")
+			}
+		case lineComment:
+			end := strings.IndexAny(query[i:], "\r\n")
+			if terminator < 0 {
+				lastLineStart = i
+				lastLineEnd = len(query)
+				if end >= 0 {
+					lastLineEnd = i + end
+				}
+			}
 			if end < 0 {
 				i = len(query)
 			} else {
 				i += end
 			}
-		case c == '/' && i+1 < len(query) && query[i+1] == '*':
+		case blockComment:
 			end := strings.Index(query[i+2:], "*/")
 			if end < 0 {
-				i = len(query)
-			} else {
-				i += end + 3
+				return "", errors.New("unterminated SQL block comment")
 			}
+			i += end + 3
 		case c == ';':
-			if terminator >= 0 {
-				return "", errMultipleStatements
-			}
 			terminator = i
-		case terminator >= 0 && !isSQLSpace(c):
-			return "", errMultipleStatements
 		}
 	}
-	if terminator < 0 {
-		return query, nil
+	end := len(query)
+	if terminator >= 0 {
+		end = terminator
 	}
-	return strings.TrimSpace(query[:terminator]), nil
+	// Preserve a line boundary when the trimmed SQL ends in a -- comment,
+	// so generated pagination or the closing parenthesis is not commented out.
+	prefix := strings.TrimSpace(query[:end])
+	trimmedEnd := len(strings.TrimRightFunc(query[:end], unicode.IsSpace))
+	if lastLineStart >= 0 && lastLineStart < trimmedEnd && trimmedEnd <= lastLineEnd {
+		prefix += "\n"
+	}
+	return prefix, nil
 }
 
 func isSQLSpace(c byte) bool {

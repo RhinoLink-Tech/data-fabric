@@ -2,6 +2,7 @@ package domestic
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +54,42 @@ func TestDaMengApplyBatchPaginationRefusesMultipleStatements(t *testing.T) {
 		got, err := adapter.ApplyBatchPagination(sql, 100, 0)
 		if !errors.Is(err, errMultipleStatements) {
 			t.Fatalf("ApplyBatchPagination(%q) = %q, %v; want errMultipleStatements", sql, got, err)
+		}
+	}
+}
+
+func TestDaMengApplyBatchPaginationPreservesTrailingLineComment(t *testing.T) {
+	adapter := &DaMengDBAdapter{}
+	for _, tc := range []struct {
+		name   string
+		sql    string
+		offset int64
+	}{
+		{"first with terminator", "SELECT id FROM orders -- tail\n;", 0},
+		{"continuation without terminator", "SELECT id FROM orders -- tail", 200},
+		{"wrapped existing pagination", "SELECT id FROM orders OFFSET 5 ROWS -- tail\n;", 0},
+		{"CR line ending", "SELECT id FROM orders -- tail\r;", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := adapter.ApplyBatchPagination(tc.sql, 100, tc.offset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got, "-- tail\n") || !strings.Contains(got, "FETCH FIRST 100 ROWS ONLY") {
+				t.Fatalf("pagination was swallowed by the trailing comment: %q", got)
+			}
+		})
+	}
+}
+
+func TestDaMengPaginationRejectsTrailingTokensAndUnclosedSQL(t *testing.T) {
+	adapter := &DaMengDBAdapter{}
+	for _, query := range []string{
+		"SELECT 1; 'extra'", `SELECT 1; "extra"`,
+		"SELECT 'unterminated", "SELECT 1 /* unterminated",
+	} {
+		if got, err := adapter.ApplyBatchPagination(query, 100, 0); err == nil {
+			t.Fatalf("accepted invalid input %q: %q", query, got)
 		}
 	}
 }
