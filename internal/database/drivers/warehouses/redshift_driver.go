@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -67,9 +69,23 @@ func (d *RedshiftDriver) GetDefaultPort() int {
 
 // BuildDSN builds a connection string from configuration
 func (d *RedshiftDriver) BuildDSN(config *model.DataSourceConfig) string {
-	// Redshift DSN: host=%s port=%d dbname=%s user=%s password=%s
-	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s",
-		config.Host, config.Port, config.Database, config.Username, config.Password)
+	if config == nil || config.Port < 1 || config.Port > 65535 {
+		return ""
+	}
+	host := config.Host
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	if host == "" || strings.ContainsAny(host, " \t\r\n/?#@\\") || (strings.Contains(host, ":") && net.ParseIP(host) == nil) {
+		return ""
+	}
+	// Quote each lib/pq value, including empty values, to prevent connection
+	// option injection and preserve the previous behavior for empty fields.
+	quote := func(value string) string {
+		return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value) + "'"
+	}
+	// Do not set sslmode here: lib/pq's existing default remains in force.
+	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s", quote(host), config.Port, quote(config.Database), quote(config.Username), quote(config.Password))
 }
 
 // GetDatabaseTypeName returns the database type name
