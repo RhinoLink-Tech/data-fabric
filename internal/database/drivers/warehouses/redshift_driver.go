@@ -72,6 +72,11 @@ func (d *RedshiftDriver) BuildDSN(config *model.DataSourceConfig) string {
 	if config == nil || config.Port < 1 || config.Port > 65535 {
 		return ""
 	}
+	for _, value := range []string{config.Host, config.Username, config.Password, config.Database} {
+		if strings.ContainsRune(value, 0) {
+			return ""
+		}
+	}
 	host := config.Host
 	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
 		host = host[1 : len(host)-1]

@@ -43,7 +43,7 @@ func TestRedshiftDSNRoundTripsThroughPQ(t *testing.T) {
 }
 func TestRedshiftDSNRejectsInvalidHostOrPort(t *testing.T) {
 	d := &RedshiftDriver{}
-	for _, cfg := range []*model.DataSourceConfig{nil, {Host: "host?sslmode=disable", Port: 5439}, {Host: "host", Port: 0}, {Host: "host", Port: 65536}} {
+	for _, cfg := range []*model.DataSourceConfig{nil, {Host: "host?sslmode=disable", Port: 5439}, {Host: "host", Port: 0}, {Host: "host", Port: 65536}, {Host: "host", Port: 5439, Password: "bad\x00option"}, {Host: "host", Port: 5439, Database: "bad\x00name"}} {
 		if d.BuildDSN(cfg) != "" {
 			t.Fatal("invalid configuration produced a connection string")
 		}
