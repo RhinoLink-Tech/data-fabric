@@ -1,0 +1,45 @@
+name: Candidate profile recovery acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'deploy/mcp/reference/recovery_acceptance.go'
+      - 'deploy/mcp/reference/cmd/recovery-acceptance/**'
+      - 'scripts/mcp/recovery.py'
+      - 'scripts/mcp/onboard.py'
+      - 'deploy/mcp/docker-compose.yml'
+      - 'deploy/mcp/docker-compose.recovery.yml'
+      - '.github/workflows/recovery-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    name: Encrypted backup and fresh-volume recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+      - name: Exercise documented profile with isolated synthetic OIDC
+        shell: bash
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/recovery-acceptance | tee "$RUNNER_TEMP/recovery-acceptance.log"
+      - name: Save non-secret evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30
