@@ -99,6 +99,12 @@ func NewMCPServerWithTableAuthorizer(unifiedQueryService unifiedservice.UnifiedQ
 		server:              s,
 	}
 
+	// Record completed discovery without storing client-supplied parameters,
+	// tokens, session identifiers, or the returned tool definitions.
+	hooks.AddAfterListTools(func(ctx context.Context, _ any, _ *mcp.ListToolsRequest, _ *mcp.ListToolsResult) {
+		mcpServer.auditToolDiscovery(ctx)
+	})
+
 	// A per-process key binds schema continuations without exposing table names.
 	// If randomness is unavailable, a search that needs a continuation fails closed.
 	key := make([]byte, 32)
@@ -212,6 +218,32 @@ func (m *MCPServer) registerTools() {
 }
 
 func (m *MCPServer) SetAuditRecorder(recorder auditlog.Recorder) { m.auditRecorder = recorder }
+
+func (m *MCPServer) auditToolDiscovery(ctx context.Context) {
+	if m.auditRecorder == nil {
+		return
+	}
+	transport, _ := ctx.Value(auditTransportKey{}).(string)
+	if transport == "" {
+		transport = "mcp-stdio"
+	}
+	correlation, _ := ctx.Value(auditCorrelationIDKey{}).(string)
+	if correlation == "" {
+		correlation = uuid.NewString()
+	}
+	caller := callerFromContext(ctx)
+	event := auditlog.Event{
+		CorrelationID: correlation, ActorID: caller.UserID, TenantID: caller.TenantID,
+		Transport: transport, Operation: "tools/list", Decision: auditlog.DecisionAllow,
+		ReasonCode: "discovery_completed", Outcome: "success", OccurredAt: time.Now().UTC(),
+	}
+	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	if err := m.auditRecorder.Record(recordCtx, event); err != nil {
+		middleware.RecordAuditPersistenceFailure(transport)
+		slog.ErrorContext(recordCtx, "failed to persist MCP discovery audit event", "correlation_id", correlation, "error", err)
+	}
+}
 
 func (m *MCPServer) SetTablePolicyManager(manager *security.TablePolicyManager) {
 	if m == nil || manager == nil {
