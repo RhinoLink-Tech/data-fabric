@@ -48,6 +48,13 @@ to manage: scopes, current grants and operation-specific checks still apply.
 Older servers and calls without an identifiable caller may omit the field;
 do not infer ownership or permission from its absence.
 
+Newer source builds may also advertise `list_manageable_data_sources` when
+management is enabled. The tool checks the management scope and any configured
+current grant, then lists exact owner-and-tenant matches; administrators can
+see additional sources. Follow its pagination. Deletion still requires exact
+ownership for administrators, and each later operation rechecks authorization.
+Older deployments do not advertise this tool.
+
 The separate browser onboarding tools are experimental and opt-in in
 v2.1.0-preview.2; actual WorkBuddy end-to-end acceptance remains outstanding. When deployed and advertised, they start a
 separately authenticated browser flow and report its status; credentials are
