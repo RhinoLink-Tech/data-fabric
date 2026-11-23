@@ -6,6 +6,14 @@ This runbook covers the current single-host profile: MySQL metadata, a pinned Da
 
 The backup contains the deployment `.env` and the complete `data_fabric` metadata database. Treat the encrypted archive as a secret. The metadata rows contain encrypted source credentials; they are useful only with every key in the recorded keyring. A syntactically valid keyring does not prove that every stored credential can be decrypted, so the restore rehearsal includes a selected-source connection check.
 
+## Automated candidate rehearsal
+
+The repository's [candidate recovery workflow](../../.github/workflows/recovery-acceptance.yml) runs on GitHub-hosted infrastructure and can be started from the Actions page or with `gh workflow run recovery-acceptance.yml --ref master`. Check the workflow's actual source SHA before associating its result with a candidate.
+
+The workflow builds that SHA's image and uses a fresh Compose project, synthetic MySQL data, and a test-only TLS OIDC issuer. It tests an authorized MCP read and cross-tenant denial, encrypted backup and verification, wrong-key and corrupted-archive rejection, original-service restart, and a fresh-checkout/fresh-volume restore followed by the same access checks. The temporary issuer is a test fixture, not an included production identity service.
+
+A passing run is synthetic source-candidate evidence. It does not test your own backup, credentials, business-source databases or identity provider; it does not establish published-image recovery, every upgrade path, policy history, production recovery time or independent adoption. Rehearse and verify your own deployment as described below.
+
 ## Prerequisites and key custody
 
 - Python 3.10+, Docker Engine with Docker Compose 2.24+, and `age`. Use either a clean Git checkout of the exact candidate revision or the explicitly supported, verified release archive described below.
