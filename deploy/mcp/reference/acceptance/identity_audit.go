@@ -17,14 +17,15 @@ import (
 )
 
 type sourceInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Status   string `json:"status"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Database string `json:"database"`
-	Config   *struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	Status        string `json:"status"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Database      string `json:"database"`
+	OwnedByCaller *bool  `json:"owned_by_caller"`
+	Config        *struct {
 		Host     string `json:"host"`
 		Port     int    `json:"port"`
 		Database string `json:"database"`
@@ -80,6 +81,11 @@ func discoverSources(ctx context.Context, w wire) error {
 					info.Name == "reference-"+key && info.Status == "active"
 			}) {
 				return fmt.Errorf("missing or unstable %s identity", key)
+			}
+			if w.kind == mcpHTTP && !slices.ContainsFunc(list, func(info sourceInfo) bool {
+				return info.ID == source.ID && info.OwnedByCaller != nil && *info.OwnedByCaller == (actor == "app-a")
+			}) {
+				return fmt.Errorf("incorrect ownership indicator for %s", key)
 			}
 		}
 		for key, source := range w.env.TenantBSources {

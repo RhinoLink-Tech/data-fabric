@@ -123,7 +123,7 @@ func (m *MCPServer) registerTools() {
 
 	// Tool to list available data sources
 	listDataSourcesTool := mcp.NewTool("list_data_sources",
-		mcp.WithDescription("List a page of data sources visible to the caller. If has_more is true, call again with offset=next_offset; results may change when sources or permissions change."),
+		mcp.WithDescription("List a page of data sources visible to the caller. When present, owned_by_caller identifies the caller's exact owner and tenant match; it does not grant management permission. If has_more is true, call again with offset=next_offset; results may change when sources or permissions change."),
 		mcp.WithNumber("limit", mcp.Description("Page size, integer 1–1000; default 1000")),
 		mcp.WithNumber("offset", mcp.Description("Starting offset, nonnegative integer; default 0")))
 	m.addTool("list_data_sources", listDataSourcesTool, m.handleListDataSources)
@@ -379,6 +379,8 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 	// Restrict every page to the caller's current source visibility.
 	caller := callerFromContext(ctx)
 	scope := repository.ScopeForCaller(caller)
+	identity, identified := ctx.Value(callerContextKey{}).(*security.Caller)
+	identified = identified && identity != nil && strings.TrimSpace(identity.UserID) != "" && identity.UserID != security.SystemUserID
 	dataSources, total, err := m.datasourceRepo.GetAll(ctx, scope, "", limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list data sources: %w", err)
@@ -396,6 +398,13 @@ func (m *MCPServer) handleListDataSources(ctx context.Context, request mcp.CallT
 			"database":   ds.Config.Database,
 			"created_at": ds.CreatedAt,
 			"updated_at": ds.UpdatedAt,
+		}
+		// Ownership is informational: management scopes, grants and each
+		// operation's authorization are checked separately at execution time.
+		// Omit it when there is no identifiable caller instead of suggesting
+		// that an authorization-disabled or anonymous caller owns a source.
+		if identified {
+			dsMap["owned_by_caller"] = ds.OwnerID == identity.UserID && ds.TenantID == identity.TenantID
 		}
 		result = append(result, dsMap)
 	}

@@ -20,6 +20,13 @@ Use source IDs returned by discovery. `data_sources` can be `null` when
 current caller are returned. Connection credentials are not returned by these
 tools, and this skill contains none.
 
+When `owned_by_caller` is present, it indicates whether the source's owner and
+tenant exactly match the current caller. `false` can mean a source is shared
+with the caller. Ownership alone does not grant management permission: scope,
+current grants and operation-specific authorization are checked by the server.
+Older servers and calls without an identifiable caller may omit this field;
+do not infer ownership or permission from its absence.
+
 Table metadata may also include `primaryKey`, `indexes`, `foreignKeys`, and
 table `properties`. Enumerate tables before describing a selected table.
 Supply a discovered schema when the same table name occurs in multiple
