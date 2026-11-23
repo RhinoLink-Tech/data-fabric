@@ -1,6 +1,6 @@
 # 自托管 MCP Profile 备份与恢复
 
-> **Preview.2 限制：**下方源码归档白名单识别 preview.1，不识别 preview.2。preview.2 随附的工具未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）；使用干净 Git checkout 不能单独消除该风险。迁移有价值的数据前，请独立核对实际密钥并演练恢复，不要依赖未经验证的备份。
+> **Preview.2：**随附的恢复工具未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）。请使用下方放在解压目录之外的更新工具。新版可以校验 preview.2 官方源码包身份；该版本归档备份和恢复的端到端演练尚未完成。依赖备份前，请独立核对保留密钥并演练恢复。
 
 本文覆盖当前单机 profile：MySQL 元数据库、固定身份的 Data Fabric 镜像、credential-vault keyring 和 OIDC 配置。操作时使用备份清单记录的不可变候选版本。流程不备份业务源数据库、查询结果、活动游标、日志或 TLS 私钥。
 
@@ -40,18 +40,18 @@ python3 scripts/mcp/recovery.py backup \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
 ```
 
-### 另一种方式：已发布的 v2.1.0-preview.1 源码压缩包
+### 另一种方式：已发布的 v2.1.0-preview.1 或 preview.2 源码压缩包
 
-原 Preview 压缩包中的恢复工具是旧版。压缩包安装请使用[本文档对应 revision 的新版 recovery.py](../../scripts/mcp/recovery.py)（打开链接后保存 Raw 文件），并放在**解压目录之外**。同时保留原始下载压缩包和解压后的文件。工具目前按精确 SHA-256 识别公开的 `v2.1.0-preview.1` 压缩包，并在停止服务或导出数据之前核对所有归档项目文件及其可执行位、发布镜像引用和镜像 revision。文件被修改、缺失、指向符号链接，或压缩包、镜像不匹配时会停止；不要修改解压的发布文件。
+原 Preview 压缩包中的恢复工具是旧版。压缩包安装请使用[本文档对应 revision 的新版 recovery.py](../../scripts/mcp/recovery.py)（打开链接后保存 Raw 文件），并放在**解压目录之外**。同时保留原始下载压缩包和解压后的文件。新版工具按精确 SHA-256 识别公开的 `v2.1.0-preview.1` 和 `v2.1.0-preview.2` 压缩包，并在停止服务或导出数据之前核对所有归档项目文件及其可执行位、发布镜像引用和镜像 revision。文件被修改、缺失、指向符号链接，或压缩包、镜像不匹配时会停止；不要修改解压的发布文件。
 
 ```bash
 export DF_RECOVERY_HELPER=/path/outside/the/extracted/tree/recovery.py
-export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.1-source.tar.gz
-export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.1
+export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.2-source.tar.gz
+export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.2
 python3 "$DF_RECOVERY_HELPER" backup \
   --directory "$DF_SOURCE_ROOT/deploy/mcp" \
   --release-source-archive "$DF_RELEASE_ARCHIVE" \
-  --project-name data-fabric-preview1 \
+  --project-name data-fabric-preview2 \
   --recipient "$(cat /secure/recovery/data-fabric.recipients)" \
   --staging-dir /mnt/encrypted-staging/data-fabric \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
@@ -100,7 +100,7 @@ python3 "$DF_RECOVERY_HELPER" restore \
   --archive /mnt/encrypted-backups/data-fabric/profile-20261108T000000Z.age \
   --identity-file /secure/recovery/data-fabric.agekey \
   --staging-dir /mnt/encrypted-staging/data-fabric \
-  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.1/deploy/mcp \
+  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.2/deploy/mcp \
   --release-source-archive "$DF_RELEASE_ARCHIVE" \
   --project-name data-fabric-restore-20261108 \
   --api-port 18080 --mcp-port 18443
