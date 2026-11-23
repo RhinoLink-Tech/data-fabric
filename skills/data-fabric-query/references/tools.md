@@ -46,12 +46,21 @@ source and operation with the user before making changes.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
+| `list_manageable_data_sources` | Optional `limit`, `offset` | A page of management-eligible source IDs, names, types, statuses and `owned_by_caller`. Follow `next_offset` while `has_more` is true. |
 | `rename_data_source` | `datasource_id`, `name` | Source ID, name and status. |
 | `set_data_source_status` | `datasource_id`, `status` (`active` or `inactive`) | Source ID and resulting status. |
 | `test_data_source_connection` | `datasource_id` | Source ID and connection success; MySQL/PostgreSQL and opt-in restricted MariaDB only. Ordinary deployments reject TLS connection tests; a service with the restricted onboarding policy supports verified TLS. PostgreSQL connection testing is disabled when protocol debugging is enabled. |
 | `delete_data_source` | `datasource_id`, `confirmation_name` | Source ID and deletion result; exact name required. |
 
-These existing-source tools do not create sources or change connection settings. Delete is permanent; the client must obtain explicit human confirmation of the source name and ID independently. The server's name check cannot establish that a person confirmed.
+The management inventory requires the management scope and any configured
+current grant. Non-admins see only their exact owner-and-tenant matches; admins
+may see more, but deletion still requires ownership. Its result is a point in
+time, not a guarantee that a later mutation will succeed. Older servers may
+not advertise this tool: do not infer management permission from a visible
+source or from `owned_by_caller`. These existing-source tools do not create
+sources or change connection settings. Delete is permanent; the client must
+obtain explicit human confirmation of the source name and ID independently. The
+server's name check cannot establish that a person confirmed.
 
 ## Add a source through the separately authenticated browser
 

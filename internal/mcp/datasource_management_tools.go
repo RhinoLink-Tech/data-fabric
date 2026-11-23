@@ -25,6 +25,10 @@ func (m *MCPServer) SetDataSourceManagementService(s service.DataSourceService) 
 		return
 	}
 	m.datasourceService = s
+	m.addTool("list_manageable_data_sources", mcp.NewTool("list_manageable_data_sources",
+		mcp.WithDescription("List sources eligible for management by the current caller at this moment. Requires data-fabric.sources.manage and the current management grant when configured. Non-admins see only sources they own in their exact tenant; admins can see all. Deletion still requires exact ownership even for admins. Every operation rechecks authorization and can fail after changes. Follow next_offset while has_more is true."),
+		mcp.WithNumber("limit", mcp.Description("Page size, integer 1–1000; default 1000")),
+		mcp.WithNumber("offset", mcp.Description("Starting offset, nonnegative integer; default 0"))), m.requireManagementGrant(m.handleListManageableDataSources, ""))
 	m.addTool("delete_data_source", mcp.NewTool("delete_data_source",
 		mcp.WithDescription("Permanently remove an owned source after explicit user confirmation. Requires data-fabric.sources.manage; confirmation_name must exactly match the source name."),
 		mcp.WithString("datasource_id", mcp.Required()), mcp.WithString("confirmation_name", mcp.Required())), m.requireManagementGrant(m.handleDeleteDataSource, "datasource.delete"))
@@ -113,6 +117,58 @@ func (m *MCPServer) managementCaller(ctx context.Context) *security.Caller {
 	}
 	return nil
 }
+
+func (m *MCPServer) handleListManageableDataSources(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	caller := m.managementCaller(ctx)
+	if caller == nil {
+		auditlog.MarkDecision(ctx, auditlog.DecisionDeny, "source_management_scope_required")
+		return mcp.NewToolResultError("source management permission required"), nil
+	}
+	if _, ok := m.datasourceService.(service.ScopedSourceManagement); !ok {
+		return mcp.NewToolResultError("source management inventory unavailable"), nil
+	}
+	const maxOffset = 2147482647
+	limit, offset := 1000, 0
+	for name, raw := range req.GetArguments() {
+		if name != "limit" && name != "offset" {
+			return mcp.NewToolResultError("provide only limit and offset"), nil
+		}
+		value, valid := mcpPolicyRevision(raw)
+		if !valid || (name == "limit" && (value < 1 || value > 1000)) || (name == "offset" && (value < 0 || value > maxOffset)) {
+			return mcp.NewToolResultError("limit must be an integer from 1 to 1000 and offset a supported nonnegative integer"), nil
+		}
+		if name == "limit" {
+			limit = int(value)
+		} else {
+			offset = int(value)
+		}
+	}
+	lister, ok := m.datasourceRepo.(repository.ManageableSourceLister)
+	if !ok {
+		return mcp.NewToolResultError("source management inventory unavailable"), nil
+	}
+	sources, total, err := lister.ListManageableSources(ctx, repository.SourceWriteScope{OwnerID: caller.UserID, TenantID: caller.TenantID, Admin: caller.IsAdmin()}, limit, offset)
+	if err != nil {
+		return mcp.NewToolResultError("source management inventory unavailable"), nil
+	}
+	result := make([]map[string]any, 0, len(sources))
+	for _, source := range sources {
+		result = append(result, map[string]any{
+			"id": source.ID, "name": source.Name, "type": source.Type, "status": source.Status,
+			"owned_by_caller": source.OwnerID == caller.UserID && source.TenantID == caller.TenantID,
+		})
+	}
+	hasMore := len(result) > 0 && int64(offset)+int64(len(result)) < total
+	if hasMore && offset+len(result) > maxOffset {
+		return mcp.NewToolResultError("source management inventory exceeds the supported pagination range"), nil
+	}
+	response := map[string]any{"data_sources": result, "count": len(result), "total": total, "offset": offset, "limit": limit, "has_more": hasMore}
+	if hasMore {
+		response["next_offset"] = offset + len(result)
+	}
+	return mcpTablePolicyJSON(response)
+}
+
 func managementArgs(args map[string]any, second string) (string, string, bool) {
 	if len(args) != 2 {
 		return "", "", false

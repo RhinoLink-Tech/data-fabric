@@ -128,6 +128,21 @@ func TestScopedManagementMySQLConcurrentContract(t *testing.T) {
 	if err = repo.Create(ctx, second); err != nil {
 		t.Fatal(err)
 	}
+	lister := repo.(ManageableSourceLister)
+	page, total, err := lister.ListManageableSources(ctx, scope, 1, 0)
+	if err != nil || total != 2 || len(page) != 1 {
+		t.Fatalf("owner inventory page: total=%d len=%d err=%v", total, len(page), err)
+	}
+	for _, other := range []SourceWriteScope{{OwnerID: "ALICE", TenantID: "a"}, {OwnerID: "alice", TenantID: "A"}, {OwnerID: "alice ", TenantID: "a"}, {OwnerID: "e", TenantID: "\u00e9"}} {
+		page, total, err := lister.ListManageableSources(ctx, other, 10, 0)
+		if err != nil || total != 0 || len(page) != 0 {
+			t.Fatalf("non-exact inventory: scope=%+v total=%d len=%d err=%v", other, total, len(page), err)
+		}
+	}
+	page, total, err = lister.ListManageableSources(ctx, SourceWriteScope{OwnerID: "admin", Admin: true}, 10, 0)
+	if err != nil || total != 3 || len(page) != 3 {
+		t.Fatalf("admin inventory: total=%d len=%d err=%v", total, len(page), err)
+	}
 	if _, err = mutator.RenameSourceScoped(ctx, scope, source.ID, "collision"); !errors.Is(err, ErrDataSourceExists) {
 		t.Fatalf("unique collision: %v", err)
 	}
