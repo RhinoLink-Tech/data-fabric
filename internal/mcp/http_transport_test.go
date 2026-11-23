@@ -124,6 +124,42 @@ func TestStreamableHTTPAuthenticationAndDataSourceScope(t *testing.T) {
 		}
 	})
 
+	t.Run("successful discovery is audited without request contents", func(t *testing.T) {
+		token, err := jwtManager.GenerateToken("discovery-user", "team-a", "discovery-user", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := client.NewStreamableHttpClient(mcpTestURL, transport.WithHTTPBasicClient(httpClient), transport.WithHTTPHeaders(map[string]string{
+			"Authorization": "Bearer " + token, "X-Correlation-ID": "discovery-audit-test",
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		ctx := context.Background()
+		if err := c.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION, ClientInfo: mcp.Implementation{Name: "test-client", Version: "1"}}}); err != nil {
+			t.Fatal(err)
+		}
+		result, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+		if err != nil || result == nil || len(result.Tools) == 0 {
+			t.Fatalf("tools/list failed: %v", err)
+		}
+		page, err := auditStore.List(ctx, auditlog.Filter{ActorID: "discovery-user", Transport: "mcp-http", Operation: "tools/list", CorrelationID: "discovery-audit-test"})
+		if err != nil || page.Total != 1 {
+			t.Fatalf("discovery audit count=%d error=%v", page.Total, err)
+		}
+		event := page.Events[0]
+		if event.TenantID != "team-a" || event.Decision != auditlog.DecisionAllow || event.Outcome != "success" || event.ReasonCode != "discovery_completed" {
+			t.Fatalf("unexpected discovery audit metadata: %+v", event)
+		}
+		if event.DataSourceID != "" || event.QueryFingerprint != "" || len(event.Tables) != 0 {
+			t.Fatal("discovery event must not contain request or source details")
+		}
+	})
+
 	callQuery := func(t *testing.T, userID, tenantID, sql string) (*mcp.CallToolResult, *security.Caller) {
 		t.Helper()
 		token, err := jwtManager.GenerateToken(userID, tenantID, userID, nil)

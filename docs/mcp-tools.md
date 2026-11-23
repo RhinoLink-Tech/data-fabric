@@ -7,6 +7,13 @@ registered tool must be documented here, and every tool documented here
 must be registered. Changing a tool's name or required parameters is a
 client-visible contract change — update this page in the same PR.
 
+When audit recording is configured, a successfully handled MCP `tools/list`
+request records a `tools/list` event with the caller, transport, correlation ID,
+and outcome. It does not store the request body, session ID, token, or returned
+tool definitions. This event shows that the server completed discovery; it
+does not prove the client received or retained the response. Audit persistence
+failures follow the existing best-effort audit policy.
+
 ## Tools
 
 | Tool | Required | Optional | Purpose |
