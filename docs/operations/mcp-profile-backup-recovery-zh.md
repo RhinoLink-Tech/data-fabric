@@ -1,6 +1,6 @@
 # 自托管 MCP Profile 备份与恢复
 
-> **Preview.2：**随附的恢复工具未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）。请使用下方放在解压目录之外的更新工具。新版可以校验 preview.2 官方源码包身份；该版本归档备份和恢复的端到端演练尚未完成。依赖备份前，请独立核对保留密钥并演练恢复。
+> **Preview.2：**随附的恢复工具未验证运行中的 API/MCP 凭证密钥环是否与备份的 `.env` 一致（[#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)）。请使用下方放在解压目录之外的更新工具。新版已使用官方 preview.2 源码包、精确发布镜像和合成身份服务完成加密备份及新数据卷恢复[合成环境演练](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/45110271796)；旧镜像不能审计所有历史密钥对应的已存凭证。依赖备份前，请独立核对保留密钥并演练恢复。
 
 本文覆盖当前单机 profile：MySQL 元数据库、固定身份的 Data Fabric 镜像、credential-vault keyring 和 OIDC 配置。操作时使用备份清单记录的不可变候选版本。流程不备份业务源数据库、查询结果、活动游标、日志或 TLS 私钥。
 

@@ -6,6 +6,7 @@ package reference
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -46,7 +47,26 @@ services:
 // RecoveryAcceptance uses fresh checkouts, an exact-revision local image,
 // generated test identities, age and newly named Compose projects. It cannot
 // operate on a local user's existing deployment.
-func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err error) {
+func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) error {
+	return recoveryAcceptance(ctx, repo, "", out)
+}
+
+// Preview2RecoveryAcceptance uses the immutable published image and source
+// archive, with the current recovery helper kept outside the extracted tree.
+func Preview2RecoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io.Writer) error {
+	if releaseArchive == "" {
+		return fmt.Errorf("preview.2 source archive is required")
+	}
+	return recoveryAcceptance(ctx, repo, releaseArchive, out)
+}
+
+const (
+	preview2ArchiveSHA = "111cb47df04b1b30abbf714e8bcf71660441aa9ad80426849a1138efe3b7be75"
+	preview2SourceSHA  = "281260f6c2000419222e55a99e984b8dd5094ab8"
+	preview2Image      = "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.2@sha256:c3e6b06848931b84610bcb399d3eec126a5a4f2317e4238f27b7fdc458e8520e"
+)
+
+func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io.Writer) (err error) {
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		return fmt.Errorf("recovery acceptance only runs on an isolated GitHub Actions runner")
 	}
@@ -87,20 +107,46 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 	}
 	source := filepath.Join(temp, "source")
 	target := filepath.Join(temp, "restored")
-	if err := recoveryClone(ctx, repo, source, revision); err != nil {
-		return err
+	artifactRevision := revision
+	configRevision := revision
+	if releaseArchive != "" {
+		releaseArchive, err = filepath.Abs(releaseArchive)
+		if err != nil {
+			return err
+		}
+		configRevision = "unknown"
 	}
-	if err := recoveryClone(ctx, repo, target, revision); err != nil {
-		return err
+	if releaseArchive == "" {
+		if err := recoveryClone(ctx, repo, source, revision); err != nil {
+			return err
+		}
+		if err := recoveryClone(ctx, repo, target, revision); err != nil {
+			return err
+		}
+	} else {
+		artifactRevision = preview2SourceSHA
+		if err := recoveryExtractPreview2(ctx, releaseArchive, source); err != nil {
+			return err
+		}
+		if err := recoveryExtractPreview2(ctx, releaseArchive, target); err != nil {
+			return err
+		}
 	}
 	tag := "df-recovery-" + randomHex(6)
 	originalProject, restoredProject := tag+"-source", tag+"-restore"
 	image := tag + ":candidate"
+	if releaseArchive != "" {
+		image = preview2Image
+	}
 	imageBuilt := false
 	vars := map[string]string{"DF_RECOVERY_FIXTURE_DIR": fixture}
 	compose := func(root, project string, args ...string) (string, error) {
 		deploy := filepath.Join(root, "deploy", "mcp")
-		command := []string{"compose", "--project-name", project, "--env-file", filepath.Join(deploy, ".env"), "-f", filepath.Join(deploy, "docker-compose.yml"), "-f", filepath.Join(deploy, "docker-compose.recovery.yml"), "-f", overlay}
+		command := []string{"compose", "--project-name", project, "--env-file", filepath.Join(deploy, ".env"), "-f", filepath.Join(deploy, "docker-compose.yml")}
+		if releaseArchive != "" {
+			command = append(command, "-f", filepath.Join(deploy, "docker-compose.release.yml"))
+		}
+		command = append(command, "-f", filepath.Join(deploy, "docker-compose.recovery.yml"), "-f", overlay)
 		return recoveryCommand(ctx, deploy, vars, nil, "docker", append(command, args...)...)
 	}
 	defer func() {
@@ -109,7 +155,12 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 		for _, item := range []struct{ root, project string }{{source, originalProject}, {target, restoredProject}} {
 			deploy := filepath.Join(item.root, "deploy", "mcp")
 			if _, statErr := os.Stat(filepath.Join(deploy, ".env")); statErr == nil {
-				_, cleanupErr := recoveryCommand(cleanupCtx, deploy, vars, nil, "docker", "compose", "--project-name", item.project, "--env-file", filepath.Join(deploy, ".env"), "-f", filepath.Join(deploy, "docker-compose.yml"), "-f", filepath.Join(deploy, "docker-compose.recovery.yml"), "-f", overlay, "down", "--volumes", "--remove-orphans")
+				args := []string{"compose", "--project-name", item.project, "--env-file", filepath.Join(deploy, ".env"), "-f", filepath.Join(deploy, "docker-compose.yml")}
+				if releaseArchive != "" {
+					args = append(args, "-f", filepath.Join(deploy, "docker-compose.release.yml"))
+				}
+				args = append(args, "-f", filepath.Join(deploy, "docker-compose.recovery.yml"), "-f", overlay, "down", "--volumes", "--remove-orphans")
+				_, cleanupErr := recoveryCommand(cleanupCtx, deploy, vars, nil, "docker", args...)
 				if cleanupErr != nil {
 					err = errors.Join(err, fmt.Errorf("cleanup of isolated recovery project failed"))
 				}
@@ -127,19 +178,30 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 		return err
 	}
 	if err := recoveryConfigure(filepath.Join(deploy, ".env"), map[string]string{
-		"DATA_FABRIC_IMAGE": image, "DATA_FABRIC_SOURCE_REVISION": revision,
+		"DATA_FABRIC_IMAGE": image, "DATA_FABRIC_SOURCE_REVISION": configRevision,
 		"MCP_OIDC_ISSUER": issuerURL, "MCP_OIDC_AUDIENCE": audience,
 		"API_PORT": "18080", "MCP_HTTPS_PORT": "18443",
 	}); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Building exact-revision candidate image")
-	if _, err := recoveryCommand(ctx, source, nil, nil, "docker", "build", "--quiet", "--tag", image, "--build-arg", "DATA_FABRIC_VERSION=ci", "--build-arg", "DATA_FABRIC_SOURCE_REVISION="+revision, "."); err != nil {
-		return err
+	if releaseArchive == "" {
+		fmt.Fprintln(out, "Building exact-revision candidate image")
+		if _, err := recoveryCommand(ctx, source, nil, nil, "docker", "build", "--quiet", "--tag", image, "--build-arg", "DATA_FABRIC_VERSION=ci", "--build-arg", "DATA_FABRIC_SOURCE_REVISION="+revision, "."); err != nil {
+			return fmt.Errorf("build candidate: %w", err)
+		}
+	} else {
+		fmt.Fprintln(out, "Pulling the published preview.2 image by immutable digest")
+		if _, err := recoveryCommand(ctx, source, nil, nil, "docker", "pull", image); err != nil {
+			return fmt.Errorf("pull published image: %w", err)
+		}
 	}
 	imageBuilt = true
+	fmt.Fprintln(out, "Pulling the documented synthetic MySQL image on the CI runner")
+	if _, err := compose(source, originalProject, "pull", "metadata-db", "sample-source"); err != nil {
+		return fmt.Errorf("pull synthetic database image: %w", err)
+	}
 	fmt.Fprintln(out, "Starting documented profile with isolated synthetic issuer")
-	if _, err := compose(source, originalProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build"); err != nil {
+	if _, err := compose(source, originalProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build", "--pull", "never"); err != nil {
 		return err
 	}
 	values, err := recoveryEnv(filepath.Join(deploy, ".env"))
@@ -183,10 +245,27 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 		return err
 	}
 	archive := filepath.Join(temp, "profile.age")
-	helper := filepath.Join(source, "scripts", "mcp", "recovery.py")
+	helper := filepath.Join(repo, "scripts", "mcp", "recovery.py")
+	var sourceArchiveArgs []string
+	if releaseArchive != "" {
+		sourceArchiveArgs = []string{"--release-source-archive", releaseArchive}
+	}
 	fmt.Fprintln(out, "Creating encrypted metadata and configuration backup")
-	if _, err := recoveryCommand(ctx, source, nil, nil, "python3", helper, "backup", "--directory", deploy, "--project-name", originalProject, "--recipient", strings.TrimSpace(recipient), "--staging-dir", staging, "--output", archive); err != nil {
-		return err
+	backupArgs := []string{helper, "backup", "--directory", deploy, "--project-name", originalProject, "--recipient", strings.TrimSpace(recipient), "--staging-dir", staging, "--output", archive}
+	backupArgs = append(backupArgs, sourceArchiveArgs...)
+	backupOutput, err := recoveryCommand(ctx, source, nil, nil, "python3", backupArgs...)
+	if err != nil {
+		return fmt.Errorf("backup preflight or snapshot: %w", err)
+	}
+	if releaseArchive != "" {
+		if !strings.Contains(backupOutput, "Legacy image does not support source credential audit") {
+			return fmt.Errorf("expected legacy source-credential audit warning")
+		}
+		runningValues, err := recoveryEnv(filepath.Join(deploy, ".env"))
+		if err != nil || runningValues["DATA_FABRIC_SOURCE_REVISION"] != "unknown" {
+			return fmt.Errorf("backup changed the running archive deployment revision")
+		}
+		fmt.Fprintln(out, "PASS legacy image warning and unchanged running archive configuration")
 	}
 	verifyArgs := []string{helper, "verify", "--archive", archive, "--identity-file", identity, "--staging-dir", staging}
 	if _, err := recoveryCommand(ctx, source, nil, nil, "python3", verifyArgs...); err != nil {
@@ -224,25 +303,38 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 
 	fmt.Fprintln(out, "Preparing fresh checkout and metadata volume")
 	targetDeploy := filepath.Join(target, "deploy", "mcp")
-	if _, err := recoveryCommand(ctx, source, nil, nil, "python3", helper, "restore", "--archive", archive, "--identity-file", identity, "--staging-dir", staging, "--target-deploy-dir", targetDeploy, "--project-name", restoredProject, "--api-port", "28080", "--mcp-port", "28443"); err != nil {
-		return err
+	restoreArgs := []string{helper, "restore", "--archive", archive, "--identity-file", identity, "--staging-dir", staging, "--target-deploy-dir", targetDeploy, "--project-name", restoredProject, "--api-port", "28080", "--mcp-port", "28443"}
+	restoreArgs = append(restoreArgs, sourceArchiveArgs...)
+	if _, err := recoveryCommand(ctx, source, nil, nil, "python3", restoreArgs...); err != nil {
+		return fmt.Errorf("restore preparation: %w", err)
+	}
+	if releaseArchive != "" {
+		restoredValues, err := recoveryEnv(filepath.Join(targetDeploy, ".env"))
+		if err != nil || restoredValues["DATA_FABRIC_SOURCE_REVISION"] != preview2SourceSHA || restoredValues["DATA_FABRIC_IMAGE"] != preview2Image {
+			return fmt.Errorf("restored archive configuration did not retain verified release identity")
+		}
 	}
 	if _, err := recoveryCommand(ctx, target, nil, nil, "python3", "scripts/mcp/onboard.py", "init", "--directory", targetDeploy); err != nil {
 		return err
 	}
-	if _, err := compose(target, restoredProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build", "metadata-db"); err != nil {
+	if _, err := compose(target, restoredProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build", "--pull", "never", "metadata-db"); err != nil {
 		return err
 	}
 	sql, err := os.Open(filepath.Join(targetDeploy, "recovery", "metadata.sql"))
 	if err != nil {
 		return err
 	}
-	_, importErr := recoveryCommand(ctx, targetDeploy, vars, sql, "docker", "compose", "--project-name", restoredProject, "--env-file", filepath.Join(targetDeploy, ".env"), "-f", filepath.Join(targetDeploy, "docker-compose.yml"), "-f", filepath.Join(targetDeploy, "docker-compose.recovery.yml"), "-f", overlay, "exec", "-T", "metadata-db", "sh", "-ec", `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root`)
+	importArgs := []string{"compose", "--project-name", restoredProject, "--env-file", filepath.Join(targetDeploy, ".env"), "-f", filepath.Join(targetDeploy, "docker-compose.yml")}
+	if releaseArchive != "" {
+		importArgs = append(importArgs, "-f", filepath.Join(targetDeploy, "docker-compose.release.yml"))
+	}
+	importArgs = append(importArgs, "-f", filepath.Join(targetDeploy, "docker-compose.recovery.yml"), "-f", overlay, "exec", "-T", "metadata-db", "sh", "-ec", `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root`)
+	_, importErr := recoveryCommand(ctx, targetDeploy, vars, sql, "docker", importArgs...)
 	_ = sql.Close()
 	if importErr != nil {
 		return importErr
 	}
-	if _, err := compose(target, restoredProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build"); err != nil {
+	if _, err := compose(target, restoredProject, "up", "-d", "--wait", "--wait-timeout", "240", "--no-build", "--pull", "never"); err != nil {
 		return err
 	}
 	if err := recoverySetEndpoint(env, targetDeploy, 28080, 28443); err != nil {
@@ -251,7 +343,30 @@ func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) (err er
 	if err := recoveryCheckAccess(ctx, env, created.ID); err != nil {
 		return fmt.Errorf("after restore: %w", err)
 	}
-	fmt.Fprintf(out, "PASS fresh-volume restore: authorized read and cross-tenant denial; source=%s\n", revision)
+	fmt.Fprintf(out, "PASS fresh-volume restore: authorized read and cross-tenant denial; source=%s; helper=%s; image=%s\n", artifactRevision, revision, image)
+	return nil
+}
+
+func recoveryExtractPreview2(ctx context.Context, archive, target string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	h := sha256.New()
+	_, copyErr := io.Copy(h, f)
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil {
+		return fmt.Errorf("could not read preview.2 archive")
+	}
+	if fmt.Sprintf("%x", h.Sum(nil)) != preview2ArchiveSHA {
+		return fmt.Errorf("preview.2 source archive checksum mismatch")
+	}
+	if err := os.Mkdir(target, 0700); err != nil {
+		return err
+	}
+	if _, err := recoveryCommand(ctx, target, nil, nil, "tar", "-xzf", archive, "--strip-components=1", "-C", target); err != nil {
+		return fmt.Errorf("extract verified preview.2 archive: %w", err)
+	}
 	return nil
 }
 
@@ -416,6 +531,19 @@ func recoveryCommand(ctx context.Context, dir string, extra map[string]string, i
 	}
 	b, err := cmd.Output()
 	if err != nil {
+		// The recovery helper deliberately emits generic, redacted errors.
+		// Retain its single diagnostic line without logging other subprocess
+		// output, which can include generated credentials.
+		if name == "python3" && len(args) > 0 && filepath.Base(args[0]) == "recovery.py" {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				for _, line := range strings.Split(string(exitErr.Stderr), "\n") {
+					if strings.HasPrefix(line, "error: ") && len(line) <= 300 {
+						return "", fmt.Errorf("recovery helper: %s", line)
+					}
+				}
+			}
+		}
 		return "", fmt.Errorf("%s failed: %w", name, err)
 	}
 	return string(b), nil

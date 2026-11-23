@@ -43,3 +43,36 @@ jobs:
           path: ${{ runner.temp }}/recovery-acceptance.log
           if-no-files-found: warn
           retention-days: 30
+
+  preview2:
+    name: Published preview.2 archive and image recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+      - name: Download the published source archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.1.0-preview.2 --repo RhinoLink-Tech/data-fabric --pattern data-fabric-v2.1.0-preview.2-source.tar.gz --dir "$RUNNER_TEMP"
+      - name: Rehearse published archive and image with current recovery helper
+        shell: bash
+        run: |
+          set -o pipefail
+          go run ./deploy/mcp/reference/cmd/recovery-acceptance -preview2-archive "$RUNNER_TEMP/data-fabric-v2.1.0-preview.2-source.tar.gz" | tee "$RUNNER_TEMP/preview2-recovery-acceptance.log"
+      - name: Save non-secret evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview2-recovery-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/preview2-recovery-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30
