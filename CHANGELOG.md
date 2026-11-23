@@ -18,12 +18,12 @@ All notable changes to this project will be documented in this file.
 - Allow testing an edited data source with its retained server-side credentials, subject to the existing authorization checks (#768).
 - Verify running gateway credential keyrings against the protected configuration before profile backup; remaining historical-key and release recovery checks are tracked separately (#636, #522).
 ### Fixed
-- Keep MCP stdio sessions decoding: the missing-configuration notice and the metadata database's GORM logger now write to stderr, so stdout carries protocol frames only (#535).
 - Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
 - Recognize PostgreSQL full `timestamp` and `time` type names, including time-zone qualifiers, when mapping standardized column types (#568).
 - Reject signed or non-digit millisecond suffixes in Hudi instant times instead of silently normalizing them to a different time (#672).
 - Reject nonzero offsets and invalid batch sizes in MaxCompute batch pagination instead of widening the limit, which repeated earlier rows in later batches (#718).
 - Reject unimplemented MaxCompute query execution and Delta vacuum operations instead of returning misleading success (#756, #774).
+- Keep MCP stdio sessions decoding: the missing-configuration notice and the metadata database's GORM logger now write to stderr, so stdout carries protocol frames only (#535).
 
 ## [v2.1.0-preview.2] - 2026-11-16
 
