@@ -186,6 +186,20 @@ func TestValidateStatementForDataSourceUsesFastParserForCommonQuery(t *testing.T
 	}
 }
 
+func TestRepeatedLettersUseFastParserWithASTConfigured(t *testing.T) {
+	analyzer := &stubSQLASTAnalyzer{}
+	validator := NewSQLValidator(10000)
+	validator.SetASTAnalyzer(analyzer)
+	for _, dbType := range []model.DatabaseType{model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL} {
+		if err := validator.ValidateStatementForDataSourceContext(context.Background(), "SELECT id FROM df_nocount_aaab123 WHERE id > 0 ORDER BY id LIMIT 4", dbType); err != nil {
+			t.Errorf("%s: valid repeated-letter identifier rejected: %v", dbType, err)
+		}
+	}
+	if analyzer.calls != 0 {
+		t.Fatalf("ordinary identifier unexpectedly required AST fallback: %d calls", analyzer.calls)
+	}
+}
+
 func TestValidateStatementForDataSourceFallsBackForDialectSpecificSyntax(t *testing.T) {
 	analyzer := &stubSQLASTAnalyzer{
 		analysis: sqlanalysis.Analysis{StatementCount: 1, IsQuery: true},

@@ -19,6 +19,9 @@ func TestValidatorAcceptsLegitimateQueries(t *testing.T) {
 		sql  string
 	}{
 		{"baseline amount filter", "SELECT id FROM orders WHERE amount >= 100"},
+		{"repeated letters in identifier", "SELECT aaaccount FROM df_nocount_aaab123 WHERE id > 0 ORDER BY id LIMIT 4"},
+		{"repeated letters in column and alias", "SELECT aaa_column AS bbb_alias FROM ccc_table"},
+		{"quoted MySQL identifiers", "SELECT `aaa_column` FROM `bbb_table`"},
 		{"amount with repeated digits", "SELECT id FROM orders WHERE amount >= 1000"},
 		{"IN list of statuses", "SELECT id FROM orders WHERE status IN ('paid', 'shipped')"},
 		{"keyword-shaped text as label", "SELECT 'DROP' AS status_label"},
