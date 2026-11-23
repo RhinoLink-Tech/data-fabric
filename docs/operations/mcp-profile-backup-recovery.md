@@ -1,6 +1,6 @@
 # Self-Hosted MCP Profile Backup and Recovery
 
-> **Preview.2 limitations:** the source-archive allowlist below recognizes preview.1, not preview.2. The helper distributed with preview.2 does not verify that running API/MCP credential keyrings match the `.env` being archived ([#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)). A clean checkout alone does not resolve that risk. Do not rely on an untested backup or restore for valuable data; verify the effective key material and rehearse recovery independently.
+> **Preview.2:** its bundled recovery helper does not verify that running API/MCP credential keyrings match the `.env` being archived ([#522](https://github.com/RhinoLink-Tech/data-fabric/issues/522)). Use the updated helper below from outside the extracted archive. The updated helper can verify the published preview.2 source archive identity; an end-to-end preview.2 archive backup and restore has not yet been rehearsed. Independently rehearse recovery and verify retained keys before relying on a backup.
 
 This runbook covers the current single-host profile: MySQL metadata, a pinned Data Fabric image, the credential-vault keyring and the OIDC configuration. Use it with the immutable candidate recorded in the backup manifest. It does not back up business-source databases, query results, live cursors, logs or the TLS private key.
 
@@ -40,18 +40,18 @@ python3 scripts/mcp/recovery.py backup \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
 ```
 
-### Alternative: the published v2.1.0-preview.1 source archive
+### Alternative: a published v2.1.0-preview.1 or preview.2 source archive
 
-The original Preview archive contains an older recovery helper. For an archive installation, obtain the [updated recovery.py from this documentation revision](../../scripts/mcp/recovery.py) (open the link and save its Raw file) **outside** the extracted source directory. Keep the original downloaded source archive as well as the extracted files. The helper currently recognizes the published `v2.1.0-preview.1` archive by its exact SHA-256; it verifies every archived project file and executable bit, the release image reference, and the image revision before it stops services or dumps data. Modified, missing, symlinked, unknown, or mismatched inputs fail closed. Do not edit the extracted release files.
+The original Preview archive contains an older recovery helper. For an archive installation, obtain the [updated recovery.py from this documentation revision](../../scripts/mcp/recovery.py) (open the link and save its Raw file) **outside** the extracted source directory. Keep the original downloaded source archive as well as the extracted files. The updated helper recognizes the published `v2.1.0-preview.1` and `v2.1.0-preview.2` archives by their exact SHA-256; it verifies every archived project file and executable bit, the release image reference, and the image revision before it stops services or dumps data. Modified, missing, symlinked, unknown, or mismatched inputs fail closed. Do not edit the extracted release files.
 
 ```bash
 export DF_RECOVERY_HELPER=/path/outside/the/extracted/tree/recovery.py
-export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.1-source.tar.gz
-export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.1
+export DF_RELEASE_ARCHIVE=/path/to/data-fabric-v2.1.0-preview.2-source.tar.gz
+export DF_SOURCE_ROOT=/path/to/data-fabric-v2.1.0-preview.2
 python3 "$DF_RECOVERY_HELPER" backup \
   --directory "$DF_SOURCE_ROOT/deploy/mcp" \
   --release-source-archive "$DF_RELEASE_ARCHIVE" \
-  --project-name data-fabric-preview1 \
+  --project-name data-fabric-preview2 \
   --recipient "$(cat /secure/recovery/data-fabric.recipients)" \
   --staging-dir /mnt/encrypted-staging/data-fabric \
   --output "/mnt/encrypted-backups/data-fabric/profile-$(date -u +%Y%m%dT%H%M%SZ).age"
@@ -66,7 +66,7 @@ checks the running API container's verified keyring against every stored data
 source credential before stopping either gateway. A missing historical key,
 corrupt ciphertext, plaintext secret or unavailable audit fails before the
 snapshot and no archive is published. The check reads without changing
-credentials and does not print their contents. Preview.1 and other older images
+credentials and does not print their contents. Preview.1, preview.2 and other older images
 do not have this helper; their existing backup path remains available with an
 explicit warning. The audit covers source credentials processed by the vault,
 not temporary browser sessions. It relies on the documented prohibition on
@@ -111,7 +111,7 @@ python3 "$DF_RECOVERY_HELPER" restore \
   --archive /mnt/encrypted-backups/data-fabric/profile-20261108T000000Z.age \
   --identity-file /secure/recovery/data-fabric.agekey \
   --staging-dir /mnt/encrypted-staging/data-fabric \
-  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.1/deploy/mcp \
+  --target-deploy-dir /path/to/fresh/data-fabric-v2.1.0-preview.2/deploy/mcp \
   --release-source-archive "$DF_RELEASE_ARCHIVE" \
   --project-name data-fabric-restore-20261108 \
   --api-port 18080 --mcp-port 18443
