@@ -114,8 +114,12 @@ func Load() (*Config, error) {
 	// Read config file
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found, use defaults and environment
-			fmt.Println("Config file not found, using defaults and environment variables")
+			// Config file not found, use defaults and environment.
+			//
+			// stderr, never stdout: in MCP stdio mode stdout carries one protocol
+			// frame after another and nothing else, so a prose line written there is
+			// a frame the client cannot decode (#535).
+			fmt.Fprintln(os.Stderr, "Config file not found, using defaults and environment variables")
 		} else {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}

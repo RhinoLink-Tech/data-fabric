@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Reject signed or non-digit millisecond suffixes in Hudi instant times instead of silently normalizing them to a different time (#672).
 - Reject nonzero offsets and invalid batch sizes in MaxCompute batch pagination instead of widening the limit, which repeated earlier rows in later batches (#718).
 - Reject unimplemented MaxCompute query execution and Delta vacuum operations instead of returning misleading success (#756, #774).
+- Keep MCP stdio sessions decoding: the missing-configuration notice and the metadata database's GORM logger now write to stderr, so stdout carries protocol frames only (#535).
 
 ## [v2.1.0-preview.2] - 2026-11-16
 

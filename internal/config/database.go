@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,25 +15,47 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// logLevel maps the configured logging level onto the GORM logger's own.
+func logLevel(level string) logger.LogLevel {
+	switch level {
+	case "debug":
+		return logger.Info
+	case "info":
+		return logger.Warn
+	case "warn":
+		return logger.Error
+	case "error":
+		return logger.Silent
+	default:
+		return logger.Warn
+	}
+}
+
+// metadataLogger builds the GORM logger the metadata database reports through.
+//
+// The writer is os.Stderr, where logger.Default writes to os.Stdout: in MCP
+// stdio mode stdout carries protocol frames only, and a metadata warning
+// interleaved with them breaks the session (#535). The rest of the
+// configuration mirrors logger.Default so verbosity is unchanged.
+func metadataLogger(level logger.LogLevel) logger.Interface {
+	return logger.New(
+		log.New(os.Stderr, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  level,
+			IgnoreRecordNotFoundError: false,
+			Colorful:                  true,
+		},
+	)
+}
+
 // InitDatabase initializes the database connection with GORM
 func InitDatabase(cfg *Config) (*gorm.DB, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("database configuration is required")
 	}
 	// Configure GORM logger
-	var gormLogger logger.Interface
-	switch cfg.Logging.Level {
-	case "debug":
-		gormLogger = logger.Default.LogMode(logger.Info)
-	case "info":
-		gormLogger = logger.Default.LogMode(logger.Warn)
-	case "warn":
-		gormLogger = logger.Default.LogMode(logger.Error)
-	case "error":
-		gormLogger = logger.Default.LogMode(logger.Silent)
-	default:
-		gormLogger = logger.Default.LogMode(logger.Warn)
-	}
+	gormLogger := metadataLogger(logLevel(cfg.Logging.Level))
 
 	switch strings.ToLower(strings.TrimSpace(cfg.Database.Driver)) {
 	case "sqlite":

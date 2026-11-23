@@ -13,6 +13,7 @@ on:
       - 'internal/model/datasource.go'
       - 'cmd/server/sqlite_snapshot*.go'
       - 'cmd/server/sqlite_runtime*.go'
+      - 'cmd/server/sqlite_stdio*.go'
       - 'cmd/server/main.go'
       - '.github/workflows/sqlite-metadata-prototype.yml'
   workflow_dispatch:
@@ -34,6 +35,8 @@ jobs:
         run: CGO_ENABLED=1 go test -tags datafabric_sqlite ./internal/config -run '^TestSQLite(Metadata|Snapshot)' -count=1
       - name: Verify experimental snapshot command
         run: CGO_ENABLED=1 go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteSnapshot' -count=1
+      - name: Verify real MCP stdio diagnostics
+        run: CGO_ENABLED=1 go test -tags datafabric_sqlite ./cmd/server -run '^TestSQLiteStdioProtocolDiagnostics$' -count=1 -v
       - name: Verify standard metadata and authorization contracts
         run: go test ./internal/model ./internal/repository ./internal/security ./internal/mcp ./cmd/server
       - name: Verify disabled CGO fails closed
