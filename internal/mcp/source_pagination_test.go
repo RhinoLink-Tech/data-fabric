@@ -39,6 +39,9 @@ func TestListDataSourcesPagedAndScoped(t *testing.T) {
 			tenant = "team-b"
 		}
 		sources[i] = model.DataSource{ID: fmt.Sprintf("%04d", i), Name: fmt.Sprintf("source-%04d", i), Type: model.DatabaseTypeMySQL, Status: model.DataSourceStatusActive, OwnerID: "owner-" + tenant, TenantID: tenant, CreatedAt: stamp, UpdatedAt: stamp, Config: model.DataSourceConfig{Host: "db", Port: 3306}}
+		if i == 0 {
+			sources[i].OwnerID = "reader"
+		}
 	}
 	if err := db.CreateInBatches(sources, 100).Error; err != nil {
 		t.Fatal(err)
@@ -54,7 +57,8 @@ func TestListDataSourcesPagedAndScoped(t *testing.T) {
 		}
 		var payload struct {
 			DataSources []struct {
-				ID string `json:"id"`
+				ID            string `json:"id"`
+				OwnedByCaller *bool  `json:"owned_by_caller"`
 			} `json:"data_sources"`
 			Count      int  `json:"count"`
 			Total      int  `json:"total"`
@@ -70,6 +74,9 @@ func TestListDataSourcesPagedAndScoped(t *testing.T) {
 		for _, source := range payload.DataSources {
 			if source.ID == "1001" || seen[source.ID] {
 				t.Fatalf("hidden or duplicate ID: %s", source.ID)
+			}
+			if source.OwnedByCaller == nil || *source.OwnedByCaller != (source.ID == "0000") {
+				t.Fatalf("incorrect ownership on source %s", source.ID)
 			}
 			seen[source.ID] = true
 		}

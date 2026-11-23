@@ -42,6 +42,12 @@ PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;
 deletion additionally requires tenant and exact-ownership checks.
 
+Newer source builds may include `owned_by_caller` in source-list entries for
+identified callers. It reports an exact owner and tenant match, not permission
+to manage: scopes, current grants and operation-specific checks still apply.
+Older servers and calls without an identifiable caller may omit the field;
+do not infer ownership or permission from its absence.
+
 The separate browser onboarding tools are experimental and opt-in in
 v2.1.0-preview.2; actual WorkBuddy end-to-end acceptance remains outstanding. When deployed and advertised, they start a
 separately authenticated browser flow and report its status; credentials are
