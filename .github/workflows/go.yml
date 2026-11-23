@@ -643,6 +643,12 @@ jobs:
       - name: Test contract result summary
         run: python -m unittest discover -s scripts/validation -p "test_summarize_driver_contracts.py"
 
+      - name: Run WorkBuddy onboarding UI regression tests
+        run: |
+          cmp internal/workbuddy/onboardingruntime/ui/onboarding.js integrations/workbuddy/onboarding-ui/onboarding.js
+          node integrations/workbuddy/onboarding-ui/onboarding.test.cjs
+          node integrations/workbuddy/onboarding-ui/update.test.cjs
+
       - name: Run data-source UI regression tests
         run: node --test scripts/ui/*.test.js
 

@@ -48,7 +48,21 @@
     try {
       const endpoint = '/onboarding/flows/' + flowMatch[1] + (update ? '/update/' + updateMatch[2] + (kind === 'test' ? '/test' : '/save') : (kind === 'test' ? '/test' : '/sources'));
       const response = await request(endpoint,{method:'POST',body:JSON.stringify(payload)});
-      if (!response.ok) { status(response.status === 401 || response.status === 403 ? '登录或权限已失效，请重新登录并检查授权。' : response.status === 422 ? 'TLS 配置无效，请检查证书信任选项。' : '操作未完成，请检查连接配置后重试。'); return; }
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          fields.password.value = '';
+          el('login').href = '/onboarding/auth/login?flow=' + encodeURIComponent(flowMatch[1]);
+          el('login').hidden = false;
+          status('登录或授权可能已失效。请重新登录并检查管理权限；如果登录链接不可用，请返回 WorkBuddy 重新开始向导，并重新输入密码。');
+        } else if (response.status === 404) {
+          fields.password.value = '';
+          el('login').hidden = true;
+          status('向导不存在、已过期或不可访问。请返回 WorkBuddy 重新开始，并重新输入密码。');
+        } else {
+          status(response.status === 422 ? 'TLS 配置无效，请检查证书信任选项。' : '操作未完成，请检查连接配置后重试。');
+        }
+        return;
+      }
       const result = await response.json();
       if (kind === 'test') { status(result && result.connected === true ? '连接测试成功。' : '连接测试未成功，请检查连接配置。'); return; }
       if (!result || typeof result.id !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(result.id)) { status('未收到有效的保存结果，请重新打开此流程检查状态。'); return; }
@@ -62,7 +76,7 @@
   (async () => {
     try {
       const sessionResponse = await request('/onboarding/session');
-      if (sessionResponse.status === 401) { fail('请先登录 Data Fabric 并确认管理权限。'); el('login').href = '/onboarding/auth/login?flow=' + encodeURIComponent(flowMatch[1]); el('login').hidden = false; return; }
+      if (sessionResponse.status === 401) { fail('请先登录 Data Fabric 并确认管理权限。若登录链接不可用，请返回 WorkBuddy 重新开始向导。'); el('login').href = '/onboarding/auth/login?flow=' + encodeURIComponent(flowMatch[1]); el('login').hidden = false; return; }
       if (!sessionResponse.ok) { fail('无法验证登录状态，请重试。'); return; }
       const session = await sessionResponse.json();
       if (!session || session.authenticated !== true || typeof session.csrf_token !== 'string' || !session.csrf_token) { fail('登录会话不可用，请重新登录。'); return; }
