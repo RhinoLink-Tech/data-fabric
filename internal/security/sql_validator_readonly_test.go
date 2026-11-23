@@ -39,6 +39,8 @@ func TestReadOnlyDefenseBlocksWritesAndDangerousFunctions(t *testing.T) {
 		{"exec", "EXEC sp_refresh_reports"},
 		{"execute statement", "EXECUTE immediate_drop"},
 		{"stacked statements", "SELECT 1; DROP TABLE orders"},
+		{"stacked statements with repeated letters", "SELECT id FROM aaaccounts; DROP TABLE aaaccounts"},
+		{"dangerous function with repeated identifier", "SELECT pg_sleep(1) FROM aaaccounts"},
 
 		// Dangerous functions reachable from a SELECT (#20)
 		{"mysql load_file", "SELECT LOAD_FILE('/etc/passwd')"},

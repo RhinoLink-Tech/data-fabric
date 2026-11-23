@@ -95,7 +95,9 @@ func TestLiveNoCountRESTAndMCP(t *testing.T) {
 				t.Fatal("open isolated fixture failed")
 			}
 			t.Cleanup(func() { _ = db.Close() })
-			table := "df_nocount_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+			// Keep repeated letters in every real-source identifier; this catches validator
+			// false positives deterministically while retaining a unique fixture name.
+			table := "df_nocount_aaa_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 			if _, err = db.Exec("CREATE TABLE " + table + " (id INTEGER NOT NULL)"); err != nil {
 				t.Fatalf("create fixture: %v", err)
 			}

@@ -512,21 +512,19 @@ func (sv *SQLValidator) checkSQLInjection(sql, maskedSQL string) error {
 		}
 	}
 
-	// Check for unusual character sequences
-	if sv.hasSuspiciousCharacters(sql, maskedSQL) {
+	// Check for excessive control characters in the original statement.
+	if sv.hasSuspiciousCharacters(sql) {
 		return ErrSQLInjection
 	}
 
 	return nil
 }
 
-// hasSuspiciousCharacters reports character-level anomalies. Non-printable
-// bytes are counted on the original sql — control characters are suspicious
-// even inside literals. The repeated-character heuristic runs on maskedSQL
-// and letters only: runs like "000" in 1000 or 0.0001 are ordinary numeric
-// literals, not obfuscation (#19).
-func (sv *SQLValidator) hasSuspiciousCharacters(sql, maskedSQL string) bool {
-	// Count non-printable characters
+// hasSuspiciousCharacters rejects excessive control characters in the original
+// statement, including inside literals. Repeated letters are valid in SQL
+// identifiers and are not evidence of injection; syntax, read-only checks,
+// dangerous functions and the structural injection patterns remain enforced.
+func (sv *SQLValidator) hasSuspiciousCharacters(sql string) bool {
 	suspiciousCount := 0
 	for _, r := range sql {
 		if !unicode.IsPrint(r) && !unicode.IsSpace(r) {
@@ -536,20 +534,6 @@ func (sv *SQLValidator) hasSuspiciousCharacters(sql, maskedSQL string) bool {
 			}
 		}
 	}
-
-	// Check for repeated characters (might indicate obfuscation)
-	// Only check for 3+ consecutive identical letters outside literals
-	if len(maskedSQL) > 10 {
-		for i := 0; i < len(maskedSQL)-2; i++ {
-			char := maskedSQL[i]
-			isLetter := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z'
-			if isLetter &&
-				maskedSQL[i] == maskedSQL[i+1] && maskedSQL[i+1] == maskedSQL[i+2] {
-				return true
-			}
-		}
-	}
-
 	return false
 }
 
