@@ -79,8 +79,8 @@ var sessionModes = map[model.DatabaseType]Mode{
 	model.DatabaseTypeMariaDB:        ModeConnectorInit,
 	model.DatabaseTypeOceanBaseMySQL: ModeConnectorInit,
 	model.DatabaseTypeTDSQL:          ModeConnectorInit,
-	model.DatabaseTypeGBase8s:        ModeConnectorInit,
-	model.DatabaseTypeGBase8t:        ModeConnectorInit,
+	model.DatabaseTypeGBase8s:        ModeUnsupported,
+	model.DatabaseTypeGBase8t:        ModeUnsupported,
 
 	// PostgreSQL protocol (lib/pq): DSN session parameter.
 	model.DatabaseTypePostgreSQL:      ModeDSNParam,

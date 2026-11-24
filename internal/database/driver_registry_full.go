@@ -107,10 +107,10 @@ func (dr *DriverRegistry) registerDrivers() {
 		return &domestic.KingbaseESDriver{}
 	})
 	dr.register(model.DatabaseTypeGBase8s, func() drivers.Driver {
-		return &domestic.GBaseDriver{}
+		return &domestic.GBaseUnsupportedDriver{Variant: string(model.DatabaseTypeGBase8s)}
 	})
 	dr.register(model.DatabaseTypeGBase8t, func() drivers.Driver {
-		return &domestic.GBaseDriver{}
+		return &domestic.GBaseUnsupportedDriver{Variant: string(model.DatabaseTypeGBase8t)}
 	})
 	dr.register(model.DatabaseTypeOscar, func() drivers.Driver {
 		return &domestic.OscarDriver{}

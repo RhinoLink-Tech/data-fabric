@@ -18,6 +18,22 @@ type GBaseDriver struct {
 	config *GBaseConfig
 }
 
+// GBaseUnsupportedDriver keeps registry entries for discovery while rejecting
+// an unverified MySQL-wire connection for a distinct GBase product.
+type GBaseUnsupportedDriver struct {
+	GBaseDriver
+	Variant string
+}
+
+func (d *GBaseUnsupportedDriver) Open(_ string) (*sql.DB, error) {
+	return nil, fmt.Errorf("%s connection is unavailable: a verified native GBase driver is not configured", d.Variant)
+}
+func (d *GBaseUnsupportedDriver) GetDatabaseTypeName() string { return d.Variant }
+func (d *GBaseUnsupportedDriver) GetDriverName() string       { return d.Variant + "-unavailable" }
+func (d *GBaseUnsupportedDriver) GetCapabilities() drivers.DriverCapabilities {
+	return drivers.DriverCapabilities{}
+}
+
 // GBaseConfig holds GBase configuration
 type GBaseConfig struct {
 	Host              string
