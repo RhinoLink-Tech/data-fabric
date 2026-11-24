@@ -114,17 +114,17 @@ func reject(w http.ResponseWriter) {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	noCache(w)
 	if r.Method != "GET" || len(r.URL.Query()["flow"]) != 1 {
-		http.Error(w, "invalid request", 400)
+		http.Error(w, "登录链接不可用或已失效。请返回 AI 客户端（如 WorkBuddy）重新开始数据源向导。", http.StatusBadRequest)
 		return
 	}
 	id := r.URL.Query().Get("flow")
 	if _, e := hash(id); e != nil {
-		http.Error(w, "invalid request", 400)
+		http.Error(w, "登录链接不可用或已失效。请返回 AI 客户端（如 WorkBuddy）重新开始数据源向导。", http.StatusBadRequest)
 		return
 	}
 	exists, err := h.flows.Exists(r.Context(), id)
 	if err != nil || !exists {
-		http.Error(w, "invalid request", 400)
+		http.Error(w, "登录链接不可用或已失效。请返回 AI 客户端（如 WorkBuddy）重新开始数据源向导。", http.StatusBadRequest)
 		return
 	}
 	state, binding, nonce, challenge, e := h.store.BeginFlow(r.Context(), id)
