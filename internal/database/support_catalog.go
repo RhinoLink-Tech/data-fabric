@@ -487,6 +487,14 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t:
+		profile.Supported = false
+		profile.Status = ConnectorStatusUnsupported
+		profile.VersionPolicy = "No verified native protocol driver or server-version contract is available for this GBase product."
+		profile.Capabilities = drivers.DriverCapabilities{}
+		profile.Operations = []string{}
+		profile.Limitations = append(profile.Limitations,
+			"Connection attempts are rejected: this build has no verified native driver for this product; SQL syntax compatibility does not establish wire-protocol compatibility.")
 	case model.DatabaseTypeDaMeng:
 		available := false
 		for _, name := range sql.Drivers() {
@@ -896,8 +904,7 @@ func supportedOperations(capabilities drivers.DriverCapabilities) []string {
 func compatibilityMode(dbType model.DatabaseType, category drivers.DriverCategory) string {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeOceanBaseMySQL,
-		model.DatabaseTypeTiDB, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL,
-		model.DatabaseTypeGBase8t:
+		model.DatabaseTypeTiDB, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL:
 		return "mysql_compatible"
 	case model.DatabaseTypePostgreSQL, model.DatabaseTypeGaussDBPostgres,
 		model.DatabaseTypeKingbaseES, model.DatabaseTypeOscar, model.DatabaseTypeOpenGauss,
@@ -943,8 +950,7 @@ type versionProbe struct {
 func serverVersionProbe(dbType model.DatabaseType) (versionProbe, bool) {
 	switch dbType {
 	case model.DatabaseTypeMySQL, model.DatabaseTypeMariaDB, model.DatabaseTypeOceanBaseMySQL,
-		model.DatabaseTypeTiDB, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL,
-		model.DatabaseTypeGBase8t:
+		model.DatabaseTypeTiDB, model.DatabaseTypeTDSQL, model.DatabaseTypeGaussDBMySQL:
 		return versionProbe{query: "SELECT VERSION()"}, true
 	case model.DatabaseTypePostgreSQL, model.DatabaseTypeGaussDBPostgres,
 		model.DatabaseTypeKingbaseES, model.DatabaseTypeOscar, model.DatabaseTypeOpenGauss,

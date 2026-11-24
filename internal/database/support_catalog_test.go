@@ -699,3 +699,45 @@ func TestDaMengCatalogReportsMissingNativeDriver(t *testing.T) {
 	}
 	t.Skip("DaMeng is not compiled into this build")
 }
+
+func TestGBaseTypesRejectUnverifiedConnectionAndReportUnavailable(t *testing.T) {
+	registry := NewDriverRegistry()
+	catalog := SupportCatalog(registry)
+	for _, kind := range []model.DatabaseType{model.DatabaseTypeGBase8s, model.DatabaseTypeGBase8t} {
+		t.Run(string(kind), func(t *testing.T) {
+			adapter, err := registry.GetDriver(kind)
+			if err != nil {
+				t.Skip("GBase is not compiled into this build")
+			}
+			if adapter.GetDatabaseTypeName() != string(kind) {
+				t.Fatalf("registry %s has identity %s", kind, adapter.GetDatabaseTypeName())
+			}
+			opener, ok := adapter.(drivers.SQLDatabaseOpener)
+			if !ok {
+				t.Fatal("adapter has no SQL opener")
+			}
+			db, err := opener.Open("synthetic-secret")
+			if db != nil || err == nil || !strings.Contains(err.Error(), "unavailable") || strings.Contains(err.Error(), "synthetic-secret") {
+				t.Fatalf("connection result: db=%v err=%v", db, err)
+			}
+			for _, enforce := range []bool{true, false} {
+				db, err = (&ConnectionPool{registry: registry}).openDatabase(kind, "synthetic-secret", enforce)
+				if db != nil || err == nil || !strings.Contains(err.Error(), "unavailable") {
+					t.Fatalf("pool open with read-only=%t: db=%v err=%v", enforce, db, err)
+				}
+			}
+			for _, item := range catalog {
+				if item.Type != string(kind) {
+					continue
+				}
+				if !item.Registered || item.Supported || item.Status != ConnectorStatusUnsupported ||
+					item.EndToEndVerified || item.CompatibilityMode == "mysql_compatible" ||
+					item.Capabilities.SupportsSQL || len(item.Operations) != 0 {
+					t.Fatalf("incorrect support state: %+v", item)
+				}
+				return
+			}
+			t.Fatal("registry type missing from catalog")
+		})
+	}
+}
