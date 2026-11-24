@@ -79,7 +79,7 @@ func TestSupportCatalogSeparatesRegistrationFromVerification(t *testing.T) {
 		if !ok {
 			t.Fatalf("registered type %q has no catalog entry", dbType)
 		}
-		if !profile.Supported || profile.Status == "" {
+		if !profile.Registered || profile.Status == "" || (!profile.Supported && profile.Status != ConnectorStatusUnsupported) {
 			t.Errorf("registered type %q has invalid support state: %+v", dbType, profile)
 		}
 		verifiedVersions := map[model.DatabaseType]struct {
@@ -683,4 +683,19 @@ func TestMaxComputeCatalogDoesNotAdvertiseUnavailableQuery(t *testing.T) {
 		return
 	}
 	t.Fatal("MaxCompute missing from the registered catalog")
+}
+
+func TestDaMengCatalogReportsMissingNativeDriver(t *testing.T) {
+	for _, profile := range SupportCatalog(NewDriverRegistry()) {
+		if profile.Type != string(model.DatabaseTypeDaMeng) {
+			continue
+		}
+		if !profile.Registered || profile.Supported || profile.Status != ConnectorStatusUnsupported ||
+			profile.EndToEndVerified || profile.Capabilities.SupportsSQL ||
+			profile.Capabilities.SupportsSchemaDiscovery || len(profile.Operations) != 0 {
+			t.Fatalf("DaMeng unavailable catalog state = %+v", profile)
+		}
+		return
+	}
+	t.Skip("DaMeng is not compiled into this build")
 }
