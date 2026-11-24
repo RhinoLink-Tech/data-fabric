@@ -55,6 +55,21 @@ func TestListTablesKeepsMySQLDiscoveryUnchanged(t *testing.T) {
 	}
 }
 
+func TestListTablesUsesClickHouseSystemCatalog(t *testing.T) {
+	source := activeOwnedSource()
+	source.Type = model.DatabaseTypeClickHouse
+	query := &stubQueryService{}
+	server := NewMCPServer(query, describeTableRepo{source: source}, &stubTableDescriber{})
+	ctx, request := tablePolicyRequest(&security.Caller{UserID: "alice"}, "list_tables", map[string]any{"datasource_id": source.ID})
+	result, err := server.handleListTables(ctx, request)
+	if err != nil || result.IsError {
+		t.Fatalf("list result = %+v, err = %v", result, err)
+	}
+	if query.captured == nil || query.captured.SQL != "SELECT name AS table_name FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0" || len(query.captured.Parameters) != 0 {
+		t.Fatalf("unexpected ClickHouse discovery query: %+v", query.captured)
+	}
+}
+
 func TestListTablesPostgresPolicyStillFiltersIdentities(t *testing.T) {
 	source := activeOwnedSource()
 	source.Config.Schema = "sales"
