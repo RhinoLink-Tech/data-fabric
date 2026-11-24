@@ -684,11 +684,15 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {
 			t.Fatal("MariaDB table discovery failed or leaked")
 		}
-		if gaussPort != "" {
-			schema := toolJSON(t, mclient, "describe_table", map[string]any{"datasource_id": sourceID, "table_name": "browser_orders", "schema": "public"})
+		if gaussPort != "" || clickPort != "" {
+			describeArgs := map[string]any{"datasource_id": sourceID, "table_name": "browser_orders"}
+			if gaussPort != "" {
+				describeArgs["schema"] = "public"
+			}
+			schema := toolJSON(t, mclient, "describe_table", describeArgs)
 			described, _ := json.Marshal(schema)
 			if !bytes.Contains(described, []byte("id")) || !bytes.Contains(described, []byte("status")) || bytes.Contains(described, []byte("Browser_2026!")) {
-				t.Fatal("openGauss metadata missing or credential leaked")
+				t.Fatal("source metadata missing or credential leaked")
 			}
 		}
 		first := toolJSON(t, mclient, "execute_sql_query", map[string]any{"datasource_id": sourceID, "sql": "SELECT id, status FROM browser_orders ORDER BY id", "batch_size": 2, "execution_mode": "pagination"})
