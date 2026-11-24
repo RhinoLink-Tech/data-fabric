@@ -226,7 +226,7 @@ func (cp *ConnectionPool) GetNativeAPIExecutor(ctx context.Context, dataSource *
 		switch dataSource.Type {
 		case model.DatabaseTypeMySQL, model.DatabaseTypePostgreSQL:
 			return nil, false, nil
-		case model.DatabaseTypeMariaDB, model.DatabaseTypeOpenGauss:
+		case model.DatabaseTypeMariaDB, model.DatabaseTypeOpenGauss, model.DatabaseTypeTiDB:
 			if cp.egress != nil && cp.egress.AllowsSourceType(dataSource.Type) {
 				return nil, false, nil
 			}

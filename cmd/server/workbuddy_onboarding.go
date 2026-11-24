@@ -41,6 +41,10 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if openGauss != "" && openGauss != "false" && openGauss != "true" {
 		return nil, errors.New("invalid WorkBuddy openGauss toggle")
 	}
+	tidb := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_TIDB"))
+	if tidb != "" && tidb != "false" && tidb != "true" {
+		return nil, errors.New("invalid WorkBuddy TiDB toggle")
+	}
 	updates := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES"))
 	if updates != "" && updates != "false" && updates != "true" {
 		return nil, errors.New("invalid WorkBuddy source updates toggle")
@@ -59,6 +63,9 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 		}
 		if openGauss == "true" {
 			return nil, errors.New("WorkBuddy openGauss requires onboarding")
+		}
+		if tidb == "true" {
+			return nil, errors.New("WorkBuddy TiDB requires onboarding")
 		}
 		if updates == "true" {
 			return nil, errors.New("WorkBuddy source updates require onboarding")
@@ -98,7 +105,10 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if openGauss == "true" && !database.GetDriverRegistry().IsSupported(model.DatabaseTypeOpenGauss) {
 		return nil, errors.New("WorkBuddy openGauss requires a build with the openGauss driver")
 	}
-	c.policy, err = database.NewFixedIPEgressPolicyWithSourceOptions(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true", openGauss == "true")
+	if tidb == "true" && !database.GetDriverRegistry().IsSupported(model.DatabaseTypeTiDB) {
+		return nil, errors.New("WorkBuddy TiDB requires a build with the TiDB driver")
+	}
+	c.policy, err = database.NewFixedIPEgressPolicyWithTiDB(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true", openGauss == "true", tidb == "true")
 	if err != nil {
 		return nil, errors.New("invalid WorkBuddy egress policy")
 	}

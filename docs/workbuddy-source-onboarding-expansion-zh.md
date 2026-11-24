@@ -1,6 +1,6 @@
 # 扩展 WorkBuddy 数据源安全接入
 
-本文是规划，不代表新类型已经可以在 WorkBuddy 自助接入。当前源码中的可选浏览器向导默认仅允许 MySQL 和 PostgreSQL，MariaDB 和 openGauss 实验能力需要管理员分别显式开启；安装 Skill 或连接器也不会自动部署 Data Fabric 服务。详见 [WorkBuddy 接入说明](../integrations/workbuddy/README.md)。
+本文是规划，不代表新类型已经可以在 WorkBuddy 自助接入。当前源码中的可选浏览器向导默认仅允许 MySQL 和 PostgreSQL，MariaDB、openGauss 和 TiDB 实验能力需要管理员分别显式开启；安装 Skill 或连接器也不会自动部署 Data Fabric 服务。详见 [WorkBuddy 接入说明](../integrations/workbuddy/README.md)。
 
 用户目标是在 WorkBuddy 中发起接入，在独立认证的浏览器页面填写数据库凭据，完成连接测试、表结构发现和只读查询；数据库密码不进入聊天或 MCP 工具参数。可以先用合成订单数据验证流程，但合成场景不等同于真实客户需求或 WorkBuddy 客户端验收。
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | MariaDB | 指定版本已有驱动与 TLS 合约验证，采用 MySQL 协议。 | [#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761) 的默认关闭候选已加入，合成环境的协议级完整生命周期已验证；真实 WorkBuddy 客户端和发布镜像仍需验收，也需要确认实际用户需求。 |
 | openGauss | 指定版本已有查询、元数据、只读会话及 TLS 验证。 | [#781](https://github.com/RhinoLink-Tech/data-fabric/issues/781) 增加默认关闭且强制 TLS 的独立候选；真实客户端验收和正式发布仍未完成。实验 Core 构建不包含此驱动。 |
-| TiDB | 指定版本已有驱动与 TLS 验证。 | 当前通用只读会话初始化不适用，必须先验证数据库账号的最小权限及目标部署。 |
+| TiDB | 指定版本已有驱动与 TLS 验证。 | 默认关闭、强制 TLS 的独立候选见 [#834](https://github.com/RhinoLink-Tech/data-fabric/issues/834)；TiDB 没有已验证的网关只读会话初始化，必须由管理员确认源账号仅有目标表 SELECT 权限。真实客户端与发布验收需要分别完成。 |
 | ClickHouse | 指定版本已有原生协议与 TLS 验证。 | 需要单独设计受限网络连接路径，不能直接复用现有协议假设。 |
 | SaaS、文件和对象存储 | 不同类型的认证与资源访问方式不同。 | 分别设计授权、路径、分页及配额，不按登记数量直接开放。 |
 

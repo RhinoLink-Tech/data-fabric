@@ -30,6 +30,7 @@ type FixedIPEgressPolicy struct {
 	caPEM          []byte
 	allowMariaDB   bool
 	allowOpenGauss bool
+	allowTiDB      bool
 }
 
 var safeDSNPart = regexp.MustCompile(`^[A-Za-z0-9._~-]*$`)
@@ -71,11 +72,16 @@ func NewFixedIPEgressPolicyWithCAAndMariaDB(cidrs []string, ports []int, caFile 
 // NewFixedIPEgressPolicyWithSourceOptions independently opts in compatible
 // sources; it never broadens the address, port, TLS, or identity policy.
 func NewFixedIPEgressPolicyWithSourceOptions(cidrs []string, ports []int, caFile string, allowMariaDB, allowOpenGauss bool) (*FixedIPEgressPolicy, error) {
+	return NewFixedIPEgressPolicyWithTiDB(cidrs, ports, caFile, allowMariaDB, allowOpenGauss, false)
+}
+
+// NewFixedIPEgressPolicyWithTiDB adds a separate default-off TiDB gate.
+func NewFixedIPEgressPolicyWithTiDB(cidrs []string, ports []int, caFile string, allowMariaDB, allowOpenGauss, allowTiDB bool) (*FixedIPEgressPolicy, error) {
 	p, err := NewFixedIPEgressPolicy(cidrs, ports)
 	if err != nil {
 		return nil, err
 	}
-	p.allowMariaDB, p.allowOpenGauss = allowMariaDB, allowOpenGauss
+	p.allowMariaDB, p.allowOpenGauss, p.allowTiDB = allowMariaDB, allowOpenGauss, allowTiDB
 	if caFile == "" {
 		return p, nil
 	}
@@ -111,7 +117,7 @@ func NewRestrictedConnectionPool(registry *DriverRegistry, tm *security.TokenMan
 // AllowsSourceType reports only the connector-type constraint. A true result
 // does not grant access or imply that a source configuration will pass policy.
 func (p *FixedIPEgressPolicy) AllowsSourceType(t model.DatabaseType) bool {
-	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL || (p.allowMariaDB && t == model.DatabaseTypeMariaDB) || (p.allowOpenGauss && t == model.DatabaseTypeOpenGauss))
+	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL || (p.allowMariaDB && t == model.DatabaseTypeMariaDB) || (p.allowOpenGauss && t == model.DatabaseTypeOpenGauss) || (p.allowTiDB && t == model.DatabaseTypeTiDB))
 }
 
 func (p *FixedIPEgressPolicy) Check(ds *model.DataSource) error {
@@ -120,7 +126,7 @@ func (p *FixedIPEgressPolicy) Check(ds *model.DataSource) error {
 	}
 	c := ds.Config
 	// openGauss onboarding is an explicit, verified-TLS-only candidate.
-	if ds.Type == model.DatabaseTypeOpenGauss && !c.SSL {
+	if (ds.Type == model.DatabaseTypeOpenGauss || ds.Type == model.DatabaseTypeTiDB) && !c.SSL {
 		return ErrEgressDenied
 	}
 	ip, err := netip.ParseAddr(c.Host)

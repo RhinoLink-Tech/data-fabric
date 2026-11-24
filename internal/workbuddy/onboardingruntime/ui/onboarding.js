@@ -15,6 +15,7 @@
       if (m && m[1] === flowMatch[1]) { sessionStorage.removeItem(returnKey); location.replace(back); return; }
     }
   } catch (_) { /* storage may be disabled */ }
+  fields.type.addEventListener('change', () => { el('tidb-note').hidden = fields.type.value !== 'tidb'; });
   let tlsChanged = false;
   if (update) {
     fields.name.required = false; fields.name.value = ''; fields.name.disabled = true;
@@ -32,6 +33,7 @@
   }
   function body() {
     if (!form.reportValidity()) throw new Error('请检查必填项。');
+    if (fields.type.value === 'tidb' && !fields.ssl.checked && (!update || tlsChanged)) throw new Error('TiDB 需要启用 TLS 并验证服务器证书。');
     const host = fields.host.value.trim();
     if (/[\x00-\x20\x7f@?#]/.test(host)) throw new Error('主机不能包含空格、用户名、密码、查询参数或片段。');
     const portText = fields.port.value;

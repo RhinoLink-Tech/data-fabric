@@ -12,8 +12,8 @@ health checks, and queries. Use a separate metadata database and an isolated
 MCP instance. Never run an unrestricted Data Fabric API against that database
 or provide another unrestricted database access path. Existing unsupported
 sources will stop working in this instance. The default policy supports MySQL and
-PostgreSQL with pinned IPv4 destinations. Separate default-off candidates add MariaDB and openGauss;
-neither has completed actual WorkBuddy client acceptance. The openGauss candidate requires verified TLS and a build containing its driver. Verified TLS uses system trust or
+PostgreSQL with pinned IPv4 destinations. Separate default-off candidates add MariaDB, openGauss and TiDB;
+none has completed actual WorkBuddy client acceptance. The openGauss and TiDB candidates require verified TLS and builds containing their drivers. Verified TLS uses system trust or
 an operator-provisioned CA; see [TLS source setup](../../docs/workbuddy-tls-sources.md).
 Plaintext connections remain available only for environments where the operator
 accepts that risk. Policy changes require restarting and draining every instance
@@ -50,6 +50,7 @@ Settings in addition to the normal MCP/OIDC/audit/vault configuration:
   they are checked against discovery at startup.
 - `DATA_FABRIC_WORKBUDDY_MARIADB`: optional `true` enables the MariaDB type in the isolated fixed-IP policy and browser wizard. Default is off. This does not grant a user permission; the configured CIDR/port and management grant still apply. Restart/drain every instance when changing it.
 - `DATA_FABRIC_WORKBUDDY_OPENGAUSS`: optional `true` enables the separate openGauss type in the fixed-IP policy and browser wizard. Default is off; the experimental Core build lacks this driver and rejects the toggle. TLS with hostname verification is mandatory. The CIDR/port and management grant still apply; restart/drain every instance when changing it. Use a source account limited to the intended read-only tables.
+- `DATA_FABRIC_WORKBUDDY_TIDB`: optional `true` enables the separate TiDB browser and restricted SQL path. Default is off. Verified TLS, the configured CIDR/port and a management grant are mandatory; the build must include the TiDB driver. TiDB does not have a verified gateway read-only session initializer: an administrator must provision and verify a source account with SELECT only on the intended tables. The wizard does not verify all database privileges. Restart/drain every instance after changing the policy. This is an unreleased candidate; client and release acceptance are separate.
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_CIDRS`: comma-separated IPv4 CIDRs.
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_PORTS`: comma-separated TCP ports. The
   destination must match both CIDR and port. CIDRs and ports are policy, not

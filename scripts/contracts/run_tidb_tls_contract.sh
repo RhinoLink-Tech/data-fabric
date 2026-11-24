@@ -5,10 +5,11 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-tidb-tls-$RANDOM-$RANDOM"
 image_tag="data-fabric-tidb-tls:$RANDOM-$RANDOM"
+metadata_name="data-fabric-tidb-meta-$RANDOM-$RANDOM"
 tidb_image="pingcap/tidb:v8.5.8@sha256:df168c764bf2dfdb166dc37a5c3b0e210d29d5f3ab2d33317fd0fdf7b32037f5"
 
 cleanup() {
-  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  docker rm -f "$container_name" "$metadata_name" >/dev/null 2>&1 || true
   docker image rm -f "$image_tag" >/dev/null 2>&1 || true
   rm -rf "$work_dir"
 }
@@ -93,3 +94,54 @@ DATA_FABRIC_TIDB_TLS_CONTRACT_HOST=localhost \
     docker logs "$container_name" 2>&1 | grep -iE "mysql protocol server secure connection|error|server is running|listening" | tail -40 || true
     exit 1
   }
+
+# Prepare a read-only source account in this disposable TiDB container.
+DATA_FABRIC_TIDB_PREPARE_DISPOSABLE_FIXTURE=true \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_HOST=localhost \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_TIDB_TLS_ROOT_CA="$work_dir/ca.crt" \
+  go test ./internal/database/drivers/domestic -run '^TestTiDBPrepareBrowserFixture$' -count=1 -v
+
+DATA_FABRIC_TIDB_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_USERNAME=browser_reader \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_PASSWORD=browser-test-only \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_DATABASE=data_fabric_contract \
+  DATA_FABRIC_TIDB_TLS_ROOT_CA="$work_dir/ca.crt" \
+  DATA_FABRIC_TIDB_TLS_BAD_CA="$work_dir/bad-ca.crt" \
+  go test ./internal/database -run '^TestTiDBRestrictedOnboardingTLSContract$' -count=1 -v
+
+DATA_FABRIC_TIDB_TLS_CONTRACT_PORT="$port" \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_USERNAME=browser_reader \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_PASSWORD=browser-test-only \
+  DATA_FABRIC_TIDB_TLS_CONTRACT_DATABASE=data_fabric_contract \
+  DATA_FABRIC_TIDB_TLS_ROOT_CA="$work_dir/ca.crt" \
+  go test ./internal/workbuddy/onboardinghttp -run '^TestTiDBBrowserRestrictedTLSContract$' -count=1 -v
+
+# Use separate disposable MySQL metadata for the signed synthetic OIDC/MCP
+# lifecycle. No real identity provider or production credentials are involved.
+docker run --detach --name "$metadata_name" \
+  --env MYSQL_ROOT_PASSWORD=metadata-root-test-only \
+  --env MYSQL_DATABASE=df_metadata \
+  --env MYSQL_USER=df_meta \
+  --env MYSQL_PASSWORD=metadata-test-only \
+  --publish 127.0.0.1::3306 \
+  mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7 >/dev/null
+metadata_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3306/tcp") 0).HostPort}}' "$metadata_name")"
+metadata_ready=false
+for _ in $(seq 1 120); do
+  if docker exec "$metadata_name" mysqladmin ping --protocol=tcp --host=127.0.0.1 \
+    --user=root --password=metadata-root-test-only --silent >/dev/null 2>&1; then
+    metadata_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$metadata_ready" != true ]; then
+  printf 'temporary metadata service did not become ready\n' >&2
+  exit 1
+fi
+DF_WB_E2E_UPDATE=true DF_WB_E2E_POSTGRES_PORT= \
+  DF_WB_E2E_MYSQL_DSN="df_meta:metadata-test-only@tcp(127.0.0.1:${metadata_port})/df_metadata?parseTime=true" \
+  DF_WB_E2E_TIDB_PORT="$port" \
+  DF_WB_E2E_TIDB_CA="$work_dir/ca.crt" \
+  go test -count=1 ./internal/workbuddy/onboardingruntime -run '^TestSignedOIDCAndMCPBrowserLifecycle$' -v

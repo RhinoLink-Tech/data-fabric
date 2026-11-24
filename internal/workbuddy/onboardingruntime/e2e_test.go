@@ -179,8 +179,20 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	tidbPort := os.Getenv("DF_WB_E2E_TIDB_PORT")
+	if tidbPort != "" {
+		if gaussPort != "" || mariaPort != "" || os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			t.Fatal("choose only one source fixture")
+		}
+		port, e = strconv.Atoi(tidbPort)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 	var policy *database.FixedIPEgressPolicy
-	if gaussPort != "" {
+	if tidbPort != "" {
+		policy, e = database.NewFixedIPEgressPolicyWithTiDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_TIDB_CA"), false, false, true)
+	} else if gaussPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithSourceOptions([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_OPENGAUSS_CA"), false, true)
 	} else if mariaPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_MARIADB_CA"), true)
@@ -201,7 +213,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Query.ExecutionMode = "pagination"
 	server := mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, nil)
-	if gaussPort != "" {
+	if gaussPort != "" || tidbPort != "" {
 		server = mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, metadata.NewMetadataExtractor(pool, repo))
 	}
 	verifier, e := security.NewOIDCIDTokenVerifier(ctx, provider.URL, "browser-client", provider.Client())
@@ -260,6 +272,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 	server.SetDataSourceManagementService(service.NewDataSourceService(repo, pool, database.NewHealthChecker(pool)))
+	server.SetSourceConnectivityTester(database.NewHealthChecker(pool))
 	actualMCP := httptest.NewServer(mcp.StrictTenantHTTPHandler(server.StreamableHTTPHandler(accessValidator)))
 	defer actualMCP.Close()
 	badAccess := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": provider.URL, "sub": "alice", "aud": "wrong-api", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "tenant": "tenant-a", "scope": "data-fabric.sources.manage data-fabric.query"})
@@ -294,6 +307,17 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	}
 	if _, e = mclient.Initialize(ctx, protocol.InitializeRequest{Params: protocol.InitializeParams{ProtocolVersion: protocol.LATEST_PROTOCOL_VERSION, ClientInfo: protocol.Implementation{Name: "synthetic", Version: "1"}}}); e != nil {
 		t.Fatal(e)
+	}
+	if tidbPort != "" {
+		catalog := toolJSON(t, mclient, "list_source_types", map[string]any{"type": "tidb"})
+		types, ok := catalog["source_types"].([]any)
+		if !ok || len(types) != 1 {
+			t.Fatal("TiDB missing from the source catalog")
+		}
+		entry, ok := types[0].(map[string]any)
+		if !ok || entry["type"] != "tidb" || entry["allowed_by_instance_type_policy"] != true || entry["allowed_by_onboarding_type_policy"] != true {
+			t.Fatal("TiDB source catalog did not reflect the enabled policies")
+		}
 	}
 	begin := toolJSON(t, mclient, "begin_data_source_onboarding", nil)
 	flow, ok := begin["flow_id"].(string)
@@ -346,6 +370,13 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
+	if tidbPort != "" {
+		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "tidb", "config": map[string]any{"host": "localhost", "port": port, "database": "data_fabric_contract", "username": "browser_reader", "password": "browser-test-only", "ssl": true, "tlsCA": "custom"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = string(encoded)
+	}
 	if gaussPort != "" {
 		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "opengauss", "config": map[string]any{"host": "localhost", "port": port, "database": "postgres", "schema": "public", "username": "browser_reader", "password": "Browser_2026!", "ssl": true, "tlsCA": "custom"}})
 		if err != nil {
@@ -353,7 +384,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
-	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" {
+	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" || tidbPort != "" {
 		probe := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+flow+"/test", bytes.NewBufferString(payload))
 		probe.AddCookie(cookie)
 		probe.Header.Set("Origin", origin)
@@ -610,8 +641,14 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 	}
 
-	if mariaPort != "" || gaussPort != "" {
+	if mariaPort != "" || gaussPort != "" || tidbPort != "" {
 		sourceID := status["datasource_id"].(string)
+		if tidbPort != "" {
+			connection := toolJSON(t, mclient, "test_data_source_connection", map[string]any{"datasource_id": sourceID})
+			if connection["connected"] != true {
+				t.Fatal("TiDB MCP stored-source connection test did not succeed")
+			}
+		}
 		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
 		listed, _ := json.Marshal(tables)
 		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {

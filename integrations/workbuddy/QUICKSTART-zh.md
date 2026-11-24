@@ -42,7 +42,7 @@
 
 - **了解支持范围**：询问“当前服务支持哪些数据库和文件格式？”；进一步询问指定类型时，助手会读取该类型的验证情况和限制。
 - **管理已有数据源**：在具有 data-fabric.sources.manage 和所需所有权或管理员权限时，可要求重命名、启用或停用；更改前核对数据源和目标状态。
-- **测试连接**：可测试已配置的 MySQL 或 PostgreSQL 数据源；较新源码构建在启用受限策略后还支持 MariaDB。普通部署仅支持非 TLS；启用受限向导的候选服务可测试验证证书的 TLS 连接。
+- **测试连接**：可测试已配置的 MySQL 或 PostgreSQL 数据源；较新源码构建在启用受限策略后还支持 MariaDB 和 TiDB。普通部署仅支持非 TLS；启用受限向导的候选服务可测试验证证书的 TLS 连接。
 - **删除**：明确确认数据源名称和 ID 后才执行；该操作永久删除，服务端还要求对应租户和所有权。
 
 **安全新增（实验功能）**：preview.2 包含默认关闭的浏览器接入工具，仍需实际 WorkBuddy 客户端端到端验收。管理员部署并启用后，确认客户端实际发现 `begin_data_source_onboarding` 和 `get_data_source_onboarding_status`，再请助手启动向导。打开返回的链接，用与 MCP 相同的 issuer、用户和租户登录，在浏览器安全填写连接信息、测试并保存，回到会话告知助手，再由助手读取真实状态。链接本身不授予权限。默认支持服务允许的 IPv4 地址和端口上的 PostgreSQL/MySQL；更新后的源码构建可分别开启实验性的 MariaDB 和 openGauss，后者要求校验证书的 TLS，实验 Core 构建不含其驱动。它们尚未包含在 preview.2 镜像中。向导还需要 OIDC、管理 scope 和服务端身份授权。如部署显式开启 `DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES=true` 且实际发现更新工具，也可在浏览器中更新服务允许的已有数据源连接与凭据；以部署策略和工具实际返回为准。
@@ -65,3 +65,6 @@ python3 scripts/mcp/workbuddy_token.py \
 ```
 
 按浏览器提示完成登录后，工具会要求你确认，再将 access token 显示在终端。仅当客户端提供受保护的 Bearer 凭据输入方式时，才手动使用令牌；优先使用客户端自带 OAuth。WorkBuddy 5.11.3 的自定义 MCP 使用 JSON 文件，直接写入令牌会持久化敏感信息，不要将令牌写入持久配置或聊天。工具不会写入令牌文件，也不会显示或保存 refresh token。请确保终端没有被记录或共享，勿将令牌发送到聊天或日志；终端可能保留显示内容，使用后按终端自身方法清除。令牌过期后重新运行并更新连接。需要管理操作时，管理员必须授予管理权限，并按需传入 `--scope 'openid data-fabric.query data-fabric.sources.manage'`；如果身份服务需要 OAuth resource 参数，还需提供 `--resource`。客户端注册、audience、scope 和数据库权限最终由身份服务与 Data Fabric 网关校验，此辅助工具不验证访问令牌签名，也不授予额外权限。
+
+
+**TiDB 候选接入：**较新的源码构建允许管理员单独设置 `DATA_FABRIC_WORKBUDDY_TIDB=true`，默认关闭；连接必须使用校验证书的 TLS，地址和端口必须在服务端白名单中。TiDB 没有已验证的网关只读会话初始化：数据库管理员必须提前创建并确认仅能读取目标表的 SELECT 账号，向导不会检查账号全部权限。该候选尚不包含在 preview.2 中，真实 WorkBuddy 客户端及发布镜像仍需单独验收。
