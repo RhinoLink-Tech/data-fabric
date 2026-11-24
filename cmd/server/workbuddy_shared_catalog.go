@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/auditlog"
@@ -40,7 +41,7 @@ func loadSharedTestCatalog(path string, policy *database.FixedIPEgressPolicy) ([
 		return nil, errors.New("shared test catalog unavailable")
 	}
 	var entries []sharedTestEntry
-	if json.Unmarshal(b, &entries) != nil || len(entries) == 0 || len(entries) > 16 {
+	if json.Unmarshal(b, &entries) != nil || len(entries) > 16 {
 		return nil, errors.New("invalid shared test catalog")
 	}
 	keys, names := map[string]bool{}, map[string]bool{}
@@ -57,6 +58,16 @@ func loadSharedTestCatalog(path string, policy *database.FixedIPEgressPolicy) ([
 	return entries, nil
 }
 
+// This registry records only operator-provisioned metadata, never credentials.
+type sharedTestSourceRecord struct {
+	SourceID   string `gorm:"primaryKey;size:36"`
+	TenantID   string `gorm:"size:255;not null;index"`
+	OwnerID    string `gorm:"size:255;not null"`
+	CatalogKey string `gorm:"size:64;not null"`
+}
+
+func (sharedTestSourceRecord) TableName() string { return "df_shared_test_sources" }
+
 // Called under the locked, already verified identity grant. Each tenant gets
 // a separate metadata record while the underlying database remains shared.
 func provisionSharedTestSources(ctx context.Context, tx *gorm.DB, vault *security.CredentialVault, issuer, subject, tenant, auditKey string, entries []sharedTestEntry) error {
@@ -68,12 +79,38 @@ func provisionSharedTestSources(ctx context.Context, tx *gorm.DB, vault *securit
 	if err != nil {
 		return err
 	}
+	desired := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		desired[e.Key] = true
+	}
+	var managed []sharedTestSourceRecord
+	if err := tx.Where("tenant_id = ? AND owner_id = ?", tenant, subject).Find(&managed).Error; err != nil {
+		return err
+	}
+	for _, rec := range managed {
+		if desired[rec.CatalogKey] {
+			continue
+		}
+		if err := tx.Model(&model.DataSource{}).Where("id = ? AND owner_id = ? AND tenant_id = ?", rec.SourceID, subject, tenant).Update("status", model.DataSourceStatusInactive).Error; err != nil {
+			return err
+		}
+	}
 	for _, e := range entries {
 		id := uuid.NewSHA1(uuid.NameSpaceURL, []byte("data-fabric-shared-test\x00"+issuer+"\x00"+subject+"\x00"+e.Key)).String()
 		existing, err := repo.GetByID(ctx, id)
 		if err == nil {
 			if existing.OwnerID != subject || existing.TenantID != tenant {
 				return errors.New("shared source identity conflict")
+			}
+			if existing.Type != e.Type || existing.Status != model.DataSourceStatusActive || !reflect.DeepEqual(existing.Config, e.Config) {
+				existing.Type, existing.Config, existing.Status = e.Type, e.Config, model.DataSourceStatusActive
+				if err := repo.Update(ctx, existing); err != nil {
+					return err
+				}
+			}
+			rec := sharedTestSourceRecord{SourceID: id, TenantID: tenant, OwnerID: subject, CatalogKey: e.Key}
+			if err := tx.Where("source_id = ?", id).FirstOrCreate(&rec).Error; err != nil {
+				return err
 			}
 			continue
 		}
@@ -100,6 +137,10 @@ func provisionSharedTestSources(ctx context.Context, tx *gorm.DB, vault *securit
 		}
 		ds := &model.DataSource{ID: id, Name: name, Type: e.Type, Config: e.Config, Status: model.DataSourceStatusActive, OwnerID: subject, TenantID: tenant}
 		if err = repo.Create(ctx, ds); err != nil {
+			return err
+		}
+		rec := sharedTestSourceRecord{SourceID: id, TenantID: tenant, OwnerID: subject, CatalogKey: e.Key}
+		if err := tx.Where("source_id = ?", id).FirstOrCreate(&rec).Error; err != nil {
 			return err
 		}
 		if err = audit.Record(ctx, auditlog.Event{ActorID: subject, TenantID: tenant, Transport: "mcp-http", Operation: "workbuddy.shared.provision", DataSourceID: id, Decision: auditlog.DecisionAllow, Outcome: "success"}); err != nil {

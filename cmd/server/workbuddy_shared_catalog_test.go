@@ -26,6 +26,9 @@ func TestSharedCatalogProvisioningIsTenantScopedAndIdempotent(t *testing.T) {
 	if err = onboarding.MigrateGrants(db); err != nil {
 		t.Fatal(err)
 	}
+	if err = db.AutoMigrate(&sharedTestSourceRecord{}); err != nil {
+		t.Fatal(err)
+	}
 	if err = auditlog.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +56,28 @@ func TestSharedCatalogProvisioningIsTenantScopedAndIdempotent(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0].ID == rows[1].ID || rows[0].OwnerID != "alice" || rows[1].OwnerID != "bob" || strings.Contains(rows[0].Config, "synthetic-secret") {
 		t.Fatalf("shared source isolation or encryption failed: %d rows", len(rows))
+	}
+	// Removing a catalog entry disables existing managed records; restoring it
+	// applies the new credential without touching other users' records.
+	empty := func(ctx context.Context, tx *gorm.DB) error {
+		return provisionSharedTestSources(ctx, tx, vault, issuer, "alice", "tenant-a", key, nil)
+	}
+	if err = provisionSelfServiceGrant(ctx, db, issuer, "alice", "tenant-a", key, nil, empty); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err = db.Table("data_sources").Select("status").Where("tenant_id = ?", "tenant-a").Scan(&status).Error; err != nil || status != "inactive" {
+		t.Fatal("removed entry remained active")
+	}
+	catalog[0].Config.Password = "rotated-synthetic-secret"
+	restored := func(ctx context.Context, tx *gorm.DB) error {
+		return provisionSharedTestSources(ctx, tx, vault, issuer, "alice", "tenant-a", key, catalog)
+	}
+	if err = provisionSelfServiceGrant(ctx, db, issuer, "alice", "tenant-a", key, nil, restored); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Table("data_sources").Select("status").Where("tenant_id = ?", "tenant-a").Scan(&status).Error; err != nil || status != "active" {
+		t.Fatal("restored entry was not active")
 	}
 	store, _ := onboarding.NewGrantStore(db)
 	if err = store.Revoke(ctx, issuer, "alice"); err != nil {

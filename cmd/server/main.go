@@ -621,7 +621,14 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		if _, err := uuid.Parse(templateID); err != nil {
 			return errors.New("self-service requires an approved synthetic source template")
 		}
-		sharedCatalog, err := loadSharedTestCatalog(strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SHARED_TEST_CATALOG")), workbuddy.policy)
+		sharedPath := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SHARED_TEST_CATALOG"))
+		sharedEnabled := sharedPath != "" || db.Migrator().HasTable(&sharedTestSourceRecord{})
+		if sharedEnabled {
+			if err := db.AutoMigrate(&sharedTestSourceRecord{}); err != nil {
+				return errors.New("shared source registry unavailable")
+			}
+		}
+		sharedCatalog, err := loadSharedTestCatalog(sharedPath, workbuddy.policy)
 		if err != nil {
 			return err
 		}
@@ -630,6 +637,9 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 				_, err := seedSyntheticForSubject(ctx, tx, vault, workbuddy.policy, issuer, subject, tenant, templateID, "self-service", auditKey)
 				return err
 			}, func(ctx context.Context, tx *gorm.DB) error {
+				if !sharedEnabled {
+					return nil
+				}
 				return provisionSharedTestSources(ctx, tx, vault, issuer, subject, tenant, auditKey, sharedCatalog)
 			})
 		}}
