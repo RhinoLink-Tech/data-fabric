@@ -272,6 +272,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 	server.SetDataSourceManagementService(service.NewDataSourceService(repo, pool, database.NewHealthChecker(pool)))
+	server.SetSourceConnectivityTester(database.NewHealthChecker(pool))
 	actualMCP := httptest.NewServer(mcp.StrictTenantHTTPHandler(server.StreamableHTTPHandler(accessValidator)))
 	defer actualMCP.Close()
 	badAccess := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": provider.URL, "sub": "alice", "aud": "wrong-api", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(), "tenant": "tenant-a", "scope": "data-fabric.sources.manage data-fabric.query"})
@@ -306,6 +307,17 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	}
 	if _, e = mclient.Initialize(ctx, protocol.InitializeRequest{Params: protocol.InitializeParams{ProtocolVersion: protocol.LATEST_PROTOCOL_VERSION, ClientInfo: protocol.Implementation{Name: "synthetic", Version: "1"}}}); e != nil {
 		t.Fatal(e)
+	}
+	if tidbPort != "" {
+		catalog := toolJSON(t, mclient, "list_source_types", map[string]any{"type": "tidb"})
+		types, ok := catalog["source_types"].([]any)
+		if !ok || len(types) != 1 {
+			t.Fatal("TiDB missing from the source catalog")
+		}
+		entry, ok := types[0].(map[string]any)
+		if !ok || entry["type"] != "tidb" || entry["allowed_by_instance_type_policy"] != true || entry["allowed_by_onboarding_type_policy"] != true {
+			t.Fatal("TiDB source catalog did not reflect the enabled policies")
+		}
 	}
 	begin := toolJSON(t, mclient, "begin_data_source_onboarding", nil)
 	flow, ok := begin["flow_id"].(string)
@@ -631,6 +643,12 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 
 	if mariaPort != "" || gaussPort != "" || tidbPort != "" {
 		sourceID := status["datasource_id"].(string)
+		if tidbPort != "" {
+			connection := toolJSON(t, mclient, "test_data_source_connection", map[string]any{"datasource_id": sourceID})
+			if connection["connected"] != true {
+				t.Fatal("TiDB MCP stored-source connection test did not succeed")
+			}
+		}
 		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
 		listed, _ := json.Marshal(tables)
 		if !bytes.Contains(listed, []byte("browser_orders")) || bytes.Contains(listed, []byte("browser-test-only")) {
