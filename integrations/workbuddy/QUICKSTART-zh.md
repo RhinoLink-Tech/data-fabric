@@ -68,3 +68,5 @@ python3 scripts/mcp/workbuddy_token.py \
 
 
 **TiDB 候选接入：**较新的源码构建允许管理员单独设置 `DATA_FABRIC_WORKBUDDY_TIDB=true`，默认关闭；连接必须使用校验证书的 TLS，地址和端口必须在服务端白名单中。TiDB 没有已验证的网关只读会话初始化：数据库管理员必须提前创建并确认仅能读取目标表的 SELECT 账号，向导不会检查账号全部权限。该候选尚不包含在 preview.2 中，真实 WorkBuddy 客户端及发布镜像仍需单独验收。
+
+**ClickHouse 候选接入：**源码候选可由管理员设置 `DATA_FABRIC_WORKBUDDY_CLICKHOUSE=true`，默认关闭，Core 构建不支持。需要证书验证、允许的 IP 和端口，以及由管理员核实仅能读取目标表的账号；向导不会检查全部数据库权限。真实 WorkBuddy 客户端和发布镜像仍需单独验收。

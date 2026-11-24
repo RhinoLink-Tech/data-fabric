@@ -5,13 +5,14 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 work_dir="$(mktemp -d)"
 container_name="data-fabric-clickhouse-tls-$RANDOM-$RANDOM"
 image_tag="data-fabric-clickhouse-tls:$RANDOM-$RANDOM"
+metadata_name="data-fabric-clickhouse-metadata-$RANDOM-$RANDOM"
 clickhouse_image="clickhouse/clickhouse-server:26.8.20.9-alpine@sha256:1e67397fa4828e8dbb95b3bcc37a8822749ca5e46bd208b3ef336f365c522688"
 username="data_fabric_contract"
 password="contract-test-only"
 database="data_fabric_contract"
 
 cleanup() {
-  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  docker rm -f "$container_name" "$metadata_name" >/dev/null 2>&1 || true
   docker image rm -f "$image_tag" >/dev/null 2>&1 || true
   rm -rf "$work_dir"
 }
@@ -108,3 +109,38 @@ DATA_FABRIC_CLICKHOUSE_CONTRACT_USERNAME="$username" \
     docker logs "$container_name" 2>&1 | grep -iE 'error|ssl|tls|ready for connections' | tail -60 || true
     exit 1
   }
+
+# Separate least-privilege fixture for the browser/restricted pool contract.
+docker exec "$container_name" clickhouse-client --host 127.0.0.1 --port 9000   --user "$username" --password "$password" --database "$database" --multiquery --query "
+    CREATE TABLE browser_orders (id UInt64, status String) ENGINE = Memory;
+    INSERT INTO browser_orders VALUES (1, 'shipped'), (2, 'new'), (3, 'shipped');
+    CREATE USER browser_reader IDENTIFIED WITH sha256_password BY 'browser-test-only';
+    GRANT SELECT ON $database.browser_orders TO browser_reader;
+  "
+DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_DATABASE="$database"   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_USERNAME=browser_reader   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_PASSWORD=browser-test-only   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_PORT="$port"   DATA_FABRIC_CLICKHOUSE_TLS_ROOT_CA="$work_dir/context/certs/ca.crt"   DATA_FABRIC_CLICKHOUSE_TLS_BAD_CA="$work_dir/bad-ca.crt"   go test ./internal/database ./internal/workbuddy/onboardinghttp -run '^(TestClickHouseRestrictedOnboardingTLSContract|TestClickHouseBrowserRestrictedTLSContract)$' -count=1 -v
+
+# Isolated metadata database for the synthetic signed-OIDC/MCP lifecycle.
+docker run --detach --name "$metadata_name" \
+  --env MYSQL_ROOT_PASSWORD=metadata-root-test-only \
+  --env MYSQL_DATABASE=df_metadata --env MYSQL_USER=df_meta --env MYSQL_PASSWORD=metadata-test-only \
+  --publish 127.0.0.1::3306 \
+  mysql:8.4.13@sha256:a0225d1ea6631c8bc2385dc4c2faba17bbf1834ecf369e1659a9a382bd8d5dd7 >/dev/null
+metadata_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "3306/tcp") 0).HostPort}}' "$metadata_name")"
+metadata_ready=false
+for _ in $(seq 1 120); do
+  if docker exec "$metadata_name" mysqladmin ping --protocol=tcp --host=127.0.0.1 \
+    --user=root --password=metadata-root-test-only --silent >/dev/null 2>&1; then
+    metadata_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$metadata_ready" != true ]; then
+  printf 'temporary metadata service did not become ready\n' >&2
+  exit 1
+fi
+DF_WB_E2E_UPDATE=true DF_WB_E2E_POSTGRES_PORT= \
+  DF_WB_E2E_MYSQL_DSN="df_meta:metadata-test-only@tcp(127.0.0.1:${metadata_port})/df_metadata?parseTime=true" \
+  DF_WB_E2E_CLICKHOUSE_PORT="$port" \
+  DF_WB_E2E_CLICKHOUSE_CA="$work_dir/context/certs/ca.crt" \
+  go test -count=1 ./internal/workbuddy/onboardingruntime -run '^TestSignedOIDCAndMCPBrowserLifecycle$' -v

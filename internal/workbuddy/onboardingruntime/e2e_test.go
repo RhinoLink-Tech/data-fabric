@@ -189,8 +189,20 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	clickPort := os.Getenv("DF_WB_E2E_CLICKHOUSE_PORT")
+	if clickPort != "" {
+		if tidbPort != "" || gaussPort != "" || mariaPort != "" || os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			t.Fatal("choose only one source fixture")
+		}
+		port, e = strconv.Atoi(clickPort)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 	var policy *database.FixedIPEgressPolicy
-	if tidbPort != "" {
+	if clickPort != "" {
+		policy, e = database.NewFixedIPEgressPolicyWithClickHouse([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_CLICKHOUSE_CA"), false, false, false, true)
+	} else if tidbPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithTiDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_TIDB_CA"), false, false, true)
 	} else if gaussPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithSourceOptions([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_OPENGAUSS_CA"), false, true)
@@ -213,7 +225,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Query.ExecutionMode = "pagination"
 	server := mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, nil)
-	if gaussPort != "" || tidbPort != "" {
+	if gaussPort != "" || tidbPort != "" || clickPort != "" {
 		server = mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, metadata.NewMetadataExtractor(pool, repo))
 	}
 	verifier, e := security.NewOIDCIDTokenVerifier(ctx, provider.URL, "browser-client", provider.Client())
@@ -319,6 +331,17 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal("TiDB source catalog did not reflect the enabled policies")
 		}
 	}
+	if clickPort != "" {
+		catalog := toolJSON(t, mclient, "list_source_types", map[string]any{"type": "clickhouse"})
+		types, ok := catalog["source_types"].([]any)
+		if !ok || len(types) != 1 {
+			t.Fatal("ClickHouse missing from catalog")
+		}
+		entry, ok := types[0].(map[string]any)
+		if !ok || entry["allowed_by_instance_type_policy"] != true || entry["allowed_by_onboarding_type_policy"] != true {
+			t.Fatal("ClickHouse gates missing")
+		}
+	}
 	begin := toolJSON(t, mclient, "begin_data_source_onboarding", nil)
 	flow, ok := begin["flow_id"].(string)
 	if !ok || len(flow) != 43 {
@@ -377,6 +400,13 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
+	if clickPort != "" {
+		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "clickhouse", "config": map[string]any{"host": "127.0.0.1", "port": port, "database": "data_fabric_contract", "username": "browser_reader", "password": "browser-test-only", "ssl": true, "tlsCA": "custom"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = string(encoded)
+	}
 	if gaussPort != "" {
 		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "opengauss", "config": map[string]any{"host": "localhost", "port": port, "database": "postgres", "schema": "public", "username": "browser_reader", "password": "Browser_2026!", "ssl": true, "tlsCA": "custom"}})
 		if err != nil {
@@ -384,7 +414,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
-	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" || tidbPort != "" {
+	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" || tidbPort != "" || clickPort != "" {
 		probe := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+flow+"/test", bytes.NewBufferString(payload))
 		probe.AddCookie(cookie)
 		probe.Header.Set("Origin", origin)
@@ -641,9 +671,9 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 	}
 
-	if mariaPort != "" || gaussPort != "" || tidbPort != "" {
+	if mariaPort != "" || gaussPort != "" || tidbPort != "" || clickPort != "" {
 		sourceID := status["datasource_id"].(string)
-		if tidbPort != "" {
+		if tidbPort != "" || clickPort != "" {
 			connection := toolJSON(t, mclient, "test_data_source_connection", map[string]any{"datasource_id": sourceID})
 			if connection["connected"] != true {
 				t.Fatal("TiDB MCP stored-source connection test did not succeed")
