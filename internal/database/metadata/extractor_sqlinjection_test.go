@@ -125,7 +125,8 @@ func TestClickHouseMetadataQueriesUseSystemCatalog(t *testing.T) {
 	tableQuery := e.getTableQuery(model.DatabaseTypeClickHouse)
 	if !strings.Contains(tableQuery, "FROM system.tables") ||
 		!strings.Contains(tableQuery, "database = currentDatabase()") ||
-		strings.Contains(tableQuery, "information_schema") {
+		strings.Contains(tableQuery, "information_schema") ||
+		strings.Contains(tableQuery, "is_dropped") {
 		t.Fatalf("ClickHouse table query is not least-privilege system catalog discovery: %s", tableQuery)
 	}
 	columnQuery := e.getColumnQuery(model.DatabaseTypeClickHouse, "orders", "ignored")
