@@ -114,6 +114,22 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 		oldMCPClient.Close()
 		return err
 	}
+	noCountMCP, err := readTrinoNoCount(callTool(ctx, oldMCPClient, "execute_sql_query", map[string]any{
+		"datasource_id": env.Sources["mysql"].ID, "sql": orderedIDs,
+		"batch_size": 1, "timeout": 5, "count_mode": "none", "execution_mode": "pagination",
+	}))
+	if err != nil {
+		oldMCPClient.Close()
+		return fmt.Errorf("start MCP no-count owner-loss probe: %w", err)
+	}
+	if noCountMCP.ExecutionMode != "pagination" || noCountMCP.NextURI == "" {
+		oldMCPClient.Close()
+		return fmt.Errorf("MCP no-count owner-loss probe has no pagination continuation")
+	}
+	if err := checkMCPPageOwner(env, noCountMCP.batch, "mcp-a"); err != nil {
+		oldMCPClient.Close()
+		return err
+	}
 	if _, _, body, err := ownerRequest(ctx, env, "mcp-a", "operator", http.MethodPost, "/internal/replica/drain"); err != nil {
 		oldMCPClient.Close()
 		return err
@@ -184,19 +200,37 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 		newMCPClient.Close()
 		return err
 	}
-	for _, session := range []string{oldSession, newSession} {
-		status, err := routedMCPSessionRequest(ctx, client, env, session, http.MethodDelete)
-		if err != nil || status != http.StatusOK {
-			oldMCPClient.Close()
-			newMCPClient.Close()
-			return fmt.Errorf("could not release MCP session during key rotation")
-		}
+	releaseStatus, err := routedMCPSessionRequest(ctx, client, env, oldSession, http.MethodDelete)
+	if err != nil || releaseStatus != http.StatusOK {
+		oldMCPClient.Close()
+		newMCPClient.Close()
+		return fmt.Errorf("could not release old MCP session during key rotation")
 	}
 	oldMCPClient.Close()
-	newMCPClient.Close()
 	if _, err := waitOwnerRetired(ctx, env, "mcp-a", 4*time.Second); err != nil {
+		newMCPClient.Close()
 		return err
 	}
+	// Confirm that failure is attributable to retirement, not marker expiry.
+	if err := checkMCPPageOwner(env, noCountMCP.batch, "mcp-a"); err != nil {
+		newMCPClient.Close()
+		return fmt.Errorf("MCP no-count probe expired before owner retirement: %w", err)
+	}
+	unavailableMCP, err := callTool(ctx, newMCPClient, "fetch_next_batch", nextArguments(noCountMCP.batch))
+	if err != nil {
+		newMCPClient.Close()
+		return err
+	}
+	if err := unavailableMCP.expectError(mcpHTTP, 0, "", sessionError); err != nil {
+		newMCPClient.Close()
+		return fmt.Errorf("retired MCP owner did not reject the no-count continuation: %w", err)
+	}
+	releaseStatus, err = routedMCPSessionRequest(ctx, client, env, newSession, http.MethodDelete)
+	if err != nil || releaseStatus != http.StatusOK {
+		newMCPClient.Close()
+		return fmt.Errorf("could not release new MCP session during key rotation")
+	}
+	newMCPClient.Close()
 
 	oldKeyMarker := oldREST.Slug
 	wrongDeploymentREST, err := env.MintAcceptanceMarker(
