@@ -3,12 +3,14 @@ package domestic
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
+	mysql "github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -70,6 +72,60 @@ func TestTiDBTLSVerification(t *testing.T) {
 		config := *trusted
 		config.SSLRootCert = ""
 		assertTiDBTLSRejected(t, driver, &config)
+	})
+
+	t.Run("least privilege account over verified TLS", func(t *testing.T) {
+		// The server is a disposable pinned fixture. The root connection only
+		// provisions data and grants; the application uses the restricted user.
+		for _, statement := range []string{
+			"CREATE DATABASE df_readonly_contract",
+			"CREATE TABLE df_readonly_contract.orders (id BIGINT PRIMARY KEY)",
+			"CREATE TABLE df_readonly_contract.private_records (id BIGINT PRIMARY KEY)",
+			"INSERT INTO df_readonly_contract.orders VALUES (1), (2)",
+			"CREATE USER 'df_readonly_contract'@'%' IDENTIFIED BY 'isolated-test-password'",
+			"GRANT SELECT ON df_readonly_contract.orders TO 'df_readonly_contract'@'%'",
+		} {
+			if _, err := db.ExecContext(ctx, statement); err != nil {
+				t.Fatalf("prepare isolated read-only fixture: %v", err)
+			}
+		}
+		t.Cleanup(func() {
+			_, _ = db.ExecContext(context.Background(), "DROP USER IF EXISTS 'df_readonly_contract'@'%'")
+			_, _ = db.ExecContext(context.Background(), "DROP DATABASE IF EXISTS df_readonly_contract")
+		})
+
+		config := *trusted
+		config.Database = "df_readonly_contract"
+		config.Username = "df_readonly_contract"
+		config.Password = "isolated-test-password"
+		reader := openTiDBTLSContractDB(t, driver, &config)
+		defer reader.Close()
+		assertTiDBTLSState(t, ctx, reader, true)
+		var count int
+		if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM orders").Scan(&count); err != nil || count != 2 {
+			t.Fatalf("restricted account orders count = %d, error = %v", count, err)
+		}
+		var columns int
+		if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'orders'").Scan(&columns); err != nil || columns != 1 {
+			t.Fatalf("restricted account visible column count = %d, error = %v", columns, err)
+		}
+		for _, statement := range []string{
+			"INSERT INTO orders VALUES (3)",
+			"UPDATE orders SET id = 3 WHERE id = 1",
+			"DELETE FROM orders WHERE id = 1",
+			"CREATE TABLE forbidden_table (id INT)",
+			"DROP TABLE orders",
+			"SELECT id FROM private_records",
+		} {
+			_, err := reader.ExecContext(ctx, statement)
+			var serverError *mysql.MySQLError
+			if !errors.As(err, &serverError) || (serverError.Number != 1044 && serverError.Number != 1142 && serverError.Number != 1143) {
+				t.Fatalf("restricted statement %q error = %v, want TiDB access-denied error", statement, err)
+			}
+		}
+		if err := reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM orders").Scan(&count); err != nil || count != 2 {
+			t.Fatalf("restricted write attempt changed fixture: count = %d, error = %v", count, err)
+		}
 	})
 
 	t.Run("legacy ssl false remains plaintext", func(t *testing.T) {
