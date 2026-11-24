@@ -3,7 +3,7 @@
 [中文](workbuddy-source-onboarding-expansion-zh.md)
 
 Status: planning, not a supported feature. The opt-in browser workflow is
-limited by default to MySQL and PostgreSQL. MariaDB and openGauss are separate,
+limited by default to MySQL and PostgreSQL. MariaDB, openGauss and TiDB are separate,
 default-off source candidates and require explicit administrator opt-in. Source-type
 registration, the management UI, and a driver contract do not by themselves
 make a type eligible for the browser workflow. See the [WorkBuddy guide](../integrations/workbuddy/README.md)
@@ -31,7 +31,7 @@ allowed type gate, and from whether an individual user is authorized.
 | --- | --- | --- |
 | MariaDB | The catalog records real driver and TLS contracts for specific releases, including 10.11.19, 11.4.13, 11.8.9 and 12.3.3; it uses the MySQL protocol. | The default-off source candidate ([#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761)) exercises this type separately through the restricted browser/probe/query path. A synthetic protocol-level full lifecycle was exercised; actual WorkBuddy client and published-image acceptance remain open. MySQL compatibility alone is not proof. |
 | openGauss | The catalog records SQL, metadata, database-side read-only and TLS for 6.0.0 build aee4abd5. | A separate default-off, TLS-only candidate is tracked in [#781](https://github.com/RhinoLink-Tech/data-fabric/issues/781); real-client acceptance and a supported release remain open. It is not included in the experimental Core build. |
-| TiDB | The catalog records driver and TLS contracts for 8.5.8. Its contract does not establish a distributed TiKV topology. | Defer until need and database-side least-privilege enforcement are verified: the generic read-only session initializer is disabled for this type. |
+| TiDB | The catalog records driver and TLS contracts for 8.5.8. Its contract does not establish a distributed TiKV topology. | A separate default-off, TLS-only candidate is tracked in [#834](https://github.com/RhinoLink-Tech/data-fabric/issues/834). The gateway has no verified TiDB read-only session initializer: an administrator must verify a SELECT-only source account. Browser/client and release gates remain separate. |
 | ClickHouse | The catalog records a native-protocol and TLS contract for 26.8.20.9. | Separate design: the restricted connector is currently MySQL/PostgreSQL-specific; native-protocol security and diagnostics need their own path. |
 | SaaS and file/object sources | Registration or a service API alone does not establish a secure interactive flow. | Separate design for OAuth, scopes, file/path controls, pagination and rate limits; see #755 for the business-source evaluation. |
 
