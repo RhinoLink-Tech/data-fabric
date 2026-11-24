@@ -3,6 +3,7 @@ package domestic
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/drivers"
 	"strings"
@@ -49,9 +50,20 @@ func NewDaMengDriver(config *DaMengConfig) (*DaMengDriver, error) {
 	}, nil
 }
 
+var ErrDaMengDriverUnavailable = errors.New("DaMeng native database/sql driver is not registered in this build")
+
 // Open opens a connection to DaMeng
 func (d *DaMengDriver) Open(dsn string) (*sql.DB, error) {
-	// Open using DaMeng driver name; actual driver must be registered/imported elsewhere.
+	registered := false
+	for _, name := range sql.Drivers() {
+		if name == "dameng" {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		return nil, ErrDaMengDriverUnavailable
+	}
 	db, err := sql.Open("dameng", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DaMeng connection: %w", err)

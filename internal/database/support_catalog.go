@@ -487,6 +487,22 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 func applySupportStatus(profile *ConnectorSupport, dbType model.DatabaseType) {
 	// Known placeholders and incomplete execution paths must not read as stable.
 	switch dbType {
+	case model.DatabaseTypeDaMeng:
+		available := false
+		for _, name := range sql.Drivers() {
+			if name == "dameng" {
+				available = true
+				break
+			}
+		}
+		if !available {
+			profile.Supported = false
+			profile.Status = ConnectorStatusUnsupported
+			profile.VersionPolicy = "The native DaMeng database/sql driver is not registered in this build; connections are unavailable."
+			profile.Capabilities = drivers.DriverCapabilities{}
+			profile.Operations = []string{}
+			profile.Limitations = append(profile.Limitations, "The native DaMeng database/sql driver is absent; the registered adapter cannot connect.")
+		}
 	case model.DatabaseTypeMaxCompute:
 		profile.Status = ConnectorStatusUnsupported
 		profile.VersionPolicy = "SQL execution and schema discovery are unavailable until real MaxCompute result retrieval is implemented and verified."
