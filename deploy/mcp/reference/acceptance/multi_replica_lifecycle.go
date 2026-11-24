@@ -32,11 +32,14 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 	if err != nil {
 		return err
 	}
-	restUnavailableProbe, err := readQuery(ctx, rest, env.Sources["mysql"], orderedIDs, nil, 1)
+	noCountProbe, err := readTrinoNoCount(rest.queryNoCountWithMode(ctx, reader, env.Sources["mysql"], orderedIDs, nil, 1, "pagination"))
 	if err != nil {
-		return err
+		return fmt.Errorf("start no-count owner-loss probe: %w", err)
 	}
-	if err := checkRESTPageOwner(env, restUnavailableProbe, "rest-a"); err != nil {
+	if noCountProbe.ExecutionMode != "pagination" || noCountProbe.NextURI == "" {
+		return fmt.Errorf("no-count owner-loss probe has no pagination continuation")
+	}
+	if err := checkRESTPageOwner(env, noCountProbe.batch, "rest-a"); err != nil {
 		return err
 	}
 	if _, _, body, err := ownerRequest(ctx, env, "rest-a", "operator", http.MethodPost, "/internal/replica/drain"); err != nil {
@@ -74,12 +77,12 @@ func checkRoutingKeyRotation(ctx context.Context, env *reference.Environment, cl
 	if _, err := waitOwnerRetired(ctx, env, "rest-a", 4*time.Second); err != nil {
 		return err
 	}
-	unavailable, err := rest.next(ctx, reader, restUnavailableProbe)
+	noCountUnavailable, err := rest.next(ctx, reader, noCountProbe.batch)
 	if err != nil {
 		return err
 	}
-	if err := unavailable.expectError(surface("rest"), http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE", sessionError); err != nil {
-		return fmt.Errorf("retired REST owner did not reject the probe continuation: %w", err)
+	if err := noCountUnavailable.expectError(surface("rest"), http.StatusNotFound, "QUERY_SESSION_UNAVAILABLE", sessionError); err != nil {
+		return fmt.Errorf("retired REST owner did not reject the no-count continuation: %w", err)
 	}
 	restMetricsAfterUnavailable, err := ownerMetrics(ctx, env, "rest-a")
 	if err != nil {
