@@ -116,6 +116,8 @@ docker exec "$container_name" clickhouse-client --host 127.0.0.1 --port 9000   -
     INSERT INTO browser_orders VALUES (1, 'shipped'), (2, 'new'), (3, 'shipped');
     CREATE USER browser_reader IDENTIFIED WITH sha256_password BY 'browser-test-only';
     GRANT SELECT ON $database.browser_orders TO browser_reader;
+	GRANT SELECT(name, engine, database, is_temporary) ON system.tables TO browser_reader;
+	GRANT SELECT(name, type, default_expression, comment, database, table) ON system.columns TO browser_reader;
   "
 DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_DATABASE="$database"   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_USERNAME=browser_reader   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_PASSWORD=browser-test-only   DATA_FABRIC_CLICKHOUSE_TLS_CONTRACT_PORT="$port"   DATA_FABRIC_CLICKHOUSE_TLS_ROOT_CA="$work_dir/context/certs/ca.crt"   DATA_FABRIC_CLICKHOUSE_TLS_BAD_CA="$work_dir/bad-ca.crt"   go test ./internal/database ./internal/workbuddy/onboardinghttp -run '^(TestClickHouseRestrictedOnboardingTLSContract|TestClickHouseBrowserRestrictedTLSContract)$' -count=1 -v
 
