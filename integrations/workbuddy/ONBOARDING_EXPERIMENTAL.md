@@ -12,8 +12,8 @@ health checks, and queries. Use a separate metadata database and an isolated
 MCP instance. Never run an unrestricted Data Fabric API against that database
 or provide another unrestricted database access path. Existing unsupported
 sources will stop working in this instance. The default policy supports MySQL and
-PostgreSQL with pinned IPv4 destinations. Separate default-off candidates add MariaDB and openGauss;
-neither has completed actual WorkBuddy client acceptance. The openGauss candidate requires verified TLS and a build containing its driver. Verified TLS uses system trust or
+PostgreSQL with pinned IPv4 destinations. Separate default-off candidates add MariaDB, openGauss and TiDB;
+none has completed actual WorkBuddy client acceptance. The openGauss and TiDB candidates require verified TLS and builds containing their drivers. Verified TLS uses system trust or
 an operator-provisioned CA; see [TLS source setup](../../docs/workbuddy-tls-sources.md).
 Plaintext connections remain available only for environments where the operator
 accepts that risk. Policy changes require restarting and draining every instance

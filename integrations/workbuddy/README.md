@@ -36,7 +36,7 @@ published preview image contains them.
 
 When supported and authorized, users can discover registered source types,
 rename and enable or disable existing sources, test existing MySQL or
-PostgreSQL connections, and delete a source after explicit confirmation. An
+PostgreSQL connections, and delete a source after explicit confirmation. The
 opt-in restricted MariaDB and TiDB candidates also support connection tests.
 PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;

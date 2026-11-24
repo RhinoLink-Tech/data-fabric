@@ -85,7 +85,7 @@ permission errors ask the administrator to check configuration and grants.
 The opt-in secure setup workflow defaults to MySQL/PostgreSQL and restricts
 IPv4 destinations and ports. Newer source builds can separately enable
 experimental MariaDB, openGauss and TiDB candidates; openGauss and TiDB require verified TLS
-and is not in the experimental Core build. The actual wizard policy, available
+and their drivers are not in the experimental Core build. The actual wizard policy, available
 driver, permissions and deployed version determine which types can be used.
 If either tool is unavailable, direct the user to an administrator or supported
 management UI; do not invent an operation or claim completion.
