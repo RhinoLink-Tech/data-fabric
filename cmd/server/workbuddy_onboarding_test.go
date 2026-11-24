@@ -8,10 +8,20 @@ import (
 )
 
 func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_MARIADB", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_OPENGAUSS", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_ONBOARDING", "")
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "true")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("TiDB without onboarding accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "invalid")
+	if _, err := readWorkbuddyConfig(nil); err == nil {
+		t.Fatal("invalid TiDB toggle accepted")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "")
 	t.Setenv("DATA_FABRIC_WORKBUDDY_OPENGAUSS", "true")
 	if _, err := readWorkbuddyConfig(nil); err == nil {
 		t.Fatal("openGauss without onboarding accepted")
@@ -105,6 +115,22 @@ func TestWorkbuddyRequiresIsolatedRestrictedConfiguration(t *testing.T) {
 		t.Fatal("existing policy must remain immutable")
 	}
 	t.Setenv("DATA_FABRIC_WORKBUDDY_OPENGAUSS", "false")
+	if c.policy.AllowsSourceType(model.DatabaseTypeTiDB) {
+		t.Fatal("TiDB should be off by default")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "true")
+	enabledTiDB, err := readWorkbuddyConfig(cfg)
+	if database.GetDriverRegistry().IsSupported(model.DatabaseTypeTiDB) {
+		if err != nil || !enabledTiDB.policy.AllowsSourceType(model.DatabaseTypeTiDB) {
+			t.Fatal("explicit TiDB rejected", err)
+		}
+	} else if err == nil {
+		t.Fatal("build without TiDB driver accepted opt-in")
+	}
+	if c.policy.AllowsSourceType(model.DatabaseTypeTiDB) {
+		t.Fatal("existing policy must remain immutable")
+	}
+	t.Setenv("DATA_FABRIC_WORKBUDDY_TIDB", "false")
 	if c.sourceUpdates {
 		t.Fatal("source updates should be off by default")
 	}

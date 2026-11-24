@@ -98,7 +98,8 @@ func (p *FixedIPEgressPolicy) openRestrictedDatabase(source *model.DataSource, e
 	if err != nil {
 		return nil, err
 	}
-	if enforceReadOnly {
+	// TiDB has no verified session initializer; use an operator-verified SELECT-only account.
+	if enforceReadOnly && readonly.ModeFor(source.Type) == readonly.ModeConnectorInit {
 		return sql.OpenDB(readonly.WrapMySQLConnector(connector)), nil
 	}
 	return sql.OpenDB(connector), nil

@@ -181,3 +181,30 @@ func TestMariaDBConnectionProbeRequiresOptInAndOwnership(t *testing.T) {
 		t.Fatal("non-owner MariaDB test accepted")
 	}
 }
+
+func TestTiDBConnectionProbeRequiresOptInAndOwnership(t *testing.T) {
+	stub := &managementStub{source: &model.DataSource{ID: "id", OwnerID: "alice", TenantID: "a", Type: model.DatabaseTypeTiDB, Config: model.DataSourceConfig{Password: "secret-marker"}}}
+	srv := NewMCPServer(nil, nil, nil)
+	srv.SetDataSourceManagementService(stub)
+	srv.SetSourceConnectivityTester(&probeStub{})
+	req := callToolRequest("test_data_source_connection", map[string]any{"datasource_id": "id"})
+	owner := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "alice", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err := srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || !result.IsError {
+		t.Fatal("TiDB accepted without policy")
+	}
+	policy, err := database.NewFixedIPEgressPolicyWithTiDB([]string{"192.0.2.0/24"}, []int{4000}, "", false, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetSourceTypePolicy(policy, nil)
+	result, err = srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || result.IsError || strings.Contains(resultText(t, result), "secret-marker") {
+		t.Fatal("authorized test failed or leaked")
+	}
+	stranger := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "other", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err = srv.handleTestDataSourceConnection(stranger, req)
+	if err != nil || !result.IsError {
+		t.Fatal("non-owner TiDB test accepted")
+	}
+}

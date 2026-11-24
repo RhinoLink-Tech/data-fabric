@@ -15,6 +15,7 @@
       if (m && m[1] === flowMatch[1]) { sessionStorage.removeItem(returnKey); location.replace(back); return; }
     }
   } catch (_) { /* storage may be disabled */ }
+  fields.type.addEventListener('change', () => { el('tidb-note').hidden = fields.type.value !== 'tidb'; });
   let tlsChanged = false;
   if (update) {
     fields.name.required = false; fields.name.value = ''; fields.name.disabled = true;

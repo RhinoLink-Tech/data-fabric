@@ -84,7 +84,7 @@ permission errors ask the administrator to check configuration and grants.
 
 The opt-in secure setup workflow defaults to MySQL/PostgreSQL and restricts
 IPv4 destinations and ports. Newer source builds can separately enable
-experimental MariaDB and openGauss candidates; openGauss requires verified TLS
+experimental MariaDB, openGauss and TiDB candidates; openGauss and TiDB require verified TLS
 and is not in the experimental Core build. The actual wizard policy, available
 driver, permissions and deployed version determine which types can be used.
 If either tool is unavailable, direct the user to an administrator or supported
@@ -217,3 +217,5 @@ For `execute_sql_query`, newer servers default an omitted or non-positive initia
 When the task does not require an exact total and a newer service supports MySQL/MariaDB/PostgreSQL/Trino no-count queries, `count_mode: "none"` avoids a helper count. Verify `countMode: "none"`, `totalCount: null` and the boolean `hasMore` in the response: older servers can ignore the input. Follow the latest `nextUri` as needed and never interpret a null total as zero. Trino pagination only accepts literal `OFFSET`/`LIMIT` or `LIMIT ALL`; unsupported window forms return an error. Other source types can reject the option; retry with exact count only if the user's task and source budget allow it.
 
 For `fetch_next_batch`, omit `batch_size` to retain the previous effective page size on servers that support it; explicitly set a size from 1 to 10000 to change it. Older servers may default an omitted size to 10000.
+
+TiDB onboarding requires an administrator-verified SELECT-only source account; the wizard does not verify all database privileges. Its restricted connection test is available only when TiDB is explicitly enabled.

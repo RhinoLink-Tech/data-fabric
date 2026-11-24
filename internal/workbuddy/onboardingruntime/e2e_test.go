@@ -179,8 +179,20 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	tidbPort := os.Getenv("DF_WB_E2E_TIDB_PORT")
+	if tidbPort != "" {
+		if gaussPort != "" || mariaPort != "" || os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" {
+			t.Fatal("choose only one source fixture")
+		}
+		port, e = strconv.Atoi(tidbPort)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 	var policy *database.FixedIPEgressPolicy
-	if gaussPort != "" {
+	if tidbPort != "" {
+		policy, e = database.NewFixedIPEgressPolicyWithTiDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_TIDB_CA"), false, false, true)
+	} else if gaussPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithSourceOptions([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_OPENGAUSS_CA"), false, true)
 	} else if mariaPort != "" {
 		policy, e = database.NewFixedIPEgressPolicyWithCAAndMariaDB([]string{"127.0.0.1/32"}, []int{port}, os.Getenv("DF_WB_E2E_MARIADB_CA"), true)
@@ -201,7 +213,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Query.ExecutionMode = "pagination"
 	server := mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, nil)
-	if gaussPort != "" {
+	if gaussPort != "" || tidbPort != "" {
 		server = mcp.NewMCPServer(unifiedservice.NewUnifiedQueryService(pagination, streaming, cfg), repo, metadata.NewMetadataExtractor(pool, repo))
 	}
 	verifier, e := security.NewOIDCIDTokenVerifier(ctx, provider.URL, "browser-client", provider.Client())
@@ -346,6 +358,13 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
+	if tidbPort != "" {
+		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "tidb", "config": map[string]any{"host": "localhost", "port": port, "database": "data_fabric_contract", "username": "browser_reader", "password": "browser-test-only", "ssl": true, "tlsCA": "custom"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = string(encoded)
+	}
 	if gaussPort != "" {
 		encoded, err := json.Marshal(map[string]any{"name": "synthetic-orders", "type": "opengauss", "config": map[string]any{"host": "localhost", "port": port, "database": "postgres", "schema": "public", "username": "browser_reader", "password": "Browser_2026!", "ssl": true, "tlsCA": "custom"}})
 		if err != nil {
@@ -353,7 +372,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 		payload = string(encoded)
 	}
-	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" {
+	if os.Getenv("DF_WB_E2E_POSTGRES_PORT") != "" || mariaPort != "" || gaussPort != "" || tidbPort != "" {
 		probe := httptest.NewRequest("POST", "https://fabric.example/onboarding/flows/"+flow+"/test", bytes.NewBufferString(payload))
 		probe.AddCookie(cookie)
 		probe.Header.Set("Origin", origin)
@@ -610,7 +629,7 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 		}
 	}
 
-	if mariaPort != "" || gaussPort != "" {
+	if mariaPort != "" || gaussPort != "" || tidbPort != "" {
 		sourceID := status["datasource_id"].(string)
 		tables := toolJSON(t, mclient, "list_tables", map[string]any{"datasource_id": sourceID})
 		listed, _ := json.Marshal(tables)

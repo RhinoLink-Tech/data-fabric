@@ -138,6 +138,36 @@ func TestTiDBTLSVerification(t *testing.T) {
 	})
 }
 
+// TestTiDBPrepareBrowserFixture creates only disposable CI data. The runner
+// destroys the isolated container afterwards; it must never target a real server.
+func TestTiDBPrepareBrowserFixture(t *testing.T) {
+	if os.Getenv("DATA_FABRIC_TIDB_PREPARE_DISPOSABLE_FIXTURE") != "true" {
+		t.Skip("disposable TiDB fixture preparation not requested")
+	}
+	port, err := strconv.Atoi(os.Getenv(tidbTLSContractPortEnv))
+	if err != nil || port < 1 || port > 65535 || os.Getenv(tidbTLSContractRootCAEnv) == "" || os.Getenv(tidbTLSContractHostEnv) != "localhost" {
+		t.Fatal("isolated loopback TLS fixture required")
+	}
+	db := openTiDBTLSContractDB(t, &TiDBDriver{}, &model.DataSourceConfig{
+		Host: "localhost", Port: port, Database: "test", Username: "root",
+		SSL: true, SSLRootCert: os.Getenv(tidbTLSContractRootCAEnv),
+	})
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for _, statement := range []string{
+		"CREATE DATABASE data_fabric_contract",
+		"CREATE TABLE data_fabric_contract.browser_orders (id BIGINT PRIMARY KEY, status VARCHAR(16) NOT NULL)",
+		"INSERT INTO data_fabric_contract.browser_orders VALUES (1, 'shipped'), (2, 'new'), (3, 'shipped')",
+		"CREATE USER 'browser_reader'@'%' IDENTIFIED BY 'browser-test-only'",
+		"GRANT SELECT ON data_fabric_contract.browser_orders TO 'browser_reader'@'%'",
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("prepare disposable TiDB browser fixture: %v", err)
+		}
+	}
+}
+
 func openTiDBTLSContractDB(t *testing.T, driver *TiDBDriver, config *model.DataSourceConfig) *sql.DB {
 	t.Helper()
 	dsn := driver.BuildDSN(config)

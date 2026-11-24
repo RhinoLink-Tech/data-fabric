@@ -108,8 +108,10 @@ returned `datasource_id` for any requested follow-up.
 The opt-in secure setup workflow defaults to MySQL and PostgreSQL on
 server-allowed IPv4 addresses and ports, including TLS with verified server identity.
 Newer source builds can separately
-enable experimental MariaDB and openGauss candidates; openGauss requires
-verified TLS and its driver is absent from the experimental Core build. Check
+enable experimental MariaDB, openGauss and TiDB candidates; openGauss and TiDB require
+verified TLS and their drivers are absent from the experimental Core build. TiDB
+requires an administrator-verified SELECT-only source account; the wizard does
+not verify all database privileges. Check
 the connected service's actual wizard policy, type inventory and permissions
 instead of assuming that an installed Skill enables a type. The workflow
 requires a matching management grant, audited OIDC deployment and browser

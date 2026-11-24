@@ -31,7 +31,7 @@ JOBS = {
     "mariadb-1011-tls-contract": ("TestMariaDBTLSVerification",),
     "mariadb-114-tls-contract": ("TestMariaDBTLSVerification",),
     "mariadb-123-tls-contract": ("TestMariaDBTLSVerification",),
-    "tidb-tls-contract": ("TestTiDBTLSVerification",),
+    "tidb-tls-contract": ("TestTiDBTLSVerification", "TestTiDBPrepareBrowserFixture", "TestTiDBRestrictedOnboardingTLSContract", "TestTiDBBrowserRestrictedTLSContract", "TestSignedOIDCAndMCPBrowserLifecycle"),
     "opengauss-tls-contract": ("TestOpenGaussTLSVerification", "TestOpenGaussDriverContract", "TestOpenGaussRestrictedOnboardingTLSContract", "TestOpenGaussBrowserRestrictedTLSContract", "TestSignedOIDCAndMCPBrowserLifecycle"),
     "clickhouse-tls-contract": ("TestClickHouseTLSVerification",),
     "sqlserver-contract": ("TestSQLServerDriverContract", "TestSQLServerTLSCertificateVerification"),

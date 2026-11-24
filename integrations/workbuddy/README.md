@@ -37,7 +37,7 @@ published preview image contains them.
 When supported and authorized, users can discover registered source types,
 rename and enable or disable existing sources, test existing MySQL or
 PostgreSQL connections, and delete a source after explicit confirmation. An
-opt-in restricted MariaDB candidate also supports connection tests.
+opt-in restricted MariaDB and TiDB candidates also support connection tests.
 PostgreSQL connection tests also depend on server platform prerequisites.
 Management requires a separate scope and ownership or administrator access;
 deletion additionally requires tenant and exact-ownership checks.
@@ -61,8 +61,8 @@ separately authenticated browser flow and report its status; credentials are
 entered only in the browser, not in chat or MCP tool arguments. The current
 workflow defaults to MySQL/PostgreSQL on explicitly allowed IPv4 targets and
 ports, with a matching OIDC identity and server-side management grant. Newer
-source builds add separate, default-off MariaDB and openGauss candidates;
-openGauss requires verified TLS and its driver is not included in the
+source builds add separate, default-off MariaDB, openGauss and TiDB candidates;
+openGauss and TiDB require verified TLS; their drivers are not included in the
 experimental Core build. The source-update browser tools are separately enabled
 and subject to the same actual source-type policy. Discover the update tools
 and check the deployed server's policy before offering this flow.
@@ -79,3 +79,12 @@ The [source onboarding expansion plan](../../docs/workbuddy-source-onboarding-ex
 5. Only after those checks pass, submit the connector and standalone Skill separately for platform review; publish only after approval. Review platform presentation and dependencies before release.
 
 Existing WorkBuddy native connector and query validation is tracked in [#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504); this packaging does not close that issue.
+
+
+The unreleased TiDB browser candidate is separately enabled by an administrator
+with `DATA_FABRIC_WORKBUDDY_TIDB=true`. It requires verified TLS and an
+operator-configured network allowlist. TiDB has no verified gateway read-only
+session initializer; the database administrator must provision and verify a
+SELECT-only source account for the intended tables. The wizard does not verify
+all database privileges. This source candidate is not included in preview.2,
+and WorkBuddy client and published-image acceptance remain separate.
