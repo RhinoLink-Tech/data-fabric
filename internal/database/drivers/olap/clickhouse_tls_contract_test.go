@@ -93,6 +93,24 @@ func TestClickHouseTLSVerification(t *testing.T) {
 		if err := reader.QueryRowContext(ctx, "SELECT count() FROM "+orders).Scan(&count); err != nil || count != 2 {
 			t.Fatalf("authorized count=%d err=%v", count, err)
 		}
+		rows, err := reader.QueryContext(ctx, "SELECT id FROM "+orders+" ORDER BY id")
+		if err != nil {
+			t.Fatalf("authorized ordered query: %v", err)
+		}
+		var ids []uint64
+		for rows.Next() {
+			var id uint64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			ids = append(ids, id)
+		}
+		iterationErr := rows.Err()
+		rows.Close()
+		if iterationErr != nil || len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
+			t.Fatalf("authorized ordered ids=%v error=%v", ids, iterationErr)
+		}
 		var column string
 		if err := reader.QueryRowContext(ctx, "SELECT name FROM system.columns WHERE database = currentDatabase() AND table = '"+orders+"' ORDER BY position LIMIT 1").Scan(&column); err != nil || column != "id" {
 			t.Fatalf("authorized metadata column=%q err=%v", column, err)
