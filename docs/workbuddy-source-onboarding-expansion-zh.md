@@ -9,7 +9,7 @@
 | MariaDB | 指定版本已有驱动与 TLS 合约验证，采用 MySQL 协议。 | [#761](https://github.com/RhinoLink-Tech/data-fabric/issues/761) 的默认关闭候选已加入，合成环境的协议级完整生命周期已验证；真实 WorkBuddy 客户端和发布镜像仍需验收，也需要确认实际用户需求。 |
 | openGauss | 指定版本已有查询、元数据、只读会话及 TLS 验证。 | [#781](https://github.com/RhinoLink-Tech/data-fabric/issues/781) 增加默认关闭且强制 TLS 的独立候选；真实客户端验收和正式发布仍未完成。实验 Core 构建不包含此驱动。 |
 | TiDB | 指定版本已有驱动与 TLS 验证。 | 默认关闭、强制 TLS 的独立候选见 [#834](https://github.com/RhinoLink-Tech/data-fabric/issues/834)；TiDB 没有已验证的网关只读会话初始化，必须由管理员确认源账号仅有目标表 SELECT 权限。真实客户端与发布验收需要分别完成。 |
-| ClickHouse | 指定版本已有原生协议与 TLS 验证。 | 需要单独设计受限网络连接路径，不能直接复用现有协议假设。 |
+| ClickHouse | 26.8.20.9 已验证原生协议与 TLS；隔离的单表 SELECT 账号通过授权读取、写入和其他表访问拒绝验收（[#841](https://github.com/RhinoLink-Tech/data-fabric/issues/841)）。 | 需要单独设计受限网络连接路径，不能直接复用现有协议假设。 |
 | SaaS、文件和对象存储 | 不同类型的认证与资源访问方式不同。 | 分别设计授权、路径、分页及配额，不按登记数量直接开放。 |
 
 具体验证过的版本以[数据源能力目录](data-source-support.md)和[版本策略](connector-version-policy-zh.md)为准。某一版本的驱动验证不等于同类型其他版本或浏览器接入已验证。
