@@ -250,7 +250,7 @@ func applyVersionVerificationEvidence(profile *ConnectorSupport, dbType model.Da
 		profile.AuthenticationDisclosure = "Password authentication and TLS certificate/hostname verification with a private CA are covered by the ClickHouse 26.8.20.9 contract tests."
 		profile.Limitations = []string{
 			"The ClickHouse contract test covers the native-protocol SQL driver, connection and health checks, schema and value scanning, pagination, cancellation, and query errors against ClickHouse 26.8.20.9.",
-			"The TLS contract verifies a trusted CA and matching host, rejects an untrusted CA and hostname mismatch, and confirms system roots reject the private test CA when no custom CA is configured. Gateway read-only session initialization is not supported; use a server account with restricted privileges. Other ClickHouse versions are not covered by this baseline.",
+			"The TLS contract verifies a trusted CA and matching host, rejects an untrusted CA and hostname mismatch, and confirms system roots reject the private test CA when no custom CA is configured. A synthetic account with SELECT on one table can read its metadata and rows; INSERT, CREATE TABLE and a different table are denied by the server. Gateway read-only session initialization is not supported; use a server account with restricted privileges. Other ClickHouse versions and distributed topology are not covered by this baseline.",
 		}
 	case model.DatabaseTypeMongoDB:
 		profile.Status = ConnectorStatusExperimental
