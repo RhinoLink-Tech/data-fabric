@@ -795,6 +795,13 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 		// with the three-column scan and reports the real schema and type
 		// (SHOW TABLE STATUS would feed the row count into the schema column).
 		return "SELECT table_name, table_type, table_schema FROM information_schema.tables WHERE table_schema = DATABASE()"
+	case model.DatabaseTypeClickHouse:
+		// ClickHouse's information_schema compatibility views are not usable by
+		// every least-privilege native-protocol account. system.tables is the
+		// supported metadata catalog and stays scoped to the configured database.
+		// The expression preserves the extractor's TABLE/VIEW contract without
+		// exposing temporary or dropped objects.
+		return "SELECT name, if(engine IN ('View', 'MaterializedView', 'LiveView', 'WindowView'), 'VIEW', 'TABLE'), database FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0 AND is_dropped = 0"
 	case model.DatabaseTypePostgreSQL:
 		// Ordinary views live in pg_views, separate from pg_tables. Materialized
 		// views are not included: they are a distinct relation kind.
@@ -821,6 +828,11 @@ func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName,
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	case model.DatabaseTypeOracle:
 		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
+	case model.DatabaseTypeClickHouse:
+		// ClickHouse keeps column metadata in system.columns rather than the
+		// portable information_schema shape. Return the same five columns that
+		// scanColumnRow expects, with a conservative Nullable(...) detection.
+		return fmt.Sprintf("SELECT name, type, if(positionCaseInsensitive(type, 'Nullable(') > 0, 'YES', 'NO'), nullIf(default_expression, ''), comment FROM system.columns WHERE database = currentDatabase() AND table = '%s'", escapeSQLStringLiteral(tableName))
 	default:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}
