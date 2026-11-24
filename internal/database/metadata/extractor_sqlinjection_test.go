@@ -20,6 +20,7 @@ func TestSQLInjectionResistantColumnQuery(t *testing.T) {
 		model.DatabaseTypePostgreSQL,
 		model.DatabaseTypeOpenGauss,
 		model.DatabaseTypeOracle,
+		model.DatabaseTypeClickHouse,
 		model.DatabaseTypeTrino, // default branch
 	}
 	for _, dbType := range literalTypes {
@@ -116,5 +117,22 @@ func TestOpenGaussColumnQueryScopesSchema(t *testing.T) {
 	query := e.getColumnQuery(model.DatabaseTypeOpenGauss, "orders", "tenant_a")
 	if !strings.Contains(query, "table_name = 'orders'") || !strings.Contains(query, "table_schema = 'tenant_a'") {
 		t.Fatalf("openGauss column query did not constrain schema: %s", query)
+	}
+}
+
+func TestClickHouseMetadataQueriesUseSystemCatalog(t *testing.T) {
+	e := &MetadataExtractor{}
+	tableQuery := e.getTableQuery(model.DatabaseTypeClickHouse)
+	if !strings.Contains(tableQuery, "FROM system.tables") ||
+		!strings.Contains(tableQuery, "database = currentDatabase()") ||
+		strings.Contains(tableQuery, "information_schema") {
+		t.Fatalf("ClickHouse table query is not least-privilege system catalog discovery: %s", tableQuery)
+	}
+	columnQuery := e.getColumnQuery(model.DatabaseTypeClickHouse, "orders", "ignored")
+	if !strings.Contains(columnQuery, "FROM system.columns") ||
+		!strings.Contains(columnQuery, "database = currentDatabase()") ||
+		!strings.Contains(columnQuery, "table = 'orders'") ||
+		strings.Contains(columnQuery, "information_schema") {
+		t.Fatalf("ClickHouse column query is not database-scoped system catalog discovery: %s", columnQuery)
 	}
 }
