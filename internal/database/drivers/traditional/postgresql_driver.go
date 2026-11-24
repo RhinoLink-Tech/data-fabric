@@ -20,20 +20,7 @@ import (
 type PostgreSQLDriver struct{}
 
 func (d *PostgreSQLDriver) ApplyBatchPagination(sql string, batchSize, offset int64) (string, error) {
-	sql = strings.TrimSpace(sql)
-
-	// Check if query already has LIMIT or OFFSET
-	sqlUpper := strings.ToUpper(sql)
-	if strings.Contains(sqlUpper, " LIMIT ") || strings.Contains(sqlUpper, " OFFSET ") {
-		// For complex queries with existing pagination, add a subquery wrapper
-		return fmt.Sprintf("SELECT * FROM (%s) AS batch_query LIMIT %d OFFSET %d", sql, batchSize, offset), nil
-
-	}
-	// Use standard LIMIT/OFFSET for most databases
-	if offset > 0 {
-		return fmt.Sprintf("%s LIMIT %d OFFSET %d", sql, batchSize, offset), nil
-	}
-	return fmt.Sprintf("%s LIMIT %d", sql, batchSize), nil
+	return paginateLimitOffset(sql, batchSize, offset, false)
 }
 func (d *PostgreSQLDriver) Open(dsn string) (*sql.DB, error) {
 	return sql.Open("postgres", dsn)
