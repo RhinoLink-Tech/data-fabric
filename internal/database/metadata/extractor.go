@@ -800,8 +800,9 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 		// every least-privilege native-protocol account. system.tables is the
 		// supported metadata catalog and stays scoped to the configured database.
 		// The expression preserves the extractor's TABLE/VIEW contract without
-		// exposing temporary or dropped objects.
-		return "SELECT name, if(engine IN ('View', 'MaterializedView', 'LiveView', 'WindowView'), 'VIEW', 'TABLE'), database FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0 AND is_dropped = 0"
+		// exposing temporary objects. Do not depend on is_dropped here: it is not
+		// a portable system.tables column across the pinned ClickHouse baseline.
+		return "SELECT name, if(engine IN ('View', 'MaterializedView', 'LiveView', 'WindowView'), 'VIEW', 'TABLE'), database FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0"
 	case model.DatabaseTypePostgreSQL:
 		// Ordinary views live in pg_views, separate from pg_tables. Materialized
 		// views are not included: they are a distinct relation kind.
