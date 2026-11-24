@@ -621,10 +621,16 @@ func startMCPServer(cfg *config.Config, vault *security.CredentialVault) error {
 		if _, err := uuid.Parse(templateID); err != nil {
 			return errors.New("self-service requires an approved synthetic source template")
 		}
+		sharedCatalog, err := loadSharedTestCatalog(strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SHARED_TEST_CATALOG")), workbuddy.policy)
+		if err != nil {
+			return err
+		}
 		tokenValidator = &selfServiceValidator{next: trusted, issuer: issuer, provision: func(ctx context.Context, subject, tenant string) error {
 			return provisionSelfServiceGrant(ctx, db, issuer, subject, tenant, auditKey, func(ctx context.Context, tx *gorm.DB) error {
 				_, err := seedSyntheticForSubject(ctx, tx, vault, workbuddy.policy, issuer, subject, tenant, templateID, "self-service", auditKey)
 				return err
+			}, func(ctx context.Context, tx *gorm.DB) error {
+				return provisionSharedTestSources(ctx, tx, vault, issuer, subject, tenant, auditKey, sharedCatalog)
 			})
 		}}
 	}
