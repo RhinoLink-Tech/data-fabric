@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Expose caller-relative ownership in MCP source discovery and a separately authorized, paginated inventory of manageable sources (#818, #820).
+- Record successful MCP tool discovery in the configured audit stream without tool arguments or credentials (#822).
 - Expose authorized table identities alongside the existing MCP table-list entries on metadata-backed paths, allowing clients to distinguish same-named tables by schema (#525). Legacy paths may omit the identities.
 - Add an opt-in MCP OAuth legacy-audience transition and a credential-free public discovery diagnostic. Identity-provider compatibility and client login and refresh remain separate acceptance steps (#797, #799, #800).
 - Add a standalone SQL dialect conversion workflow to the repository Skill: discover supported dialects, translate without executing, and return the tool result (#758). This does not update the WorkBuddy marketplace asset.
@@ -23,6 +25,8 @@ All notable changes to this project will be documented in this file.
 - Allow testing an edited data source with its retained server-side credentials, subject to the existing authorization checks (#768).
 - Verify running gateway credential keyrings against protected configuration and check stored credentials against historical keys before profile backup; release recovery remains a separate gate (#636, #522).
 ### Fixed
+- Generate valid MySQL, MariaDB and PostgreSQL batch pagination for a single SQL statement ending with a semicolon, including existing limits. Ambiguous mode-dependent quoting and executable MySQL comments are rejected in pagination (#736, #737).
+- Give users actionable guidance to restart an unavailable or expired browser onboarding flow from their MCP client (#823).
 - Escape Redshift connection fields in the PostgreSQL connection string, so special characters cannot alter connection options. The existing lib/pq TLS default remains unchanged (#677).
 - Build OceanBase Oracle connection URLs safely for registry-created drivers, apply an optional schema to each physical connection, and reject unsupported TLS requests instead of silently opening plaintext (#681, #682). Existing TLS-requesting configurations now fail explicitly.
 - Apply connector-specific validation when creating or updating data sources, allowing driver defaults while rejecting invalid settings (#513).
@@ -73,7 +77,7 @@ All notable changes to this project will be documented in this file.
 - Update automatically filled ports when switching connectors while preserving operator-entered values (#501).
 - Recover the data source list when the current page disappears after another operator removes sources, by loading the last valid page instead of showing an empty state (#502).
 - Refuse unsafe fallback counts for DISTINCT and other cardinality-changing query shapes when an exact derived count is unavailable (#492).
-- Verify the supported preview.1 source archive and matching image for encrypted backup and fresh restore without a Git checkout (#489). The preview.2 archive is not in that allowlist.
+- Verify supported preview.1 and preview.2 source archives and matching images with the current recovery helper for encrypted backup and fresh restore without a Git checkout (#489, #817). The helper bundled in an older release does not acquire this support automatically.
 - Refresh the source list when Enter is pressed in the management UI token field.
 - Reject invalid MCP URL ports during DeepSeek client validation (#594).
 - Retry the management UI connector catalog on Refresh and when Add is opened after a temporary `/api/v1/database/types` failure, instead of requiring a page reload (#591).

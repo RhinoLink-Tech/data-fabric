@@ -12,13 +12,18 @@
 
 上述基线之后，部分基于元数据的 MCP 表发现可返回与原列表对应、经过授权过滤的表身份信息，包含可用的 schema（#525）。独立 SQL 转换增加已公布方言别名规范化（#645）、同方言输入校验（#644）以及输入错误与运行故障区分（#647）。这些尚未发布；新的 HTTP 状态码和 MCP 方言校验需要客户端兼容性核对。
 
-仓库 Skill 变化不会自动更新已发布的 WorkBuddy 市场条目。真实 WorkBuddy 授权、数据源生命周期、独立使用者首次使用和外部团队价值仍需分别验收（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)、[#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541)、[#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603)、[#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446)、[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)）。
+基线之后，数据源发现还可在适用时返回相对当前用户的所有权信息，并提供单独授权的可管理数据源列表（#818、#820）。浏览器接入流程失效或不可用时会提示从 MCP 客户端重新发起（#823）；配置审计记录器时，成功的工具发现也会记录审计事件（#822）。MySQL、MariaDB 和 PostgreSQL 分页支持单条 SQL 末尾的分号；依赖服务端模式的反斜杠转义和 MySQL 可执行注释仍不支持分页改写（#736、#737）。这些变更尚未发布。
+
+2026-11-23 的 WorkBuddy 5.11.3 实测使用公开连接器，通过可信 HTTPS 连接本地构建的 53a6027d 网关，验证了合成数据的数据源发现、表结构、SQL 校验和只读查询（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)）。该实测没有验证当前主线、已发布网关镜像、分页或完整数据源生命周期；间歇性工具发现问题仍在调查（[#822](https://github.com/RhinoLink-Tech/data-fabric/issues/822)）。
+
+仓库 Skill 变化不会自动更新已发布的 WorkBuddy 市场条目。WorkBuddy 授权续期与独立用户首次接入、完整数据源生命周期和外部团队价值仍需分别验收（[#504](https://github.com/RhinoLink-Tech/data-fabric/issues/504)、[#541](https://github.com/RhinoLink-Tech/data-fabric/issues/541)、[#603](https://github.com/RhinoLink-Tech/data-fabric/issues/603)、[#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446)、[#458](https://github.com/RhinoLink-Tech/data-fabric/issues/458)）。
 
 在上述源码基线之后，#797 增加了默认关闭的 MCP OAuth 旧受众过渡配置，#799 修正了身份一致性诊断，#800 增加了无需凭据的公网发现诊断。这些是源码层面的新增能力，尚不包含在 preview.2 中。合成令牌和诊断测试不能证明真实身份服务的受众配置、客户端授权或令牌续期已经完成；现有公网网关也尚未切换。进展见 [#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608)。
 
 ## 候选证据和剩余步骤
 
 - 基线的 [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743)、[Core 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049)和 [SQLite 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094)对应上述主线 SHA。使用证据前应查看每项运行的最终结论和产物，跳过或未完成不等于通过。前一个 PR 的联邦 HTTP 验收见[运行记录](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621)。
+- 源码提交 20d6f23d0e72341223779a70ecd531312e611981 的[隔离合成环境恢复验收](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/45306259074)已通过。单独的 preview.2 源码包和镜像演练使用的是当前恢复工具，而不是 preview.2 自带的旧工具；这些结果不代表已发布新制品或完成特定部署的升级验收。
 - 确定发布版本和支持的部署拓扑；解决安全与兼容阻塞，复核 issue 状态并记录延期 P1 的风险决定。现有完整 MySQL 元数据配置与实验 Core/SQLite 候选的证据不同，不能混同其支持范围。
 - 冻结最终源码，更新日志和安装指南，并验证精确 SHA 对应的构建、许可材料、所选数据源、REST/MCP 和恢复路径。针对拟发布制品验证升级和恢复；#522 的历史密钥凭据预检已合入，但仍须单独验证与发布制品匹配的恢复流程。不能假定旧预览版源码归档的恢复结论适用于新归档。
 - 按[发布流程](../releasing.md)对审定提交打标签，验证公开镜像来源与摘要，使用该精确摘要完成无 Go 安装及 REST/MCP 验收，校验下载的源码包和校验文件并记录实际结果。公开制品、独立用户验收和市场更新需要各自的证据。
