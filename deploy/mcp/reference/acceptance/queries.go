@@ -156,9 +156,12 @@ func filterAggregateJoin(ctx context.Context, w wire) error {
 
 func interleavedBatches(ctx context.Context, w wire) error {
 	return forEachSource(w, func(_ string, source reference.Source) error {
-		first, err := readQuery(ctx, w, source, orderedIDs, nil, 1)
+		first, err := readQueryWithMode(ctx, w, source, orderedIDs+";", 1, "pagination")
 		if err != nil {
 			return err
+		}
+		if first.ExecutionMode != "pagination" {
+			return fmt.Errorf("terminated query did not use pagination")
 		}
 		second, err := readQuery(ctx, w, source, "SELECT id FROM orders WHERE id >= 2 ORDER BY id DESC", nil, 1)
 		if err != nil {

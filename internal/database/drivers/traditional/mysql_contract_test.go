@@ -166,6 +166,51 @@ func runMySQLProtocolContract(t *testing.T, dbType model.DatabaseType) {
 		if fmt.Sprint(got) != "[2 3]" {
 			t.Fatalf("page rows = %v, want [2 3]", got)
 		}
+
+		if err := rows.Close(); err != nil {
+			t.Fatalf("close initial page: %v", err)
+		}
+		cases := []struct {
+			name, statement       string
+			wantFirst, wantSecond string
+		}{
+			{"terminated", "SELECT id FROM data_fabric_contract_rows ORDER BY id;", "[1 2]", "[3 4]"},
+			{"existing limit", "SELECT id FROM data_fabric_contract_rows ORDER BY id LIMIT 3;", "[1 2]", "[3]"},
+			{"line comment", "SELECT id FROM data_fabric_contract_rows ORDER BY id -- tail;\n", "[1 2]", "[3 4]"},
+		}
+		for _, tc := range cases {
+			for page, offset := range []int64{0, 2} {
+				statement, err := driver.ApplyBatchPagination(tc.statement, 2, offset)
+				if err != nil {
+					t.Fatalf("%s page %d: %v", tc.name, page, err)
+				}
+				pageRows, err := conn.QueryContext(ctx, statement)
+				if err != nil {
+					t.Fatalf("%s page %d execution: %v", tc.name, page, err)
+				}
+				var ids []int
+				for pageRows.Next() {
+					var id int
+					if err := pageRows.Scan(&id); err != nil {
+						t.Fatalf("%s scan: %v", tc.name, err)
+					}
+					ids = append(ids, id)
+				}
+				if err := pageRows.Err(); err != nil {
+					t.Fatalf("%s rows: %v", tc.name, err)
+				}
+				if err := pageRows.Close(); err != nil {
+					t.Fatalf("%s close: %v", tc.name, err)
+				}
+				want := tc.wantFirst
+				if page == 1 {
+					want = tc.wantSecond
+				}
+				if fmt.Sprint(ids) != want {
+					t.Fatalf("%s page %d = %v, want %s", tc.name, page, ids, want)
+				}
+			}
+		}
 	})
 
 	t.Run("read-only session", func(t *testing.T) {
