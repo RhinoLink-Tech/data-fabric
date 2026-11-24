@@ -26,6 +26,10 @@ do not establish real identity-provider audience mapping, client authorization
 or refresh. The existing public gateway has not been migrated; see
 [#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608).
 
+## Upgrade impact: GBase and DaMeng
+
+Unreleased source rejects connections for existing GBase 8s and 8t configurations instead of routing them through an unverified MySQL adapter, including with read-only enforcement enabled. Review any affected configuration before upgrading; restoring support requires product-specific native drivers and pinned live contracts. The source catalog and MCP discovery mark both types unavailable. The build also marks DaMeng unavailable when its native database/sql driver is not registered. See [GBase protocol status](../gbase-protocol-status.md), #684 and #683. These changes are not in preview.2 or the existing public gateway.
+
 ## Candidate evidence and remaining gates
 
 - Baseline exact-master [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743), [Core candidate](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049) and [SQLite candidate](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094) are tied to the baseline SHA above. Consult each run's conclusion and artifact before relying on it; a skipped or unfinished check is not a pass. The candidate-specific federated HTTP acceptance for the preceding PR is [here](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621).

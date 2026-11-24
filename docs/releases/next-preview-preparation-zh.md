@@ -20,6 +20,10 @@
 
 在上述源码基线之后，#797 增加了默认关闭的 MCP OAuth 旧受众过渡配置，#799 修正了身份一致性诊断，#800 增加了无需凭据的公网发现诊断。这些是源码层面的新增能力，尚不包含在 preview.2 中。合成令牌和诊断测试不能证明真实身份服务的受众配置、客户端授权或令牌续期已经完成；现有公网网关也尚未切换。进展见 [#608](https://github.com/RhinoLink-Tech/data-fabric/issues/608)。
 
+## 升级影响：GBase 与达梦
+
+尚未发布的源码会明确拒绝现有 GBase 8s 和 8t 配置的连接，包括启用只读保护时；此前它们被路由到未经验证的 MySQL 驱动。升级前请检查是否使用这些数据源；恢复支持需要对应的原生驱动和固定版本实测。数据源目录和 MCP 发现接口会标明两者不可用。构建中未注册达梦原生 database/sql 驱动时，也会标明达梦不可用。详见 [GBase 协议状态](../gbase-protocol-status.md)、#684 和 #683。上述变更不包含在 preview.2 或当前公网网关中。
+
 ## 候选证据和剩余步骤
 
 - 基线的 [Go CI](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44686671743)、[Core 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156049)和 [SQLite 候选](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44687156094)对应上述主线 SHA。使用证据前应查看每项运行的最终结论和产物，跳过或未完成不等于通过。前一个 PR 的联邦 HTTP 验收见[运行记录](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/44685131621)。
