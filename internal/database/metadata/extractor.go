@@ -621,6 +621,13 @@ func (e *MetadataExtractor) extractColumns(ctx context.Context, db *sql.DB, dbTy
 
 // extractIndexes extracts index information for a table
 func (e *MetadataExtractor) extractIndexes(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName, schemaName string) ([]IndexSchema, error) {
+	// ClickHouse primary keys and data-skipping indexes do not map to the
+	// portable IndexSchema contract. Querying information_schema for them also
+	// defeats the deliberately minimal system-table grants used by browser
+	// onboarding, so report this supplemental metadata as unavailable.
+	if dbType == model.DatabaseTypeClickHouse {
+		return []IndexSchema{}, nil
+	}
 	query := e.getIndexQuery(dbType, tableName, schemaName)
 
 	rows, err := db.QueryContext(ctx, query)
@@ -739,6 +746,12 @@ func indexValueString(v any) string {
 
 // extractPrimaryKey extracts primary key information for a table
 func (e *MetadataExtractor) extractPrimaryKey(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName, schemaName string) ([]string, error) {
+	// See extractIndexes: ClickHouse ordering keys are not relational primary
+	// keys, and browser onboarding does not require unrelated information_schema
+	// permissions merely to describe table columns.
+	if dbType == model.DatabaseTypeClickHouse {
+		return []string{}, nil
+	}
 	query := e.getPrimaryKeyQuery(dbType, tableName, schemaName)
 
 	rows, err := db.QueryContext(ctx, query)
