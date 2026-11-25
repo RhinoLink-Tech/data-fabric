@@ -48,25 +48,67 @@ services:
 // generated test identities, age and newly named Compose projects. It cannot
 // operate on a local user's existing deployment.
 func RecoveryAcceptance(ctx context.Context, repo string, out io.Writer) error {
-	return recoveryAcceptance(ctx, repo, "", out)
+	return recoveryAcceptance(ctx, repo, "", PublishedRelease{}, out)
 }
 
-// Preview2RecoveryAcceptance uses the immutable published image and source
-// archive, with the current recovery helper kept outside the extracted tree.
-func Preview2RecoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io.Writer) error {
-	if releaseArchive == "" {
-		return fmt.Errorf("preview.2 source archive is required")
+// PublishedRelease binds a public source archive to the matching immutable
+// image. Only release tags listed by PublishedReleaseByTag are accepted.
+type PublishedRelease struct {
+	Tag                         string
+	ArchiveSHA                  string
+	SourceSHA                   string
+	Image                       string
+	LegacySourceCredentialAudit bool
+}
+
+var publishedReleases = map[string]PublishedRelease{
+	"v2.1.0-preview.2": {
+		Tag:                         "v2.1.0-preview.2",
+		ArchiveSHA:                  "111cb47df04b1b30abbf714e8bcf71660441aa9ad80426849a1138efe3b7be75",
+		SourceSHA:                   "281260f6c2000419222e55a99e984b8dd5094ab8",
+		Image:                       "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.2@sha256:c3e6b06848931b84610bcb399d3eec126a5a4f2317e4238f27b7fdc458e8520e",
+		LegacySourceCredentialAudit: true,
+	},
+	"v2.1.0-preview.3": {
+		Tag:        "v2.1.0-preview.3",
+		ArchiveSHA: "ebb4a0ef456447f90ae3b1f1d3fe3d2719785974fc82a746a2e2278dae8da0c1",
+		SourceSHA:  "2b2a218b209edb7d67ef02b4762d195f0622cd3c",
+		Image:      "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.3@sha256:0c5ada5c16f9a411ecc80f8fd1635733ab7e88cb5f2bdc2d74f27b54ca6278af",
+	},
+}
+
+// PublishedReleaseByTag returns a reviewable, immutable release identity. It
+// intentionally rejects unlisted tags instead of accepting a floating or
+// caller-provided image reference.
+func PublishedReleaseByTag(tag string) (PublishedRelease, error) {
+	release, ok := publishedReleases[tag]
+	if !ok {
+		return PublishedRelease{}, fmt.Errorf("unsupported published release %q", tag)
 	}
-	return recoveryAcceptance(ctx, repo, releaseArchive, out)
+	return release, nil
 }
 
-const (
-	preview2ArchiveSHA = "111cb47df04b1b30abbf714e8bcf71660441aa9ad80426849a1138efe3b7be75"
-	preview2SourceSHA  = "281260f6c2000419222e55a99e984b8dd5094ab8"
-	preview2Image      = "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.2@sha256:c3e6b06848931b84610bcb399d3eec126a5a4f2317e4238f27b7fdc458e8520e"
-)
+func releaseSourceArchiveArgs(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return []string{"--release-source-archive", path}
+}
 
-func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io.Writer) (err error) {
+// PublishedRecoveryAcceptance uses a selected immutable published image and
+// source archive, with the current recovery helper kept outside the extracted
+// tree.
+func PublishedRecoveryAcceptance(ctx context.Context, repo, releaseArchive string, release PublishedRelease, out io.Writer) error {
+	if releaseArchive == "" {
+		return fmt.Errorf("published source archive is required")
+	}
+	if verified, err := PublishedReleaseByTag(release.Tag); err != nil || verified != release {
+		return fmt.Errorf("published release identity is not allowlisted")
+	}
+	return recoveryAcceptance(ctx, repo, releaseArchive, release, out)
+}
+
+func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, release PublishedRelease, out io.Writer) (err error) {
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		return fmt.Errorf("recovery acceptance only runs on an isolated GitHub Actions runner")
 	}
@@ -124,11 +166,11 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 			return err
 		}
 	} else {
-		artifactRevision = preview2SourceSHA
-		if err := recoveryExtractPreview2(ctx, releaseArchive, source); err != nil {
+		artifactRevision = release.SourceSHA
+		if err := recoveryExtractPublished(ctx, releaseArchive, source, release); err != nil {
 			return err
 		}
-		if err := recoveryExtractPreview2(ctx, releaseArchive, target); err != nil {
+		if err := recoveryExtractPublished(ctx, releaseArchive, target, release); err != nil {
 			return err
 		}
 	}
@@ -136,7 +178,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 	originalProject, restoredProject := tag+"-source", tag+"-restore"
 	image := tag + ":candidate"
 	if releaseArchive != "" {
-		image = preview2Image
+		image = release.Image
 	}
 	imageBuilt := false
 	vars := map[string]string{"DF_RECOVERY_FIXTURE_DIR": fixture}
@@ -190,7 +232,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 			return fmt.Errorf("build candidate: %w", err)
 		}
 	} else {
-		fmt.Fprintln(out, "Pulling the published preview.2 image by immutable digest")
+		fmt.Fprintf(out, "Pulling published %s image by immutable digest\n", release.Tag)
 		if _, err := recoveryCommand(ctx, source, nil, nil, "docker", "pull", image); err != nil {
 			return fmt.Errorf("pull published image: %w", err)
 		}
@@ -246,10 +288,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 	}
 	archive := filepath.Join(temp, "profile.age")
 	helper := filepath.Join(repo, "scripts", "mcp", "recovery.py")
-	var sourceArchiveArgs []string
-	if releaseArchive != "" {
-		sourceArchiveArgs = []string{"--release-source-archive", releaseArchive}
-	}
+	sourceArchiveArgs := releaseSourceArchiveArgs(releaseArchive)
 	fmt.Fprintln(out, "Creating encrypted metadata and configuration backup")
 	backupArgs := []string{helper, "backup", "--directory", deploy, "--project-name", originalProject, "--recipient", strings.TrimSpace(recipient), "--staging-dir", staging, "--output", archive}
 	backupArgs = append(backupArgs, sourceArchiveArgs...)
@@ -257,7 +296,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 	if err != nil {
 		return fmt.Errorf("backup preflight or snapshot: %w", err)
 	}
-	if releaseArchive != "" {
+	if releaseArchive != "" && release.LegacySourceCredentialAudit {
 		if !strings.Contains(backupOutput, "Legacy image does not support source credential audit") {
 			return fmt.Errorf("expected legacy source-credential audit warning")
 		}
@@ -310,7 +349,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 	}
 	if releaseArchive != "" {
 		restoredValues, err := recoveryEnv(filepath.Join(targetDeploy, ".env"))
-		if err != nil || restoredValues["DATA_FABRIC_SOURCE_REVISION"] != preview2SourceSHA || restoredValues["DATA_FABRIC_IMAGE"] != preview2Image {
+		if err != nil || restoredValues["DATA_FABRIC_SOURCE_REVISION"] != release.SourceSHA || restoredValues["DATA_FABRIC_IMAGE"] != release.Image {
 			return fmt.Errorf("restored archive configuration did not retain verified release identity")
 		}
 	}
@@ -347,7 +386,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, out io
 	return nil
 }
 
-func recoveryExtractPreview2(ctx context.Context, archive, target string) error {
+func recoveryExtractPublished(ctx context.Context, archive, target string, release PublishedRelease) error {
 	f, err := os.Open(archive)
 	if err != nil {
 		return err
@@ -356,16 +395,16 @@ func recoveryExtractPreview2(ctx context.Context, archive, target string) error 
 	_, copyErr := io.Copy(h, f)
 	closeErr := f.Close()
 	if copyErr != nil || closeErr != nil {
-		return fmt.Errorf("could not read preview.2 archive")
+		return fmt.Errorf("could not read %s archive", release.Tag)
 	}
-	if fmt.Sprintf("%x", h.Sum(nil)) != preview2ArchiveSHA {
-		return fmt.Errorf("preview.2 source archive checksum mismatch")
+	if fmt.Sprintf("%x", h.Sum(nil)) != release.ArchiveSHA {
+		return fmt.Errorf("%s source archive checksum mismatch", release.Tag)
 	}
 	if err := os.Mkdir(target, 0700); err != nil {
 		return err
 	}
 	if _, err := recoveryCommand(ctx, target, nil, nil, "tar", "-xzf", archive, "--strip-components=1", "-C", target); err != nil {
-		return fmt.Errorf("extract verified preview.2 archive: %w", err)
+		return fmt.Errorf("extract verified %s archive: %w", release.Tag, err)
 	}
 	return nil
 }

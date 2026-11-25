@@ -12,15 +12,23 @@ import (
 )
 
 func main() {
-	preview2Archive := flag.String("preview2-archive", "", "test the published preview.2 archive and image using the current helper")
+	publishedRelease := flag.String("published-release", "", "test a supported published release by tag")
+	releaseArchive := flag.String("release-archive", "", "path to the selected published source archive")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
 	defer cancel()
 	var err error
-	if *preview2Archive != "" {
-		err = reference.Preview2RecoveryAcceptance(ctx, "", *preview2Archive, os.Stdout)
+	if *publishedRelease != "" || *releaseArchive != "" {
+		release, releaseErr := reference.PublishedReleaseByTag(*publishedRelease)
+		if releaseErr != nil {
+			err = releaseErr
+		} else if *releaseArchive == "" {
+			err = fmt.Errorf("published source archive is required")
+		} else {
+			err = reference.PublishedRecoveryAcceptance(ctx, "", *releaseArchive, release, os.Stdout)
+		}
 	} else {
 		err = reference.RecoveryAcceptance(ctx, "", os.Stdout)
 	}
