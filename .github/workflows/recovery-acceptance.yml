@@ -81,7 +81,7 @@ jobs:
         run: |
           set -o pipefail
           ARCHIVE="data-fabric-${RELEASE_TAG}-source.tar.gz"
-          go run ./deploy/mcp/reference/cmd/recovery-acceptance -published-release "$RELEASE_TAG" -release-archive "$RUNNER_TEMP/$ARCHIVE" | tee "$RUNNER_TEMP/published-preview-recovery-acceptance.log"
+          go run ./deploy/mcp/reference/cmd/recovery-acceptance -published-release "$RELEASE_TAG" -release-archive "$RUNNER_TEMP/$ARCHIVE" 2>&1 | tee "$RUNNER_TEMP/published-preview-recovery-acceptance.log"
       - name: Save non-secret evidence
         if: always()
         uses: actions/upload-artifact@v7

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,16 @@ func TestRecoveryAcceptanceRejectsNonCI(t *testing.T) {
 func TestPublishedReleaseRejectsUnknownTag(t *testing.T) {
 	if _, err := PublishedReleaseByTag("latest"); err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("expected unsupported release rejection, got %v", err)
+	}
+}
+
+func TestReleaseSourceArchiveArgs(t *testing.T) {
+	if args := releaseSourceArchiveArgs(""); args != nil {
+		t.Fatalf("expected no archive arguments, got %v", args)
+	}
+	want := []string{"--release-source-archive", "/tmp/published.tar.gz"}
+	if got := releaseSourceArchiveArgs("/tmp/published.tar.gz"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("release archive arguments = %v, want %v", got, want)
 	}
 }
 

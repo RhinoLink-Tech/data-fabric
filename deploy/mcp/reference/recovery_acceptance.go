@@ -88,6 +88,13 @@ func PublishedReleaseByTag(tag string) (PublishedRelease, error) {
 	return release, nil
 }
 
+func releaseSourceArchiveArgs(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return []string{"--release-source-archive", path}
+}
+
 // PublishedRecoveryAcceptance uses a selected immutable published image and
 // source archive, with the current recovery helper kept outside the extracted
 // tree.
@@ -281,10 +288,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, releas
 	}
 	archive := filepath.Join(temp, "profile.age")
 	helper := filepath.Join(repo, "scripts", "mcp", "recovery.py")
-	var sourceArchiveArgs []string
-	if releaseArchive != "" && release.LegacySourceCredentialAudit {
-		sourceArchiveArgs = []string{"--release-source-archive", releaseArchive}
-	}
+	sourceArchiveArgs := releaseSourceArchiveArgs(releaseArchive)
 	fmt.Fprintln(out, "Creating encrypted metadata and configuration backup")
 	backupArgs := []string{helper, "backup", "--directory", deploy, "--project-name", originalProject, "--recipient", strings.TrimSpace(recipient), "--staging-dir", staging, "--output", archive}
 	backupArgs = append(backupArgs, sourceArchiveArgs...)
@@ -292,7 +296,7 @@ func recoveryAcceptance(ctx context.Context, repo, releaseArchive string, releas
 	if err != nil {
 		return fmt.Errorf("backup preflight or snapshot: %w", err)
 	}
-	if releaseArchive != "" {
+	if releaseArchive != "" && release.LegacySourceCredentialAudit {
 		if !strings.Contains(backupOutput, "Legacy image does not support source credential audit") {
 			return fmt.Errorf("expected legacy source-credential audit warning")
 		}
