@@ -61,7 +61,7 @@ For a future container release, verify public visibility, source SHA, digest, SB
 
 - [Next Preview preparation (unreleased)](releases/next-preview-preparation.md) · [中文准备记录](releases/next-preview-preparation-zh.md)
 
-- [v2.1.0-preview.3 developer candidate and risk record](releases/v2.1.0-preview.3-candidate.md) · [中文候选记录](releases/v2.1.0-preview.3-candidate-zh.md) · [English installation](releases/v2.1.0-preview.3-install.md) · [中文安装指南](releases/v2.1.0-preview.3-install-zh.md) — not published
+- [v2.1.0-preview.3 developer candidate and risk record](releases/v2.1.0-preview.3-candidate.md) · [中文候选记录](releases/v2.1.0-preview.3-candidate-zh.md) · [English installation](releases/v2.1.0-preview.3-install.md) · [中文安装指南](releases/v2.1.0-preview.3-install-zh.md) — pre-publication candidate
 
 - [v2.1.0-preview.2 candidate and risk record](releases/v2.1.0-preview.2-candidate.md) · [English installation](releases/v2.1.0-preview.2-install.md) · [中文安装指南](releases/v2.1.0-preview.2-install-zh.md)
 
