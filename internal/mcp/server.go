@@ -748,7 +748,11 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	}
 	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
 	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV || dataSource.Type == model.DatabaseTypeGCSCSV
-	if tablePolicyEnabled || csvObjectSource {
+	// ClickHouse metadata is read through the configured metadata extractor.
+	// Its system catalog is not user SQL and must not pass through the generic
+	// query validator used by the legacy list-tables fallback.
+	clickHouseSource := dataSource.Type == model.DatabaseTypeClickHouse
+	if tablePolicyEnabled || csvObjectSource || clickHouseSource {
 		lister, ok := m.tableDescriber.(TableLister)
 		if !ok {
 			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil
@@ -837,11 +841,6 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	switch dbType {
 	case "mysql", "mariadb":
 		sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
-	case "clickhouse":
-		// ClickHouse's native metadata catalog is system.tables. Scope discovery
-		// to the authenticated connection's database and avoid temporary objects;
-		// do not depend on non-portable system-table columns.
-		sql = "SELECT name AS table_name FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0"
 	case "postgres", "postgresql":
 		// PostgreSQL schema names are values, not SQL fragments. Keep the
 		// historical public default when no source schema is configured.
