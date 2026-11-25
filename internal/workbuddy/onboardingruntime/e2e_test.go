@@ -26,6 +26,7 @@ import (
 	"github.com/RhinoLink-Tech/data-fabric/internal/database"
 	"github.com/RhinoLink-Tech/data-fabric/internal/database/metadata"
 	"github.com/RhinoLink-Tech/data-fabric/internal/mcp"
+	"github.com/RhinoLink-Tech/data-fabric/internal/model"
 	"github.com/RhinoLink-Tech/data-fabric/internal/repository"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security"
 	"github.com/RhinoLink-Tech/data-fabric/internal/security/onboarding"
@@ -693,6 +694,20 @@ func TestSignedOIDCAndMCPBrowserLifecycle(t *testing.T) {
 			described, _ := json.Marshal(schema)
 			if !bytes.Contains(described, []byte("id")) || !bytes.Contains(described, []byte("status")) || bytes.Contains(described, []byte("Browser_2026!")) {
 				t.Fatal("source metadata missing or credential leaked")
+			}
+		}
+		if clickPort != "" {
+			// Keep a lower-level assertion alongside the MCP call below. If the
+			// browser flow regresses, this preserves the underlying query-service
+			// error rather than only the intentionally sanitized MCP message.
+			direct, err := pagination.FetchQuery(ctx, &security.Caller{UserID: "alice", TenantID: "tenant-a"}, &model.FetchQueryRequest{
+				DataSourceID: sourceID,
+				SQL:          "SELECT id, status FROM browser_orders ORDER BY id",
+				BatchSize:    2,
+				Type:         1,
+			})
+			if err != nil || direct == nil || len(direct.Entries) != 2 {
+				t.Fatalf("ClickHouse browser pagination query failed: result=%+v error=%v", direct, err)
 			}
 		}
 		first := toolJSON(t, mclient, "execute_sql_query", map[string]any{"datasource_id": sourceID, "sql": "SELECT id, status FROM browser_orders ORDER BY id", "batch_size": 2, "execution_mode": "pagination"})
