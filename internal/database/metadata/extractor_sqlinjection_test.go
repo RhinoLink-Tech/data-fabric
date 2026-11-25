@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -20,6 +21,7 @@ func TestSQLInjectionResistantColumnQuery(t *testing.T) {
 		model.DatabaseTypePostgreSQL,
 		model.DatabaseTypeOpenGauss,
 		model.DatabaseTypeOracle,
+		model.DatabaseTypeClickHouse,
 		model.DatabaseTypeTrino, // default branch
 	}
 	for _, dbType := range literalTypes {
@@ -116,5 +118,39 @@ func TestOpenGaussColumnQueryScopesSchema(t *testing.T) {
 	query := e.getColumnQuery(model.DatabaseTypeOpenGauss, "orders", "tenant_a")
 	if !strings.Contains(query, "table_name = 'orders'") || !strings.Contains(query, "table_schema = 'tenant_a'") {
 		t.Fatalf("openGauss column query did not constrain schema: %s", query)
+	}
+}
+
+func TestClickHouseMetadataQueriesUseSystemCatalog(t *testing.T) {
+	e := &MetadataExtractor{}
+	tableQuery := e.getTableQuery(model.DatabaseTypeClickHouse)
+	if !strings.Contains(tableQuery, "FROM system.tables") ||
+		!strings.Contains(tableQuery, "database = currentDatabase()") ||
+		strings.Contains(tableQuery, "information_schema") ||
+		strings.Contains(tableQuery, "is_dropped") {
+		t.Fatalf("ClickHouse table query is not least-privilege system catalog discovery: %s", tableQuery)
+	}
+	columnQuery := e.getColumnQuery(model.DatabaseTypeClickHouse, "orders", "ignored")
+	if !strings.Contains(columnQuery, "FROM system.columns") ||
+		!strings.Contains(columnQuery, "database = currentDatabase()") ||
+		!strings.Contains(columnQuery, "table = 'orders'") ||
+		strings.Contains(columnQuery, "information_schema") {
+		t.Fatalf("ClickHouse column query is not database-scoped system catalog discovery: %s", columnQuery)
+	}
+}
+
+// ClickHouse's ordering and data-skipping indexes are not portable relational
+// indexes. Browser onboarding grants only the exact system metadata needed for
+// tables and columns, so supplemental discovery must not fall back to
+// information_schema.
+func TestClickHouseSupplementalMetadataDoesNotRequireDatabaseQueries(t *testing.T) {
+	e := &MetadataExtractor{}
+	indexes, err := e.extractIndexes(context.Background(), nil, model.DatabaseTypeClickHouse, "orders", "")
+	if err != nil || len(indexes) != 0 {
+		t.Fatalf("extractIndexes() = %#v, %v; want empty indexes without a query", indexes, err)
+	}
+	primaryKey, err := e.extractPrimaryKey(context.Background(), nil, model.DatabaseTypeClickHouse, "orders", "")
+	if err != nil || len(primaryKey) != 0 {
+		t.Fatalf("extractPrimaryKey() = %#v, %v; want no primary key without a query", primaryKey, err)
 	}
 }

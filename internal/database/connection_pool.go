@@ -204,6 +204,12 @@ func (cp *ConnectionPool) GetNativeSQLAPIExecutor(ctx context.Context, dataSourc
 	if !driver.GetCapabilities().SupportsSQL {
 		return nil, false, nil
 	}
+	// SupportsSQL also covers ordinary database/sql drivers. Only the optional
+	// native extension should select the native path; otherwise a bounded
+	// restricted pool must continue through its controlled SQL connection.
+	if _, ok := driver.(drivers.NativeAPIExecutorProvider); !ok {
+		return nil, false, nil
+	}
 	return cp.GetNativeAPIExecutor(ctx, dataSource)
 }
 

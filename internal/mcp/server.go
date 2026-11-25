@@ -748,7 +748,11 @@ func (m *MCPServer) handleListTables(ctx context.Context, request mcp.CallToolRe
 	}
 	tablePolicyEnabled := m.tableAuthorizer != nil && m.tableAuthorizer.Enabled()
 	csvObjectSource := dataSource.Type == model.DatabaseTypeMinIOCSV || dataSource.Type == model.DatabaseTypeS3CSV || dataSource.Type == model.DatabaseTypeGCSCSV
-	if tablePolicyEnabled || csvObjectSource {
+	// ClickHouse metadata is read through the configured metadata extractor.
+	// Its system catalog is not user SQL and must not pass through the generic
+	// query validator used by the legacy list-tables fallback.
+	clickHouseSource := dataSource.Type == model.DatabaseTypeClickHouse
+	if tablePolicyEnabled || csvObjectSource || clickHouseSource {
 		lister, ok := m.tableDescriber.(TableLister)
 		if !ok {
 			return mcp.NewToolResultError("table metadata is unavailable or access is denied"), nil

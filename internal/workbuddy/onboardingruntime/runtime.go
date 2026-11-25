@@ -312,6 +312,9 @@ func New(ctx context.Context, o Options) (*Runtime, error) {
 	if o.Policy.AllowsSourceType(model.DatabaseTypeTiDB) {
 		allowedTypes = append(allowedTypes, model.DatabaseTypeTiDB)
 	}
+	if o.Policy.AllowsSourceType(model.DatabaseTypeClickHouse) {
+		allowedTypes = append(allowedTypes, model.DatabaseTypeClickHouse)
+	}
 	manager, e := web.New(o.DB, o.Vault, o.Validator, web.BrowserAuth{Handler: login, Origin: o.Origin}, flow, restrictedProbe{probe, o.Policy}, web.TransactionalAudit{FingerprintKey: o.AuditKey}, allowedTypes)
 	if e != nil {
 		return nil, e

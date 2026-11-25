@@ -24,13 +24,14 @@ import (
 // The policy admits pinned IPv4 MySQL/PostgreSQL sources; TLS verifies
 // the original hostname against system or operator-provisioned trust roots.
 type FixedIPEgressPolicy struct {
-	prefixes       []netip.Prefix
-	ports          map[int]struct{}
-	caTag          string
-	caPEM          []byte
-	allowMariaDB   bool
-	allowOpenGauss bool
-	allowTiDB      bool
+	prefixes        []netip.Prefix
+	ports           map[int]struct{}
+	caTag           string
+	caPEM           []byte
+	allowMariaDB    bool
+	allowOpenGauss  bool
+	allowTiDB       bool
+	allowClickHouse bool
 }
 
 var safeDSNPart = regexp.MustCompile(`^[A-Za-z0-9._~-]*$`)
@@ -103,6 +104,19 @@ func NewFixedIPEgressPolicyWithTiDB(cidrs []string, ports []int, caFile string, 
 	return p, nil
 }
 
+// NewFixedIPEgressPolicyWithClickHouse adds a separate default-off native gate.
+func NewFixedIPEgressPolicyWithClickHouse(cidrs []string, ports []int, caFile string, maria, gauss, tidb, click bool) (*FixedIPEgressPolicy, error) {
+	p, err := NewFixedIPEgressPolicyWithTiDB(cidrs, ports, caFile, maria, gauss, tidb)
+	if err != nil {
+		return nil, err
+	}
+	if click && !GetDriverRegistry().IsSupported(model.DatabaseTypeClickHouse) {
+		return nil, ErrEgressDenied
+	}
+	p.allowClickHouse = click
+	return p, nil
+}
+
 // NewRestrictedConnectionPool enforces p on each pool lease and native API
 // dispatch. A non-nil policy is mandatory and cannot be reconfigured in place.
 func NewRestrictedConnectionPool(registry *DriverRegistry, tm *security.TokenManager, vault *security.CredentialVault, readOnly bool, p *FixedIPEgressPolicy) (*ConnectionPool, error) {
@@ -117,7 +131,7 @@ func NewRestrictedConnectionPool(registry *DriverRegistry, tm *security.TokenMan
 // AllowsSourceType reports only the connector-type constraint. A true result
 // does not grant access or imply that a source configuration will pass policy.
 func (p *FixedIPEgressPolicy) AllowsSourceType(t model.DatabaseType) bool {
-	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL || (p.allowMariaDB && t == model.DatabaseTypeMariaDB) || (p.allowOpenGauss && t == model.DatabaseTypeOpenGauss) || (p.allowTiDB && t == model.DatabaseTypeTiDB))
+	return p != nil && (t == model.DatabaseTypeMySQL || t == model.DatabaseTypePostgreSQL || (p.allowMariaDB && t == model.DatabaseTypeMariaDB) || (p.allowOpenGauss && t == model.DatabaseTypeOpenGauss) || (p.allowTiDB && t == model.DatabaseTypeTiDB) || (p.allowClickHouse && t == model.DatabaseTypeClickHouse))
 }
 
 func (p *FixedIPEgressPolicy) Check(ds *model.DataSource) error {
@@ -126,7 +140,7 @@ func (p *FixedIPEgressPolicy) Check(ds *model.DataSource) error {
 	}
 	c := ds.Config
 	// openGauss onboarding is an explicit, verified-TLS-only candidate.
-	if (ds.Type == model.DatabaseTypeOpenGauss || ds.Type == model.DatabaseTypeTiDB) && !c.SSL {
+	if (ds.Type == model.DatabaseTypeOpenGauss || ds.Type == model.DatabaseTypeTiDB || ds.Type == model.DatabaseTypeClickHouse) && !c.SSL {
 		return ErrEgressDenied
 	}
 	ip, err := netip.ParseAddr(c.Host)

@@ -208,3 +208,33 @@ func TestTiDBConnectionProbeRequiresOptInAndOwnership(t *testing.T) {
 		t.Fatal("non-owner TiDB test accepted")
 	}
 }
+
+func TestClickHouseConnectionProbeRequiresOptInAndOwnership(t *testing.T) {
+	if !database.GetDriverRegistry().IsSupported(model.DatabaseTypeClickHouse) {
+		t.Skip("ClickHouse not in build")
+	}
+	stub := &managementStub{source: &model.DataSource{ID: "id", OwnerID: "alice", TenantID: "a", Type: model.DatabaseTypeClickHouse, Config: model.DataSourceConfig{Password: "secret-marker"}}}
+	srv := NewMCPServer(nil, nil, nil)
+	srv.SetDataSourceManagementService(stub)
+	srv.SetSourceConnectivityTester(&probeStub{})
+	req := callToolRequest("test_data_source_connection", map[string]any{"datasource_id": "id"})
+	owner := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "alice", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err := srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || !result.IsError {
+		t.Fatal("ClickHouse accepted without policy")
+	}
+	policy, err := database.NewFixedIPEgressPolicyWithClickHouse([]string{"192.0.2.0/24"}, []int{9440}, "", false, false, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetSourceTypePolicy(policy, nil)
+	result, err = srv.handleTestDataSourceConnection(owner, req)
+	if err != nil || result.IsError || strings.Contains(resultText(t, result), "secret-marker") {
+		t.Fatal("authorized test failed or leaked")
+	}
+	stranger := context.WithValue(context.Background(), callerContextKey{}, &security.Caller{UserID: "other", TenantID: "a", Scopes: []string{sourceManagementScope}})
+	result, err = srv.handleTestDataSourceConnection(stranger, req)
+	if err != nil || !result.IsError {
+		t.Fatal("non-owner ClickHouse test accepted")
+	}
+}

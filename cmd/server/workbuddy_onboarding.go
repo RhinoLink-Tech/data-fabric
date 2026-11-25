@@ -45,6 +45,10 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if tidb != "" && tidb != "false" && tidb != "true" {
 		return nil, errors.New("invalid WorkBuddy TiDB toggle")
 	}
+	clickhouse := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CLICKHOUSE"))
+	if clickhouse != "" && clickhouse != "false" && clickhouse != "true" {
+		return nil, errors.New("invalid WorkBuddy ClickHouse toggle")
+	}
 	updates := strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_SOURCE_UPDATES"))
 	if updates != "" && updates != "false" && updates != "true" {
 		return nil, errors.New("invalid WorkBuddy source updates toggle")
@@ -66,6 +70,9 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 		}
 		if tidb == "true" {
 			return nil, errors.New("WorkBuddy TiDB requires onboarding")
+		}
+		if clickhouse == "true" {
+			return nil, errors.New("WorkBuddy ClickHouse requires onboarding")
 		}
 		if updates == "true" {
 			return nil, errors.New("WorkBuddy source updates require onboarding")
@@ -108,7 +115,7 @@ func readWorkbuddyConfig(cfg *config.Config) (*workbuddyConfig, error) {
 	if tidb == "true" && !database.GetDriverRegistry().IsSupported(model.DatabaseTypeTiDB) {
 		return nil, errors.New("WorkBuddy TiDB requires a build with the TiDB driver")
 	}
-	c.policy, err = database.NewFixedIPEgressPolicyWithTiDB(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true", openGauss == "true", tidb == "true")
+	c.policy, err = database.NewFixedIPEgressPolicyWithClickHouse(c.cidrs, c.ports, strings.TrimSpace(os.Getenv("DATA_FABRIC_WORKBUDDY_CA_FILE")), mariadb == "true", openGauss == "true", tidb == "true", clickhouse == "true")
 	if err != nil {
 		return nil, errors.New("invalid WorkBuddy egress policy")
 	}

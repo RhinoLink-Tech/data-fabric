@@ -51,6 +51,15 @@ Settings in addition to the normal MCP/OIDC/audit/vault configuration:
 - `DATA_FABRIC_WORKBUDDY_MARIADB`: optional `true` enables the MariaDB type in the isolated fixed-IP policy and browser wizard. Default is off. This does not grant a user permission; the configured CIDR/port and management grant still apply. Restart/drain every instance when changing it.
 - `DATA_FABRIC_WORKBUDDY_OPENGAUSS`: optional `true` enables the separate openGauss type in the fixed-IP policy and browser wizard. Default is off; the experimental Core build lacks this driver and rejects the toggle. TLS with hostname verification is mandatory. The CIDR/port and management grant still apply; restart/drain every instance when changing it. Use a source account limited to the intended read-only tables.
 - `DATA_FABRIC_WORKBUDDY_TIDB`: optional `true` enables the separate TiDB browser and restricted SQL path. Default is off. Verified TLS, the configured CIDR/port and a management grant are mandatory; the build must include the TiDB driver. TiDB does not have a verified gateway read-only session initializer: an administrator must provision and verify a source account with SELECT only on the intended tables. The wizard does not verify all database privileges. Restart/drain every instance after changing the policy. This is an unreleased candidate; client and release acceptance are separate.
+- `DATA_FABRIC_WORKBUDDY_CLICKHOUSE`: optional `true` enables the separately gated ClickHouse native path. Default off; Core rejects the toggle. Verified TLS, allowed IPv4/port and an administrator-verified SELECT-only source account are required. To use table discovery and table description, grant that account only the needed read columns on `system.tables` and `system.columns`, in addition to the intended business tables; do not grant writes or DDL. The wizard does not verify all account privileges; restart/drain all instances after changes. This is a source candidate, not a published or WorkBuddy-accepted feature.
+
+For a database named `analytics` and a reader named `fabric_reader`, the narrow metadata grants are:
+
+```sql
+GRANT SELECT ON analytics.orders TO fabric_reader;
+GRANT SELECT(name, engine, database, is_temporary) ON system.tables TO fabric_reader;
+GRANT SELECT(name, type, default_expression, comment, database, table) ON system.columns TO fabric_reader;
+```
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_CIDRS`: comma-separated IPv4 CIDRs.
 - `DATA_FABRIC_WORKBUDDY_ALLOWED_PORTS`: comma-separated TCP ports. The
   destination must match both CIDR and port. CIDRs and ports are policy, not

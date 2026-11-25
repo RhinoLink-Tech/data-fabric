@@ -621,6 +621,13 @@ func (e *MetadataExtractor) extractColumns(ctx context.Context, db *sql.DB, dbTy
 
 // extractIndexes extracts index information for a table
 func (e *MetadataExtractor) extractIndexes(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName, schemaName string) ([]IndexSchema, error) {
+	// ClickHouse primary keys and data-skipping indexes do not map to the
+	// portable IndexSchema contract. Querying information_schema for them also
+	// defeats the deliberately minimal system-table grants used by browser
+	// onboarding, so report this supplemental metadata as unavailable.
+	if dbType == model.DatabaseTypeClickHouse {
+		return []IndexSchema{}, nil
+	}
 	query := e.getIndexQuery(dbType, tableName, schemaName)
 
 	rows, err := db.QueryContext(ctx, query)
@@ -739,6 +746,12 @@ func indexValueString(v any) string {
 
 // extractPrimaryKey extracts primary key information for a table
 func (e *MetadataExtractor) extractPrimaryKey(ctx context.Context, db *sql.DB, dbType model.DatabaseType, tableName, schemaName string) ([]string, error) {
+	// See extractIndexes: ClickHouse ordering keys are not relational primary
+	// keys, and browser onboarding does not require unrelated information_schema
+	// permissions merely to describe table columns.
+	if dbType == model.DatabaseTypeClickHouse {
+		return []string{}, nil
+	}
 	query := e.getPrimaryKeyQuery(dbType, tableName, schemaName)
 
 	rows, err := db.QueryContext(ctx, query)
@@ -795,6 +808,14 @@ func (e *MetadataExtractor) getTableQuery(dbType model.DatabaseType) string {
 		// with the three-column scan and reports the real schema and type
 		// (SHOW TABLE STATUS would feed the row count into the schema column).
 		return "SELECT table_name, table_type, table_schema FROM information_schema.tables WHERE table_schema = DATABASE()"
+	case model.DatabaseTypeClickHouse:
+		// ClickHouse's information_schema compatibility views are not usable by
+		// every least-privilege native-protocol account. system.tables is the
+		// supported metadata catalog and stays scoped to the configured database.
+		// The expression preserves the extractor's TABLE/VIEW contract without
+		// exposing temporary objects. Do not depend on is_dropped here: it is not
+		// a portable system.tables column across the pinned ClickHouse baseline.
+		return "SELECT name, if(engine IN ('View', 'MaterializedView', 'LiveView', 'WindowView'), 'VIEW', 'TABLE'), database FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0"
 	case model.DatabaseTypePostgreSQL:
 		// Ordinary views live in pg_views, separate from pg_tables. Materialized
 		// views are not included: they are a distinct relation kind.
@@ -821,6 +842,11 @@ func (e *MetadataExtractor) getColumnQuery(dbType model.DatabaseType, tableName,
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s' AND table_schema = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
 	case model.DatabaseTypeOracle:
 		return fmt.Sprintf("SELECT column_name, data_type, nullable, data_default, '' FROM all_tab_columns WHERE table_name = '%s' AND owner = '%s'", escapeSQLStringLiteral(tableName), escapeSQLStringLiteral(schemaName))
+	case model.DatabaseTypeClickHouse:
+		// ClickHouse keeps column metadata in system.columns rather than the
+		// portable information_schema shape. Return the same five columns that
+		// scanColumnRow expects, with a conservative Nullable(...) detection.
+		return fmt.Sprintf("SELECT name, type, if(positionCaseInsensitive(type, 'Nullable(') > 0, 'YES', 'NO'), nullIf(default_expression, ''), comment FROM system.columns WHERE database = currentDatabase() AND table = '%s'", escapeSQLStringLiteral(tableName))
 	default:
 		return fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default, '' FROM information_schema.columns WHERE table_name = '%s'", escapeSQLStringLiteral(tableName))
 	}

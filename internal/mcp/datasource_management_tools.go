@@ -297,7 +297,7 @@ func (m *MCPServer) handleTestDataSourceConnection(ctx context.Context, req mcp.
 		return mcp.NewToolResultError("source is unavailable or access is denied"), nil
 	}
 	if source.Type != model.DatabaseTypePostgreSQL && source.Type != model.DatabaseTypeMySQL &&
-		!((source.Type == model.DatabaseTypeMariaDB || source.Type == model.DatabaseTypeTiDB) && m.sourceTypePolicy != nil && m.sourceTypePolicy.AllowsSourceType(source.Type)) {
+		!((source.Type == model.DatabaseTypeMariaDB || source.Type == model.DatabaseTypeTiDB || source.Type == model.DatabaseTypeClickHouse) && m.sourceTypePolicy != nil && m.sourceTypePolicy.AllowsSourceType(source.Type)) {
 		return mcp.NewToolResultError("connection testing is unavailable for this source type"), nil
 	}
 	// User-controlled filesystem paths are never valid probe parameters.
