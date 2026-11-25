@@ -90,7 +90,7 @@ Pass `sourceDialect` to translate inside the [compatibility matrix](SQL_TRANSLAT
 
 ## Quick Start
 
-Choose an available [published Preview release](https://github.com/RhinoLink-Tech/data-fabric/releases) and its matching digest-pinned `linux/amd64` installation guide: [v2.1.0-preview.2](docs/releases/v2.1.0-preview.2-install.md) or the earlier [v2.1.0-preview.1](docs/releases/v2.1.0-preview.1-install.md). Use only a version and digest recorded by the corresponding Release. The source-build path remains available for contributors.
+Choose an available [published Preview release](https://github.com/RhinoLink-Tech/data-fabric/releases) and its matching digest-pinned `linux/amd64` installation guide: [v2.1.0-preview.3](docs/releases/v2.1.0-preview.3-install.md) or an earlier Preview. Use only a version and digest recorded by the corresponding Release. The source-build path remains available for contributors.
 
 The sample profile uses MySQL metadata and separate REST and MCP processes. Its seeded data is synthetic. It demonstrates the documented path; it does not establish external adoption, production capacity, or an SLA. See the [first-adopter profile](docs/product/first-adopter-profile.md), [connector support catalog](docs/data-source-support.md), and [current operating limits](docs/roadmap.md#current-operating-limits) for the scope and open evidence.
 

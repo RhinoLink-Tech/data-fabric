@@ -6,7 +6,7 @@
 
 ## 已发布的 Preview 镜像
 
-从[GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases)选择可用版本，并使用对应安装指南：[v2.1.0-preview.2](releases/v2.1.0-preview.2-install-zh.md) 或较早的 [v2.1.0-preview.1](releases/v2.1.0-preview.1-install-zh.md)。preview.1 于 2026-11-11 发布并通过该版本的精确 digest 验收；不同版本的验收证据不能直接互用，请以对应 Release 中的源码 SHA、digest 和记录为准。评估范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
+从[GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases)选择可用版本，并使用对应安装指南：[v2.1.0-preview.3](releases/v2.1.0-preview.3-install-zh.md) 或较早的 Preview。不同版本的验收证据不能直接互用，请以对应 Release 中的源码 SHA、digest 和记录为准。评估范围是一台 `linux/amd64` 主机，不承诺 HA、自动故障切换、响应时间 SLA 或原地升级。外部首次使用仍由 [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) 和 [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446) 跟踪。
 
 ## 当前部署拓扑
 
