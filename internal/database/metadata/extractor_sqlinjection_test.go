@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -135,5 +136,21 @@ func TestClickHouseMetadataQueriesUseSystemCatalog(t *testing.T) {
 		!strings.Contains(columnQuery, "table = 'orders'") ||
 		strings.Contains(columnQuery, "information_schema") {
 		t.Fatalf("ClickHouse column query is not database-scoped system catalog discovery: %s", columnQuery)
+	}
+}
+
+// ClickHouse's ordering and data-skipping indexes are not portable relational
+// indexes. Browser onboarding grants only the exact system metadata needed for
+// tables and columns, so supplemental discovery must not fall back to
+// information_schema.
+func TestClickHouseSupplementalMetadataDoesNotRequireDatabaseQueries(t *testing.T) {
+	e := &MetadataExtractor{}
+	indexes, err := e.extractIndexes(context.Background(), nil, model.DatabaseTypeClickHouse, "orders", "")
+	if err != nil || len(indexes) != 0 {
+		t.Fatalf("extractIndexes() = %#v, %v; want empty indexes without a query", indexes, err)
+	}
+	primaryKey, err := e.extractPrimaryKey(context.Background(), nil, model.DatabaseTypeClickHouse, "orders", "")
+	if err != nil || len(primaryKey) != 0 {
+		t.Fatalf("extractPrimaryKey() = %#v, %v; want no primary key without a query", primaryKey, err)
 	}
 }
