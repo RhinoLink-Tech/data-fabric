@@ -61,7 +61,7 @@ jobs:
           for required in \
             "Select affected live contracts" \
             "Unit and build checks" \
-            "Reference PostgreSQL and MySQL contracts" \
+            "Reference PostgreSQL, MySQL and MariaDB contracts" \
             "Public REST and MCP reference acceptance"; do
             conclusion="$(jq -r --arg name "$required" '[.jobs[] | select(.name == $name)] | if length == 1 then .[0].conclusion else "missing" end' <<<"$jobs")"
             if [[ "$conclusion" != "success" ]]; then
