@@ -17,7 +17,7 @@ This is the current synthetic first-use profile linked from the [first-adopter b
 
 ## Published Preview images
 
-Choose an available [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases) and its matching installation guide: [v2.1.0-preview.2](releases/v2.1.0-preview.2-install.md) or the earlier [v2.1.0-preview.1](releases/v2.1.0-preview.1-install.md). The preview.1 image was published on 2026-11-11 and passed its own exact-digest clean-runner acceptance. Use the source SHA, digest and acceptance evidence recorded for the version you select; evidence does not automatically transfer between versions. The evaluated profile is one `linux/amd64` host without an HA, automatic failover, response-time SLA or in-place upgrade promise. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
+Choose an available [GitHub Release](https://github.com/RhinoLink-Tech/data-fabric/releases) and its matching installation guide: [v2.1.0-preview.3](releases/v2.1.0-preview.3-install.md) or an earlier Preview. Use the source SHA, digest and acceptance evidence recorded for the version you select; evidence does not automatically transfer between versions. The evaluated profile is one `linux/amd64` host without an HA, automatic failover, response-time SLA or in-place upgrade promise. External first-use evidence remains open under [#442](https://github.com/RhinoLink-Tech/data-fabric/issues/442) and [#446](https://github.com/RhinoLink-Tech/data-fabric/issues/446).
 
 ## What gets deployed
 
