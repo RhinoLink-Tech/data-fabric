@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v2.1.0-preview.3] - 2026-11-25
+
 ### Added
 - Add a separately gated, TLS-only TiDB browser onboarding candidate. It requires an administrator-verified SELECT-only source account and the TiDB driver; the wizard does not verify all database privileges (#834).
 - Expose caller-relative ownership in MCP source discovery and a separately authorized, paginated inventory of manageable sources (#818, #820).
