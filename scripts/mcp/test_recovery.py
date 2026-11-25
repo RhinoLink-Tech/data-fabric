@@ -13,6 +13,20 @@ from unittest import mock
 import recovery
 
 
+class PublishedReleaseCatalogTests(unittest.TestCase):
+    def test_preview3_identity_is_explicitly_allowlisted(self):
+        release = recovery.RELEASE_SOURCE_ARCHIVES[
+            "ebb4a0ef456447f90ae3b1f1d3fe3d2719785974fc82a746a2e2278dae8da0c1"
+        ]
+        self.assertEqual(release["root"], "data-fabric-v2.1.0-preview.3")
+        self.assertEqual(release["revision"], "2b2a218b209edb7d67ef02b4762d195f0622cd3c")
+        self.assertEqual(
+            release["image"],
+            "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.3@sha256:"
+            "0c5ada5c16f9a411ecc80f8fd1635733ab7e88cb5f2bdc2d74f27b54ca6278af",
+        )
+
+
 class ReleaseArchiveTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -39,6 +39,11 @@ RELEASE_SOURCE_ARCHIVES = {
         "revision": "281260f6c2000419222e55a99e984b8dd5094ab8",
         "image": "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.2@sha256:c3e6b06848931b84610bcb399d3eec126a5a4f2317e4238f27b7fdc458e8520e",
     },
+    "ebb4a0ef456447f90ae3b1f1d3fe3d2719785974fc82a746a2e2278dae8da0c1": {
+        "root": "data-fabric-v2.1.0-preview.3",
+        "revision": "2b2a218b209edb7d67ef02b4762d195f0622cd3c",
+        "image": "ghcr.io/rhinolink-tech/data-fabric:v2.1.0-preview.3@sha256:0c5ada5c16f9a411ecc80f8fd1635733ab7e88cb5f2bdc2d74f27b54ca6278af",
+    },
 }
 
 
