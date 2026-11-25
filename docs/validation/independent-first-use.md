@@ -9,7 +9,7 @@ This protocol supports issue #446. It compares the documented first-use path for
 Begin only when:
 
 - Baseline and candidate tags, source SHAs, image digests, platforms, and matching documentation are fixed. Use published artifacts, not a local build or source checkout.
-- Both artifacts and required supporting images must be retrievable anonymously. The v2.1.0-preview.1 candidate is now public at digest `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf` ([release](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)); anonymous retrieval and clean-runner acceptance passed. Confirm the baseline artifact and supporting images meet this gate before scheduling operators.
+- Both artifacts and required supporting images must be retrievable anonymously. The current candidate is [v2.1.0-preview.3](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.3), built from source `2b2a218b209edb7d67ef02b4762d195f0622cd3c`, at immutable image-index digest `sha256:0c5ada5c16f9a411ecc80f8fd1635733ab7e88cb5f2bdc2d74f27b54ca6278af`. Its published-image acceptance passed on [GitHub-hosted clean runners](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/45555480608). Confirm the selected baseline artifact and supporting images meet the same retrieval gate before scheduling operators.
 - Two operators who did not implement the guided path and are unfamiliar with repository internals are available. They receive the published instructions and same task brief, without a maintainer walkthrough.
 - The isolated environment uses synthetic data or data explicitly approved for this rehearsal.
 
