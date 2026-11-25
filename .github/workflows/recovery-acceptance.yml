@@ -2,6 +2,15 @@ name: Candidate profile recovery acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published Preview to recover with the current helper
+        required: true
+        default: v2.1.0-preview.3
+        type: choice
+        options:
+          - v2.1.0-preview.2
+          - v2.1.0-preview.3
   pull_request:
     paths:
       - 'deploy/mcp/reference/recovery_acceptance.go'
@@ -44,8 +53,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  preview2:
-    name: Published preview.2 archive and image recovery
+  published-preview:
+    name: Published Preview archive and image recovery
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,18 +70,23 @@ jobs:
       - name: Download the published source archive
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'v2.1.0-preview.3' }}
         run: |
-          gh release download v2.1.0-preview.2 --repo RhinoLink-Tech/data-fabric --pattern data-fabric-v2.1.0-preview.2-source.tar.gz --dir "$RUNNER_TEMP"
+          ARCHIVE="data-fabric-${RELEASE_TAG}-source.tar.gz"
+          gh release download "$RELEASE_TAG" --repo RhinoLink-Tech/data-fabric --pattern "$ARCHIVE" --dir "$RUNNER_TEMP"
       - name: Rehearse published archive and image with current recovery helper
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || 'v2.1.0-preview.3' }}
         shell: bash
         run: |
           set -o pipefail
-          go run ./deploy/mcp/reference/cmd/recovery-acceptance -preview2-archive "$RUNNER_TEMP/data-fabric-v2.1.0-preview.2-source.tar.gz" | tee "$RUNNER_TEMP/preview2-recovery-acceptance.log"
+          ARCHIVE="data-fabric-${RELEASE_TAG}-source.tar.gz"
+          go run ./deploy/mcp/reference/cmd/recovery-acceptance -published-release "$RELEASE_TAG" -release-archive "$RUNNER_TEMP/$ARCHIVE" | tee "$RUNNER_TEMP/published-preview-recovery-acceptance.log"
       - name: Save non-secret evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: preview2-recovery-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/preview2-recovery-acceptance.log
+          name: published-preview-recovery-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/published-preview-recovery-acceptance.log
           if-no-files-found: warn
           retention-days: 30
