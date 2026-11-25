@@ -59,14 +59,22 @@ func TestListTablesUsesClickHouseSystemCatalog(t *testing.T) {
 	source := activeOwnedSource()
 	source.Type = model.DatabaseTypeClickHouse
 	query := &stubQueryService{}
-	server := NewMCPServer(query, describeTableRepo{source: source}, &stubTableDescriber{})
+	metadataSource := &policyTableMetadataStub{identities: []metadata.TableIdentity{{Name: "orders", Schema: "analytics", Type: "TABLE"}}}
+	server := NewMCPServer(query, describeTableRepo{source: source}, metadataSource)
 	ctx, request := tablePolicyRequest(&security.Caller{UserID: "alice"}, "list_tables", map[string]any{"datasource_id": source.ID})
 	result, err := server.handleListTables(ctx, request)
 	if err != nil || result.IsError {
 		t.Fatalf("list result = %+v, err = %v", result, err)
 	}
-	if query.captured == nil || query.captured.SQL != "SELECT name AS table_name FROM system.tables WHERE database = currentDatabase() AND is_temporary = 0" || len(query.captured.Parameters) != 0 {
-		t.Fatalf("unexpected ClickHouse discovery query: %+v", query.captured)
+	if query.captured != nil {
+		t.Fatalf("ClickHouse discovery must bypass generic query validation: %+v", query.captured)
+	}
+	var response model.FetchQueryResponse
+	if err := json.Unmarshal([]byte(describeTableText(t, result)), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.TotalCount != 1 || len(response.Entries) != 1 || (*response.Entries[0])[0] != "orders" {
+		t.Fatalf("unexpected ClickHouse metadata result: %+v", response)
 	}
 }
 
