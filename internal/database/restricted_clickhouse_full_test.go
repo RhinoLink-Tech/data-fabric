@@ -3,8 +3,10 @@
 package database
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/RhinoLink-Tech/data-fabric/internal/model"
@@ -69,5 +71,27 @@ func TestClickHouseRestrictedPolicyIsExplicitAndTLSOnly(t *testing.T) {
 		if err := enabled.Check(&bad); !errors.Is(err, ErrEgressDenied) {
 			t.Fatal("unsafe source admitted")
 		}
+	}
+}
+
+// ClickHouse supplies a database/sql driver, not the optional native API
+// executor extension. A bounded browser pool must therefore preserve the
+// controlled SQL path instead of treating every SQL-capable driver as native.
+func TestBoundedClickHouseUsesRestrictedSQLPath(t *testing.T) {
+	policy, err := NewFixedIPEgressPolicyWithClickHouse([]string{"192.0.2.0/24"}, []int{9440}, "", false, false, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := NewRestrictedConnectionPool(nil, nil, nil, true, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Stop()
+	if err = pool.SetBoundedSourceFreshness(time.Second, func(context.Context, *model.DataSource) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	executor, supported, err := pool.GetNativeSQLAPIExecutor(context.Background(), &model.DataSource{ID: "synthetic", Type: model.DatabaseTypeClickHouse})
+	if err != nil || supported || executor != nil {
+		t.Fatalf("GetNativeSQLAPIExecutor() = %#v, %t, %v; want ordinary SQL fallback", executor, supported, err)
 	}
 }
