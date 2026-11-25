@@ -1197,7 +1197,125 @@ func buildCountSQLNoAlias(sql string) string {
 // the copy it parses rather than from the statement that gets executed, so it is
 // dropped here.
 func countSubquery(sql string) string {
-	return strings.TrimRight(removeOrderByClause(sql), "; \t\r\n")
+	return trimCountSubquerySuffix(removeOrderByClause(sql))
+}
+
+// trimCountSubquerySuffix removes syntax that only terminates or comments on a
+// statement. A count query embeds the statement in parentheses, so leaving a
+// trailing line comment would comment out the closing parenthesis and alias:
+//
+//	SELECT COUNT(*) FROM (SELECT id FROM orders; -- latest rows) AS t
+//
+// Comments embedded in a statement, as well as comment-looking text in quoted
+// strings and PostgreSQL dollar-quoted strings, are deliberately preserved.
+func trimCountSubquerySuffix(sql string) string {
+	end := len(sql)
+	for {
+		end = trimSQLSpaceRight(sql, end)
+		if end == 0 {
+			return ""
+		}
+
+		if sql[end-1] == ';' {
+			end--
+			continue
+		}
+
+		if commentStart := trailingSQLCommentStart(sql[:end]); commentStart >= 0 {
+			end = commentStart
+			continue
+		}
+
+		return sql[:end]
+	}
+}
+
+func trimSQLSpaceRight(sql string, end int) int {
+	for end > 0 {
+		switch sql[end-1] {
+		case ' ', '\t', '\r', '\n':
+			end--
+		default:
+			return end
+		}
+	}
+	return end
+}
+
+// trailingSQLCommentStart returns the opening offset of a comment that reaches
+// the end of sql. It recognizes the line-comment forms supported by MySQL and
+// PostgreSQL, plus block comments. Scanning the complete statement keeps a
+// comment marker inside a literal from being mistaken for SQL syntax.
+func trailingSQLCommentStart(sql string) int {
+	for i := 0; i < len(sql); {
+		switch {
+		case sql[i] == '\'' || sql[i] == '"' || sql[i] == '`':
+			i = skipQuoted(sql, i)
+		case sql[i] == '$':
+			if end := skipDollarQuoted(sql, i); end > i {
+				i = end
+			} else {
+				i++
+			}
+		case sql[i] == '-' && i+1 < len(sql) && sql[i+1] == '-':
+			if skipLineComment(sql, i) == len(sql) {
+				return i
+			}
+			i = skipLineComment(sql, i)
+		case sql[i] == '#':
+			if skipLineComment(sql, i) == len(sql) {
+				return i
+			}
+			i = skipLineComment(sql, i)
+		case sql[i] == '/' && i+1 < len(sql) && sql[i+1] == '*':
+			if skipBlockComment(sql, i) == len(sql) {
+				return i
+			}
+			i = skipBlockComment(sql, i)
+		default:
+			i++
+		}
+	}
+	return -1
+}
+
+// skipDollarQuoted advances past a PostgreSQL dollar-quoted literal starting
+// at start. It returns start when sql[start:] is not a dollar quote, and len
+// when the quote is unterminated so its contents cannot be parsed as comments.
+func skipDollarQuoted(sql string, start int) int {
+	if start+1 >= len(sql) || sql[start] != '$' {
+		return start
+	}
+
+	delimiterEnd := start + 1
+	if sql[delimiterEnd] == '$' {
+		delimiterEnd++
+	} else {
+		if !isDollarQuoteTagStart(sql[delimiterEnd]) {
+			return start
+		}
+		for delimiterEnd < len(sql) && isDollarQuoteTagByte(sql[delimiterEnd]) {
+			delimiterEnd++
+		}
+		if delimiterEnd >= len(sql) || sql[delimiterEnd] != '$' {
+			return start
+		}
+		delimiterEnd++
+	}
+
+	delimiter := sql[start:delimiterEnd]
+	if end := strings.Index(sql[delimiterEnd:], delimiter); end >= 0 {
+		return delimiterEnd + end + len(delimiter)
+	}
+	return len(sql)
+}
+
+func isDollarQuoteTagStart(b byte) bool {
+	return b == '_' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+func isDollarQuoteTagByte(b byte) bool {
+	return isDollarQuoteTagStart(b) || b >= '0' && b <= '9'
 }
 
 // buildCountSQLInPlace counts a query by replacing its SELECT list with COUNT(*)
