@@ -46,7 +46,7 @@ func (v *selfServiceValidator) ValidateMCPToken(ctx context.Context, raw string)
 
 // provisionSelfServiceGrant keeps source-owner validation, the grant and its
 // audit event in one transaction. An existing revoked grant is never restored.
-func provisionSelfServiceGrant(ctx context.Context, db *gorm.DB, issuer, subject, tenant, auditKey string, seed func(context.Context, *gorm.DB) error) error {
+func provisionSelfServiceGrant(ctx context.Context, db *gorm.DB, issuer, subject, tenant, auditKey string, seed func(context.Context, *gorm.DB) error, shared ...func(context.Context, *gorm.DB) error) error {
 	if db == nil || len(strings.TrimSpace(auditKey)) < 32 {
 		return onboarding.ErrUnavailable
 	}
@@ -73,6 +73,11 @@ func provisionSelfServiceGrant(ctx context.Context, db *gorm.DB, issuer, subject
 		}
 		if created && seed != nil {
 			if err = seed(ctx, tx); err != nil {
+				return onboarding.ErrUnavailable
+			}
+		}
+		if len(shared) > 0 && shared[0] != nil {
+			if err = shared[0](ctx, tx); err != nil {
 				return onboarding.ErrUnavailable
 			}
 		}

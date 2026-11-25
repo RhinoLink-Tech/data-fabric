@@ -34,6 +34,43 @@ an identity or grant and is restricted to the validated synthetic template.
 
 For a narrow reverse-proxy configuration with registration, account switching and logout, see [workbuddy-identity-proxy.md](workbuddy-identity-proxy.md).
 
+## Shared test sources
+
+An operator may opt in to a shared test catalogue by setting
+`DATA_FABRIC_WORKBUDDY_SHARED_TEST_CATALOG` to the path of a JSON file mounted
+read-only in the gateway container. The file must be readable by the gateway
+user and have permissions no broader than `0600`; never commit it or include it
+in a Skill or connector package. It is loaded at startup. Each array entry has a
+stable `key`, display `name`, `type` (`mysql` or `postgresql`), `readOnly: true`,
+and a `config` containing the connection fields. For example, replace all
+placeholders locally:
+
+```json
+[{"key":"orders","name":"Orders","type":"mysql","readOnly":true,
+  "config":{"host":"10.0.0.10","port":3306,"database":"test_orders",
+    "username":"orders_reader","password":"<locally-provisioned-secret>",
+    "ssl":false,"timeout":5,"maxPoolSize":2}}]
+```
+
+The `readOnly` field is an operator assertion: **it does not create a database
+privilege**. Independently grant each account only the intended SELECT
+permissions, verify the dataset is appropriate for all users of the deployment,
+and restrict the fixed-IP egress policy to approved endpoints. Never put real
+user data or administrative database credentials in this catalogue.
+
+After a verified self-service user authenticates, the server creates a separate,
+credential-encrypted metadata record for each shared test source in that user's
+tenant. Existing accounts are reconciled on their next authenticated request;
+private sources continue to use their existing ownership rules. Removing an
+entry or using an empty array disables its managed metadata record on the next
+request from each affected account. Credential changes are applied at that
+point as well. Restart the gateway to load catalogue changes; to revoke access
+immediately, also revoke the underlying database account and terminate any
+active database sessions as appropriate. Removing the environment setting
+also disables previously managed entries on their next authenticated request.
+Tenant-bearing tokens that bypass self-service provisioning do not receive these
+entries automatically.
+
 ## Verification
 
 Run the focused Go tests. The optional integration test requires Docker,
