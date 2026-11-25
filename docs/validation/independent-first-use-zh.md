@@ -9,7 +9,7 @@
 仅在以下条件都满足后开始演练：
 
 - 基线和候选的发布 tag、源码 SHA、镜像 digest、平台及对应文档均已锁定。使用已发布 artifact，不得以本地构建或源码 checkout 替代。
-- 两个 artifact 及依赖镜像均须可匿名获取。v2.1.0-preview.1 候选现已公开，digest 为 `sha256:7d47073fe806879968ed3c66f9d3b2b7b7a2020f419738c2cbb1b89d58f1ebbf`（[发布页](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.1)）；匿名拉取和 clean-runner 验收已通过。安排操作者前，还需确认基线 artifact 和依赖镜像也满足该门槛。
+- 两个 artifact 及依赖镜像均须可匿名获取。当前候选为已发布的 [v2.1.0-preview.3](https://github.com/RhinoLink-Tech/data-fabric/releases/tag/v2.1.0-preview.3)：源码为 `2b2a218b209edb7d67ef02b4762d195f0622cd3c`，不可变镜像索引 digest 为 `sha256:0c5ada5c16f9a411ecc80f8fd1635733ab7e88cb5f2bdc2d74f27b54ca6278af`。其已发布镜像验收已在 [GitHub 托管的干净 runner](https://github.com/RhinoLink-Tech/data-fabric/actions/runs/45555480608) 上通过。安排操作者前，还需确认所选基线 artifact 和依赖镜像同样满足可获取门槛。
 - 至少两名未参与引导路径实现、且不熟悉仓库内部细节的操作者参与。他们获得已发布说明和同一份任务说明，不由维护者带着操作。
 - 隔离环境使用合成数据或经明确批准用于本次演练的数据。
 
