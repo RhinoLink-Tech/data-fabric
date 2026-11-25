@@ -111,127 +111,143 @@ func TestLiveNoCountRESTAndMCP(t *testing.T) {
 					t.Fatalf("seed fixture: %v", err)
 				}
 			}
+			countScenarios := []struct {
+				name, countMode, suffix string
+				succeeds                bool
+			}{
+				{name: "no-count", countMode: "none", succeeds: true},
+				// Comments are deliberately rejected before a request reaches the
+				// execution and count layers. Keep that boundary explicit: it
+				// prevents a comment from being used to conceal a second statement.
+				{name: "exact-trailing-terminator-comment-rejected", countMode: "exact", suffix: "; -- count fixture", succeeds: false},
+				{name: "exact-trailing-line-comment-rejected", countMode: "exact", suffix: " -- count fixture\n", succeeds: false},
+			}
 			for _, mode := range []string{"pagination", "streaming"} {
-				for _, api := range []string{"REST", "MCP"} {
-					t.Run(mode+"/"+api, func(t *testing.T) {
-						pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
-						defer pool.CloseAll()
-						source := &model.DataSource{ID: uuid.NewString(), Type: fixture.kind, Status: model.DataSourceStatusActive, Config: fixture.config}
-						repo := describeTableRepo{source: source}
-						tr := sql_translator.NewSQLTranslationManager(false)
-						paging := service.NewQueryService(repo, pool, false, tr)
-						defer paging.Shutdown()
-						streaming := service.NewStreamingService(repo, pool, tr)
-						defer streaming.Shutdown()
-						qs := unified.NewUnifiedQueryService(paging, streaming, &config.Config{Query: config.QueryConfig{ExecutionMode: mode}})
-						mcp := NewMCPServer(qs, repo, nil, tr)
-						rest := controller.NewQueryController(qs)
-						placeholder := "?"
-						if fixture.kind == model.DatabaseTypePostgreSQL {
-							placeholder = "$1"
-						}
-						query := "SELECT id FROM " + table + " WHERE id > " + placeholder + " ORDER BY id LIMIT 4"
-						args := map[string]any{"datasource_id": source.ID, "sql": query, "parameters": []interface{}{int64(0)}, "batch_size": 2, "count_mode": "none", "execution_mode": mode}
-						var page map[string]interface{}
-						decodeMCP := func(res *protocol.CallToolResult, err error, success bool) map[string]interface{} {
-							t.Helper()
-							if err != nil || res == nil || res.IsError == success {
-								t.Fatalf("MCP result=%+v err=%v success=%v", res, err, success)
+				for _, scenario := range countScenarios {
+					for _, api := range []string{"REST", "MCP"} {
+						t.Run(scenario.name+"/"+mode+"/"+api, func(t *testing.T) {
+							pool := database.NewConnectionPool(database.NewDriverRegistry(), nil, nil, false)
+							defer pool.CloseAll()
+							source := &model.DataSource{ID: uuid.NewString(), Type: fixture.kind, Status: model.DataSourceStatusActive, Config: fixture.config}
+							repo := describeTableRepo{source: source}
+							tr := sql_translator.NewSQLTranslationManager(false)
+							paging := service.NewQueryService(repo, pool, false, tr)
+							defer paging.Shutdown()
+							streaming := service.NewStreamingService(repo, pool, tr)
+							defer streaming.Shutdown()
+							qs := unified.NewUnifiedQueryService(paging, streaming, &config.Config{Query: config.QueryConfig{ExecutionMode: mode}})
+							mcp := NewMCPServer(qs, repo, nil, tr)
+							rest := controller.NewQueryController(qs)
+							placeholder := "?"
+							if fixture.kind == model.DatabaseTypePostgreSQL {
+								placeholder = "$1"
 							}
-							if !success {
-								return nil
-							}
-							var out map[string]interface{}
-							if err := json.Unmarshal([]byte(describeTableText(t, res)), &out); err != nil {
-								t.Fatal(err)
-							}
-							return out
-						}
-						restCall := func(method, path string, body []byte, params gin.Params, success bool) map[string]interface{} {
-							t.Helper()
-							rec := httptest.NewRecorder()
-							ctx, _ := gin.CreateTestContext(rec)
-							ctx.Request = httptest.NewRequest(method, path, bytes.NewReader(body))
-							ctx.Params = params
-							if method == http.MethodPost {
-								rest.FetchQuery(ctx)
-							} else {
-								rest.FetchNextBatch(ctx)
-							}
-							if (rec.Code == http.StatusOK) != success {
-								t.Fatalf("REST status=%d body=%s", rec.Code, rec.Body.String())
-							}
-							if !success {
-								return nil
-							}
-							var envelope struct {
-								Data map[string]interface{} `json:"data"`
-							}
-							if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
-								t.Fatal(err)
-							}
-							return envelope.Data
-						}
-						if api == "MCP" {
-							res, err := mcp.handleExecuteSQLQuery(context.Background(), callToolRequest("execute_sql_query", args))
-							page = decodeMCP(res, err, true)
-						} else {
-							payload, _ := json.Marshal(map[string]any{"dataSourceId": source.ID, "sql": query, "parameters": []interface{}{int64(0)}, "batch_size": 2, "count_mode": "none"})
-							page = restCall(http.MethodPost, "/api/v1/fetch", payload, nil, true)
-						}
-						seen, pages := 0, 0
-						for {
-							pages++
-							more, ok := page["hasMore"].(bool)
-							if !ok || page["countMode"] != "none" {
-								t.Fatalf("missing no-count indicators: %v", page)
-							}
-							total, exists := page["totalCount"]
-							if !exists || total != nil {
-								t.Fatalf("unknown total not null: %v", page)
-							}
-							rows, ok := page["entries"].([]interface{})
-							if !ok {
-								t.Fatalf("missing entries: %v", page)
-							}
-							for _, item := range rows {
-								row, ok := item.([]interface{})
-								if !ok || len(row) != 1 {
-									t.Fatalf("row=%v", item)
+							query := "SELECT id FROM " + table + " WHERE id > " + placeholder + " ORDER BY id LIMIT 4" + scenario.suffix
+							args := map[string]any{"datasource_id": source.ID, "sql": query, "parameters": []interface{}{int64(0)}, "batch_size": 2, "count_mode": scenario.countMode, "execution_mode": mode}
+							var page map[string]interface{}
+							decodeMCP := func(res *protocol.CallToolResult, err error, success bool) map[string]interface{} {
+								t.Helper()
+								if err != nil || res == nil || res.IsError == success {
+									t.Fatalf("MCP result=%+v err=%v success=%v", res, err, success)
 								}
-								seen++
-								if row[0] != float64(seen) {
-									t.Fatalf("row=%v want=%d", row, seen)
+								if !success {
+									return nil
 								}
+								var out map[string]interface{}
+								if err := json.Unmarshal([]byte(describeTableText(t, res)), &out); err != nil {
+									t.Fatal(err)
+								}
+								return out
 							}
-							nextURI, _ := page["nextUri"].(string)
-							if more != (nextURI != "") {
-								t.Fatalf("bad continuation: %v", page)
+							restCall := func(method, path string, body []byte, params gin.Params, success bool) map[string]interface{} {
+								t.Helper()
+								rec := httptest.NewRecorder()
+								ctx, _ := gin.CreateTestContext(rec)
+								ctx.Request = httptest.NewRequest(method, path, bytes.NewReader(body))
+								ctx.Params = params
+								if method == http.MethodPost {
+									rest.FetchQuery(ctx)
+								} else {
+									rest.FetchNextBatch(ctx)
+								}
+								if (rec.Code == http.StatusOK) != success {
+									t.Fatalf("REST status=%d body=%s", rec.Code, rec.Body.String())
+								}
+								if !success {
+									return nil
+								}
+								var envelope struct {
+									Data map[string]interface{} `json:"data"`
+								}
+								if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+									t.Fatal(err)
+								}
+								return envelope.Data
 							}
-							if !more {
-								break
-							}
-							if pages > 10 {
-								t.Fatal("unbounded continuation")
-							}
-							id, slug, token := page["queryId"].(string), page["slug"].(string), page["token"].(string)
 							if api == "MCP" {
-								request := callToolRequest("fetch_next_batch", map[string]any{"query_id": id, "slug": slug, "token": token, "batch_size": 1})
-								res, err := mcp.handleFetchNextBatch(context.Background(), request)
-								page = decodeMCP(res, err, true)
-								res, err = mcp.handleFetchNextBatch(context.Background(), request)
-								decodeMCP(res, err, false)
+								res, err := mcp.handleExecuteSQLQuery(context.Background(), callToolRequest("execute_sql_query", args))
+								page = decodeMCP(res, err, scenario.succeeds)
 							} else {
-								params := gin.Params{{Key: "query_id", Value: id}, {Key: "slug", Value: slug}, {Key: "token", Value: token}}
-								page = restCall(http.MethodGet, "/api/v1/fetch?batch_size=1", nil, params, true)
-								restCall(http.MethodGet, "/api/v1/fetch?batch_size=1", nil, params, false)
+								payload, _ := json.Marshal(map[string]any{"dataSourceId": source.ID, "sql": query, "parameters": []interface{}{int64(0)}, "batch_size": 2, "count_mode": scenario.countMode})
+								page = restCall(http.MethodPost, "/api/v1/fetch", payload, nil, scenario.succeeds)
 							}
-						}
-						if seen != 4 {
-							t.Fatalf("got %d rows, want 4", seen)
-						}
+							if !scenario.succeeds {
+								return
+							}
+							seen, pages := 0, 0
+							for {
+								pages++
+								nextURI, _ := page["nextUri"].(string)
+								more, ok := page["hasMore"].(bool)
+								if !ok || page["countMode"] != "none" {
+									t.Fatalf("missing no-count indicators: %v", page)
+								}
+								total, exists := page["totalCount"]
+								if !exists || total != nil {
+									t.Fatalf("unknown total not null: %v", page)
+								}
+								if more != (nextURI != "") {
+									t.Fatalf("bad no-count continuation: %v", page)
+								}
+								rows, ok := page["entries"].([]interface{})
+								if !ok {
+									t.Fatalf("missing entries: %v", page)
+								}
+								for _, item := range rows {
+									row, ok := item.([]interface{})
+									if !ok || len(row) != 1 {
+										t.Fatalf("row=%v", item)
+									}
+									seen++
+									if row[0] != float64(seen) {
+										t.Fatalf("row=%v want=%d", row, seen)
+									}
+								}
+								if nextURI == "" {
+									break
+								}
+								if pages > 10 {
+									t.Fatal("unbounded continuation")
+								}
+								id, slug, token := page["queryId"].(string), page["slug"].(string), page["token"].(string)
+								if api == "MCP" {
+									request := callToolRequest("fetch_next_batch", map[string]any{"query_id": id, "slug": slug, "token": token, "batch_size": 1})
+									res, err := mcp.handleFetchNextBatch(context.Background(), request)
+									page = decodeMCP(res, err, true)
+									res, err = mcp.handleFetchNextBatch(context.Background(), request)
+									decodeMCP(res, err, false)
+								} else {
+									params := gin.Params{{Key: "query_id", Value: id}, {Key: "slug", Value: slug}, {Key: "token", Value: token}}
+									page = restCall(http.MethodGet, "/api/v1/fetch?batch_size=1", nil, params, true)
+									restCall(http.MethodGet, "/api/v1/fetch?batch_size=1", nil, params, false)
+								}
+							}
+							if seen != 4 {
+								t.Fatalf("got %d rows, want 4", seen)
+							}
 
-					})
+						})
+					}
 				}
 			}
 		})

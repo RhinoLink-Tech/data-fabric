@@ -117,8 +117,15 @@ func TestBuildCountSQLKeepsTheQueryCountable(t *testing.T) {
 		{name: "trailing statement terminator", sql: "SELECT * FROM users;", want: "SELECT * FROM users"},
 		{name: "terminator after whitespace", sql: "SELECT * FROM users ;  ", want: "SELECT * FROM users"},
 		{name: "repeated terminators", sql: "SELECT * FROM users;;", want: "SELECT * FROM users"},
+		{name: "line comment after terminator", sql: "SELECT * FROM users; -- latest rows", want: "SELECT * FROM users"},
+		{name: "line comment without terminator", sql: "SELECT * FROM users -- latest rows\n", want: "SELECT * FROM users"},
+		{name: "mysql hash comment after terminator", sql: "SELECT * FROM users; # latest rows", want: "SELECT * FROM users"},
+		{name: "block comment after terminator", sql: "SELECT * FROM users; /* latest rows */", want: "SELECT * FROM users"},
+		{name: "stacked trailing comments", sql: "SELECT * FROM users; /* latest */ -- reviewed\n", want: "SELECT * FROM users"},
 		{name: "no terminator", sql: "SELECT * FROM users", want: "SELECT * FROM users"},
 		{name: "terminator inside a literal is not a terminator", sql: "SELECT ';' FROM users", want: "SELECT ';' FROM users"},
+		{name: "comment marker inside a quoted literal is retained", sql: "SELECT '-- latest' AS note FROM users", want: "SELECT '-- latest' AS note FROM users"},
+		{name: "comment marker inside a dollar quoted literal is retained", sql: "SELECT $tag$-- latest$tag$ AS note FROM users", want: "SELECT $tag$-- latest$tag$ AS note FROM users"},
 		{name: "ordering without a limit is dropped", sql: "SELECT * FROM users ORDER BY id", want: "SELECT * FROM users"},
 		{name: "ordering with a limit is kept", sql: "SELECT * FROM users ORDER BY id LIMIT 5", want: "SELECT * FROM users ORDER BY id LIMIT 5"},
 		{name: "ordering with an offset is kept", sql: "SELECT * FROM users ORDER BY id LIMIT 5 OFFSET 10", want: "SELECT * FROM users ORDER BY id LIMIT 5 OFFSET 10"},
@@ -145,6 +152,24 @@ func TestBuildCountSQLKeepsTheQueryCountable(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetRowCountEmbedsTrailingCommentsSafely(t *testing.T) {
+	fake := &countingDB{count: 5}
+	db := sql.OpenDB(fake.connector())
+	defer db.Close()
+
+	count, err := countRowsInQuery(context.Background(), db, "SELECT id FROM users LIMIT 5; -- first page")
+	if err != nil || count != 5 {
+		t.Fatalf("countRowsInQuery() = (%d, %v), want (5, nil)", count, err)
+	}
+	if len(fake.queries) != 1 {
+		t.Fatalf("issued %d count queries, want 1: %q", len(fake.queries), fake.queries)
+	}
+	const want = "SELECT COUNT(*) FROM (SELECT id FROM users LIMIT 5) AS t"
+	if fake.queries[0] != want {
+		t.Errorf("count query = %q, want %q", fake.queries[0], want)
 	}
 }
 
